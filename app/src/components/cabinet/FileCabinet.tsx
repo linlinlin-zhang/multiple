@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import FolderTab from "./FolderTab";
 import { useHistory } from "../../hooks/useHistory";
+import HistoryPage from "./HistoryPage";
 
 const INACTIVE_COLORS = [
   { bg: "#e5ddd4", text: "#1a1a1a" },
@@ -112,7 +113,7 @@ export default function FileCabinet() {
               暂无历史会话
             </div>
           ) : (
-            <HistoryPagePlaceholder sessionId={activeSessionId} />
+            <HistoryPage sessionId={activeSessionId} />
           )}
         </div>
       </div>
@@ -120,17 +121,3 @@ export default function FileCabinet() {
   );
 }
 
-function HistoryPagePlaceholder({ sessionId }: { sessionId: string | null }) {
-  if (!sessionId) {
-    return (
-      <div className="flex items-center justify-center h-full text-cabinet-inkMuted text-base">
-        Select a session to view details
-      </div>
-    );
-  }
-  return (
-    <div className="flex items-center justify-center h-full text-cabinet-inkMuted text-base">
-      Session: {sessionId}
-    </div>
-  );
-}
