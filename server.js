@@ -97,6 +97,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "GET") {
+      if (url.pathname === "/history" || url.pathname === "/history/") {
+        return serveStatic("/history/index.html", res);
+      }
       return serveStatic(url.pathname, res);
     }
 
