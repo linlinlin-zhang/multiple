@@ -1,3 +1,4 @@
+// Legacy component — kept for reference, not used in HistoryPage
 interface ContentRendererProps {
   content: string;
 }
