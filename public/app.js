@@ -23,6 +23,7 @@ const navToggle = document.querySelector("#navToggle");
 
 const state = {
   sourceImage: null,
+  sourceImageHash: null,
   fileName: "",
   latestAnalysis: null,
   chatMessages: [],
@@ -36,6 +37,10 @@ const state = {
     scale: 0.86
   }
 };
+
+let currentSessionId = null;
+let autoSaveTimer = null;
+let lastSavedStateHash = "";
 
 const optionPositions = [
   { x: 850, y: 112, tilt: -1.5 },
@@ -59,6 +64,12 @@ function init() {
   updateBoardTransform();
   checkHealth();
   setStatus("READY", "ready");
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const resumeSessionId = urlParams.get("session");
+  if (resumeSessionId) {
+    loadSession(resumeSessionId);
+  }
 }
 
 function wireControls() {
@@ -70,6 +81,20 @@ function wireControls() {
   document.querySelector("#zoomInButton").addEventListener("click", () => zoomBy(0.08));
   document.querySelector("#zoomOutButton").addEventListener("click", () => zoomBy(-0.08));
   document.querySelector("#fitButton").addEventListener("click", resetView);
+  document.querySelector("#saveButton")?.addEventListener("click", () => saveSession());
+
+  document.querySelector("#historyToggle")?.addEventListener("click", () => {
+    const panel = document.querySelector("#sessionPanel");
+    if (panel) {
+      const isHidden = panel.classList.contains("hidden");
+      panel.classList.toggle("hidden", !isHidden);
+      if (isHidden) renderSessionList();
+    }
+  });
+
+  document.querySelector("#closeSessionPanel")?.addEventListener("click", () => {
+    document.querySelector("#sessionPanel")?.classList.add("hidden");
+  });
 
   viewport.addEventListener("wheel", (event) => {
     if (!event.ctrlKey && !event.metaKey) return;
@@ -155,6 +180,7 @@ async function handleFile(event) {
     applyCollapseState();
     updateCounts();
     setStatus("IMAGE READY", "ready");
+    autoSave();
   } catch (error) {
     setStatus(error.message || "IMAGE ERROR", "error");
   }
@@ -166,8 +192,9 @@ async function analyzeImage() {
   analyzeButton.disabled = true;
 
   try {
+    const sourceImageDataUrl = await getSourceImageDataUrl();
     const data = await postJson("/api/analyze", {
-      imageDataUrl: state.sourceImage,
+      imageDataUrl: sourceImageDataUrl,
       fileName: state.fileName
     });
 
@@ -175,6 +202,7 @@ async function analyzeImage() {
     renderOptions(data.options || []);
     state.latestAnalysis = data;
     setStatus("BRANCHES READY", "ready");
+    autoSave();
   } catch (error) {
     setStatus(error.message || "ANALYSIS FAILED", "error");
   } finally {
@@ -193,14 +221,16 @@ async function handleChatSubmit(event) {
   chatSendButton.disabled = true;
 
   try {
+    const sourceImageDataUrl = await getSourceImageDataUrl();
     const data = await postJson("/api/chat", {
       message,
-      imageDataUrl: state.sourceImage,
+      imageDataUrl: sourceImageDataUrl,
       analysis: state.latestAnalysis,
       messages: state.chatMessages.slice(-8)
     });
     appendChatMessage("assistant", data.reply || "我已经读到你的想法了。");
     setStatus("CHAT READY", "ready");
+    autoSave();
   } catch (error) {
     appendChatMessage("assistant", error.message || "对话请求失败。");
     setStatus("CHAT FAILED", "error");
@@ -305,11 +335,26 @@ async function generateOption(id, option) {
   setStatus(`GENERATING ${option.title || "IMAGE"}`, "busy");
 
   try {
+    const sourceImageDataUrl = await getSourceImageDataUrl();
     const data = await postJson("/api/generate", {
-      imageDataUrl: state.sourceImage,
+      imageDataUrl: sourceImageDataUrl,
       option
     });
-    turnIntoGeneratedNode(element, option, data.imageDataUrl);
+
+    let imageUrl = data.imageDataUrl;
+    if (data.imageDataUrl && data.imageDataUrl.startsWith("data:")) {
+      const asset = await postJson("/api/assets", {
+        dataUrl: data.imageDataUrl,
+        kind: "generated"
+      });
+      node.imageHash = asset.hash;
+      imageUrl = `/api/assets/${asset.hash}?kind=generated`;
+    } else if (data.hash) {
+      node.imageHash = data.hash;
+      imageUrl = `/api/assets/${data.hash}?kind=generated`;
+    }
+
+    turnIntoGeneratedNode(element, option, imageUrl);
     node.width = element.offsetWidth;
     node.height = element.offsetHeight;
     node.generated = true;
@@ -319,6 +364,7 @@ async function generateOption(id, option) {
     applyCollapseState();
     updateCounts();
     setStatus("IMAGE GENERATED", "ready");
+    autoSave();
   } catch (error) {
     element.classList.remove("loading");
     if (button) button.disabled = false;
@@ -417,6 +463,7 @@ function toggleCollapse(id) {
     state.collapsed.add(id);
   }
   applyCollapseState();
+  autoSave();
 }
 
 function applyCollapseState() {
@@ -510,6 +557,7 @@ function makeDraggable(element, id) {
   element.addEventListener("pointerup", () => {
     start = null;
     element.classList.remove("dragging");
+    autoSave();
   });
 }
 
@@ -618,6 +666,15 @@ async function postJson(url, payload) {
   return parseApiResponse(response);
 }
 
+async function putJson(url, payload) {
+  const response = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  return parseApiResponse(response);
+}
+
 async function parseApiResponse(response) {
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -670,4 +727,293 @@ function trimMiddle(value, maxLength) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function computeStateHash() {
+  return JSON.stringify({
+    nodes: Array.from(state.nodes.entries()).map(([k, v]) => [k, { x: v.x, y: v.y, width: v.width, height: v.height, generated: v.generated, option: v.option }]),
+    links: state.links,
+    collapsed: Array.from(state.collapsed),
+    chatMessages: state.chatMessages,
+    view: state.view,
+    sourceImage: state.sourceImage ? state.sourceImage.slice(0, 200) : null,
+    latestAnalysis: state.latestAnalysis
+  });
+}
+
+async function prepareStateForSave() {
+  const payload = {
+    sourceImage: state.sourceImage,
+    fileName: state.fileName,
+    latestAnalysis: state.latestAnalysis,
+    chatMessages: state.chatMessages,
+    nodes: {},
+    links: state.links,
+    collapsed: Array.from(state.collapsed),
+    generatedCount: state.generatedCount,
+    view: state.view
+  };
+
+  for (const [id, node] of state.nodes.entries()) {
+    payload.nodes[id] = {
+      id,
+      x: node.x,
+      y: node.y,
+      width: node.width,
+      height: node.height,
+      generated: node.generated || false,
+      option: node.option || null,
+      imageHash: node.imageHash || null
+    };
+  }
+
+  return payload;
+}
+
+async function getSourceImageDataUrl() {
+  if (state.sourceImage && state.sourceImage.startsWith("data:")) return state.sourceImage;
+  if (state.sourceImageHash) {
+    const response = await fetch(`/api/assets/${state.sourceImageHash}?kind=upload`);
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.readAsDataURL(blob);
+    });
+  }
+  return state.sourceImage;
+}
+
+async function saveSession({ isAuto = false } = {}) {
+  const saveStatus = document.querySelector("#saveStatus");
+  if (saveStatus) saveStatus.textContent = isAuto ? "自动保存中..." : "保存中...";
+  if (saveStatus) saveStatus.className = "save-status saving";
+
+  try {
+    if (state.sourceImage && state.sourceImage.startsWith("data:") && !state.sourceImageHash) {
+      const asset = await postJson("/api/assets", {
+        dataUrl: state.sourceImage,
+        kind: "upload",
+        fileName: state.fileName
+      });
+      state.sourceImageHash = asset.hash;
+    }
+
+    const payloadState = await prepareStateForSave();
+    const body = {
+      state: payloadState,
+      title: state.fileName ? `${state.fileName} 的探索` : "未命名会话",
+      isDemo: document.querySelector("#modeBadge")?.textContent === "demo"
+    };
+
+    let result;
+    if (currentSessionId) {
+      result = await putJson(`/api/sessions/${currentSessionId}`, body);
+    } else {
+      result = await postJson("/api/sessions", body);
+      currentSessionId = result.sessionId;
+      const url = new URL(window.location.href);
+      url.searchParams.set("session", currentSessionId);
+      window.history.replaceState({}, "", url);
+    }
+
+    lastSavedStateHash = computeStateHash();
+    if (saveStatus) {
+      saveStatus.textContent = `已保存 ${new Date(result.savedAt).toLocaleTimeString()}`;
+      saveStatus.className = "save-status saved";
+    }
+  } catch (error) {
+    console.error("Save failed:", error);
+    if (saveStatus) {
+      saveStatus.textContent = "保存失败";
+      saveStatus.className = "save-status error";
+    }
+  }
+}
+
+function autoSave() {
+  if (autoSaveTimer) clearTimeout(autoSaveTimer);
+  const currentHash = computeStateHash();
+  if (currentHash === lastSavedStateHash) return;
+
+  autoSaveTimer = setTimeout(() => {
+    saveSession({ isAuto: true });
+  }, 2000);
+}
+
+async function loadSession(sessionId) {
+  setStatus("LOADING SESSION", "busy");
+  try {
+    const data = await getJson(`/api/sessions/${sessionId}`);
+
+    clearOptions();
+    state.chatMessages = [];
+    state.links = [];
+    state.collapsed.clear();
+    state.generatedCount = 0;
+    state.sourceImage = null;
+    state.sourceImageHash = null;
+    state.fileName = "";
+    state.latestAnalysis = null;
+
+    if (data.viewState) {
+      state.view = { ...state.view, ...data.viewState };
+      updateBoardTransform();
+    }
+
+    const sourceAsset = data.assets.find(a => a.kind === "upload");
+    if (sourceAsset) {
+      state.sourceImage = `/api/assets/${sourceAsset.hash}?kind=upload`;
+      state.sourceImageHash = sourceAsset.hash;
+      state.fileName = sourceAsset.fileName || "";
+      sourcePreview.src = state.sourceImage;
+      sourcePreview.classList.add("has-image");
+      emptyState.classList.add("hidden");
+      sourceName.textContent = trimMiddle(state.fileName, 28);
+      analyzeButton.disabled = false;
+    } else {
+      sourcePreview.src = "";
+      sourcePreview.classList.remove("has-image");
+      emptyState.classList.remove("hidden");
+      sourceName.textContent = "SOURCE IMAGE";
+      analyzeButton.disabled = true;
+    }
+
+    const analysisNodeData = data.nodes.find(n => n.type === "analysis");
+    if (analysisNodeData && analysisNodeData.data?.summary) {
+      state.latestAnalysis = {
+        summary: analysisNodeData.data.summary,
+        detectedSubjects: analysisNodeData.data.detectedSubjects || [],
+        moodKeywords: analysisNodeData.data.moodKeywords || [],
+        options: []
+      };
+      renderAnalysis(state.latestAnalysis);
+    } else {
+      analysisNode.classList.add("hidden");
+      state.latestAnalysis = null;
+    }
+
+    const optionNodes = data.nodes.filter(n => n.type === "option" || n.type === "generated");
+    for (const n of optionNodes) {
+      const option = n.data?.option || { title: "生成方向", description: "", tone: "cinematic", layoutHint: "square" };
+      const position = optionPositions[optionNodes.indexOf(n) % optionPositions.length];
+      const nodeId = n.nodeId;
+
+      const fragment = optionTemplate.content.cloneNode(true);
+      const element = fragment.querySelector(".option-node");
+      element.dataset.nodeId = nodeId;
+      element.style.left = `${n.x || position.x}px`;
+      element.style.top = `${n.y || position.y}px`;
+      element.style.setProperty("--tilt", `${position.tilt}deg`);
+      element.querySelector(".pin").classList.add(optionNodes.indexOf(n) % 2 ? "pin-teal" : "pin-gold");
+      element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
+      element.querySelector(".option-title").textContent = option.title || "生成方向";
+      element.querySelector(".option-description").textContent = option.description || "";
+
+      const button = element.querySelector(".generate-button");
+      button.addEventListener("click", () => generateOption(nodeId, option));
+
+      board.appendChild(element);
+      registerNode(nodeId, element, {
+        x: n.x || position.x,
+        y: n.y || position.y,
+        width: n.width || 318,
+        height: n.height || element.offsetHeight,
+        option,
+        generated: n.type === "generated"
+      });
+
+      if (n.type === "generated" && (n.data?.imageHash || n.data?.imageDataUrl)) {
+        const hash = n.data?.imageHash || n.data?.imageDataUrl;
+        const imageUrl = hash.startsWith("data:") ? hash : `/api/assets/${hash}?kind=generated`;
+        turnIntoGeneratedNode(element, option, imageUrl);
+        const node = state.nodes.get(nodeId);
+        if (node) {
+          node.generated = true;
+          node.imageHash = n.data?.imageHash || null;
+          node.width = element.offsetWidth;
+          node.height = element.offsetHeight;
+        }
+        state.generatedCount += 1;
+      }
+
+      state.links.push({ from: "analysis", to: nodeId, kind: "option" });
+      makeDraggable(element, nodeId);
+    }
+
+    state.links = data.links.map(l => ({ from: l.fromNodeId, to: l.toNodeId, kind: l.kind }));
+    if (analysisNodeData && !state.links.find(l => l.from === "source" && l.to === "analysis")) {
+      state.links.unshift({ from: "source", to: "analysis", kind: "analysis" });
+    }
+
+    for (const n of data.nodes) {
+      if (n.collapsed) state.collapsed.add(n.nodeId);
+    }
+
+    state.chatMessages = data.chatMessages.map(m => ({ role: m.role, content: m.content }));
+    renderChatMessages();
+
+    applyCollapseState();
+    updateCounts();
+
+    currentSessionId = sessionId;
+    lastSavedStateHash = computeStateHash();
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("session", sessionId);
+    window.history.replaceState({}, "", url);
+
+    setStatus("SESSION LOADED", "ready");
+  } catch (error) {
+    setStatus(error.message || "LOAD FAILED", "error");
+  }
+}
+
+async function renderSessionList() {
+  const list = document.querySelector("#sessionList");
+  if (!list) return;
+  list.innerHTML = "<span class='session-item-meta'>加载中...</span>";
+
+  try {
+    const data = await getJson("/api/history?limit=50");
+    list.innerHTML = "";
+
+    if (!data.sessions?.length) {
+      list.innerHTML = "<span class='session-item-meta'>暂无历史会话</span>";
+      return;
+    }
+
+    for (const session of data.sessions) {
+      const item = document.createElement("div");
+      item.className = "session-item";
+      if (session.id === currentSessionId) item.classList.add("active");
+
+      const title = document.createElement("div");
+      title.className = "session-item-title";
+      title.textContent = session.title || "未命名会话";
+
+      if (session.isDemo) {
+        const badge = document.createElement("span");
+        badge.className = "session-item-demo";
+        badge.textContent = "DEMO";
+        title.appendChild(badge);
+      }
+
+      const meta = document.createElement("div");
+      meta.className = "session-item-meta";
+      const date = new Date(session.updatedAt);
+      meta.textContent = `${date.toLocaleDateString()} ${date.toLocaleTimeString()} · ${session.nodeCount} 节点 · ${session.assetCount} 素材`;
+
+      item.appendChild(title);
+      item.appendChild(meta);
+      item.addEventListener("click", () => {
+        loadSession(session.id);
+        document.querySelector("#sessionPanel")?.classList.add("hidden");
+      });
+
+      list.appendChild(item);
+    }
+  } catch (error) {
+    list.innerHTML = "<span class='session-item-meta'>加载失败</span>";
+  }
 }
