@@ -49,6 +49,7 @@
 @layer components {
   .cabinet-scrollbar::-webkit-scrollbar {
     width: 6px;
+    height: 6px;
   }
   .cabinet-scrollbar::-webkit-scrollbar-track {
     background: transparent;
@@ -59,5 +60,14 @@
   }
   .cabinet-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: #a5a09a;
+  }
+}
+
+@layer utilities {
+  @media (max-width: 768px) {
+    .history-content {
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
   }
 }

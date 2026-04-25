@@ -11,11 +11,11 @@ const INACTIVE_COLORS = [
 
 function SkeletonTabs() {
   return (
-    <div className="flex items-end pl-6">
+    <div className="flex items-end pl-4 md:pl-6 overflow-x-auto">
       {[1, 2, 3].map((i) => (
         <div
           key={i}
-          className="relative text-[14px] font-medium tracking-[0.02em] flex items-center justify-center select-none animate-pulse"
+          className="relative text-[14px] font-medium tracking-[0.02em] flex items-center justify-center select-none animate-pulse flex-shrink-0"
           style={{
             zIndex: i,
             backgroundColor: "#d8cfc4",
@@ -53,13 +53,13 @@ export default function FileCabinet() {
   }, [sessions, activeSessionId]);
 
   return (
-    <div className="min-h-screen bg-cabinet-bg flex justify-center pt-10 px-4">
-      <div className="w-full max-w-[1100px]">
+    <div className="min-h-screen bg-cabinet-bg flex justify-center pt-4 md:pt-10 px-4">
+      <div className="w-full max-w-full md:max-w-[1100px]">
         {/* Tab Bar */}
         {loading && sessions.length === 0 ? (
           <SkeletonTabs />
         ) : (
-          <div className="flex items-end pl-6">
+          <div className="flex items-end pl-4 md:pl-6 overflow-x-auto">
             {sessions.length === 0 ? (
               <FolderTab
                 label="No sessions"
@@ -120,4 +120,3 @@ export default function FileCabinet() {
     </div>
   );
 }
-

@@ -49,7 +49,7 @@ export default function FolderTab({
       className={`
         relative text-[14px] font-medium tracking-[0.02em]
         flex items-center justify-center
-        select-none cursor-pointer
+        select-none cursor-pointer flex-shrink-0 truncate max-w-[120px]
         ${bouncing ? "animate-tab-bounce" : ""}
       `}
       style={{
@@ -65,6 +65,7 @@ export default function FolderTab({
         transform: active ? "translateY(0)" : "translateY(3px)",
         height: "40px",
       }}
+      title={label}
     >
       {label}
     </button>
