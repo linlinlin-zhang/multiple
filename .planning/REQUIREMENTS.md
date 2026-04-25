@@ -71,7 +71,7 @@
 | HIST-02 | Phase 2 | Pending |
 | HIST-03 | Phase 4 | Pending |
 | HIST-04 | Phase 2 | Pending |
-| HIST-05 | Phase 3 | Pending |
+| HIST-05 | Phase 2 | Pending |
 | SHAR-01 | Phase 3 | Pending |
 | SHAR-02 | Phase 3 | Pending |
 | SHAR-03 | Phase 3 | Pending |
@@ -87,4 +87,4 @@
 
 ---
 *Requirements defined: 2026-04-25*
-*Last updated: 2026-04-25 after initial definition*
+*Last updated: 2026-04-25 after roadmap creation*
