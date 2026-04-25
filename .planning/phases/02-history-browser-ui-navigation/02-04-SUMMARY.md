@@ -110,4 +110,4 @@ No new security-relevant surface introduced in this plan. The mobile sidebar ove
 - [x] `app/src/components/cabinet/FileCabinet.tsx` exists and compiles.
 - [x] `app/src/components/cabinet/FolderTab.tsx` exists and compiles.
 - [x] `public/history/index.html` exists and references built bundles.
-- [x] Commits verified: `4a24663`, `f7b813f`.
+- [x] Commits verified: `4a24663`, `f7b813f`, `bed7bb9`.
