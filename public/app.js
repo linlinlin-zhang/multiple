@@ -51,9 +51,9 @@ const optionPositions = [
   { x: 1520, y: 1032, tilt: -1.1 }
 ];
 
-init();
+init().catch(console.error);
 
-function init() {
+async function init() {
   restoreNavState();
   registerNode("source", sourceNode, { x: 96, y: 88, width: 318, height: 326 });
   registerNode("analysis", analysisNode, { x: 452, y: 96, width: 318, height: 220 });
@@ -68,7 +68,13 @@ function init() {
   const urlParams = new URLSearchParams(window.location.search);
   const resumeSessionId = urlParams.get("session");
   if (resumeSessionId) {
-    loadSession(resumeSessionId);
+    try {
+      await loadSession(resumeSessionId);
+    } catch {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("session");
+      window.history.replaceState({}, "", url);
+    }
   }
 }
 
@@ -82,6 +88,10 @@ function wireControls() {
   document.querySelector("#zoomOutButton").addEventListener("click", () => zoomBy(-0.08));
   document.querySelector("#fitButton").addEventListener("click", resetView);
   document.querySelector("#saveButton")?.addEventListener("click", () => saveSession());
+
+  document.querySelector("#historyBrowserButton")?.addEventListener("click", () => {
+    window.location.href = "/history/";
+  });
 
   document.querySelector("#historyToggle")?.addEventListener("click", () => {
     const panel = document.querySelector("#sessionPanel");
