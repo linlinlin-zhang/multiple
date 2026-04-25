@@ -24,15 +24,29 @@ function buildBezierPath(start: { x: number; y: number }, end: { x: number; y: n
 }
 
 function truncateLabel(label: string): string {
-  if (label.length <= 12) return label;
-  return label.slice(0, 12) + "...";
+  if (label.length <= 14) return label;
+  return label.slice(0, 14) + "...";
+}
+
+function getNodeLabel(node: Node): string {
+  switch (node.type) {
+    case "source":
+      return "Source";
+    case "analysis":
+      return "Analysis";
+    case "option":
+    case "generated":
+      return node.data?.option?.title || "Option";
+    default:
+      return node.type;
+  }
 }
 
 export default function NodeGraphThumbnail({ nodes, links }: NodeGraphThumbnailProps) {
   if (nodes.length === 0) {
     return (
       <div className="w-full h-[240px] bg-cabinet-bg rounded border border-cabinet-border overflow-hidden flex items-center justify-center">
-        <span className="text-sm text-cabinet-inkMuted">No nodes</span>
+        <span className="text-sm text-cabinet-inkMuted">No graph data</span>
       </div>
     );
   }
@@ -51,9 +65,15 @@ export default function NodeGraphThumbnail({ nodes, links }: NodeGraphThumbnailP
   }
 
   return (
-    <div className="w-full h-[240px] bg-cabinet-bg rounded border border-cabinet-border overflow-hidden">
+    <div className="w-full h-[240px] bg-cabinet-bg rounded border border-cabinet-border overflow-hidden relative">
       <svg width="100%" height="100%" viewBox={viewBox} preserveAspectRatio="xMidYMid meet">
-        {/* Links */}
+        <defs>
+          <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+            <feDropShadow dx="1" dy="2" stdDeviation="2" floodColor="#000000" floodOpacity="0.12" />
+          </filter>
+        </defs>
+
+        {/* Links shadow layer */}
         {links.map((link) => {
           const fromNode = nodeMap.get(link.fromNodeId);
           const toNode = nodeMap.get(link.toNodeId);
@@ -61,21 +81,51 @@ export default function NodeGraphThumbnail({ nodes, links }: NodeGraphThumbnailP
 
           const start = {
             x: fromNode.x + (fromNode.width || 318) - 18,
-            y: fromNode.y + (fromNode.height || 220) * 0.48,
+            y: fromNode.y + Math.min((fromNode.height || 220) * 0.48, (fromNode.height || 220) - 32),
           };
           const end = {
             x: toNode.x + 18,
-            y: toNode.y + (toNode.height || 220) * 0.48,
+            y: toNode.y + Math.min((toNode.height || 220) * 0.48, (toNode.height || 220) - 32),
           };
 
           return (
             <path
-              key={link.id}
+              key={`${link.id}-shadow`}
               d={buildBezierPath(start, end)}
               stroke="#c0bbb3"
-              strokeWidth={2}
+              strokeWidth={4}
               fill="none"
+              opacity="0.3"
             />
+          );
+        })}
+
+        {/* Links main layer */}
+        {links.map((link) => {
+          const fromNode = nodeMap.get(link.fromNodeId);
+          const toNode = nodeMap.get(link.toNodeId);
+          if (!fromNode || !toNode) return null;
+
+          const start = {
+            x: fromNode.x + (fromNode.width || 318) - 18,
+            y: fromNode.y + Math.min((fromNode.height || 220) * 0.48, (fromNode.height || 220) - 32),
+          };
+          const end = {
+            x: toNode.x + 18,
+            y: toNode.y + Math.min((toNode.height || 220) * 0.48, (toNode.height || 220) - 32),
+          };
+
+          return (
+            <g key={link.id}>
+              <path
+                d={buildBezierPath(start, end)}
+                stroke="#8a8a8a"
+                strokeWidth={2}
+                fill="none"
+              />
+              <circle cx={start.x} cy={start.y} r={6} fill="#c0bbb3" />
+              <circle cx={end.x} cy={end.y} r={6} fill="#c0bbb3" />
+            </g>
           );
         })}
 
@@ -86,6 +136,7 @@ export default function NodeGraphThumbnail({ nodes, links }: NodeGraphThumbnailP
           const fill = NODE_COLORS[node.type] || "#f0ece4";
           const isOption = node.type === "option";
           const isDark = node.type === "source" || node.type === "generated";
+          const label = truncateLabel(getNodeLabel(node));
 
           return (
             <g key={node.id}>
@@ -95,9 +146,11 @@ export default function NodeGraphThumbnail({ nodes, links }: NodeGraphThumbnailP
                 width={w}
                 height={h}
                 rx={4}
+                ry={4}
                 fill={fill}
                 stroke={isOption ? "#c0bbb3" : "#1a1a1a"}
                 strokeWidth={1}
+                filter="url(#shadow)"
               />
               <text
                 x={node.x + w / 2}
@@ -107,12 +160,17 @@ export default function NodeGraphThumbnail({ nodes, links }: NodeGraphThumbnailP
                 dominantBaseline="middle"
                 textAnchor="middle"
               >
-                {truncateLabel(node.data?.option?.title || node.type)}
+                {label}
               </text>
             </g>
           );
         })}
       </svg>
+
+      {/* Info overlay */}
+      <div className="absolute bottom-2 right-2 text-[11px] font-mono text-cabinet-inkMuted bg-cabinet-paper/80 px-2 py-1 rounded pointer-events-none">
+        {nodes.length} nodes · {links.length} links
+      </div>
     </div>
   );
 }
