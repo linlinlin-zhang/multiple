@@ -1,15 +1,89 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
-  provider = "prisma-client"
-  output   = "../app/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  title     String   @default("未命名会话")
+  isDemo    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  nodes     Node[]
+  links     Link[]
+  assets    Asset[]
+  chatMessages ChatMessage[]
+  shareTokens ShareToken[]
+  viewState Json?    // { x, y, scale }
+}
+
+model Node {
+  id        String  @id @default(uuid())
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  nodeId    String  // client-side node id: "source", "analysis", "option-evidence-board", etc.
+  type      String  // "source" | "analysis" | "option" | "generated"
+  x         Float
+  y         Float
+  width     Float
+  height    Float
+  data      Json?   // flexible per-node payload: option object, generated image hash, etc.
+  collapsed Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+}
+
+model Link {
+  id        String  @id @default(uuid())
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  fromNodeId String // client-side node id
+  toNodeId   String // client-side node id
+  kind       String // "analysis" | "option" | "generated"
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+}
+
+model Asset {
+  id        String  @id @default(uuid())
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  hash      String  // SHA-256 content hash
+  kind      String  // "upload" | "generated"
+  mimeType  String
+  fileSize  Int
+  fileName  String?
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([hash])
+}
+
+model ChatMessage {
+  id        String  @id @default(uuid())
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String  // "user" | "assistant"
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([sessionId])
+}
+
+model ShareToken {
+  id        String   @id @default(uuid())
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  token     String   @unique @default(uuid())
+  createdAt DateTime @default(now())
+  expiresAt DateTime?
+
+  @@index([token])
+  @@index([sessionId])
 }
