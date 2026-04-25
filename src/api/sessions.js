@@ -108,6 +108,8 @@ export async function handleCreateSession(body, res) {
     }
 
     // 3. Transaction: create session + related rows
+    // TODO: orphaned file cleanup job — if file write succeeds but transaction fails,
+    // the stored file is not rolled back. Acceptable for v1, add cleanup later.
     const session = await prisma.$transaction(async (tx) => {
       const session = await tx.session.create({
         data: {
@@ -256,6 +258,8 @@ export async function handleUpdateSession(sessionId, body, res) {
       }
     }
 
+    // TODO: orphaned file cleanup job — if file write succeeds but transaction fails,
+    // the stored file is not rolled back. Acceptable for v1, add cleanup later.
     const session = await prisma.$transaction(async (tx) => {
       // Delete existing related rows
       await tx.node.deleteMany({ where: { sessionId } });
