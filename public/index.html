@@ -33,6 +33,10 @@
             <span class="nav-label">主页</span>
           </a>
         </nav>
+        <button id="historyToggle" class="nav-link" title="历史会话">
+          <span class="nav-icon">S</span>
+          <span class="nav-label">历史会话</span>
+        </button>
       </aside>
 
       <header class="topbar">
@@ -48,6 +52,8 @@
           <button class="tab">今年</button>
         </nav>
         <div class="toolbar">
+          <button id="saveButton" class="icon-button" title="保存会话" aria-label="保存会话">💾</button>
+          <span id="saveStatus" class="save-status"></span>
           <button id="fitButton" class="icon-button" title="重置视图" aria-label="重置视图">⌖</button>
           <button id="zoomOutButton" class="icon-button" title="缩小" aria-label="缩小">−</button>
           <button id="zoomInButton" class="icon-button" title="放大" aria-label="放大">+</button>
@@ -84,6 +90,14 @@
           </section>
         </div>
       </main>
+
+      <aside id="sessionPanel" class="session-panel hidden" aria-label="历史会话">
+        <div class="session-panel-header">
+          <span>历史会话</span>
+          <button id="closeSessionPanel" class="icon-button" aria-label="关闭">×</button>
+        </div>
+        <div id="sessionList" class="session-list"></div>
+      </aside>
 
       <footer class="statusbar">
         <form id="chatForm" class="chatbar">
