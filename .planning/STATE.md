@@ -3,21 +3,21 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: in_progress
-last_updated: "2026-04-25T06:50:18.915Z"
+last_updated: "2026-04-25T12:40:20.325Z"
 progress:
   total_phases: 4
-  completed_phases: 0
-  total_plans: 4
-  completed_plans: 1
-  percent: 25
+  completed_phases: 2
+  total_plans: 8
+  completed_plans: 8
+  percent: 50
 ---
 
 # ORYZAE Image Board — Project State
 
-**Milestone:** Persistence & History v1  
-**Core Value:** 用户上传一张图，就能在画布上获得 AI 驱动的创作方向并生成新图；刷新页面后历史会话不丢失，可随时翻阅过往探索并查看 AI 对每张生成图的讲解。  
-**Project Reference:** [PROJECT.md](./PROJECT.md)  
-**Last Updated:** 2026-04-25  
+**Milestone:** Persistence & History v1
+**Core Value:** 用户上传一张图，就能在画布上获得 AI 驱动的创作方向并生成新图；刷新页面后历史会话不丢失，可随时翻阅过往探索并查看 AI 对每张生成图的讲解。
+**Project Reference:** [PROJECT.md](./PROJECT.md)
+**Last Updated:** 2026-04-25
 
 ---
 
@@ -25,13 +25,13 @@ progress:
 
 | Field | Value |
 |-------|-------|
-| Phase | 1 |
-| Plan | 01 |
-| Status | In Progress |
-| Progress | 0/4 phases complete (0%) |
+| Phase | 2 |
+| Plan | 04 |
+| Status | Completed |
+| Progress | 2/4 phases complete (50%) |
 
 ```
-[░░░░░░░░░░░░░░░░░░░░] 0%
+[████████████████████░░░░░░░░░░░░░░░░░░░░] 50%
 ```
 
 ---
@@ -42,8 +42,8 @@ progress:
 |--------|-------|
 | Requirements validated | 8/25 |
 | v1 requirements mapped | 17/17 |
-| Phases complete | 0/4 |
-| Plans complete | 1/14 |
+| Phases complete | 2/4 |
+| Plans complete | 8/14 |
 | Blockers | 1 |
 
 ---
@@ -59,13 +59,16 @@ progress:
 | 3 | `app/` React UI as independent Vite build | 2026-04-25 | Reuse existing prototype, served by server.js alongside `public/` |
 | 4 | Share links are immutable snapshots | 2026-04-25 | Prevents drift between shared and live session |
 | 5 | Manual migration SQL created offline | 2026-04-25 | PostgreSQL not available in execution environment; user applies with `npx prisma migrate deploy` |
+| 6 | NodeGraphThumbnail anchor calculation uses Math.min(height*0.48, height-32) | 2026-04-25 | Exactly matches public/app.js anchor() behavior |
+| 7 | Mobile sidebar implemented as fixed overlay with backdrop | 2026-04-25 | Avoids z-index issues with SVG thumbnails |
+| 8 | Link shadow drawn as separate path layer | 2026-04-25 | Better performance with many links vs SVG filter per-link |
 
 ### TODOs
 
 - [x] Set up PostgreSQL and Prisma schema (Session, Node, Link, Asset, ShareToken)
 - [x] Implement file storage layer with SHA-256 addressing
-- [ ] Wire auto-save with 2-second debounce into existing canvas
-- [ ] Build history browser React UI from `app/` prototype
+- [x] Wire auto-save with 2-second debounce into existing canvas
+- [x] Build history browser React UI from `app/` prototype
 - [ ] Add share token generation and read-only viewer
 - [ ] Integrate AI title/explanation generation
 
@@ -79,5 +82,5 @@ progress:
 
 ## Session Continuity
 
-**Current session started:** 2026-04-25  
-**Next expected action:** Execute Plan 01-02 (Session persistence API) after PostgreSQL is running.
+**Current session started:** 2026-04-25
+**Next expected action:** Execute Phase 3 Plan 03-01 (Sharing & Snapshots) after PostgreSQL is running and Phase 1 backend integration is verified.

@@ -38,7 +38,7 @@ decisions:
 metrics:
   duration_minutes: 35
   completed_date: "2026-04-25"
-  tasks_completed: 2
+  tasks_completed: 3
   total_tasks: 3
 ---
 
@@ -89,6 +89,7 @@ metrics:
 - TypeScript compilation passes (`npx tsc --noEmit`).
 - Vite production build succeeds (`npx vite build --outDir ../public/history --emptyOutDir`).
 - Checkpoint reached for human verification of full end-to-end flow.
+- **User approved** the human verification checkpoint (YOLO mode).
 
 ## Deviations from Plan
 

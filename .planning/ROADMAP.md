@@ -8,8 +8,8 @@
 
 ## Phases
 
-- [ ] **Phase 1: Database & File Storage Foundation** — PostgreSQL + Prisma schema, file storage, auto-save, session restore
-- [ ] **Phase 2: History Browser UI & Navigation** — File-cabinet React UI, session/asset browsing, canvas integration
+- [x] **Phase 1: Database & File Storage Foundation** — PostgreSQL + Prisma schema, file storage, auto-save, session restore
+- [x] **Phase 2: History Browser UI & Navigation** — File-cabinet React UI, session/asset browsing, canvas integration
 - [ ] **Phase 3: Sharing & Snapshots** — Read-only share links, immutable snapshots, JSON export/import
 - [ ] **Phase 4: AI Titles & Explanations** — AI-generated session titles, per-image content explanations
 
@@ -77,7 +77,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Database & File Storage Foundation | 4/4 | Planned | - |
-| 2. History Browser UI & Navigation | 0/4 | Not started | - |
+| 1. Database & File Storage Foundation | 4/4 | Completed | 2026-04-25 |
+| 2. History Browser UI & Navigation | 4/4 | Completed | 2026-04-25 |
 | 3. Sharing & Snapshots | 0/3 | Not started | - |
 | 4. AI Titles & Explanations | 0/3 | Not started | - |

@@ -15,11 +15,11 @@
 
 ### History Browser UI
 
-- [ ] **HIST-01**: 文件柜式历史浏览 UI：顶部文件夹标签 = 历史会话，侧边栏 = 会话内素材列表，右侧 = 详情页
-- [ ] **HIST-02**: 侧边栏素材类型支持：生成图片、网页链接、上传文件、聊天记录片段
+- [x] **HIST-01**: 文件柜式历史浏览 UI：顶部文件夹标签 = 历史会话，侧边栏 = 会话内素材列表，右侧 = 详情页
+- [x] **HIST-02**: 侧边栏素材类型支持：生成图片、网页链接、上传文件、聊天记录片段
 - [ ] **HIST-03**: 右侧详情页对每张生成图调用大模型 API 生成内容讲解
-- [ ] **HIST-04**: 从画布界面可一键跳转到历史浏览器，从历史浏览器可打开会话回到画布
-- [ ] **HIST-05**: 历史浏览器渲染只读节点图缩略概览（轻量级，非完整画布）
+- [x] **HIST-04**: 从画布界面可一键跳转到历史浏览器，从历史浏览器可打开会话回到画布
+- [x] **HIST-05**: 历史浏览器渲染只读节点图缩略概览（轻量级，非完整画布）
 
 ### Sharing
 
@@ -67,11 +67,11 @@
 | PERS-03 | Phase 4 | Pending |
 | PERS-04 | Phase 1 | Pending |
 | PERS-05 | Phase 1 | Pending |
-| HIST-01 | Phase 2 | Pending |
-| HIST-02 | Phase 2 | Pending |
+| HIST-01 | Phase 2 | Complete |
+| HIST-02 | Phase 2 | Complete |
 | HIST-03 | Phase 4 | Pending |
-| HIST-04 | Phase 2 | Pending |
-| HIST-05 | Phase 2 | Pending |
+| HIST-04 | Phase 2 | Complete |
+| HIST-05 | Phase 2 | Complete |
 | SHAR-01 | Phase 3 | Pending |
 | SHAR-02 | Phase 3 | Pending |
 | SHAR-03 | Phase 3 | Pending |
