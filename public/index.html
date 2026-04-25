@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ORYZAE / Image Board</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23faf9f4'/%3E%3Ccircle cx='21' cy='25' r='7' fill='%233d9a92'/%3E%3Ccircle cx='43' cy='20' r='7' fill='%23d9bc68'/%3E%3Ccircle cx='38' cy='43' r='7' fill='%23bd453c'/%3E%3Cpath d='M21 25 43 20 38 43 21 25' fill='none' stroke='%23202939' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/styles.css?v=5" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside id="sideNav" class="rail" aria-label="主导航">
+        <button id="navToggle" class="nav-toggle" type="button" aria-label="折叠导航" aria-expanded="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <div class="nav-brand">
+          <span class="nav-kicker">ORYZAE</span>
+          <strong>创作平台</strong>
+        </div>
+        <nav class="nav-links" aria-label="页面导航">
+          <a class="nav-link active" href="/" title="工作界面">
+            <span class="nav-icon">W</span>
+            <span class="nav-label">工作界面</span>
+          </a>
+          <a class="nav-link" href="/history.html" title="历史记录">
+            <span class="nav-icon">H</span>
+            <span class="nav-label">历史记录</span>
+          </a>
+          <a class="nav-link" href="/home.html" title="主页">
+            <span class="nav-icon">P</span>
+            <span class="nav-label">主页</span>
+          </a>
+        </nav>
+      </aside>
+
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <span>ORYZAE / BOARD</span>
+        </div>
+        <nav class="tabs" aria-label="view switcher">
+          <button class="tab">今日</button>
+          <button class="tab active">今週</button>
+          <button class="tab">今月</button>
+          <button class="tab">半年</button>
+          <button class="tab">今年</button>
+        </nav>
+        <div class="toolbar">
+          <button id="fitButton" class="icon-button" title="重置视图" aria-label="重置视图">⌖</button>
+          <button id="zoomOutButton" class="icon-button" title="缩小" aria-label="缩小">−</button>
+          <button id="zoomInButton" class="icon-button" title="放大" aria-label="放大">+</button>
+          <span id="modeBadge" class="mode-badge">checking</span>
+        </div>
+      </header>
+
+      <main id="viewport" class="viewport">
+        <div id="board" class="board">
+          <svg id="linkLayer" class="link-layer" viewBox="0 0 2400 1500" aria-hidden="true"></svg>
+
+          <section id="sourceNode" class="node source-node" data-node-id="source" style="left: 96px; top: 88px;">
+            <div class="pin pin-teal"></div>
+            <label class="upload-target" for="fileInput">
+              <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+              <span id="emptyState" class="empty-state">
+                <strong>上传图片</strong>
+                <span>选择一张图，生成分支方向</span>
+              </span>
+              <img id="sourcePreview" class="source-preview" alt="上传的源图" />
+            </label>
+            <div class="node-caption">
+              <span id="sourceName">SOURCE IMAGE</span>
+              <button id="analyzeButton" class="primary-button" disabled>分析</button>
+            </div>
+          </section>
+
+          <section id="analysisNode" class="node analysis-node hidden" data-node-id="analysis" style="left: 452px; top: 96px;">
+            <div class="pin pin-gold"></div>
+            <p class="eyebrow">MODEL READ</p>
+            <h2>图像理解</h2>
+            <p id="analysisSummary"></p>
+            <div id="keywordList" class="keyword-list"></div>
+          </section>
+        </div>
+      </main>
+
+      <footer class="statusbar">
+        <form id="chatForm" class="chatbar">
+          <div id="chatMessages" class="chat-messages" aria-live="polite">
+            <span class="chat-placeholder">输入想继续探索的方向、风格或约束</span>
+          </div>
+          <div class="chat-input-row">
+            <input id="chatInput" class="chat-input" type="text" autocomplete="off" placeholder="和画布对话..." />
+            <button id="chatSendButton" class="chat-send-button" type="submit">发送</button>
+          </div>
+        </form>
+        <div class="status-cluster">
+          <div class="status-readout"><span class="status-dot"></span><span id="statusText">READY</span></div>
+          <div id="counts">方向 0 / 成图 0</div>
+        </div>
+      </footer>
+    </div>
+
+    <template id="optionTemplate">
+      <section class="node option-node" data-node-id="">
+        <div class="pin"></div>
+        <p class="eyebrow option-tone"></p>
+        <h3 class="option-title"></h3>
+        <p class="option-description"></p>
+        <button class="generate-button">生成这张图</button>
+      </section>
+    </template>
+
+    <script type="module" src="/app.js?v=5"></script>
+  </body>
+</html>

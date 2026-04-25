@@ -1,0 +1,724 @@
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const publicDir = path.join(__dirname, "public");
+
+loadDotEnv(path.join(__dirname, ".env"));
+
+const PORT = Number(process.env.PORT || 3000);
+const DEMO_MODE = process.env.DEMO_MODE === "true";
+const CHAT_CONFIG = buildModelConfig("CHAT", {
+  provider: "kimi",
+  model: "kimi-k2.6",
+  baseUrl: "https://api.moonshot.cn/v1",
+  apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
+});
+const ANALYSIS_CONFIG = buildModelConfig("ANALYSIS", {
+  provider: "openrouter",
+  model: "tencent/hy3-preview:free",
+  baseUrl: "https://openrouter.ai/api/v1",
+  apiKeyEnv: ["OPENROUTER_API_KEY"]
+});
+const IMAGE_CONFIG = buildModelConfig("IMAGE", {
+  provider: "tencent-tokenhub-image",
+  model: "hy-image-v3.0",
+  baseUrl: "https://tokenhub.tencentmaas.com/v1/api/image",
+  apiKeyEnv: ["TENCENT_TOKENHUB_API_KEY", "TOKENHUB_API_KEY"]
+});
+const IMAGE_POLL_INTERVAL_MS = Number(process.env.IMAGE_POLL_INTERVAL_MS || 2000);
+const IMAGE_POLL_ATTEMPTS = Number(process.env.IMAGE_POLL_ATTEMPTS || 30);
+const IMAGE_INCLUDE_DATA_URL = process.env.IMAGE_INCLUDE_DATA_URL === "true";
+const MAX_BODY_BYTES = 22 * 1024 * 1024;
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url || "/", `http://${req.headers.host}`);
+
+    if (req.method === "GET" && url.pathname === "/api/health") {
+      return sendJson(res, 200, {
+        ok: true,
+        mode: appMode(),
+        chat: roleHealth(CHAT_CONFIG),
+        analysis: roleHealth(ANALYSIS_CONFIG),
+        image: roleHealth(IMAGE_CONFIG)
+      });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/chat") {
+      const body = await readJson(req);
+      return handleChat(body, res);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/analyze") {
+      const body = await readJson(req);
+      return handleAnalyze(body, res);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/generate") {
+      const body = await readJson(req);
+      return handleGenerate(body, res);
+    }
+
+    if (req.method === "GET") {
+      return serveStatic(url.pathname, res);
+    }
+
+    return sendJson(res, 405, { error: "Method not allowed" });
+  } catch (error) {
+    console.error(error);
+    return sendJson(res, 500, {
+      error: "Server error",
+      message: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+server.listen(PORT, () => {
+  console.log(`ORYZAE Image Board running at http://localhost:${PORT}`);
+  console.log(`Model mode: ${appMode()}`);
+});
+
+function buildModelConfig(role, defaults) {
+  const roleProvider = process.env[`${role}_PROVIDER`] || defaults.provider;
+  const apiKey =
+    firstEnv(defaults.apiKeyEnv || []) ||
+    process.env[`${role}_API_KEY`] ||
+    "";
+  const baseUrl = (
+    process.env[`${role}_API_BASE_URL`] ||
+    defaults.baseUrl
+  ).replace(/\/+$/, "");
+  const model =
+    process.env[`${role}_MODEL`] ||
+    defaults.model;
+
+  return { role: role.toLowerCase(), provider: roleProvider, apiKey, baseUrl, model };
+}
+
+function firstEnv(keys) {
+  for (const key of keys) {
+    if (process.env[key]) return process.env[key];
+  }
+  return "";
+}
+
+function roleHealth(config) {
+  return {
+    mode: isDemoRole(config) ? "demo" : "api",
+    provider: config.provider,
+    model: config.model,
+    baseUrl: config.baseUrl
+  };
+}
+
+function isDemoRole(config) {
+  return DEMO_MODE || !config.apiKey;
+}
+
+function appMode() {
+  const modes = [CHAT_CONFIG, ANALYSIS_CONFIG, IMAGE_CONFIG].map((config) => roleHealth(config).mode);
+  if (modes.every((mode) => mode === "demo")) return "demo";
+  if (modes.some((mode) => mode === "demo")) return "mixed";
+  return "api";
+}
+
+async function handleChat(body, res) {
+  const message = typeof body?.message === "string" ? body.message.trim().slice(0, 2000) : "";
+  const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
+  const analysis = normalizeChatAnalysis(body?.analysis);
+  const messages = normalizeChatMessages(body?.messages);
+
+  if (!message) {
+    return sendJson(res, 400, { error: "message is required" });
+  }
+
+  if (isDemoRole(CHAT_CONFIG)) {
+    return sendJson(res, 200, {
+      provider: "demo",
+      model: CHAT_CONFIG.model,
+      reply: buildDemoChatReply(message, analysis)
+    });
+  }
+
+  const context = [
+    "你是这个画布式图片生成应用里的创意对话助手。",
+    "你的任务是帮助用户理解当前图片、比较分支方向、提出新的生成建议，或把用户的想法整理成可执行的视觉方向。",
+    "回答用中文，保持简洁，通常 1-3 句。不要假装已经生成了新图片；如果用户想生成，请建议他点击方向节点或说明你会如何改提示词。",
+    "",
+    "当前图片分析：",
+    JSON.stringify(analysis, null, 2),
+    "",
+    "最近对话：",
+    messages.map((item) => `${item.role}: ${item.content}`).join("\n") || "暂无"
+  ].join("\n");
+
+  const content = [
+    { type: "text", text: `${context}\n\n用户最新消息：${message}` }
+  ];
+  if (imageDataUrl) {
+    content.push({ type: "image_url", image_url: { url: imageDataUrl } });
+  }
+
+  const response = await chatCompletions(CHAT_CONFIG, {
+    messages: [
+      {
+        role: "system",
+        content: "你是 Kimi K2.6 no thinking 模式下的创意对话助手。回答简洁、直接、可执行。"
+      },
+      {
+        role: "user",
+        content
+      }
+    ],
+    thinking: { type: "disabled" }
+  });
+
+  const reply = collectChatContent(response);
+  return sendJson(res, 200, {
+    provider: "api",
+    model: CHAT_CONFIG.model,
+    reply: reply || "我读到了，我们可以继续把这个方向压成一个更明确的生成分支。"
+  });
+}
+
+async function handleAnalyze(body, res) {
+  const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
+  if (!imageDataUrl) {
+    return sendJson(res, 400, { error: "imageDataUrl is required" });
+  }
+
+  if (isDemoRole(ANALYSIS_CONFIG)) {
+    return sendJson(res, 200, buildDemoAnalysis(body?.fileName));
+  }
+
+  const prompt = [
+    "你是一个视觉创意导演，正在为一个画布式图片生成应用分析用户上传的图片。",
+    "请快速理解图片内容、主体、氛围、可延展的叙事方向，并给出 5 个不同的成图方向。",
+    "这些方向会作为画布上的分支节点展示，用户点击后会调用成图模型。",
+    "请只返回严格 JSON，不要 Markdown，不要代码块。",
+    "",
+    "JSON 结构：",
+    "{",
+    '  "summary": "一句话中文摘要",',
+    '  "detectedSubjects": ["主体1", "主体2"],',
+    '  "moodKeywords": ["关键词1", "关键词2"],',
+    '  "options": [',
+    "    {",
+    '      "id": "short-lowercase-id",',
+    '      "title": "不超过10个字的方向标题",',
+    '      "description": "40-70字中文说明，说明生成后会是什么画面",',
+    '      "prompt": "给图像生成模型的详细中文提示词，明确风格、构图、光影、材质、保留原图关键元素",',
+    '      "tone": "cinematic/editorial/documentary/surreal/minimal/graphic 中的一个",',
+    '      "layoutHint": "portrait/landscape/square/board 中的一个"',
+    "    }",
+    "  ]",
+    "}",
+    "",
+    "要求：方向之间要明显不同；不要生成暴力、色情、仇恨或侵犯隐私的内容；如果图片包含人物，不要识别真实身份。"
+  ].join("\n");
+
+  const response = await chatCompletions(ANALYSIS_CONFIG, {
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          { type: "image_url", image_url: { url: imageDataUrl } }
+        ]
+      }
+    ],
+    reasoning: { effort: "none", exclude: true }
+  });
+
+  const text = collectChatContent(response);
+  const parsed = parseJsonFromText(text);
+  const normalized = normalizeAnalysis(parsed, body?.fileName);
+  normalized.provider = "api";
+  normalized.model = ANALYSIS_CONFIG.model;
+  return sendJson(res, 200, normalized);
+}
+
+async function handleGenerate(body, res) {
+  const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
+  const option = normalizeOption(body?.option);
+  if (!imageDataUrl || !option) {
+    return sendJson(res, 400, { error: "imageDataUrl and option are required" });
+  }
+
+  if (isDemoRole(IMAGE_CONFIG)) {
+    return sendJson(res, 200, {
+      provider: "demo",
+      model: IMAGE_CONFIG.model,
+      prompt: option.prompt,
+      imageDataUrl: buildDemoImage(option)
+    });
+  }
+
+  const prompt = [
+    "请基于参考图生成一张新图，保留原图最重要的主体、颜色关系或视觉记忆点，但不要只是复制。",
+    "成图方向：",
+    option.title,
+    "",
+    "方向说明：",
+    option.description,
+    "",
+    "详细提示词：",
+    option.prompt,
+    "",
+    "输出应是一张完整、可独立展示的图片；构图清晰；不要添加水印、UI 截图边框或说明文字。"
+  ].join("\n");
+
+  const result = await generateTokenHubImage(prompt, body?.imageUrl || null, imageDataUrl);
+
+  return sendJson(res, 200, {
+    provider: "api",
+    model: IMAGE_CONFIG.model,
+    prompt,
+    imageDataUrl: result.imageDataUrl,
+    imageUrl: result.imageUrl,
+    revisedPrompt: result.revisedPrompt
+  });
+}
+
+async function chatCompletions(config, payload) {
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const text = await response.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { raw: text };
+  }
+
+  if (!response.ok) {
+    const detail = json?.error?.message || text || response.statusText;
+    throw new Error(`${config.role} API ${response.status}: ${detail}`);
+  }
+
+  return json;
+}
+
+function collectChatContent(response) {
+  const content = response?.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => part?.text || part?.content || "")
+      .filter(Boolean)
+      .join("\n");
+  }
+  return "";
+}
+
+async function generateTokenHubImage(prompt, imageUrl, imageDataUrl) {
+  const images = [];
+  if (typeof imageUrl === "string" && /^https?:\/\//i.test(imageUrl)) {
+    images.push(imageUrl);
+  } else if (IMAGE_INCLUDE_DATA_URL && imageDataUrl) {
+    images.push(imageDataUrl);
+  }
+
+  const submitPayload = {
+    model: IMAGE_CONFIG.model,
+    prompt
+  };
+  if (images.length) {
+    submitPayload.images = images;
+  }
+
+  const submitted = await tokenHubImageRequest(`${IMAGE_CONFIG.baseUrl}/submit`, submitPayload);
+  const jobId = submitted?.id;
+  if (!jobId) {
+    throw new Error("TokenHub image submit did not return a job id.");
+  }
+
+  for (let attempt = 0; attempt < IMAGE_POLL_ATTEMPTS; attempt += 1) {
+    await delay(IMAGE_POLL_INTERVAL_MS);
+    const queried = await tokenHubImageRequest(`${IMAGE_CONFIG.baseUrl}/query`, {
+      model: IMAGE_CONFIG.model,
+      id: jobId
+    });
+
+    if (queried?.status === "completed") {
+      const imageUrlResult = queried?.data?.[0]?.url;
+      if (!imageUrlResult) {
+        throw new Error("TokenHub image query completed without image url.");
+      }
+      return {
+        imageUrl: imageUrlResult,
+        imageDataUrl: imageUrlResult,
+        revisedPrompt: queried?.data?.[0]?.revised_prompt || ""
+      };
+    }
+
+    if (["failed", "error", "cancelled"].includes(String(queried?.status).toLowerCase())) {
+      throw new Error(`TokenHub image job failed: ${queried?.status}`);
+    }
+  }
+
+  throw new Error("TokenHub image job timed out before completion.");
+}
+
+async function tokenHubImageRequest(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${IMAGE_CONFIG.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const text = await response.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { raw: text };
+  }
+
+  if (!response.ok) {
+    const detail = json?.error?.message || json?.message || text || response.statusText;
+    throw new Error(`TokenHub image API ${response.status}: ${detail}`);
+  }
+
+  return json;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function parseJsonFromText(text) {
+  if (!text) {
+    throw new Error("The analysis model returned empty text.");
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) {
+      throw new Error("Could not parse analysis JSON from model output.");
+    }
+    return JSON.parse(match[0]);
+  }
+}
+
+function normalizeAnalysis(value, fileName = "source image") {
+  const fallback = buildDemoAnalysis(fileName);
+  const options = Array.isArray(value?.options) ? value.options : fallback.options;
+
+  return {
+    provider: "api",
+    summary: stringOr(value?.summary, fallback.summary),
+    detectedSubjects: arrayOfStrings(value?.detectedSubjects, fallback.detectedSubjects).slice(0, 6),
+    moodKeywords: arrayOfStrings(value?.moodKeywords, fallback.moodKeywords).slice(0, 8),
+    options: options.slice(0, 6).map((option, index) => ({
+      id: slug(option?.id || option?.title || `option-${index + 1}`),
+      title: stringOr(option?.title, fallback.options[index % fallback.options.length].title).slice(0, 20),
+      description: stringOr(option?.description, fallback.options[index % fallback.options.length].description),
+      prompt: stringOr(option?.prompt, fallback.options[index % fallback.options.length].prompt),
+      tone: stringOr(option?.tone, fallback.options[index % fallback.options.length].tone),
+      layoutHint: stringOr(option?.layoutHint, fallback.options[index % fallback.options.length].layoutHint)
+    }))
+  };
+}
+
+function normalizeOption(option) {
+  if (!option || typeof option !== "object") return null;
+  return {
+    id: slug(option.id || option.title || "option"),
+    title: stringOr(option.title, "生成方向"),
+    description: stringOr(option.description, "基于原图生成一个新的视觉方向。"),
+    prompt: stringOr(option.prompt, option.description || option.title || "基于参考图生成新图。"),
+    tone: stringOr(option.tone, "cinematic"),
+    layoutHint: stringOr(option.layoutHint, "square")
+  };
+}
+
+function normalizeChatAnalysis(value) {
+  if (!value || typeof value !== "object") {
+    return {
+      summary: "尚未完成图片分析。",
+      moodKeywords: [],
+      options: []
+    };
+  }
+
+  return {
+    summary: stringOr(value.summary, "尚未完成图片分析。"),
+    moodKeywords: arrayOfStrings(value.moodKeywords, []).slice(0, 8),
+    detectedSubjects: arrayOfStrings(value.detectedSubjects, []).slice(0, 6),
+    options: Array.isArray(value.options)
+      ? value.options.slice(0, 6).map((option) => ({
+          title: stringOr(option?.title, "生成方向"),
+          description: stringOr(option?.description, ""),
+          tone: stringOr(option?.tone, ""),
+          layoutHint: stringOr(option?.layoutHint, "")
+        }))
+      : []
+  };
+}
+
+function normalizeChatMessages(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(-8)
+    .map((item) => ({
+      role: item?.role === "assistant" ? "assistant" : "user",
+      content: typeof item?.content === "string" ? item.content.trim().slice(0, 1200) : ""
+    }))
+    .filter((item) => item.content);
+}
+
+function buildDemoChatReply(message, analysis) {
+  const optionCount = analysis.options?.length || 0;
+  if (/提示词|prompt/i.test(message)) {
+    return "可以把方向写成：保留原图主体和色彩记忆，强化一个明确的场景、光线和材质目标，再限制不要出现水印或可读文字。";
+  }
+  if (/哪个|选择|方向/.test(message) && optionCount) {
+    return `当前有 ${optionCount} 个方向。想要故事感就选电影剧照或线索板，想要设计提案就选杂志海报或视觉系统。`;
+  }
+  if (/重新|更多|新增/.test(message)) {
+    return "下一步可以让分析模型再扩展一组分支，例如更商业、更叙事、更极简或更实验的方向。";
+  }
+  return `我会围绕“${analysis.summary || "当前图片"}”继续帮你收束想法。你可以告诉我想更像海报、电影剧照、线索板，还是概念板。`;
+}
+
+function buildDemoAnalysis(fileName = "source image") {
+  return {
+    provider: "demo",
+    summary: `已读取 ${fileName || "上传图片"}：可以从主体、氛围、叙事线索和视觉风格四个方向继续扩展。`,
+    detectedSubjects: ["主视觉", "光影", "空间关系", "色彩线索"],
+    moodKeywords: ["线索板", "电影感", "编辑感", "图像分叉", "叙事延展"],
+    options: [
+      {
+        id: "evidence-board",
+        title: "线索板重构",
+        description: "把原图转化成侦探线索墙：照片、便签、纸张和红线围绕主体展开，像在追踪一个尚未揭开的故事。",
+        prompt: "基于参考图的主体与色彩，生成一张真实摄影质感的调查线索板，包含纸张、照片、便签、图钉和红色连接线，构图有层次，光线温暖，细节丰富，电影道具摄影风格。",
+        tone: "documentary",
+        layoutHint: "board"
+      },
+      {
+        id: "editorial-poster",
+        title: "杂志海报",
+        description: "保留原图最强的视觉记忆点，重组成一张留白克制的编辑海报，适合做封面或视觉提案。",
+        prompt: "将参考图转化为高端杂志编辑海报，保留主要主体轮廓和关键色彩，使用克制排版、自然颗粒、柔和阴影和精致留白，不要出现可读文字。",
+        tone: "editorial",
+        layoutHint: "portrait"
+      },
+      {
+        id: "cinematic-still",
+        title: "电影剧照",
+        description: "把当前图片延展为一帧电影镜头，强调空间、灯光和情绪，让画面像故事中的关键一秒。",
+        prompt: "基于参考图生成电影剧照风格图像，保留主体和场景关系，加入自然镜头景深、环境光、微妙雾气和叙事张力，真实摄影，35mm film still。",
+        tone: "cinematic",
+        layoutHint: "landscape"
+      },
+      {
+        id: "surreal-memory",
+        title: "梦境记忆",
+        description: "将原图中的物体和氛围抽离成梦境化场景，画面更诗性，像记忆被重新拼贴。",
+        prompt: "把参考图转化为超现实梦境场景，保留核心主体但让背景、光影和比例产生诗性变化，细腻材质，柔和边缘，安静而神秘。",
+        tone: "surreal",
+        layoutHint: "square"
+      },
+      {
+        id: "product-system",
+        title: "视觉系统",
+        description: "把原图拆成一套视觉资产：主图、色卡、材质片段和构图小样，适合继续做品牌或概念板。",
+        prompt: "基于参考图生成一张视觉系统概念板，包含主视觉、局部材质切片、色彩样本、构图缩略图和整洁网格，现代设计工作室风格，不要出现真实文字。",
+        tone: "graphic",
+        layoutHint: "board"
+      }
+    ]
+  };
+}
+
+function buildDemoImage(option) {
+  const palette = paletteFor(option.id);
+  const title = escapeXml(option.title);
+  const description = escapeXml(option.description).slice(0, 95);
+  const promptHint = escapeXml(option.tone || "visual branch");
+  const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="${palette[0]}"/>
+      <stop offset="0.52" stop-color="${palette[1]}"/>
+      <stop offset="1" stop-color="${palette[2]}"/>
+    </linearGradient>
+    <filter id="paper" x="-20%" y="-20%" width="140%" height="140%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="3" seed="7"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feBlend in="SourceGraphic" mode="multiply"/>
+    </filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <g opacity="0.22" stroke="#ffffff" stroke-width="1">
+    ${Array.from({ length: 18 }, (_, i) => `<path d="M${i * 64} 0 L${1024 - i * 38} 1024"/>`).join("")}
+  </g>
+  <g transform="translate(132 128) rotate(-3)">
+    <rect width="760" height="620" rx="18" fill="#fffdf4" opacity="0.88" filter="url(#paper)"/>
+    <rect x="44" y="48" width="672" height="386" rx="10" fill="${palette[3]}" opacity="0.78"/>
+    <circle cx="130" cy="132" r="64" fill="${palette[4]}" opacity="0.82"/>
+    <rect x="232" y="102" width="398" height="36" rx="18" fill="#ffffff" opacity="0.52"/>
+    <rect x="232" y="166" width="310" height="24" rx="12" fill="#ffffff" opacity="0.36"/>
+    <path d="M92 480 C220 392 354 572 504 456 S672 432 716 520" fill="none" stroke="${palette[5]}" stroke-width="11" stroke-linecap="round"/>
+    <circle cx="92" cy="480" r="18" fill="#f7f2df"/>
+    <circle cx="504" cy="456" r="18" fill="#f7f2df"/>
+    <circle cx="716" cy="520" r="18" fill="#f7f2df"/>
+  </g>
+  <g font-family="Arial, sans-serif" fill="#1f2733">
+    <text x="104" y="824" font-size="54" font-weight="700" letter-spacing="0">${title}</text>
+    <text x="108" y="872" font-size="24" opacity="0.72">${promptHint}</text>
+    <foreignObject x="104" y="900" width="820" height="84">
+      <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Arial,sans-serif;font-size:25px;line-height:1.45;color:#26313f;opacity:.78">${description}</div>
+    </foreignObject>
+  </g>
+</svg>`;
+
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg.trim())}`;
+}
+
+function paletteFor(seed) {
+  const palettes = [
+    ["#f3ead5", "#8ab2aa", "#2f5262", "#d9e5df", "#d77756", "#b64032"],
+    ["#fbf2d0", "#d0a56f", "#344d5f", "#e9ddc7", "#446f68", "#a94f3f"],
+    ["#e8eef0", "#8ca1ad", "#202939", "#d7e4de", "#c7a76c", "#742f2f"],
+    ["#f7efe7", "#c6dad1", "#786f9d", "#eee6d7", "#4d8a8b", "#d15d4a"],
+    ["#f4f1e7", "#aabf90", "#334c3f", "#ece0c4", "#6d87b0", "#a14335"]
+  ];
+  const index = Math.abs(String(seed).split("").reduce((sum, char) => sum + char.charCodeAt(0), 0)) % palettes.length;
+  return palettes[index];
+}
+
+function readJson(req) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error("Request body is too large. Please upload an image under 10MB."));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf8");
+      try {
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch {
+        reject(new Error("Invalid JSON body."));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function serveStatic(requestPath, res) {
+  const cleanPath = decodeURIComponent(requestPath.split("?")[0]);
+  const relativePath = cleanPath === "/" ? "index.html" : cleanPath.replace(/^\/+/, "");
+  const targetPath = path.normalize(path.join(publicDir, relativePath));
+
+  if (!targetPath.startsWith(publicDir)) {
+    return sendJson(res, 403, { error: "Forbidden" });
+  }
+
+  fs.readFile(targetPath, (error, data) => {
+    if (error) {
+      return sendJson(res, 404, { error: "Not found" });
+    }
+    res.writeHead(200, {
+      "Content-Type": mimeType(targetPath),
+      "Cache-Control": "no-cache"
+    });
+    res.end(data);
+  });
+}
+
+function sendJson(res, status, data) {
+  res.writeHead(status, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-cache"
+  });
+  res.end(JSON.stringify(data));
+}
+
+function mimeType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  return {
+    ".html": "text/html; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".webp": "image/webp"
+  }[ext] || "application/octet-stream";
+}
+
+function normalizeDataUrl(value) {
+  if (typeof value !== "string") return null;
+  if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(value)) return null;
+  return value;
+}
+
+function arrayOfStrings(value, fallback) {
+  if (!Array.isArray(value)) return fallback;
+  const cleaned = value.filter((item) => typeof item === "string" && item.trim()).map((item) => item.trim());
+  return cleaned.length ? cleaned : fallback;
+}
+
+function stringOr(value, fallback) {
+  return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function slug(value) {
+  return String(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "option";
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function loadDotEnv(envPath) {
+  if (!fs.existsSync(envPath)) return;
+  const content = fs.readFileSync(envPath, "utf8");
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const index = trimmed.indexOf("=");
+    if (index === -1) continue;
+    const key = trimmed.slice(0, index).trim();
+    const value = trimmed.slice(index + 1).trim().replace(/^['"]|['"]$/g, "");
+    if (key && process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+}

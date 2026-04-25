@@ -1,0 +1,35 @@
+- generic [ref=e2]:
+  - complementary "workspace" [ref=e3]:
+    - generic [ref=e4]: REF.04
+    - generic [ref=e5]:
+      - generic [ref=e6]: "01"
+      - generic [ref=e7]: "02"
+  - banner [ref=e8]:
+    - generic [ref=e11]: ORYZAE / BOARD
+    - navigation "view switcher" [ref=e12]:
+      - button "今日" [ref=e13] [cursor=pointer]
+      - button "今週" [ref=e14] [cursor=pointer]
+      - button "今月" [ref=e15] [cursor=pointer]
+      - button "半年" [ref=e16] [cursor=pointer]
+      - button "今年" [ref=e17] [cursor=pointer]
+    - generic [ref=e18]:
+      - button "重置视图" [ref=e19] [cursor=pointer]: ⌖
+      - button "缩小" [ref=e20] [cursor=pointer]: −
+      - button "放大" [ref=e21] [cursor=pointer]: +
+      - generic "未配置 OPENAI_API_KEY，当前使用 demo fallback" [ref=e22]: demo
+  - main [ref=e23]:
+    - generic [ref=e24]:
+      - img
+      - generic [ref=e25]:
+        - button "没有后续节点" [disabled] [ref=e26]
+        - generic [ref=e28] [cursor=pointer]:
+          - generic [ref=e29]:
+            - strong [ref=e30]: 上传图片
+            - generic [ref=e31]: 选择一张图，生成分支方向
+          - img "上传的源图" [ref=e32]
+        - generic [ref=e33]:
+          - generic [ref=e34]: SOURCE IMAGE
+          - button "分析" [disabled] [ref=e35]
+  - contentinfo [ref=e36]:
+    - generic [ref=e39]: READY
+    - generic [ref=e40]: 方向 0 / 成图 0

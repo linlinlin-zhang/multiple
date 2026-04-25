@@ -28,8 +28,14 @@
   4. Canvas state changes trigger an auto-save after a 2-second delay, persisting to the database without manual action
   5. Demo mode data is visually or structurally separated from real sessions so users can distinguish them
 **Estimated Complexity:** High
-**Plans:** TBD
+**Plans:** 4 plans
 
+**Plan List:**
+- [ ] 01-01-PLAN.md — Prisma schema + database setup + migrations + file storage layer
+- [ ] 01-02-PLAN.md — API endpoints for session CRUD, history list, and asset storage/retrieval
+- [ ] 01-03-PLAN.md — Frontend integration: save/load canvas state, auto-save debounce, session list UI
+
+- [ ] 01-04-PLAN.md — Integration testing, edge case fixes, and human verification
 ### Phase 2: History Browser UI & Navigation
 **Goal:** Users can browse all past sessions in a file-cabinet interface and jump between history and canvas views.
 **Depends on:** Phase 1
@@ -71,7 +77,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Database & File Storage Foundation | 0/4 | Not started | - |
+| 1. Database & File Storage Foundation | 4/4 | Planned | - |
 | 2. History Browser UI & Navigation | 0/4 | Not started | - |
 | 3. Sharing & Snapshots | 0/3 | Not started | - |
 | 4. AI Titles & Explanations | 0/3 | Not started | - |
