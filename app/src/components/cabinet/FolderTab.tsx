@@ -1,46 +1,30 @@
 import { useState, useEffect } from "react";
-import type { TabId } from "@/types";
 
 interface FolderTabProps {
   label: string;
-  tabId: TabId;
+  tabId: string;
   active: boolean;
   zIndex: number;
   overlap?: boolean;
   onClick: () => void;
+  inactiveColor?: string;
+  inactiveText?: string;
 }
-
-const tabConfig: Record<
-  TabId,
-  { inactiveColor: string; inactiveText: string }
-> = {
-  notes: {
-    inactiveColor: "#d8cfc4",
-    inactiveText: "#1a1a1a",
-  },
-  projects: {
-    inactiveColor: "#a8a098",
-    inactiveText: "#1a1a1a",
-  },
-  archive: {
-    inactiveColor: "#6a7a8a",
-    inactiveText: "#f0ece4",
-  },
-};
 
 const ACTIVE_BG = "#f0ece4";
 const ACTIVE_TEXT = "#1a1a1a";
 
 export default function FolderTab({
   label,
-  tabId,
+  tabId: _tabId,
   active,
   zIndex,
   overlap = true,
   onClick,
+  inactiveColor = "#d8cfc4",
+  inactiveText = "#1a1a1a",
 }: FolderTabProps) {
   const [bouncing, setBouncing] = useState(false);
-  const config = tabConfig[tabId];
 
   const handleClick = () => {
     if (!active) {
@@ -56,8 +40,8 @@ export default function FolderTab({
     }
   }, [bouncing]);
 
-  const bgColor = active ? ACTIVE_BG : config.inactiveColor;
-  const textColor = active ? ACTIVE_TEXT : config.inactiveText;
+  const bgColor = active ? ACTIVE_BG : inactiveColor;
+  const textColor = active ? ACTIVE_TEXT : inactiveText;
 
   return (
     <button
