@@ -59,7 +59,7 @@ export function filePathForHash(hash, { kind = "upload" } = {}) {
   if (!/^[a-f0-9]{64}$/i.test(hash)) {
     throw new Error("Invalid hash format");
   }
-  return path.join(STORAGE_DIR, kind, hash.slice(0, 2), hash.slice(2, 4), `${hash.slice(4)}`);
+  return path.join(STORAGE_DIR, kind, hash.slice(0, 2), hash.slice(2, 4), `${hash.slice(4)}.jpg`);
 }
 
 /**

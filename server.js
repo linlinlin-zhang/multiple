@@ -2,6 +2,10 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { handleCreateSession, handleGetSession, handleUpdateSession } from "./src/api/sessions.js";
+import { handleListHistory } from "./src/api/history.js";
+import { handleStoreAsset, handleGetAsset } from "./src/api/assets.js";
+import { ensureStorageDirs } from "./src/lib/storage.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +67,35 @@ const server = http.createServer(async (req, res) => {
       return handleGenerate(body, res);
     }
 
+    // Asset routes
+    if (req.method === "POST" && url.pathname === "/api/assets") {
+      const body = await readJson(req);
+      return handleStoreAsset(body, res);
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/api/assets/")) {
+      return handleGetAsset(req, res);
+    }
+
+    // Session routes
+    if (req.method === "POST" && url.pathname === "/api/sessions") {
+      const body = await readJson(req);
+      return handleCreateSession(body, res);
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/api/sessions/")) {
+      const id = url.pathname.split("/")[3];
+      return handleGetSession(id, res);
+    }
+    if (req.method === "PUT" && url.pathname.startsWith("/api/sessions/")) {
+      const id = url.pathname.split("/")[3];
+      const body = await readJson(req);
+      return handleUpdateSession(id, body, res);
+    }
+
+    // History route
+    if (req.method === "GET" && url.pathname === "/api/history") {
+      return handleListHistory(Object.fromEntries(url.searchParams), res);
+    }
+
     if (req.method === "GET") {
       return serveStatic(url.pathname, res);
     }
@@ -81,6 +114,8 @@ server.listen(PORT, () => {
   console.log(`ORYZAE Image Board running at http://localhost:${PORT}`);
   console.log(`Model mode: ${appMode()}`);
 });
+
+ensureStorageDirs().catch(console.error);
 
 function buildModelConfig(role, defaults) {
   const roleProvider = process.env[`${role}_PROVIDER`] || defaults.provider;
@@ -274,11 +309,22 @@ async function handleGenerate(body, res) {
 
   const result = await generateTokenHubImage(prompt, body?.imageUrl || null, imageDataUrl);
 
+  // Store generated image server-side and return hash + URL
+  let stored = null;
+  if (result.imageDataUrl) {
+    try {
+      stored = await storeDataUrl(result.imageDataUrl, { kind: "generated" });
+    } catch (storeError) {
+      console.error("[handleGenerate] failed to store generated image:", storeError);
+    }
+  }
+
   return sendJson(res, 200, {
     provider: "api",
     model: IMAGE_CONFIG.model,
     prompt,
-    imageDataUrl: result.imageDataUrl,
+    imageDataUrl: stored ? `/api/assets/${stored.hash}?kind=generated` : result.imageDataUrl,
+    hash: stored ? stored.hash : undefined,
     imageUrl: result.imageUrl,
     revisedPrompt: result.revisedPrompt
   });
