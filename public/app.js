@@ -89,8 +89,55 @@ function wireControls() {
   document.querySelector("#fitButton").addEventListener("click", resetView);
   document.querySelector("#saveButton")?.addEventListener("click", () => saveSession());
 
-  document.querySelector("#historyBrowserButton")?.addEventListener("click", () => {
-    window.location.href = "/history/";
+  document.querySelector("#chatAttachButton")?.addEventListener("click", handleAttachClick);
+
+  document.querySelector("#exportBtn")?.addEventListener("click", async () => {
+    if (!currentSessionId) {
+      alert("请先保存会话后再导出。");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/sessions/${currentSessionId}/export`);
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = /filename="([^"]+)"/.exec(disposition);
+      a.download = match ? match[1] : `session_${currentSessionId.slice(0, 8)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("导出失败：" + (err instanceof Error ? err.message : String(err)));
+    }
+  });
+
+  document.querySelector("#importBtn")?.addEventListener("click", () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const payload = JSON.parse(text);
+        const res = await fetch("/api/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "Import failed");
+        window.location.href = `/?session=${data.sessionId}`;
+      } catch (err) {
+        alert("导入失败：" + (err instanceof Error ? err.message : String(err)));
+      }
+    };
+    input.click();
   });
 
   document.querySelector("#historyToggle")?.addEventListener("click", () => {
@@ -158,7 +205,7 @@ async function checkHealth() {
   try {
     const health = await getJson("/api/health");
     modeBadge.textContent = health.mode;
-    modeBadge.title = health.mode === "demo" ? "未配置 OPENAI_API_KEY，当前使用 demo fallback" : "已连接 OpenAI API";
+    modeBadge.title = health.mode === "demo" ? "未配置模型 API Key，当前使用 demo fallback" : "已连接已配置的大模型 API";
   } catch {
     modeBadge.textContent = "offline";
   }
@@ -259,10 +306,6 @@ function renderChatMessages() {
   chatMessages.replaceChildren();
 
   if (!state.chatMessages.length) {
-    const placeholder = document.createElement("span");
-    placeholder.className = "chat-placeholder";
-    placeholder.textContent = "输入想继续探索的方向、风格或约束";
-    chatMessages.appendChild(placeholder);
     return;
   }
 
@@ -363,6 +406,20 @@ async function generateOption(id, option) {
       node.imageHash = data.hash;
       imageUrl = `/api/assets/${data.hash}?kind=generated`;
     }
+
+    // Generate explanation
+    let explanation = "";
+    try {
+      const explainRes = await postJson("/api/explain", {
+        prompt: data.prompt || option.prompt,
+        optionTitle: option.title,
+        summary: state.latestAnalysis?.summary || ""
+      });
+      explanation = explainRes.explanation || "";
+    } catch (e) {
+      console.error("Failed to generate explanation:", e);
+    }
+    node.explanation = explanation;
 
     turnIntoGeneratedNode(element, option, imageUrl);
     node.width = element.offsetWidth;
@@ -623,6 +680,34 @@ function svgElement(tag, attributes) {
   return element;
 }
 
+function handleAttachClick() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,text/plain";
+  input.onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await handleAttachment(file);
+  };
+  input.click();
+}
+
+async function handleAttachment(file) {
+  if (file.type.startsWith("image/")) {
+    await handleFile({ target: { files: [file] } });
+  } else if (file.type.startsWith("text/") || file.name.endsWith(".txt") || file.name.endsWith(".md") || file.name.endsWith(".json")) {
+    try {
+      const text = await file.text();
+      chatInput.value = text.slice(0, 2000);
+      chatInput.focus();
+    } catch (err) {
+      alert("文件读取失败：" + (err instanceof Error ? err.message : String(err)));
+    }
+  } else {
+    alert("暂不支持该文件类型，请上传图片或文本文件。");
+  }
+}
+
 async function resizeImage(file, maxSize, quality) {
   if (!file.type.startsWith("image/")) {
     throw new Error("请选择图片文件");
@@ -774,7 +859,8 @@ async function prepareStateForSave() {
       height: node.height,
       generated: node.generated || false,
       option: node.option || null,
-      imageHash: node.imageHash || null
+      imageHash: node.imageHash || null,
+      explanation: node.explanation || null
     };
   }
 
@@ -811,9 +897,10 @@ async function saveSession({ isAuto = false } = {}) {
     }
 
     const payloadState = await prepareStateForSave();
+    const aiTitle = state.latestAnalysis?.title?.trim();
     const body = {
       state: payloadState,
-      title: state.fileName ? `${state.fileName} 的探索` : "未命名会话",
+      title: aiTitle || (state.fileName ? `${state.fileName} 的探索` : "未命名会话"),
       isDemo: document.querySelector("#modeBadge")?.textContent === "demo"
     };
 
@@ -893,6 +980,7 @@ async function loadSession(sessionId) {
     const analysisNodeData = data.nodes.find(n => n.type === "analysis");
     if (analysisNodeData && analysisNodeData.data?.summary) {
       state.latestAnalysis = {
+        title: analysisNodeData.data.title || "",
         summary: analysisNodeData.data.summary,
         detectedSubjects: analysisNodeData.data.detectedSubjects || [],
         moodKeywords: analysisNodeData.data.moodKeywords || [],
@@ -942,6 +1030,7 @@ async function loadSession(sessionId) {
         if (node) {
           node.generated = true;
           node.imageHash = n.data?.imageHash || null;
+          node.explanation = n.data?.explanation || "";
           node.width = element.offsetWidth;
           node.height = element.offsetHeight;
         }

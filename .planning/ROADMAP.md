@@ -10,8 +10,8 @@
 
 - [x] **Phase 1: Database & File Storage Foundation** — PostgreSQL + Prisma schema, file storage, auto-save, session restore
 - [x] **Phase 2: History Browser UI & Navigation** — File-cabinet React UI, session/asset browsing, canvas integration
-- [ ] **Phase 3: Sharing & Snapshots** — Read-only share links, immutable snapshots, JSON export/import
-- [ ] **Phase 4: AI Titles & Explanations** — AI-generated session titles, per-image content explanations
+- [x] **Phase 3: Sharing & Snapshots** — Read-only share links, immutable snapshots, JSON export/import
+- [x] **Phase 4: AI Titles & Explanations** — AI-generated session titles, per-image content explanations
 
 ---
 
@@ -31,11 +31,11 @@
 **Plans:** 4 plans
 
 **Plan List:**
-- [ ] 01-01-PLAN.md — Prisma schema + database setup + migrations + file storage layer
-- [ ] 01-02-PLAN.md — API endpoints for session CRUD, history list, and asset storage/retrieval
-- [ ] 01-03-PLAN.md — Frontend integration: save/load canvas state, auto-save debounce, session list UI
+- [x] 01-01-PLAN.md — Prisma schema + database setup + migrations + file storage layer
+- [x] 01-02-PLAN.md — API endpoints for session CRUD, history list, and asset storage/retrieval
+- [x] 01-03-PLAN.md — Frontend integration: save/load canvas state, auto-save debounce, session list UI
 
-- [ ] 01-04-PLAN.md — Integration testing, edge case fixes, and human verification
+- [x] 01-04-PLAN.md — Integration testing, edge case fixes, and human verification
 ### Phase 2: History Browser UI & Navigation
 **Goal:** Users can browse all past sessions in a file-cabinet interface and jump between history and canvas views.
 **Depends on:** Phase 1
@@ -58,7 +58,12 @@
   2. Shared snapshots remain unchanged even if the owner continues editing the original session afterward
   3. User can export a session to a JSON file and later import it to restore the exact same session on the same or another instance
 **Estimated Complexity:** Medium
-**Plans:** TBD
+**Plans:** 3 plans
+
+**Plan List:**
+- [x] 03-01-PLAN.md — Share Token API & Immutable Snapshots
+- [x] 03-02-PLAN.md — Read-Only Share Viewer Page
+- [x] 03-03-PLAN.md — JSON Export/Import
 
 ### Phase 4: AI Titles & Explanations
 **Goal:** Sessions and individual images are automatically annotated with AI-generated human-readable descriptions.
@@ -79,5 +84,5 @@
 |-------|----------------|--------|-----------|
 | 1. Database & File Storage Foundation | 4/4 | Completed | 2026-04-25 |
 | 2. History Browser UI & Navigation | 4/4 | Completed | 2026-04-25 |
-| 3. Sharing & Snapshots | 0/3 | Not started | - |
-| 4. AI Titles & Explanations | 0/3 | Not started | - |
+| 3. Sharing & Snapshots | 3/3 | Completed | 2026-04-25 |
+| 4. AI Titles & Explanations | 3/3 | Completed | 2026-04-26 |

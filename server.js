@@ -2,10 +2,12 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { handleCreateSession, handleGetSession, handleUpdateSession } from "./src/api/sessions.js";
+import { handleCreateSession, handleGetSession, handleUpdateSession, handleExportSession } from "./src/api/sessions.js";
 import { handleListHistory } from "./src/api/history.js";
 import { handleStoreAsset, handleGetAsset } from "./src/api/assets.js";
-import { ensureStorageDirs } from "./src/lib/storage.js";
+import { handleCreateShare, handleGetShare } from "./src/api/share.js";
+import { handleImportSession } from "./src/api/import.js";
+import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -67,6 +69,11 @@ const server = http.createServer(async (req, res) => {
       return handleGenerate(body, res);
     }
 
+    if (req.method === "POST" && url.pathname === "/api/explain") {
+      const body = await readJson(req);
+      return handleExplain(body, res);
+    }
+
     // Asset routes
     if (req.method === "POST" && url.pathname === "/api/assets") {
       const body = await readJson(req);
@@ -81,14 +88,34 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req);
       return handleCreateSession(body, res);
     }
-    if (req.method === "GET" && url.pathname.startsWith("/api/sessions/")) {
+    if (req.method === "GET" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/export")) {
+      const id = url.pathname.split("/")[3];
+      return handleExportSession(id, res);
+    }
+    if (req.method === "GET" && /^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
       const id = url.pathname.split("/")[3];
       return handleGetSession(id, res);
     }
-    if (req.method === "PUT" && url.pathname.startsWith("/api/sessions/")) {
+    if (req.method === "PUT" && /^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
       const id = url.pathname.split("/")[3];
       const body = await readJson(req);
       return handleUpdateSession(id, body, res);
+    }
+
+    // Import route
+    if (req.method === "POST" && url.pathname === "/api/import") {
+      const body = await readJson(req);
+      return handleImportSession(body, res);
+    }
+
+    // Share routes
+    if (req.method === "POST" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/share")) {
+      const id = url.pathname.split("/")[3];
+      return handleCreateShare(id, res);
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/api/share/")) {
+      const token = url.pathname.split("/")[3];
+      return handleGetShare(token, res);
     }
 
     // History route
@@ -99,6 +126,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET") {
       if (url.pathname === "/history" || url.pathname === "/history/") {
         return serveStatic("/history/index.html", res);
+      }
+      if (url.pathname.startsWith("/share/assets/")) {
+        return serveStatic(url.pathname.replace(/^\/share/, ""), res);
+      }
+      if (/^\/share\/[^/]+\/?$/.test(url.pathname)) {
+        return serveStatic("/share.html", res);
       }
       return serveStatic(url.pathname, res);
     }
@@ -241,6 +274,7 @@ async function handleAnalyze(body, res) {
     "",
     "JSON 结构：",
     "{",
+    '  "title": "不超过10个字的简短标题，概括图片核心视觉主题",',
     '  "summary": "一句话中文摘要",',
     '  "detectedSubjects": ["主体1", "主体2"],',
     '  "moodKeywords": ["关键词1", "关键词2"],',
@@ -312,11 +346,11 @@ async function handleGenerate(body, res) {
 
   const result = await generateTokenHubImage(prompt, body?.imageUrl || null, imageDataUrl);
 
-  // Store generated image server-side and return hash + URL
+  const generatedImage = result.imageDataUrl || result.imageUrl || "";
   let stored = null;
-  if (result.imageDataUrl) {
+  if (generatedImage) {
     try {
-      stored = await storeDataUrl(result.imageDataUrl, { kind: "generated" });
+      stored = await storeGeneratedImage(generatedImage);
     } catch (storeError) {
       console.error("[handleGenerate] failed to store generated image:", storeError);
     }
@@ -326,10 +360,89 @@ async function handleGenerate(body, res) {
     provider: "api",
     model: IMAGE_CONFIG.model,
     prompt,
-    imageDataUrl: stored ? `/api/assets/${stored.hash}?kind=generated` : result.imageDataUrl,
+    imageDataUrl: stored ? `/api/assets/${stored.hash}?kind=generated` : generatedImage,
     hash: stored ? stored.hash : undefined,
     imageUrl: result.imageUrl,
     revisedPrompt: result.revisedPrompt
+  });
+}
+
+async function storeGeneratedImage(imageReference) {
+  if (typeof imageReference !== "string" || !imageReference) {
+    return null;
+  }
+
+  if (imageReference.startsWith("data:")) {
+    return storeDataUrl(imageReference, { kind: "generated" });
+  }
+
+  if (!/^https?:\/\//i.test(imageReference)) {
+    return null;
+  }
+
+  const response = await fetch(imageReference);
+  if (!response.ok) {
+    throw new Error(`Failed to download generated image ${response.status}: ${response.statusText}`);
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  const ext = extensionFromContentType(contentType) || extensionFromUrl(imageReference) || "jpg";
+  const buffer = Buffer.from(await response.arrayBuffer());
+  return storeFile(buffer, { kind: "generated", ext });
+}
+
+async function handleExplain(body, res) {
+  const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
+  const optionTitle = typeof body?.optionTitle === "string" ? body.optionTitle.trim() : "";
+  const summary = typeof body?.summary === "string" ? body.summary.trim() : "";
+
+  if (!prompt) {
+    return sendJson(res, 400, { error: "prompt is required" });
+  }
+
+  if (isDemoRole(CHAT_CONFIG)) {
+    return sendJson(res, 200, {
+      provider: "demo",
+      model: CHAT_CONFIG.model,
+      explanation: `这张图片基于「${optionTitle || "生成方向"}」方向创作。画面保留了原图的核心视觉记忆，同时引入了新的构图与光影处理，整体呈现出 ${summary ? summary.slice(0, 20) : "与原图呼应"} 的视觉效果。`
+    });
+  }
+
+  const context = [
+    "你是一位视觉创意评论助手，正在为画布式图片生成应用中的每张生成图撰写简短的内容讲解。",
+    "用户会看到：原图分析摘要、选中的创作方向、以及实际发给成图模型的提示词。",
+    "你的任务是用 1-2 句话（30-60 字）描述这张生成图在视觉上做了什么、保留了什么、改变了什么。",
+    "语气专业、简洁、有画面感。不要重复提示词原文，要提炼成观众能感知的视觉描述。",
+    "",
+    "原图分析摘要：",
+    summary || "暂无",
+    "",
+    "创作方向：",
+    optionTitle || "未命名方向",
+    "",
+    "成图提示词：",
+    prompt
+  ].join("\n");
+
+  const response = await chatCompletions(CHAT_CONFIG, {
+    messages: [
+      {
+        role: "system",
+        content: "你是 Kimi K2.6 no thinking 模式下的视觉创意评论助手。讲解要短、有画面感、不提技术细节。"
+      },
+      {
+        role: "user",
+        content
+      }
+    ],
+    thinking: { type: "disabled" }
+  });
+
+  const explanation = collectChatContent(response)?.trim() || "";
+  return sendJson(res, 200, {
+    provider: "api",
+    model: CHAT_CONFIG.model,
+    explanation
   });
 }
 
@@ -446,6 +559,28 @@ async function tokenHubImageRequest(url, payload) {
   return json;
 }
 
+function extensionFromContentType(contentType) {
+  const normalized = String(contentType).split(";")[0].trim().toLowerCase();
+  return {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "image/svg+xml": "svg"
+  }[normalized] || "";
+}
+
+function extensionFromUrl(url) {
+  try {
+    const ext = path.extname(new URL(url).pathname).replace(/^\./, "").toLowerCase();
+    if (["jpg", "jpeg", "png", "webp", "gif", "svg"].includes(ext)) {
+      return ext;
+    }
+  } catch {}
+  return "";
+}
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -472,6 +607,7 @@ function normalizeAnalysis(value, fileName = "source image") {
 
   return {
     provider: "api",
+    title: stringOr(value?.title, fallback.title),
     summary: stringOr(value?.summary, fallback.summary),
     detectedSubjects: arrayOfStrings(value?.detectedSubjects, fallback.detectedSubjects).slice(0, 6),
     moodKeywords: arrayOfStrings(value?.moodKeywords, fallback.moodKeywords).slice(0, 8),
@@ -550,6 +686,7 @@ function buildDemoChatReply(message, analysis) {
 function buildDemoAnalysis(fileName = "source image") {
   return {
     provider: "demo",
+    title: `${fileName ? fileName.split('.')[0] : "未知图片"} 的视觉探索`,
     summary: `已读取 ${fileName || "上传图片"}：可以从主体、氛围、叙事线索和视觉风格四个方向继续扩展。`,
     detectedSubjects: ["主视觉", "光影", "空间关系", "色彩线索"],
     moodKeywords: ["线索板", "电影感", "编辑感", "图像分叉", "叙事延展"],
@@ -726,7 +863,9 @@ function mimeType(filePath) {
 
 function normalizeDataUrl(value) {
   if (typeof value !== "string") return null;
-  if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(value)) return null;
+  if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(value) && !/^data:image\/svg\+xml(?:;[^,]*)?,/i.test(value)) {
+    return null;
+  }
   return value;
 }
 

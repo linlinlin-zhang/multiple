@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in_progress
-last_updated: "2026-04-25T12:40:20.325Z"
+status: completed
+last_updated: "2026-04-26T12:00:00.000Z"
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 8
-  completed_plans: 8
-  percent: 50
+  completed_phases: 4
+  total_plans: 14
+  completed_plans: 14
+  percent: 100
 ---
 
 # ORYZAE Image Board — Project State
@@ -17,7 +17,7 @@ progress:
 **Milestone:** Persistence & History v1
 **Core Value:** 用户上传一张图，就能在画布上获得 AI 驱动的创作方向并生成新图；刷新页面后历史会话不丢失，可随时翻阅过往探索并查看 AI 对每张生成图的讲解。
 **Project Reference:** [PROJECT.md](./PROJECT.md)
-**Last Updated:** 2026-04-25
+**Last Updated:** 2026-04-26
 
 ---
 
@@ -25,13 +25,13 @@ progress:
 
 | Field | Value |
 |-------|-------|
-| Phase | 2 |
-| Plan | 04 |
+| Phase | 4 |
+| Plan | 04-03 |
 | Status | Completed |
-| Progress | 2/4 phases complete (50%) |
+| Progress | 4/4 phases complete (100%) |
 
 ```
-[████████████████████░░░░░░░░░░░░░░░░░░░░] 50%
+[████████████████████████████████████████] 100%
 ```
 
 ---
@@ -40,10 +40,10 @@ progress:
 
 | Metric | Value |
 |--------|-------|
-| Requirements validated | 8/25 |
+| Requirements validated | 17/17 |
 | v1 requirements mapped | 17/17 |
-| Phases complete | 2/4 |
-| Plans complete | 8/14 |
+| Phases complete | 4/4 |
+| Plans complete | 14/14 |
 | Blockers | 1 |
 
 ---
@@ -69,8 +69,8 @@ progress:
 - [x] Implement file storage layer with SHA-256 addressing
 - [x] Wire auto-save with 2-second debounce into existing canvas
 - [x] Build history browser React UI from `app/` prototype
-- [ ] Add share token generation and read-only viewer
-- [ ] Integrate AI title/explanation generation
+- [x] Add share token generation and read-only viewer
+- [x] Integrate AI title/explanation generation
 
 ### Blockers
 
@@ -83,4 +83,4 @@ progress:
 ## Session Continuity
 
 **Current session started:** 2026-04-25
-**Next expected action:** Execute Phase 3 Plan 03-01 (Sharing & Snapshots) after PostgreSQL is running and Phase 1 backend integration is verified.
+**Next expected action:** Milestone v1.0 is complete. User should start PostgreSQL, run `npx prisma migrate deploy`, and verify all features end-to-end.

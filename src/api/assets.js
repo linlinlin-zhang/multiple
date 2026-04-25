@@ -16,12 +16,8 @@ export async function handleStoreAsset(body, res) {
   try {
     const dataUrl = typeof body?.dataUrl === "string" ? body.dataUrl : "";
     const kind = body?.kind === "generated" ? "generated" : "upload";
-
-    if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(dataUrl)) {
-      return sendJson(res, 400, { error: "Invalid data URL format" });
-    }
-
     const result = await storeDataUrl(dataUrl, { kind });
+
     return sendJson(res, 200, {
       ok: true,
       hash: result.hash,
@@ -49,11 +45,6 @@ export async function handleGetAsset(req, res) {
     }
 
     const buffer = await readFile(hash, { kind });
-
-    // Determine Content-Type from file extension in stored path or default
-    // storage.js stores as hash.slice(4).ext — we don't have ext here directly,
-    // so infer from magic bytes or default to image/jpeg for generated/upload.
-    // For simplicity, try to detect from buffer magic numbers.
     const contentType = detectMimeType(buffer);
 
     res.writeHead(200, {
@@ -78,5 +69,11 @@ function detectMimeType(buffer) {
     if (header.startsWith("52494646")) return "image/webp";
     if (header.startsWith("47494638")) return "image/gif";
   }
+
+  const textPrefix = buffer.slice(0, 128).toString("utf8").trimStart();
+  if (textPrefix.startsWith("<svg") || textPrefix.startsWith("<?xml")) {
+    return "image/svg+xml";
+  }
+
   return "application/octet-stream";
 }

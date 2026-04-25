@@ -1,5 +1,5 @@
 import { prisma } from "../lib/prisma.js";
-import { storeDataUrl } from "../lib/storage.js";
+import { storeDataUrl, readFile } from "../lib/storage.js";
 
 function sendJson(res, status, data) {
   res.writeHead(status, {
@@ -9,8 +9,10 @@ function sendJson(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-function serializeState(state, sessionId = undefined) {
-  const nodeEntries = Array.from(state.nodes?.values?.() || []);
+function serializeState(state) {
+  const nodeEntries = normalizeNodeEntries(state.nodes);
+  const collapsedIds = normalizeCollapsedIds(state.collapsed);
+
   const nodes = nodeEntries.map((n) => ({
     nodeId: n.id,
     type:
@@ -21,37 +23,156 @@ function serializeState(state, sessionId = undefined) {
           : n.generated
             ? "generated"
             : "option",
-    x: n.x,
-    y: n.y,
+    x: Number.isFinite(n.x) ? n.x : 0,
+    y: Number.isFinite(n.y) ? n.y : 0,
     width: n.width || 318,
     height: n.height || 220,
     data:
       n.option
-        ? { option: n.option, imageHash: n.imageHash || null }
+        ? {
+            option: n.option,
+            imageHash: n.imageHash || null,
+            imageDataUrl: n.imageDataUrl || null,
+            explanation: n.explanation || null
+          }
         : n.id === "source"
-          ? { fileName: state.fileName }
+          ? {
+              fileName: state.fileName || null,
+              imageHash: state.sourceImageHash || extractAssetHash(state.sourceImage) || null
+            }
           : n.id === "analysis"
             ? {
+                title: state.latestAnalysis?.title,
                 summary: state.latestAnalysis?.summary,
                 detectedSubjects: state.latestAnalysis?.detectedSubjects,
                 moodKeywords: state.latestAnalysis?.moodKeywords
               }
             : {},
-    collapsed: state.collapsed?.has?.(n.id) || false
+    collapsed: collapsedIds.has(n.id)
   }));
 
-  const links = (state.links || []).map((l) => ({
-    fromNodeId: l.from,
-    toNodeId: l.to,
+  const links = (Array.isArray(state.links) ? state.links : []).map((l) => ({
+    fromNodeId: l.from || l.fromNodeId,
+    toNodeId: l.to || l.toNodeId,
     kind: l.kind || "option"
   }));
 
-  const chatMessages = (state.chatMessages || []).map((m) => ({
-    role: m.role,
-    content: m.content
-  }));
+  const chatMessages = (Array.isArray(state.chatMessages) ? state.chatMessages : []).map((m) => ({
+    role: m.role === "assistant" ? "assistant" : "user",
+    content: typeof m.content === "string" ? m.content : ""
+  })).filter((m) => m.content);
 
   return { nodes, links, chatMessages };
+}
+
+function normalizeNodeEntries(nodes) {
+  if (!nodes) return [];
+  if (typeof nodes.values === "function") return Array.from(nodes.values());
+  if (Array.isArray(nodes)) return nodes;
+  if (typeof nodes === "object") return Object.values(nodes);
+  return [];
+}
+
+function normalizeCollapsedIds(collapsed) {
+  if (!collapsed) return new Set();
+  if (typeof collapsed.has === "function") return collapsed;
+  if (Array.isArray(collapsed)) return new Set(collapsed);
+  return new Set();
+}
+
+function addAssetRecord(assetRecords, record) {
+  if (!record?.hash || !record?.kind) return;
+  const key = `${record.kind}:${record.hash}`;
+  if (assetRecords.some((asset) => `${asset.kind}:${asset.hash}` === key)) return;
+  assetRecords.push(record);
+}
+
+async function collectSourceAsset(state, assetRecords) {
+  const fileName = state.fileName || null;
+  if (typeof state.sourceImage === "string" && state.sourceImage.startsWith("data:")) {
+    const stored = await storeDataUrl(state.sourceImage, { kind: "upload" });
+    addAssetRecord(assetRecords, {
+      hash: stored.hash,
+      kind: "upload",
+      mimeType: stored.mimeType,
+      fileSize: stored.size,
+      fileName
+    });
+    state.sourceImageHash = stored.hash;
+    return;
+  }
+
+  const hash = state.sourceImageHash || extractAssetHash(state.sourceImage);
+  const record = await assetRecordFromStoredHash(hash, { kind: "upload", fileName });
+  addAssetRecord(assetRecords, record);
+}
+
+async function collectGeneratedAssets(nodes, assetRecords) {
+  for (const node of nodes) {
+    if (node.type !== "generated") continue;
+
+    if (typeof node.data?.imageDataUrl === "string" && node.data.imageDataUrl.startsWith("data:")) {
+      const stored = await storeDataUrl(node.data.imageDataUrl, { kind: "generated" });
+      node.data.imageHash = stored.hash;
+      delete node.data.imageDataUrl;
+      addAssetRecord(assetRecords, {
+        hash: stored.hash,
+        kind: "generated",
+        mimeType: stored.mimeType,
+        fileSize: stored.size,
+        fileName: null
+      });
+      continue;
+    }
+
+    if (node.data?.imageHash) {
+      const record = await assetRecordFromStoredHash(node.data.imageHash, { kind: "generated" });
+      addAssetRecord(assetRecords, record);
+    }
+
+    delete node.data.imageDataUrl;
+  }
+}
+
+async function assetRecordFromStoredHash(hash, { kind = "upload", fileName = null, mimeType = "" } = {}) {
+  if (!/^[a-f0-9]{64}$/i.test(hash || "")) return null;
+  try {
+    const buffer = await readFile(hash, { kind });
+    return {
+      hash,
+      kind,
+      mimeType: mimeType || detectMimeType(buffer),
+      fileSize: buffer.length,
+      fileName
+    };
+  } catch {
+    return {
+      hash,
+      kind,
+      mimeType: mimeType || "application/octet-stream",
+      fileSize: 0,
+      fileName
+    };
+  }
+}
+
+function extractAssetHash(value) {
+  if (typeof value !== "string") return "";
+  const match = value.match(/\/api\/assets\/([a-f0-9]{64})(?:\?|$)/i);
+  return match ? match[1] : "";
+}
+
+function detectMimeType(buffer) {
+  if (buffer.length >= 4) {
+    const header = buffer.slice(0, 4).toString("hex");
+    if (header.startsWith("89504e47")) return "image/png";
+    if (header.startsWith("ffd8ff")) return "image/jpeg";
+    if (header.startsWith("52494646")) return "image/webp";
+    if (header.startsWith("47494638")) return "image/gif";
+  }
+  const textPrefix = buffer.slice(0, 128).toString("utf8").trimStart();
+  if (textPrefix.startsWith("<svg") || textPrefix.startsWith("<?xml")) return "image/svg+xml";
+  return "application/octet-stream";
 }
 
 /**
@@ -68,48 +189,11 @@ export async function handleCreateSession(body, res) {
     const isDemo = body?.isDemo === true;
     const viewState = state.view || { x: 0, y: 0, scale: 0.86 };
 
-    // 1. Serialize nodes/links/messages from state
     const { nodes, links, chatMessages } = serializeState(state);
-
-    // 2. Store images BEFORE transaction (files can't be rolled back)
     const assetRecords = [];
+    await collectSourceAsset(state, assetRecords);
+    await collectGeneratedAssets(nodes, assetRecords);
 
-    // Source image
-    if (typeof state.sourceImage === "string" && state.sourceImage.length > 0) {
-      const stored = await storeDataUrl(state.sourceImage, { kind: "upload" });
-      assetRecords.push({
-        hash: stored.hash,
-        kind: "upload",
-        mimeType: stored.mimeType,
-        fileSize: stored.size,
-        fileName: state.fileName || null
-      });
-    }
-
-    // Generated images inside nodes
-    for (const n of nodes) {
-      if (n.type === "generated" && n.data?.option && n.data?.imageHash) {
-        // imageHash already stored — skip
-        continue;
-      }
-      // If node carries a raw data URL (shouldn't in normal flow), store it
-      if (n.type === "generated" && typeof n.data?.imageDataUrl === "string") {
-        const stored = await storeDataUrl(n.data.imageDataUrl, { kind: "generated" });
-        n.data.imageHash = stored.hash;
-        delete n.data.imageDataUrl;
-        assetRecords.push({
-          hash: stored.hash,
-          kind: "generated",
-          mimeType: stored.mimeType,
-          fileSize: stored.size,
-          fileName: null
-        });
-      }
-    }
-
-    // 3. Transaction: create session + related rows
-    // TODO: orphaned file cleanup job — if file write succeeds but transaction fails,
-    // the stored file is not rolled back. Acceptable for v1, add cleanup later.
     const session = await prisma.$transaction(async (tx) => {
       const session = await tx.session.create({
         data: {
@@ -224,49 +308,16 @@ export async function handleUpdateSession(sessionId, body, res) {
     const viewState = state.view || { x: 0, y: 0, scale: 0.86 };
 
     const { nodes, links, chatMessages } = serializeState(state);
-
-    // Store new images BEFORE transaction
     const assetRecords = [];
+    await collectSourceAsset(state, assetRecords);
+    await collectGeneratedAssets(nodes, assetRecords);
 
-    if (typeof state.sourceImage === "string" && state.sourceImage.length > 0) {
-      // Check if already stored by looking for hash prefix pattern
-      // If it's a data URL, store it; if it's already /api/assets/..., skip
-      if (state.sourceImage.startsWith("data:")) {
-        const stored = await storeDataUrl(state.sourceImage, { kind: "upload" });
-        assetRecords.push({
-          hash: stored.hash,
-          kind: "upload",
-          mimeType: stored.mimeType,
-          fileSize: stored.size,
-          fileName: state.fileName || null
-        });
-      }
-    }
-
-    for (const n of nodes) {
-      if (n.type === "generated" && typeof n.data?.imageDataUrl === "string") {
-        const stored = await storeDataUrl(n.data.imageDataUrl, { kind: "generated" });
-        n.data.imageHash = stored.hash;
-        delete n.data.imageDataUrl;
-        assetRecords.push({
-          hash: stored.hash,
-          kind: "generated",
-          mimeType: stored.mimeType,
-          fileSize: stored.size,
-          fileName: null
-        });
-      }
-    }
-
-    // TODO: orphaned file cleanup job — if file write succeeds but transaction fails,
-    // the stored file is not rolled back. Acceptable for v1, add cleanup later.
     const session = await prisma.$transaction(async (tx) => {
-      // Delete existing related rows
       await tx.node.deleteMany({ where: { sessionId } });
       await tx.link.deleteMany({ where: { sessionId } });
       await tx.chatMessage.deleteMany({ where: { sessionId } });
+      await tx.asset.deleteMany({ where: { sessionId } });
 
-      // Re-create
       if (assetRecords.length) {
         await tx.asset.createMany({
           data: assetRecords.map((a) => ({ ...a, sessionId }))
@@ -328,5 +379,96 @@ export async function handleUpdateSession(sessionId, body, res) {
   } catch (error) {
     console.error("[handleUpdateSession]", error);
     return sendJson(res, 500, { error: error.message || "Failed to update session" });
+  }
+}
+
+/**
+ * GET /api/sessions/:id/export
+ */
+export async function handleExportSession(sessionId, res) {
+  try {
+    if (!sessionId || typeof sessionId !== "string") {
+      return sendJson(res, 400, { error: "sessionId is required" });
+    }
+
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      include: {
+        nodes: true,
+        links: true,
+        assets: true,
+        chatMessages: { orderBy: { createdAt: "asc" } }
+      }
+    });
+
+    if (!session) {
+      return sendJson(res, 404, { error: "Session not found" });
+    }
+
+    const exportPayload = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      session: {
+        title: session.title,
+        isDemo: session.isDemo,
+        viewState: session.viewState,
+        nodes: session.nodes.map((n) => ({
+          nodeId: n.nodeId,
+          type: n.type,
+          x: n.x,
+          y: n.y,
+          width: n.width,
+          height: n.height,
+          data: n.data,
+          collapsed: n.collapsed
+        })),
+        links: session.links.map((l) => ({
+          fromNodeId: l.fromNodeId,
+          toNodeId: l.toNodeId,
+          kind: l.kind
+        })),
+        chatMessages: session.chatMessages.map((m) => ({
+          role: m.role,
+          content: m.content
+        }))
+      },
+      assets: []
+    };
+
+    for (const asset of session.assets) {
+      try {
+        const buffer = await readFile(asset.hash, { kind: asset.kind });
+        const mimeType = asset.mimeType || detectMimeType(buffer);
+        exportPayload.assets.push({
+          hash: asset.hash,
+          kind: asset.kind,
+          mimeType,
+          fileSize: asset.fileSize,
+          fileName: asset.fileName,
+          dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}`
+        });
+      } catch {
+        exportPayload.assets.push({
+          hash: asset.hash,
+          kind: asset.kind,
+          mimeType: asset.mimeType,
+          fileSize: asset.fileSize,
+          fileName: asset.fileName,
+          dataUrl: null,
+          missing: true
+        });
+      }
+    }
+
+    const safeTitle = (session.title || "session").replace(/[^a-z0-9一-龥_-]+/gi, "_").slice(0, 40);
+    res.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${safeTitle}_${sessionId.slice(0, 8)}.json"`,
+      "Cache-Control": "no-cache"
+    });
+    res.end(JSON.stringify(exportPayload, null, 2));
+  } catch (error) {
+    console.error("[handleExportSession]", error);
+    return sendJson(res, 500, { error: error.message || "Failed to export session" });
   }
 }

@@ -28,9 +28,11 @@ function MetadataGrid({ rows }: { rows: { label: string; value: string }[] }) {
   );
 }
 
-function ImageAssetDetail({ asset }: { asset: Asset }) {
+function ImageAssetDetail({ asset, nodes }: { asset: Asset; nodes?: Node[] }) {
   const url = buildAssetUrl(asset.hash, asset.kind);
   const title = asset.fileName || "Generated Image";
+  const matchingNode = nodes?.find((n) => n.data?.imageHash === asset.hash);
+  const explanation = matchingNode?.data?.explanation as string | undefined;
   return (
     <div className="flex flex-col h-full overflow-y-auto cabinet-scrollbar px-8 pb-12">
       <img
@@ -48,6 +50,12 @@ function ImageAssetDetail({ asset }: { asset: Asset }) {
           { label: "Created", value: new Date(asset.createdAt).toLocaleString() },
         ]}
       />
+      {explanation && (
+        <div className="mt-4 p-3 bg-cabinet-bg rounded-lg border border-cabinet-border">
+          <p className="text-xs font-medium text-cabinet-inkMuted mb-1">AI 讲解</p>
+          <p className="text-sm text-cabinet-ink leading-relaxed">{explanation}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -151,7 +159,7 @@ export default function AssetDetailPane({ session, selectedAssetId }: AssetDetai
     if (asset.kind === "generated") {
       return (
         <div className="flex-1 bg-cabinet-paper flex flex-col h-full overflow-hidden">
-          <ImageAssetDetail asset={asset} />
+          <ImageAssetDetail asset={asset} nodes={session.nodes} />
         </div>
       );
     }

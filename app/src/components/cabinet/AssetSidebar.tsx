@@ -1,6 +1,6 @@
 import { Image, FileText, ExternalLink, MessageSquare } from "lucide-react";
 import Sidebar from "./Sidebar";
-import type { SessionDetail, Asset, Node, ChatMessage } from "@/types";
+import type { SessionDetail, Asset, Node } from "@/types";
 
 interface AssetSidebarProps {
   session: SessionDetail | null;

@@ -77,12 +77,13 @@ model ChatMessage {
 }
 
 model ShareToken {
-  id        String   @id @default(uuid())
-  sessionId String
-  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  token     String   @unique @default(uuid())
-  createdAt DateTime @default(now())
-  expiresAt DateTime?
+  id           String   @id @default(uuid())
+  sessionId    String
+  session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  token        String   @unique @default(uuid())
+  createdAt    DateTime @default(now())
+  expiresAt    DateTime?
+  snapshotData Json?    // immutable frozen session state
 
   @@index([token])
   @@index([sessionId])

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 
 const BASE_URL = "http://localhost:3001";
 const SERVER_CMD = ["node", "server.js"];
@@ -104,9 +104,18 @@ async function main() {
 
   // Test 3: Asset file on disk
   if (assetHash) {
-    const filePath = "storage/upload/" + assetHash.slice(0,2) + "/" + assetHash.slice(2) + ".jpg";
-    if (existsSync(filePath)) log("Asset file on disk: PASS (" + filePath + ")");
-    else fail("Asset file not found at " + filePath);
+    const dir = "storage/upload/" + assetHash.slice(0, 2) + "/" + assetHash.slice(2, 4);
+    const prefix = assetHash.slice(4) + ".";
+    const fileName = existsSync(dir) ? readdirSync(dir).find((entry) => entry.startsWith(prefix)) : "";
+    if (fileName) log("Asset file on disk: PASS (" + dir + "/" + fileName + ")");
+    else fail("Asset file not found under " + dir);
+
+    const response = await fetch(BASE_URL + "/api/assets/" + assetHash + "?kind=upload");
+    if (response.status === 200 && (response.headers.get("content-type") || "").startsWith("image/")) {
+      log("Asset read endpoint: PASS");
+    } else {
+      fail("Asset read endpoint failed: status=" + response.status);
+    }
   }
 
   // Test 4: Session create

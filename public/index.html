@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ORYZAE / Image Board</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23faf9f4'/%3E%3Ccircle cx='21' cy='25' r='7' fill='%233d9a92'/%3E%3Ccircle cx='43' cy='20' r='7' fill='%23d9bc68'/%3E%3Ccircle cx='38' cy='43' r='7' fill='%23bd453c'/%3E%3Cpath d='M21 25 43 20 38 43 21 25' fill='none' stroke='%23202939' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="/styles.css?v=5" />
+    <link rel="stylesheet" href="/styles.css?v=10" />
   </head>
   <body>
     <div class="app-shell">
@@ -32,35 +32,27 @@
             <span class="nav-icon">P</span>
             <span class="nav-label">主页</span>
           </a>
+          <button id="historyToggle" class="nav-link" title="历史会话">
+            <span class="nav-icon">S</span>
+            <span class="nav-label">历史会话</span>
+          </button>
         </nav>
-        <button id="historyToggle" class="nav-link" title="历史会话">
-          <span class="nav-icon">S</span>
-          <span class="nav-label">历史会话</span>
-        </button>
+        <div class="nav-settings">
+          <div class="nav-settings-label">设置</div>
+          <div class="nav-settings-grid">
+            <button id="exportBtn" class="nav-setting-btn" title="导出会话" aria-label="导出会话">📤</button>
+            <button id="importBtn" class="nav-setting-btn" title="导入会话" aria-label="导入会话">📥</button>
+            <button id="saveButton" class="nav-setting-btn" title="保存会话" aria-label="保存会话">💾</button>
+            <button id="fitButton" class="nav-setting-btn" title="重置视图" aria-label="重置视图">⌖</button>
+            <button id="zoomOutButton" class="nav-setting-btn" title="缩小" aria-label="缩小">−</button>
+            <button id="zoomInButton" class="nav-setting-btn" title="放大" aria-label="放大">+</button>
+          </div>
+          <div class="nav-settings-meta">
+            <span id="modeBadge" class="mode-badge">checking</span>
+            <span id="saveStatus" class="save-status"></span>
+          </div>
+        </div>
       </aside>
-
-      <header class="topbar">
-        <div class="brand">
-          <span class="brand-mark"></span>
-          <span>ORYZAE / BOARD</span>
-        </div>
-        <nav class="tabs" aria-label="view switcher">
-          <button class="tab">今日</button>
-          <button class="tab active">今週</button>
-          <button class="tab">今月</button>
-          <button class="tab">半年</button>
-          <button class="tab">今年</button>
-        </nav>
-        <div class="toolbar">
-          <button id="historyBrowserButton" class="icon-button" title="历史浏览器" aria-label="历史浏览器">📁</button>
-          <button id="saveButton" class="icon-button" title="保存会话" aria-label="保存会话">💾</button>
-          <span id="saveStatus" class="save-status"></span>
-          <button id="fitButton" class="icon-button" title="重置视图" aria-label="重置视图">⌖</button>
-          <button id="zoomOutButton" class="icon-button" title="缩小" aria-label="缩小">−</button>
-          <button id="zoomInButton" class="icon-button" title="放大" aria-label="放大">+</button>
-          <span id="modeBadge" class="mode-badge">checking</span>
-        </div>
-      </header>
 
       <main id="viewport" class="viewport">
         <div id="board" class="board">
@@ -102,11 +94,10 @@
 
       <footer class="statusbar">
         <form id="chatForm" class="chatbar">
-          <div id="chatMessages" class="chat-messages" aria-live="polite">
-            <span class="chat-placeholder">输入想继续探索的方向、风格或约束</span>
-          </div>
+          <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
           <div class="chat-input-row">
-            <input id="chatInput" class="chat-input" type="text" autocomplete="off" placeholder="和画布对话..." />
+            <button id="chatAttachButton" class="chat-attach-button" type="button" title="上传图片或文本文件">+</button>
+            <input id="chatInput" class="chat-input" type="text" autocomplete="off" placeholder="输入想继续探索的方向、风格或约束" />
             <button id="chatSendButton" class="chat-send-button" type="submit">发送</button>
           </div>
         </form>
@@ -127,6 +118,6 @@
       </section>
     </template>
 
-    <script type="module" src="/app.js?v=5"></script>
+    <script type="module" src="/app.js?v=6"></script>
   </body>
 </html>
