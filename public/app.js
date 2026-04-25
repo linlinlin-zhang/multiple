@@ -744,6 +744,7 @@ function computeStateHash() {
 async function prepareStateForSave() {
   const payload = {
     sourceImage: state.sourceImage,
+    sourceImageHash: state.sourceImageHash,
     fileName: state.fileName,
     latestAnalysis: state.latestAnalysis,
     chatMessages: state.chatMessages,
