@@ -3,9 +3,10 @@ interface SidebarItemProps {
   summary: string;
   selected: boolean;
   onClick: () => void;
+  icon?: React.ReactNode;
 }
 
-export default function SidebarItem({ title, summary, selected, onClick }: SidebarItemProps) {
+export default function SidebarItem({ title, summary, selected, onClick, icon }: SidebarItemProps) {
   return (
     <button
       onClick={onClick}
@@ -20,8 +21,11 @@ export default function SidebarItem({ title, summary, selected, onClick }: Sideb
           className="absolute left-0 top-2 bottom-2 w-[3px] bg-cabinet-ink"
         />
       )}
-      <div className="text-sm font-medium text-cabinet-ink truncate leading-tight">
-        {title}
+      <div className="flex items-center gap-2">
+        {icon && <span className="flex-shrink-0 w-4 h-4 flex items-center justify-center">{icon}</span>}
+        <div className="text-sm font-medium text-cabinet-ink truncate leading-tight">
+          {title}
+        </div>
       </div>
       <div className="text-xs text-cabinet-ink2 truncate mt-1 leading-tight">
         {summary}

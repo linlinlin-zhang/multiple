@@ -6,6 +6,7 @@ interface SidebarItemData {
   title: string;
   summary: string;
   groupLabel?: string;
+  icon?: React.ReactNode;
 }
 
 interface SidebarProps {
@@ -67,6 +68,7 @@ export default function Sidebar({ title, items, selectedId, onSelect, onCreate }
                 summary={item.summary}
                 selected={selectedId === item.id}
                 onClick={() => onSelect(item.id)}
+                icon={item.icon}
               />
             ))}
           </div>
