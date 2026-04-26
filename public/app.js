@@ -76,6 +76,319 @@ const optionPositions = [
   { x: 1520, y: 1032, tilt: -1.1 }
 ];
 
+const i18n = {
+  zh: {
+    "nav.workbench": "工作界面",
+    "nav.history": "历史浏览器",
+    "nav.home": "主页",
+    "nav.sessions": "历史会话",
+    "nav.settings": "设置",
+    "settings.title": "API 设置",
+    "settings.analysis": "分析",
+    "settings.chat": "对话",
+    "settings.image": "成图",
+    "settings.endpoint": "API Endpoint",
+    "settings.model": "Model",
+    "settings.apiKey": "API Key",
+    "settings.temperature": "Temperature",
+    "settings.save": "保存",
+    "settings.reset": "重置",
+    "settings.darkMode": "深色模式",
+    "settings.language": "语言",
+    "source.uploadPrompt": "上传图片或文档",
+    "source.uploadHint": "选择图片、Word、PDF、PPT 或 TXT，生成分支方向",
+    "source.analyze": "分析",
+    "source.urlPlaceholder": "https://...",
+    "source.analyzeUrl": "分析链接",
+    "chat.placeholder": "输入想继续探索的方向、风格或约束",
+    "chat.send": "发送",
+    "chat.attach": "上传图片或文本文件",
+    "status.ready": "Ready",
+    "status.busy": "Busy",
+    "status.saved": "已保存",
+    "status.saving": "保存中...",
+    "status.error": "保存失败",
+    "counts.label": "方向 {options} / 成图 {generated}",
+    "option.generate": "生成这张图",
+    "analysis.title": "图像理解",
+    "analysis.eyebrow": "MODEL READ",
+    "analysis.titleImage": "图像理解",
+    "analysis.titleText": "文档理解",
+    "analysis.titleUrl": "链接理解",
+    "analysis.eyebrowImage": "IMAGE READ",
+    "analysis.eyebrowText": "DOCUMENT READ",
+    "analysis.eyebrowUrl": "LINK READ",
+    "analysis.defaultSummary": "已完成内容理解。",
+    "session.panelTitle": "历史会话",
+    "session.close": "关闭",
+    "session.export": "导出会话",
+    "session.import": "导入会话",
+    "session.save": "保存会话",
+    "session.fit": "重置视图",
+    "session.zoomOut": "缩小",
+    "session.zoomIn": "放大",
+    "health.checking": "checking",
+    "health.demo": "demo",
+    "health.api": "api",
+    "health.mixed": "mixed",
+    "chat.systemContext": "你是这个画布式图片生成应用里的创意对话助手。你的任务是帮助用户理解当前图片、比较分支方向、提出新的生成建议，或把用户的想法整理成可执行的视觉方向。回答用中文，保持简洁，通常 1-3 句。不要假装已经生成了新图片；如果用户想生成，请建议他点击方向节点或说明你会如何改提示词。",
+    "chat.systemRole": "你是 Kimi K2.6 no thinking 模式下的创意对话助手。回答简洁、直接、可执行。",
+    "analysis.systemPrompt": "你是一个视觉创意导演，正在为一个画布式图片生成应用分析用户上传的图片。请快速理解图片内容、主体、氛围、可延展的叙事方向，并给出 5 个不同的成图方向。这些方向会作为画布上的分支节点展示，用户点击后会调用成图模型。请只返回严格 JSON，不要 Markdown，不要代码块。",
+    "generate.systemPrompt": "请基于参考图生成一张新图，保留原图最重要的主体、颜色关系或视觉记忆点，但不要只是复制。成图方向：{title}\n\n方向说明：{description}\n\n详细提示词：{prompt}\n\n输出应是一张完整、可独立展示的图片；构图清晰；不要添加水印、UI 截图边框或说明文字。",
+    "explain.systemContext": "你是一位视觉创意评论助手，正在为画布式图片生成应用中的每张生成图撰写简短的内容讲解。用户会看到：原图分析摘要、选中的创作方向、以及实际发给成图模型的提示词。你的任务是用 1-2 句话（30-60 字）描述这张生成图在视觉上做了什么、保留了什么、改变了什么。语气专业、简洁、有画面感。不要重复提示词原文，要提炼成观众能感知的视觉描述。",
+    "explain.systemRole": "你是 Kimi K2.6 no thinking 模式下的视觉创意评论助手。讲解要短、有画面感、不提技术细节。",
+    "generated.download": "下载",
+    "generated.regenerate": "重生成",
+    "generated.result": "生成结果",
+    "collapse.expand": "展开 {count} 个后续节点",
+    "collapse.collapse": "收起 {count} 个后续节点",
+    "collapse.noChildren": "没有后续节点",
+    "save.auto": "自动保存中...",
+    "save.inProgress": "保存中...",
+    "save.failed": "保存失败",
+    "save.savedAt": "已保存 {time}",
+    "save.alertFirst": "请先保存会话后再导出。",
+    "save.exportFailed": "导出失败：",
+    "save.importFailed": "导入失败：",
+    "file.unsupported": "暂不支持该文件类型，请上传图片或文本文件。",
+    "file.readError": "文件读取失败：",
+    "image.error": "图片读取失败",
+    "image.chooseFile": "请选择图片文件",
+    "session.unnamed": "未命名会话",
+    "session.exploration": "的探索"
+  },
+  en: {
+    "nav.workbench": "Workbench",
+    "nav.history": "History",
+    "nav.home": "Home",
+    "nav.sessions": "Sessions",
+    "nav.settings": "Settings",
+    "settings.title": "API Settings",
+    "settings.analysis": "Analysis",
+    "settings.chat": "Chat",
+    "settings.image": "Image",
+    "settings.endpoint": "API Endpoint",
+    "settings.model": "Model",
+    "settings.apiKey": "API Key",
+    "settings.temperature": "Temperature",
+    "settings.save": "Save",
+    "settings.reset": "Reset",
+    "settings.darkMode": "Dark Mode",
+    "settings.language": "Language",
+    "source.uploadPrompt": "Upload image or document",
+    "source.uploadHint": "Select image, Word, PDF, PPT or TXT to generate branches",
+    "source.analyze": "Analyze",
+    "source.urlPlaceholder": "https://...",
+    "source.analyzeUrl": "Analyze Link",
+    "chat.placeholder": "Enter direction, style or constraint to explore",
+    "chat.send": "Send",
+    "chat.attach": "Upload image or text file",
+    "status.ready": "Ready",
+    "status.busy": "Busy",
+    "status.saved": "Saved",
+    "status.saving": "Saving...",
+    "status.error": "Save failed",
+    "counts.label": "Options {options} / Generated {generated}",
+    "option.generate": "Generate this image",
+    "analysis.title": "Image Understanding",
+    "analysis.eyebrow": "MODEL READ",
+    "analysis.titleImage": "Image Understanding",
+    "analysis.titleText": "Document Understanding",
+    "analysis.titleUrl": "Link Understanding",
+    "analysis.eyebrowImage": "IMAGE READ",
+    "analysis.eyebrowText": "DOCUMENT READ",
+    "analysis.eyebrowUrl": "LINK READ",
+    "analysis.defaultSummary": "Content understanding completed.",
+    "session.panelTitle": "Sessions",
+    "session.close": "Close",
+    "session.export": "Export",
+    "session.import": "Import",
+    "session.save": "Save",
+    "session.fit": "Reset View",
+    "session.zoomOut": "Zoom Out",
+    "session.zoomIn": "Zoom In",
+    "health.checking": "checking",
+    "health.demo": "demo",
+    "health.api": "api",
+    "health.mixed": "mixed",
+    "chat.systemContext": "You are the creative dialogue assistant in this canvas-based image generation app. Your task is to help users understand the current image, compare branch directions, propose new generation ideas, or organize user thoughts into executable visual directions. Answer in English, keep it concise, usually 1-3 sentences. Do not pretend to have generated a new image; if the user wants to generate, suggest clicking a direction node or explain how you would modify the prompt.",
+    "chat.systemRole": "You are the Kimi K2.6 no-thinking creative dialogue assistant. Answers are concise, direct, and actionable.",
+    "analysis.systemPrompt": "You are a visual creative director analyzing user-uploaded images for a canvas-based image generation app. Quickly understand the image content, subjects, atmosphere, and extensible narrative directions, then provide 5 different image generation directions. These directions will be displayed as branch nodes on the canvas; users click them to invoke the image generation model. Return strict JSON only, no Markdown, no code blocks.",
+    "generate.systemPrompt": "Generate a new image based on the reference image, preserving the most important subjects, color relationships, or visual memory points, but do not simply copy. Direction: {title}\n\nDescription: {description}\n\nDetailed prompt: {prompt}\n\nOutput should be a complete, standalone image; clear composition; no watermarks, UI screenshot borders, or explanatory text.",
+    "explain.systemContext": "You are a visual creative commentary assistant writing short descriptions for each generated image in a canvas-based image generation app. The user sees: original image analysis summary, selected creative direction, and the actual prompt sent to the image generation model. Your task is to describe in 1-2 sentences (30-60 words) what this generated image did visually, what it preserved, and what it changed. Tone: professional, concise, evocative. Do not repeat the prompt verbatim; distill it into a description the viewer can perceive.",
+    "explain.systemRole": "You are the Kimi K2.6 no-thinking visual creative commentary assistant. Descriptions are short, evocative, and avoid technical details.",
+    "generated.download": "Download",
+    "generated.regenerate": "Regenerate",
+    "generated.result": "Generated Result",
+    "collapse.expand": "Expand {count} downstream nodes",
+    "collapse.collapse": "Collapse {count} downstream nodes",
+    "collapse.noChildren": "No downstream nodes",
+    "save.auto": "Auto-saving...",
+    "save.inProgress": "Saving...",
+    "save.failed": "Save failed",
+    "save.savedAt": "Saved {time}",
+    "save.alertFirst": "Please save the session before exporting.",
+    "save.exportFailed": "Export failed: ",
+    "save.importFailed": "Import failed: ",
+    "file.unsupported": "Unsupported file type. Please upload an image or text file.",
+    "file.readError": "File read failed: ",
+    "image.error": "Image read failed",
+    "image.chooseFile": "Please select an image file",
+    "session.unnamed": "Untitled Session",
+    "session.exploration": " Exploration"
+  }
+};
+
+let currentLang = "zh";
+
+function t(key, vars = {}) {
+  const dict = i18n[currentLang] || i18n.zh;
+  let text = dict[key] || i18n.zh[key] || key;
+  for (const [k, v] of Object.entries(vars)) {
+    text = text.replace(new RegExp(`\\{${k}\\}`, "g"), String(v));
+  }
+  return text;
+}
+
+function setLanguage(lang) {
+  if (lang !== "zh" && lang !== "en") return;
+  currentLang = lang;
+  document.documentElement.setAttribute("lang", lang === "zh" ? "zh-CN" : "en");
+  localStorage.setItem("oryzae-lang", lang);
+  renderAllText();
+}
+
+async function loadLanguage() {
+  try {
+    const res = await fetch("/api/settings");
+    const data = await res.json();
+    if (data.language === "zh" || data.language === "en") {
+      setLanguage(data.language);
+    }
+  } catch (e) {
+    console.error("Failed to load language", e);
+  }
+}
+
+async function saveLanguage(lang) {
+  setLanguage(lang);
+  try {
+    await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ language: lang })
+    });
+  } catch (e) {
+    console.error("Failed to save language", e);
+  }
+}
+
+function renderAllText() {
+  const navLabels = {
+    "nav.workbench": ".nav-link[href='/'] .nav-label",
+    "nav.history": ".nav-link[href='/history/'] .nav-label",
+    "nav.home": ".nav-link[href='/home.html'] .nav-label",
+    "nav.sessions": "#historyToggle .nav-label",
+    "nav.settings": ".nav-settings-label"
+  };
+  for (const [key, selector] of Object.entries(navLabels)) {
+    const el = document.querySelector(selector);
+    if (el) el.textContent = t(key);
+  }
+
+  const emptyStateStrong = document.querySelector("#emptyState strong");
+  if (emptyStateStrong) emptyStateStrong.textContent = t("source.uploadPrompt");
+  const emptyStateSpan = document.querySelector("#emptyState span");
+  if (emptyStateSpan) emptyStateSpan.textContent = t("source.uploadHint");
+  const analyzeBtn = document.querySelector("#analyzeButton");
+  if (analyzeBtn) analyzeBtn.textContent = t("source.analyze");
+  const urlIn = document.querySelector("#urlInput");
+  if (urlIn) urlIn.placeholder = t("source.urlPlaceholder");
+  const urlAnalyzeBtn = document.querySelector("#urlAnalyzeButton");
+  if (urlAnalyzeBtn) urlAnalyzeBtn.textContent = t("source.analyzeUrl");
+
+  const chatIn = document.querySelector("#chatInput");
+  if (chatIn) chatIn.placeholder = t("chat.placeholder");
+  const chatSend = document.querySelector("#chatSendButton");
+  if (chatSend) chatSend.textContent = t("chat.send");
+  const chatAttach = document.querySelector("#chatAttachButton");
+  if (chatAttach) chatAttach.title = t("chat.attach");
+
+  const settingsPanelTitle = document.querySelector(".settings-panel-header span");
+  if (settingsPanelTitle) settingsPanelTitle.textContent = t("settings.title");
+  const settingsTabEls = document.querySelectorAll(".settings-tab");
+  settingsTabEls.forEach(tab => {
+    const role = tab.dataset.role;
+    if (role === "analysis") tab.textContent = t("settings.analysis");
+    if (role === "chat") tab.textContent = t("settings.chat");
+    if (role === "image") tab.textContent = t("settings.image");
+  });
+  const settingsLabels = document.querySelectorAll(".settings-form label span");
+  if (settingsLabels[0]) settingsLabels[0].textContent = t("settings.endpoint");
+  if (settingsLabels[1]) settingsLabels[1].textContent = t("settings.model");
+  if (settingsLabels[2]) settingsLabels[2].textContent = t("settings.apiKey");
+  if (settingsLabels[3]) settingsLabels[3].textContent = t("settings.temperature");
+  const saveBtn = document.querySelector("#settingsForm .primary-button");
+  if (saveBtn) saveBtn.textContent = t("settings.save");
+  const resetBtn = document.querySelector("#settingsResetBtn");
+  if (resetBtn) resetBtn.textContent = t("settings.reset");
+  const darkModeLabel = document.querySelector(".settings-toggle-row span");
+  if (darkModeLabel) darkModeLabel.textContent = t("settings.darkMode");
+  const langLabel = document.querySelector(".settings-language-row span");
+  if (langLabel) langLabel.textContent = t("settings.language");
+
+  const sessionPanelHeader = document.querySelector(".session-panel-header span");
+  if (sessionPanelHeader) sessionPanelHeader.textContent = t("session.panelTitle");
+  const closeSessionPanel = document.querySelector("#closeSessionPanel");
+  if (closeSessionPanel) closeSessionPanel.setAttribute("aria-label", t("session.close"));
+
+  const btnTitles = {
+    "session.export": "#exportBtn",
+    "session.import": "#importBtn",
+    "session.save": "#saveButton",
+    "session.fit": "#fitButton",
+    "session.zoomOut": "#zoomOutButton",
+    "session.zoomIn": "#zoomInButton"
+  };
+  for (const [key, selector] of Object.entries(btnTitles)) {
+    const el = document.querySelector(selector);
+    if (el) el.title = t(key);
+  }
+
+  const analysisEyebrow = document.querySelector("#analysisNode .eyebrow");
+  if (analysisEyebrow) analysisEyebrow.textContent = t("analysis.eyebrow");
+  const analysisTitle = document.querySelector("#analysisNode h2");
+  if (analysisTitle) analysisTitle.textContent = t("analysis.title");
+
+  const optionTmpl = document.querySelector("#optionTemplate");
+  if (optionTmpl) {
+    const genBtn = optionTmpl.content.querySelector(".generate-button");
+    if (genBtn) genBtn.textContent = t("option.generate");
+  }
+
+  updateStatusText();
+  updateCounts();
+  updateCollapseControls();
+}
+
+function updateStatusText() {
+  const statusTextEl = document.querySelector("#statusText");
+  if (!statusTextEl) return;
+  const current = statusTextEl.textContent;
+  const keyMap = {
+    "Ready": "status.ready",
+    "Busy": "status.busy",
+    "Saved": "status.saved",
+    "Saving...": "status.saving",
+    "Save failed": "status.error",
+    "已保存": "status.saved",
+    "保存中...": "status.saving",
+    "保存失败": "status.error"
+  };
+  const key = keyMap[current] || "status.ready";
+  statusTextEl.textContent = t(key);
+}
+
 init().catch(console.error);
 
 async function init() {
@@ -91,6 +404,7 @@ async function init() {
   setStatus("Ready", "ready");
   await loadSettings();
   await loadTheme();
+  await loadLanguage();
 
   const urlParams = new URLSearchParams(window.location.search);
   const resumeSessionId = urlParams.get("session");
@@ -136,7 +450,7 @@ function wireControls() {
 
   document.querySelector("#exportBtn")?.addEventListener("click", async () => {
     if (!currentSessionId) {
-      alert("请先保存会话后再导出。");
+      alert(t("save.alertFirst"));
       return;
     }
     try {
@@ -154,7 +468,7 @@ function wireControls() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (err) {
-      alert("导出失败：" + (err instanceof Error ? err.message : String(err)));
+      alert(t("save.exportFailed") + (err instanceof Error ? err.message : String(err)));
     }
   });
 
@@ -177,7 +491,7 @@ function wireControls() {
         if (!res.ok || !data.ok) throw new Error(data.error || "Import failed");
         window.location.href = `/?session=${data.sessionId}`;
       } catch (err) {
-        alert("导入失败：" + (err instanceof Error ? err.message : String(err)));
+        alert(t("save.importFailed") + (err instanceof Error ? err.message : String(err)));
       }
     };
     input.click();
@@ -227,16 +541,16 @@ function wireControls() {
       if (data[role]) {
         settingsCache[role] = data[role];
       }
-      showSaveConfirmation("已保存");
+      showSaveConfirmation(t("status.saved"));
       checkHealth();
     } catch (err) {
-      showSaveConfirmation("保存失败：" + (err instanceof Error ? err.message : String(err)));
+      showSaveConfirmation(t("status.error") + "：" + (err instanceof Error ? err.message : String(err)));
     }
   });
   settingsResetBtn?.addEventListener("click", async () => {
     await loadSettings();
     populateSettingsForm();
-    showSaveConfirmation("已重置");
+    showSaveConfirmation(t("settings.reset"));
   });
 
   // Theme toggle wiring
@@ -245,6 +559,15 @@ function wireControls() {
     themeToggle.checked = document.documentElement.getAttribute("data-theme") === "dark";
     themeToggle.addEventListener("change", () => {
       saveTheme(themeToggle.checked ? "dark" : "light");
+    });
+  }
+
+  // Language toggle wiring
+  const languageSelect = document.querySelector("#languageSelect");
+  if (languageSelect) {
+    languageSelect.value = currentLang;
+    languageSelect.addEventListener("change", () => {
+      saveLanguage(languageSelect.value);
     });
   }
 
@@ -302,7 +625,7 @@ function restoreNavState() {
   const collapsed = localStorage.getItem("oryzae.navCollapsed") === "true";
   document.body.classList.toggle("nav-collapsed", collapsed);
   navToggle.setAttribute("aria-expanded", String(!collapsed));
-  navToggle.setAttribute("aria-label", collapsed ? "展开导航" : "折叠导航");
+  navToggle.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
 }
 
 function toggleNav() {
@@ -310,14 +633,14 @@ function toggleNav() {
   document.body.classList.toggle("nav-collapsed", collapsed);
   localStorage.setItem("oryzae.navCollapsed", String(collapsed));
   navToggle.setAttribute("aria-expanded", String(!collapsed));
-  navToggle.setAttribute("aria-label", collapsed ? "展开导航" : "折叠导航");
+  navToggle.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
 }
 
 async function checkHealth() {
   try {
     const health = await getJson("/api/health");
     modeBadge.textContent = health.mode;
-    modeBadge.title = health.mode === "demo" ? "未配置模型 API Key，当前使用 demo fallback" : "已连接已配置的大模型 API";
+    modeBadge.title = health.mode === "demo" ? "No model API key configured, using demo fallback" : "Connected to configured model API";
   } catch {
     modeBadge.textContent = "offline";
   }
@@ -409,7 +732,7 @@ async function handleFile(event) {
   const isTextDoc = /\.(txt|md|json|docx|pdf|pptx)$/i.test(file.name);
 
   if (isImage) {
-    setStatus("Compressing image", "busy");
+    setStatus(t("status.busy"), "busy");
     try {
       const image = await resizeImage(file, 1600, 0.88);
       state.sourceImage = image.dataUrl;
@@ -433,17 +756,17 @@ async function handleFile(event) {
       state.links = [];
       applyCollapseState();
       updateCounts();
-      setStatus("Image ready", "ready");
+      setStatus(t("status.ready"), "ready");
       updateSourceBadge();
       autoSave();
     } catch (error) {
-      setStatus(error.message || "Image error", "error");
+      setStatus(error.message || t("status.error"), "error");
     }
     return;
   }
 
   if (isTextDoc) {
-    setStatus("Reading document", "busy");
+    setStatus(t("status.busy"), "busy");
     try {
       state.fileName = file.name;
       state.sourceType = "text";
@@ -487,15 +810,15 @@ async function handleFile(event) {
       applyCollapseState();
       updateCounts();
       updateSourceBadge();
-      setStatus("Document ready", "ready");
+      setStatus(t("status.ready"), "ready");
       autoSave();
     } catch (error) {
-      setStatus(error.message || "Document error", "error");
+      setStatus(error.message || t("status.error"), "error");
     }
     return;
   }
 
-  setStatus("Unsupported file type", "error");
+  setStatus(t("file.unsupported"), "error");
 }
 
 async function analyzeSource() {
@@ -503,7 +826,7 @@ async function analyzeSource() {
   if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) return;
   if (state.sourceType === "url" && !state.sourceUrl) return;
 
-  setStatus(state.sourceType === "image" ? "Analyzing image" : state.sourceType === "url" ? "Analyzing URL" : "Analyzing document", "busy");
+  setStatus(t("status.busy"), "busy");
   analyzeButton.disabled = true;
 
   try {
@@ -527,7 +850,7 @@ async function analyzeSource() {
     renderAnalysis(data);
     renderOptions(data.options || []);
     state.latestAnalysis = data;
-    setStatus("Branches ready", "ready");
+    setStatus(t("status.ready"), "ready");
     autoSave();
   } catch (error) {
     setStatus(error.message || "Analysis failed", "error");
@@ -539,7 +862,7 @@ async function analyzeSource() {
 async function analyzeUrl() {
   const url = urlInput?.value.trim();
   if (!url) return;
-  setStatus("Analyzing URL", "busy");
+  setStatus(t("status.busy"), "busy");
   if (urlAnalyzeButton) urlAnalyzeButton.disabled = true;
 
   try {
@@ -553,7 +876,7 @@ async function analyzeUrl() {
     renderUrlSource(url, data.title);
     renderAnalysis(data);
     renderOptions(data.options || []);
-    setStatus("Branches ready", "ready");
+    setStatus(t("status.ready"), "ready");
     autoSave();
   } catch (error) {
     setStatus(error.message || "URL analysis failed", "error");
@@ -591,7 +914,7 @@ async function handleChatSubmit(event) {
 
   chatInput.value = "";
   appendChatMessage("user", message);
-  setStatus("Chat thinking", "busy");
+  setStatus(t("status.busy"), "busy");
   chatSendButton.disabled = true;
 
   try {
@@ -602,12 +925,12 @@ async function handleChatSubmit(event) {
       analysis: state.latestAnalysis,
       messages: state.chatMessages.slice(-8)
     });
-    appendChatMessage("assistant", data.reply || "我已经读到你的想法了。");
-    setStatus("Chat ready", "ready");
+    appendChatMessage("assistant", data.reply || t("chat.systemContext"));
+    setStatus(t("status.ready"), "ready");
     autoSave();
   } catch (error) {
     appendChatMessage("assistant", error.message || "对话请求失败。");
-    setStatus("Chat failed", "error");
+    setStatus(t("status.error"), "error");
   } finally {
     chatSendButton.disabled = false;
     chatInput.focus();
@@ -643,7 +966,7 @@ function renderChatMessages() {
 }
 
 function renderAnalysis(data) {
-  analysisSummary.textContent = data.summary || "已完成内容理解。";
+  analysisSummary.textContent = data.summary || t("analysis.defaultSummary");
   keywordList.replaceChildren(...(data.moodKeywords || []).slice(0, 8).map((keyword) => {
     const span = document.createElement("span");
     span.className = "keyword";
@@ -655,13 +978,13 @@ function renderAnalysis(data) {
   // Update analysis node eyebrow based on source type
   const eyebrow = analysisNode.querySelector(".eyebrow");
   if (eyebrow) {
-    const labels = { image: "IMAGE READ", text: "DOCUMENT READ", url: "LINK READ" };
-    eyebrow.textContent = labels[state.sourceType] || "MODEL READ";
+    const labels = { image: t("analysis.eyebrowImage"), text: t("analysis.eyebrowText"), url: t("analysis.eyebrowUrl") };
+    eyebrow.textContent = labels[state.sourceType] || t("analysis.eyebrow");
   }
   const heading = analysisNode.querySelector("h2");
   if (heading) {
-    const titles = { image: "图像理解", text: "文档理解", url: "链接理解" };
-    heading.textContent = titles[state.sourceType] || "内容理解";
+    const titles = { image: t("analysis.titleImage"), text: t("analysis.titleText"), url: t("analysis.titleUrl") };
+    heading.textContent = titles[state.sourceType] || t("analysis.title");
   }
 
   state.links = [{ from: "source", to: "analysis", kind: "analysis" }];
@@ -683,7 +1006,7 @@ function renderOptions(options) {
     element.style.top = `${position.y}px`;
     element.style.setProperty("--tilt", `${position.tilt}deg`);
     element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
-    element.querySelector(".option-title").textContent = option.title || "生成方向";
+    element.querySelector(".option-title").textContent = option.title || t("generated.result");
     element.querySelector(".option-description").textContent = option.description || "";
 
     const button = element.querySelector(".generate-button");
@@ -714,7 +1037,7 @@ async function generateOption(id, option) {
   const button = element.querySelector(".generate-button");
   element.classList.add("loading");
   if (button) button.disabled = true;
-  setStatus(`Generating ${option.title || "image"}`, "busy");
+  setStatus(t("status.busy"), "busy");
 
   try {
     const sourceImageDataUrl = await getSourceImageDataUrl();
@@ -779,12 +1102,12 @@ async function generateOption(id, option) {
 
     applyCollapseState();
     updateCounts();
-    setStatus("Image generated", "ready");
+    setStatus(t("status.ready"), "ready");
     autoSave();
   } catch (error) {
     element.classList.remove("loading");
     if (button) button.disabled = false;
-    setStatus(error.message || "Generation failed", "error");
+    setStatus(error.message || t("status.error"), "error");
   }
 }
 
@@ -801,11 +1124,11 @@ function turnIntoGeneratedNode(element, option, imageDataUrl) {
 
   const eyebrow = document.createElement("p");
   eyebrow.className = "eyebrow";
-  eyebrow.textContent = `${option.tone || "generated"} / generated`;
+  eyebrow.textContent = `${option.tone || "generated"} / ${t("generated.result")}`;
   element.appendChild(eyebrow);
 
   const title = document.createElement("h3");
-  title.textContent = option.title || "生成结果";
+  title.textContent = option.title || t("generated.result");
   element.appendChild(title);
 
   const desc = document.createElement("p");
@@ -818,12 +1141,12 @@ function turnIntoGeneratedNode(element, option, imageDataUrl) {
 
   const download = document.createElement("button");
   download.className = "secondary-button";
-  download.textContent = "下载";
+  download.textContent = t("generated.download");
   download.addEventListener("click", () => downloadImage(imageDataUrl, `${option.id || "generated"}.png`));
 
   const regenerate = document.createElement("button");
   regenerate.className = "secondary-button";
-  regenerate.textContent = "重生成";
+  regenerate.textContent = t("generated.regenerate");
   regenerate.addEventListener("click", () => generateOption(element.dataset.nodeId, option));
 
   actions.append(download, regenerate);
@@ -965,8 +1288,8 @@ function updateCollapseControls() {
     button.classList.toggle("is-collapsed", fullCollapsed || hiddenCount > 0);
     button.classList.toggle("has-children", hasChildren);
     button.title = hasChildren
-      ? (fullCollapsed ? `展开 ${descendants.size} 个后续节点` : hiddenCount > 0 ? `展开 ${hiddenCount} 个后续节点` : `收起 ${descendants.size} 个后续节点`)
-      : "没有后续节点";
+      ? (fullCollapsed ? t("collapse.expand", { count: descendants.size }) : hiddenCount > 0 ? t("collapse.expand", { count: hiddenCount }) : t("collapse.collapse", { count: descendants.size }))
+      : t("collapse.noChildren");
     button.setAttribute("aria-label", button.title);
   }
 }
@@ -1114,16 +1437,16 @@ async function handleAttachment(file) {
       chatInput.value = text.slice(0, 2000);
       chatInput.focus();
     } catch (err) {
-      alert("文件读取失败：" + (err instanceof Error ? err.message : String(err)));
+      alert(t("file.readError") + (err instanceof Error ? err.message : String(err)));
     }
   } else {
-    alert("暂不支持该文件类型，请上传图片或文本文件。");
+    alert(t("file.unsupported"));
   }
 }
 
 async function resizeImage(file, maxSize, quality) {
   if (!file.type.startsWith("image/")) {
-    throw new Error("请选择图片文件");
+    throw new Error(t("image.chooseFile"));
   }
 
   const objectUrl = URL.createObjectURL(file);
@@ -1155,7 +1478,7 @@ function loadImage(src) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("图片读取失败"));
+    img.onerror = () => reject(new Error(t("image.error")));
     img.src = src;
   });
 }
@@ -1209,7 +1532,7 @@ function updateBoardTransform() {
 
 function updateCounts() {
   const optionCount = Array.from(state.nodes.keys()).filter((id) => id.startsWith("option-")).length;
-  counts.textContent = `方向 ${optionCount} / 成图 ${state.generatedCount}`;
+  counts.textContent = t("counts.label", { options: optionCount, generated: state.generatedCount });
 }
 
 function setStatus(text, tone = "ready") {
@@ -1335,7 +1658,7 @@ function updateSourceBadge() {
 
 async function saveSession({ isAuto = false } = {}) {
   const saveStatus = document.querySelector("#saveStatus");
-  if (saveStatus) saveStatus.textContent = isAuto ? "自动保存中..." : "保存中...";
+  if (saveStatus) saveStatus.textContent = isAuto ? t("save.auto") : t("save.inProgress");
   if (saveStatus) saveStatus.className = "save-status saving";
 
   try {
@@ -1352,7 +1675,7 @@ async function saveSession({ isAuto = false } = {}) {
     const aiTitle = state.latestAnalysis?.title?.trim();
     const body = {
       state: payloadState,
-      title: aiTitle || (state.fileName ? `${state.fileName} 的探索` : "未命名会话"),
+      title: aiTitle || (state.fileName ? `${state.fileName}${t("session.exploration")}` : t("session.unnamed")),
       isDemo: document.querySelector("#modeBadge")?.textContent === "demo"
     };
 
@@ -1369,13 +1692,13 @@ async function saveSession({ isAuto = false } = {}) {
 
     lastSavedStateHash = computeStateHash();
     if (saveStatus) {
-      saveStatus.textContent = `已保存 ${new Date(result.savedAt).toLocaleTimeString()}`;
+      saveStatus.textContent = t("save.savedAt", { time: new Date(result.savedAt).toLocaleTimeString() });
       saveStatus.className = "save-status saved";
     }
   } catch (error) {
     console.error("Save failed:", error);
     if (saveStatus) {
-      saveStatus.textContent = "保存失败";
+      saveStatus.textContent = t("save.failed");
       saveStatus.className = "save-status error";
     }
   }
@@ -1392,7 +1715,7 @@ function autoSave() {
 }
 
 async function loadSession(sessionId) {
-  setStatus("Loading session", "busy");
+  setStatus(t("status.busy"), "busy");
   try {
     const data = await getJson(`/api/sessions/${sessionId}`);
 
@@ -1496,7 +1819,7 @@ async function loadSession(sessionId) {
 
     const optionNodes = data.nodes.filter(n => n.type === "option" || n.type === "generated");
     for (const n of optionNodes) {
-      const option = n.data?.option || { title: "生成方向", description: "", tone: "cinematic", layoutHint: "square" };
+      const option = n.data?.option || { title: t("generated.result"), description: "", tone: "cinematic", layoutHint: "square" };
       const position = optionPositions[optionNodes.indexOf(n) % optionPositions.length];
       const nodeId = n.nodeId;
 
@@ -1507,7 +1830,7 @@ async function loadSession(sessionId) {
       element.style.top = `${n.y || position.y}px`;
       element.style.setProperty("--tilt", `${position.tilt}deg`);
       element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
-      element.querySelector(".option-title").textContent = option.title || "生成方向";
+      element.querySelector(".option-title").textContent = option.title || t("generated.result");
       element.querySelector(".option-description").textContent = option.description || "";
 
       const button = element.querySelector(".generate-button");
@@ -1567,23 +1890,23 @@ async function loadSession(sessionId) {
     url.searchParams.set("session", sessionId);
     window.history.replaceState({}, "", url);
 
-    setStatus("Session loaded", "ready");
+    setStatus(t("status.ready"), "ready");
   } catch (error) {
-    setStatus(error.message || "Load failed", "error");
+    setStatus(error.message || t("status.error"), "error");
   }
 }
 
 async function renderSessionList() {
   const list = document.querySelector("#sessionList");
   if (!list) return;
-  list.innerHTML = "<span class='session-item-meta'>加载中...</span>";
+  list.innerHTML = "<span class='session-item-meta'>" + t("status.saving") + "</span>";
 
   try {
     const data = await getJson("/api/history?limit=50");
     list.innerHTML = "";
 
     if (!data.sessions?.length) {
-      list.innerHTML = "<span class='session-item-meta'>暂无历史会话</span>";
+      list.innerHTML = "<span class='session-item-meta'>" + t("history.empty") + "</span>";
       return;
     }
 
@@ -1594,7 +1917,7 @@ async function renderSessionList() {
 
       const title = document.createElement("div");
       title.className = "session-item-title";
-      title.textContent = session.title || "未命名会话";
+      title.textContent = session.title || t("session.unnamed");
 
       if (session.isDemo) {
         const badge = document.createElement("span");
@@ -1606,7 +1929,7 @@ async function renderSessionList() {
       const meta = document.createElement("div");
       meta.className = "session-item-meta";
       const date = new Date(session.updatedAt);
-      meta.textContent = `${date.toLocaleDateString()} ${date.toLocaleTimeString()} · ${session.nodeCount} 节点 · ${session.assetCount} 素材`;
+      meta.textContent = `${date.toLocaleDateString()} ${date.toLocaleTimeString()} · ${session.nodeCount} nodes · ${session.assetCount} assets`;
 
       item.appendChild(title);
       item.appendChild(meta);
@@ -1618,6 +1941,6 @@ async function renderSessionList() {
       list.appendChild(item);
     }
   } catch (error) {
-    list.innerHTML = "<span class='session-item-meta'>加载失败</span>";
+    list.innerHTML = "<span class='session-item-meta'>" + t("status.error") + "</span>";
   }
 }

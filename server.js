@@ -265,17 +265,26 @@ async function handleChat(body, res) {
     });
   }
 
-  const context = [
-    "你是这个画布式图片生成应用里的创意对话助手。",
-    "你的任务是帮助用户理解当前图片、比较分支方向、提出新的生成建议，或把用户的想法整理成可执行的视觉方向。",
-    "回答用中文，保持简洁，通常 1-3 句。不要假装已经生成了新图片；如果用户想生成，请建议他点击方向节点或说明你会如何改提示词。",
-    "",
-    "当前图片分析：",
-    JSON.stringify(analysis, null, 2),
-    "",
-    "最近对话：",
-    messages.map((item) => `${item.role}: ${item.content}`).join("\n") || "暂无"
-  ].join("\n");
+  const lang = body?.language === "en" ? "en" : "zh";
+  const context = lang === "en"
+    ? [
+        "You are the creative dialogue assistant in this canvas-based image generation app. Your task is to help users understand the current image, compare branch directions, propose new generation ideas, or organize user thoughts into executable visual directions. Answer in English, keep it concise, usually 1-3 sentences. Do not pretend to have generated a new image; if the user wants to generate, suggest clicking a direction node or explain how you would modify the prompt.",
+        "",
+        "Current image analysis:",
+        JSON.stringify(analysis, null, 2),
+        "",
+        "Recent chat:",
+        messages.map((item) => `${item.role}: ${item.content}`).join("\n") || "None"
+      ].join("\n")
+    : [
+        "你是这个画布式图片生成应用里的创意对话助手。你的任务是帮助用户理解当前图片、比较分支方向、提出新的生成建议，或把用户的想法整理成可执行的视觉方向。回答用中文，保持简洁，通常 1-3 句。不要假装已经生成了新图片；如果用户想生成，请建议他点击方向节点或说明你会如何改提示词。",
+        "",
+        "当前图片分析：",
+        JSON.stringify(analysis, null, 2),
+        "",
+        "最近对话：",
+        messages.map((item) => `${item.role}: ${item.content}`).join("\n") || "暂无"
+      ].join("\n");
 
   const content = [
     { type: "text", text: `${context}\n\n用户最新消息：${message}` }
@@ -288,7 +297,9 @@ async function handleChat(body, res) {
     messages: [
       {
         role: "system",
-        content: "你是 Kimi K2.6 no thinking 模式下的创意对话助手。回答简洁、直接、可执行。"
+        content: lang === "en"
+          ? "You are the Kimi K2.6 no-thinking creative dialogue assistant. Answers are concise, direct, and actionable."
+          : "你是 Kimi K2.6 no thinking 模式下的创意对话助手。回答简洁、直接、可执行。"
       },
       {
         role: "user",
@@ -316,32 +327,57 @@ async function handleAnalyze(body, res) {
     return sendJson(res, 200, buildDemoAnalysis(body?.fileName));
   }
 
-  const prompt = [
-    "你是一个视觉创意导演，正在为一个画布式图片生成应用分析用户上传的图片。",
-    "请快速理解图片内容、主体、氛围、可延展的叙事方向，并给出 5 个不同的成图方向。",
-    "这些方向会作为画布上的分支节点展示，用户点击后会调用成图模型。",
-    "请只返回严格 JSON，不要 Markdown，不要代码块。",
-    "",
-    "JSON 结构：",
-    "{",
-    '  "title": "不超过10个字的简短标题，概括图片核心视觉主题",',
-    '  "summary": "一句话中文摘要",',
-    '  "detectedSubjects": ["主体1", "主体2"],',
-    '  "moodKeywords": ["关键词1", "关键词2"],',
-    '  "options": [',
-    "    {",
-    '      "id": "short-lowercase-id",',
-    '      "title": "不超过10个字的方向标题",',
-    '      "description": "40-70字中文说明，说明生成后会是什么画面",',
-    '      "prompt": "给图像生成模型的详细中文提示词，明确风格、构图、光影、材质、保留原图关键元素",',
-    '      "tone": "cinematic/editorial/documentary/surreal/minimal/graphic 中的一个",',
-    '      "layoutHint": "portrait/landscape/square/board 中的一个"',
-    "    }",
-    "  ]",
-    "}",
-    "",
-    "要求：方向之间要明显不同；不要生成暴力、色情、仇恨或侵犯隐私的内容；如果图片包含人物，不要识别真实身份。"
-  ].join("\n");
+  const lang = body?.language === "en" ? "en" : "zh";
+  const prompt = lang === "en"
+    ? [
+        "You are a visual creative director analyzing user-uploaded images for a canvas-based image generation app. Quickly understand the image content, subjects, atmosphere, and extensible narrative directions, then provide 5 different image generation directions. These directions will be displayed as branch nodes on the canvas; users click them to invoke the image generation model. Return strict JSON only, no Markdown, no code blocks.",
+        "",
+        "JSON structure:",
+        "{",
+        '  "title": "Short title under 10 words summarizing the core visual theme",',
+        '  "summary": "One-sentence English summary",',
+        '  "detectedSubjects": ["subject1", "subject2"],',
+        '  "moodKeywords": ["keyword1", "keyword2"],',
+        '  "options": [',
+        "    {",
+        '      "id": "short-lowercase-id",',
+        '      "title": "Direction title under 10 words",',
+        '      "description": "40-70 word English description of what the generated image will look like",',
+        '      "prompt": "Detailed English prompt for the image generation model, specifying style, composition, lighting, materials, and key elements to preserve from the original image",',
+        '      "tone": "one of cinematic/editorial/documentary/surreal/minimal/graphic",',
+        '      "layoutHint": "one of portrait/landscape/square/board"',
+        "    }",
+        "  ]",
+        "}",
+        "",
+        "Requirements: directions must be clearly different from each other; do not generate violent, sexual, hateful, or privacy-violating content; if the image contains people, do not identify real individuals."
+      ].join("\n")
+    : [
+        "你是一个视觉创意导演，正在为一个画布式图片生成应用分析用户上传的图片。",
+        "请快速理解图片内容、主体、氛围、可延展的叙事方向，并给出 5 个不同的成图方向。",
+        "这些方向会作为画布上的分支节点展示，用户点击后会调用成图模型。",
+        "请只返回严格 JSON，不要 Markdown，不要代码块。",
+        "",
+        "JSON 结构：",
+        "{",
+        '  "title": "不超过10个字的简短标题，概括图片核心视觉主题",',
+        '  "summary": "一句话中文摘要",',
+        '  "detectedSubjects": ["主体1", "主体2"],',
+        '  "moodKeywords": ["关键词1", "关键词2"],',
+        '  "options": [',
+        "    {",
+        '      "id": "short-lowercase-id",',
+        '      "title": "不超过10个字的方向标题",',
+        '      "description": "40-70字中文说明，说明生成后会是什么画面",',
+        '      "prompt": "给图像生成模型的详细中文提示词，明确风格、构图、光影、材质、保留原图关键元素",',
+        '      "tone": "cinematic/editorial/documentary/surreal/minimal/graphic 中的一个",',
+        '      "layoutHint": "portrait/landscape/square/board 中的一个"',
+        "    }",
+        "  ]",
+        "}",
+        "",
+        "要求：方向之间要明显不同；不要生成暴力、色情、仇恨或侵犯隐私的内容；如果图片包含人物，不要识别真实身份。"
+      ].join("\n");
 
   const analysisPayload = {
     messages: [
@@ -583,19 +619,34 @@ async function handleGenerate(body, res) {
     });
   }
 
-  const prompt = [
-    "请基于参考图生成一张新图，保留原图最重要的主体、颜色关系或视觉记忆点，但不要只是复制。",
-    "成图方向：",
-    option.title,
-    "",
-    "方向说明：",
-    option.description,
-    "",
-    "详细提示词：",
-    option.prompt,
-    "",
-    "输出应是一张完整、可独立展示的图片；构图清晰；不要添加水印、UI 截图边框或说明文字。"
-  ].join("\n");
+  const lang = body?.language === "en" ? "en" : "zh";
+  const prompt = lang === "en"
+    ? [
+        "Generate a new image based on the reference image, preserving the most important subjects, color relationships, or visual memory points, but do not simply copy.",
+        "Direction:",
+        option.title,
+        "",
+        "Description:",
+        option.description,
+        "",
+        "Detailed prompt:",
+        option.prompt,
+        "",
+        "Output should be a complete, standalone image; clear composition; no watermarks, UI screenshot borders, or explanatory text."
+      ].join("\n")
+    : [
+        "请基于参考图生成一张新图，保留原图最重要的主体、颜色关系或视觉记忆点，但不要只是复制。",
+        "成图方向：",
+        option.title,
+        "",
+        "方向说明：",
+        option.description,
+        "",
+        "详细提示词：",
+        option.prompt,
+        "",
+        "输出应是一张完整、可独立展示的图片；构图清晰；不要添加水印、UI 截图边框或说明文字。"
+      ].join("\n");
 
   const result = await generateTokenHubImage(prompt, body?.imageUrl || null, imageDataUrl);
 
@@ -653,39 +704,59 @@ async function handleExplain(body, res) {
     return sendJson(res, 400, { error: "prompt is required" });
   }
 
+  const lang = body?.language === "en" ? "en" : "zh";
+
   if (isDemoRole(runtimeConfigs.chat)) {
+    const demoExplanation = lang === "en"
+      ? `This image was created in the "${optionTitle || "generation direction"}" direction. It preserves the core visual memory of the original image while introducing new composition and lighting, presenting a visual effect that ${summary ? summary.slice(0, 20) : "echoes the original image"}.`
+      : `这张图片基于「${optionTitle || "生成方向"}」方向创作。画面保留了原图的核心视觉记忆，同时引入了新的构图与光影处理，整体呈现出 ${summary ? summary.slice(0, 20) : "与原图呼应"} 的视觉效果。`;
     return sendJson(res, 200, {
       provider: "demo",
       model: runtimeConfigs.chat.model,
-      explanation: `这张图片基于「${optionTitle || "生成方向"}」方向创作。画面保留了原图的核心视觉记忆，同时引入了新的构图与光影处理，整体呈现出 ${summary ? summary.slice(0, 20) : "与原图呼应"} 的视觉效果。`
+      explanation: demoExplanation
     });
   }
 
-  const context = [
-    "你是一位视觉创意评论助手，正在为画布式图片生成应用中的每张生成图撰写简短的内容讲解。",
-    "用户会看到：原图分析摘要、选中的创作方向、以及实际发给成图模型的提示词。",
-    "你的任务是用 1-2 句话（30-60 字）描述这张生成图在视觉上做了什么、保留了什么、改变了什么。",
-    "语气专业、简洁、有画面感。不要重复提示词原文，要提炼成观众能感知的视觉描述。",
-    "",
-    "原图分析摘要：",
-    summary || "暂无",
-    "",
-    "创作方向：",
-    optionTitle || "未命名方向",
-    "",
-    "成图提示词：",
-    prompt
-  ].join("\n");
+  const context = lang === "en"
+    ? [
+        "You are a visual creative commentary assistant writing short descriptions for each generated image in a canvas-based image generation app. The user sees: original image analysis summary, selected creative direction, and the actual prompt sent to the image generation model. Your task is to describe in 1-2 sentences (30-60 words) what this generated image did visually, what it preserved, and what it changed. Tone: professional, concise, evocative. Do not repeat the prompt verbatim; distill it into a description the viewer can perceive.",
+        "",
+        "Original analysis summary:",
+        summary || "None",
+        "",
+        "Creative direction:",
+        optionTitle || "Unnamed direction",
+        "",
+        "Generation prompt:",
+        prompt
+      ].join("\n")
+    : [
+        "你是一位视觉创意评论助手，正在为画布式图片生成应用中的每张生成图撰写简短的内容讲解。",
+        "用户会看到：原图分析摘要、选中的创作方向、以及实际发给成图模型的提示词。",
+        "你的任务是用 1-2 句话（30-60 字）描述这张生成图在视觉上做了什么、保留了什么、改变了什么。",
+        "语气专业、简洁、有画面感。不要重复提示词原文，要提炼成观众能感知的视觉描述。",
+        "",
+        "原图分析摘要：",
+        summary || "暂无",
+        "",
+        "创作方向：",
+        optionTitle || "未命名方向",
+        "",
+        "成图提示词：",
+        prompt
+      ].join("\n");
 
   const response = await chatCompletions(runtimeConfigs.chat, {
     messages: [
       {
         role: "system",
-        content: "你是 Kimi K2.6 no thinking 模式下的视觉创意评论助手。讲解要短、有画面感、不提技术细节。"
+        content: lang === "en"
+          ? "You are the Kimi K2.6 no-thinking visual creative commentary assistant. Descriptions are short, evocative, and avoid technical details."
+          : "你是 Kimi K2.6 no thinking 模式下的视觉创意评论助手。讲解要短、有画面感、不提技术细节。"
       },
       {
         role: "user",
-        content
+        content: context
       }
     ],
     thinking: { type: "disabled" }

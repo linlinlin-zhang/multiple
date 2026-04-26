@@ -11,6 +11,10 @@
         if (t === "dark" || t === "light") {
           document.documentElement.setAttribute("data-theme", t);
         }
+        var l = localStorage.getItem("oryzae-lang");
+        if (l === "zh" || l === "en") {
+          document.documentElement.setAttribute("lang", l === "zh" ? "zh-CN" : "en");
+        }
       })();
     </script>
     <link rel="stylesheet" href="/styles.css?v=12" />
@@ -65,6 +69,13 @@
               <span>深色模式</span>
               <input id="themeToggle" type="checkbox" />
             </label>
+            <div class="settings-language-row" style="margin-top:10px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <span>语言</span>
+              <select id="languageSelect" style="font:inherit;padding:6px 10px;border-radius:8px;border:1px solid rgba(255,255,255,0.16);background:rgba(255,255,255,0.08);color:inherit;">
+                <option value="zh">中文</option>
+                <option value="en">English</option>
+              </select>
+            </div>
           </div>
         </div>
       </aside>
