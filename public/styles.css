@@ -23,6 +23,34 @@
   --itemBg: #f5f7fa;
 }
 
+html[data-theme="dark"] {
+  --ps-blue: #4aa8ff;
+  --ps-blue-hover: #6ab8ff;
+  --ps-cyan: #5bc0de;
+  --ps-black: #0a0a0a;
+  --paper: #141414;
+  --ice: #1a1a1a;
+  --divider: #2a2a2a;
+  --charcoal: #e8e8e8;
+  --body: #a0a0a0;
+  --muted: #555555;
+  --line: #4aa8ff;
+  --line-shadow: rgba(255, 255, 255, 0.08);
+  --danger: #ff6b47;
+  --shadow-06: 0 5px 9px rgba(0, 0, 0, 0.35);
+  --shadow-08: 0 8px 16px rgba(0, 0, 0, 0.45);
+  --shadow-16: 0 18px 42px rgba(0, 0, 0, 0.55);
+  --ring: 0 0 0 2px #141414, 0 0 0 4px var(--ps-blue);
+  --ink: #f0f0f0;
+  --inkMuted: #a0a0a0;
+  --border: #2a2a2a;
+  --itemBg: #1f1f1f;
+}
+
+body, .app-shell, .rail, .viewport, .board, .node, .chatbar, .session-panel, .settings-panel {
+  transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -1171,6 +1199,51 @@ body.nav-collapsed .nav-settings {
   display: flex;
   gap: 10px;
   padding-top: 8px;
+}
+
+.settings-section {
+  padding: 0 4px;
+}
+
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.settings-toggle-row input[type="checkbox"] {
+  width: 40px;
+  height: 22px;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  position: relative;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.settings-toggle-row input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--paper);
+  transition: transform 160ms ease;
+}
+
+.settings-toggle-row input[type="checkbox"]:checked {
+  background: var(--ps-blue);
+}
+
+.settings-toggle-row input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
 }
 
 @keyframes spin {

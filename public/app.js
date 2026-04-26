@@ -90,6 +90,7 @@ async function init() {
   checkHealth();
   setStatus("Ready", "ready");
   await loadSettings();
+  await loadTheme();
 
   const urlParams = new URLSearchParams(window.location.search);
   const resumeSessionId = urlParams.get("session");
@@ -237,6 +238,16 @@ function wireControls() {
     populateSettingsForm();
     showSaveConfirmation("已重置");
   });
+
+  // Theme toggle wiring
+  const themeToggle = document.querySelector("#themeToggle");
+  if (themeToggle) {
+    themeToggle.checked = document.documentElement.getAttribute("data-theme") === "dark";
+    themeToggle.addEventListener("change", () => {
+      saveTheme(themeToggle.checked ? "dark" : "light");
+    });
+  }
+
   viewport.addEventListener("click", (event) => {
     if (!settingsPanel?.classList.contains("hidden") && event.target === viewport) {
       settingsPanel.classList.add("hidden");
@@ -312,6 +323,37 @@ async function checkHealth() {
   }
 }
 
+function applyTheme(theme) {
+  if (theme !== "light" && theme !== "dark") return;
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("oryzae-theme", theme);
+}
+
+async function loadTheme() {
+  try {
+    const res = await fetch("/api/settings");
+    const data = await res.json();
+    if (data.theme === "light" || data.theme === "dark") {
+      applyTheme(data.theme);
+    }
+  } catch (e) {
+    console.error("Failed to load theme", e);
+  }
+}
+
+async function saveTheme(theme) {
+  applyTheme(theme);
+  try {
+    await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theme })
+    });
+  } catch (e) {
+    console.error("Failed to save theme", e);
+  }
+}
+
 async function loadSettings() {
   try {
     const data = await getJson("/api/settings");
@@ -324,6 +366,9 @@ async function loadSettings() {
           temperature: typeof data[role].temperature === "number" ? data[role].temperature : 0.7
         };
       }
+    }
+    if (data.theme === "light" || data.theme === "dark") {
+      applyTheme(data.theme);
     }
   } catch (err) {
     console.error("Failed to load settings:", err);

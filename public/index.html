@@ -5,6 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ORYZAE / Image Board</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23faf9f4'/%3E%3Ccircle cx='21' cy='25' r='7' fill='%233d9a92'/%3E%3Ccircle cx='43' cy='20' r='7' fill='%23d9bc68'/%3E%3Ccircle cx='38' cy='43' r='7' fill='%23bd453c'/%3E%3Cpath d='M21 25 43 20 38 43 21 25' fill='none' stroke='%23202939' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <script>
+      (function() {
+        var t = localStorage.getItem("oryzae-theme");
+        if (t === "dark" || t === "light") {
+          document.documentElement.setAttribute("data-theme", t);
+        }
+      })();
+    </script>
     <link rel="stylesheet" href="/styles.css?v=12" />
   </head>
   <body>
@@ -51,6 +59,12 @@
           <div class="nav-settings-meta">
             <span id="modeBadge" class="mode-badge">checking</span>
             <span id="saveStatus" class="save-status"></span>
+          </div>
+          <div class="settings-section" style="margin-top:12px;">
+            <label class="settings-toggle-row">
+              <span>深色模式</span>
+              <input id="themeToggle" type="checkbox" />
+            </label>
           </div>
         </div>
       </aside>
