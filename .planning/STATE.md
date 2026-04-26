@@ -1,20 +1,20 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: completed
+milestone: v1.1
+milestone_name: Canvas Intelligence & Rich Input
+status: defining_requirements
 last_updated: "2026-04-26T12:00:00.000Z"
 progress:
   total_phases: 4
-  completed_phases: 4
-  total_plans: 14
-  completed_plans: 14
-  percent: 100
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # ORYZAE Image Board — Project State
 
-**Milestone:** Persistence & History v1
+**Milestone:** Canvas Intelligence & Rich Input v1.1
 **Core Value:** 用户上传一张图，就能在画布上获得 AI 驱动的创作方向并生成新图；刷新页面后历史会话不丢失，可随时翻阅过往探索并查看 AI 对每张生成图的讲解。
 **Project Reference:** [PROJECT.md](./PROJECT.md)
 **Last Updated:** 2026-04-26
@@ -25,13 +25,13 @@ progress:
 
 | Field | Value |
 |-------|-------|
-| Phase | 4 |
-| Plan | 04-03 |
-| Status | Completed |
-| Progress | 4/4 phases complete (100%) |
+| Phase | Not started |
+| Plan | — |
+| Status | Defining requirements |
+| Progress | 0/4 phases complete (0%) |
 
 ```
-[████████████████████████████████████████] 100%
+[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 ```
 
 ---
@@ -40,10 +40,10 @@ progress:
 
 | Metric | Value |
 |--------|-------|
-| Requirements validated | 17/17 |
-| v1 requirements mapped | 17/17 |
-| Phases complete | 4/4 |
-| Plans complete | 14/14 |
+| v1.0 requirements validated | 17/17 |
+| v1.1 requirements defined | 14/14 |
+| Phases complete | 0/4 |
+| Plans complete | 0/0 |
 | Blockers | 1 |
 
 ---
@@ -62,15 +62,22 @@ progress:
 | 6 | NodeGraphThumbnail anchor calculation uses Math.min(height*0.48, height-32) | 2026-04-25 | Exactly matches public/app.js anchor() behavior |
 | 7 | Mobile sidebar implemented as fixed overlay with backdrop | 2026-04-25 | Avoids z-index issues with SVG thumbnails |
 | 8 | Link shadow drawn as separate path layer | 2026-04-25 | Better performance with many links vs SVG filter per-link |
+| 9 | 文本文件直接读取而非截图分析 | 2026-04-26 | 大模型视觉 API 对文档截图效果差，文本提取更准确 |
+| 10 | 网页链接分析采用搜索+摘要而非全页抓取 | 2026-04-26 | 避免处理复杂网页渲染，更稳定可靠 |
 
 ### TODOs
 
-- [x] Set up PostgreSQL and Prisma schema (Session, Node, Link, Asset, ShareToken)
-- [x] Implement file storage layer with SHA-256 addressing
-- [x] Wire auto-save with 2-second debounce into existing canvas
-- [x] Build history browser React UI from `app/` prototype
-- [x] Add share token generation and read-only viewer
-- [x] Integrate AI title/explanation generation
+- [ ] Set up PostgreSQL and Prisma schema (Session, Node, Link, Asset, ShareToken)
+- [ ] Implement file storage layer with SHA-256 addressing
+- [ ] Wire auto-save with 2-second debounce into existing canvas
+- [ ] Build history browser React UI from `app/` prototype
+- [ ] Add share token generation and read-only viewer
+- [ ] Integrate AI title/explanation generation
+- [ ] Canvas interaction polish (dialog, grid, dots, collapse, scroll)
+- [ ] Multi-format input (text files, web links)
+- [ ] Settings panel (API config, dark mode, i18n)
+- [ ] Auto-arrange canvas
+- [ ] Image viewer / modify / download
 
 ### Blockers
 
@@ -82,5 +89,5 @@ progress:
 
 ## Session Continuity
 
-**Current session started:** 2026-04-25
-**Next expected action:** Milestone v1.0 is complete. User should start PostgreSQL, run `npx prisma migrate deploy`, and verify all features end-to-end.
+**Current session started:** 2026-04-26
+**Next expected action:** Milestone v1.1 requirements and roadmap defined. Ready for phase planning.
