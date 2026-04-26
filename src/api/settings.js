@@ -32,7 +32,8 @@ export async function handleUpdateSettings(body, res) {
     const endpoint = typeof cfg.endpoint === "string" ? cfg.endpoint.trim() : "";
     const model = typeof cfg.model === "string" ? cfg.model.trim() : "";
     const apiKey = typeof cfg.apiKey === "string" ? cfg.apiKey.trim() : "";
-    const temperature = typeof cfg.temperature === "number" ? cfg.temperature : 0.7;
+    let temperature = typeof cfg.temperature === "number" ? cfg.temperature : 0.7;
+    temperature = Math.min(2, Math.max(0, temperature));
     const upserted = await prisma.settings.upsert({
       where: { role },
       update: { endpoint, model, apiKey, temperature },
