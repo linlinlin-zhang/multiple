@@ -19,13 +19,13 @@ function formatBytes(bytes: number): string {
 function getAssetIcon(assetType: "image" | "file" | "link" | "chat"): React.ReactNode {
   switch (assetType) {
     case "image":
-      return <Image size={16} className="text-cabinet-ink2" />;
+      return <Image size={16} className="text-cabinet-blue" />;
     case "file":
-      return <FileText size={16} className="text-cabinet-ink2" />;
+      return <FileText size={16} className="text-cabinet-blue" />;
     case "link":
-      return <ExternalLink size={16} className="text-cabinet-ink2" />;
+      return <ExternalLink size={16} className="text-cabinet-blue" />;
     case "chat":
-      return <MessageSquare size={16} className="text-cabinet-ink2" />;
+      return <MessageSquare size={16} className="text-cabinet-blue" />;
     default:
       return null;
   }
@@ -57,9 +57,14 @@ function transformSessionToItems(session: SessionDetail): SidebarItemData[] {
   // Files group (uploaded assets)
   const files = session.assets.filter((a: Asset) => a.kind === "upload");
   for (const asset of files) {
+    const isText =
+      asset.mimeType.startsWith("text/") ||
+      asset.mimeType === "application/pdf" ||
+      asset.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      asset.mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
     items.push({
       id: asset.id,
-      title: asset.fileName || "Uploaded File",
+      title: isText ? asset.fileName || "Document" : asset.fileName || "Uploaded File",
       summary: `${asset.mimeType} · ${formatBytes(asset.fileSize)}`,
       groupLabel: "Files",
       icon: getAssetIcon("file"),
@@ -72,9 +77,15 @@ function transformSessionToItems(session: SessionDetail): SidebarItemData[] {
   );
   for (const node of linkNodes) {
     const url = node.data.option.referenceUrl as string;
+    let domain = "Web Link";
+    try {
+      domain = new URL(url).hostname;
+    } catch {
+      // fallback to "Web Link"
+    }
     items.push({
       id: node.id,
-      title: "Web Link",
+      title: domain,
       summary: url.length > 60 ? url.slice(0, 60) + "..." : url,
       groupLabel: "Links",
       icon: getAssetIcon("link"),
