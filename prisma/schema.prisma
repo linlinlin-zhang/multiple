@@ -97,6 +97,7 @@ model Settings {
   apiKey      String   @default("")
   temperature Float    @default(0.7)
   theme       String   @default("light")
+  language    String   @default("zh")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

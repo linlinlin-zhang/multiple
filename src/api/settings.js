@@ -16,6 +16,7 @@ export async function handleGetSettings(res) {
   }
   const globalRow = rows.find(r => r.role === "global");
   result.theme = globalRow?.theme || "light";
+  result.language = globalRow?.language || "zh";
   res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" });
   res.end(JSON.stringify(result));
 }
@@ -37,6 +38,17 @@ export async function handleUpdateSettings(body, res) {
       create: { role: "global", endpoint: "", model: "", apiKey: "", theme: themeValue }
     });
     result.theme = globalUpserted.theme;
+  }
+
+  // Handle language update (global row)
+  if (typeof body.language === "string") {
+    const langValue = body.language === "en" ? "en" : "zh";
+    const globalUpserted = await prisma.settings.upsert({
+      where: { role: "global" },
+      update: { language: langValue },
+      create: { role: "global", endpoint: "", model: "", apiKey: "", language: langValue }
+    });
+    result.language = globalUpserted.language;
   }
 
   const allowed = ["analysis", "chat", "image"];

@@ -12,3 +12,4 @@ CREATE TABLE "Settings" (
 );
 CREATE UNIQUE INDEX "Settings_role_key" ON "Settings"("role");
 ALTER TABLE "Settings" ADD COLUMN "theme" TEXT NOT NULL DEFAULT 'light';
+ALTER TABLE "Settings" ADD COLUMN "language" TEXT NOT NULL DEFAULT 'zh';
