@@ -88,3 +88,14 @@ model ShareToken {
   @@index([token])
   @@index([sessionId])
 }
+
+model Settings {
+  id          String   @id @default(uuid())
+  role        String   @unique // "analysis" | "chat" | "image"
+  endpoint    String
+  model       String
+  apiKey      String
+  temperature Float    @default(0.7)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
