@@ -390,7 +390,8 @@ body.nav-collapsed .nav-settings {
   touch-action: none;
 }
 
-.node.collapsed-hidden {
+.node.collapsed-hidden,
+.node.selective-hidden {
   display: none !important;
 }
 

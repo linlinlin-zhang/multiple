@@ -29,7 +29,8 @@ const state = {
   chatMessages: [],
   nodes: new Map(),
   links: [],
-  collapsed: new Set(),
+  collapsed: new Set(),        // full collapse (double-click)
+  selectiveHidden: new Set(),  // selective hide (single-click / auto-collapse)
   generatedCount: 0,
   view: {
     x: 0,
@@ -347,6 +348,7 @@ function renderAnalysis(data) {
   analysisNode.classList.remove("hidden");
 
   state.links = [{ from: "source", to: "analysis", kind: "analysis" }];
+  state.selectiveHidden.clear();
   applyCollapseState();
 }
 
@@ -438,6 +440,26 @@ async function generateOption(id, option) {
     if (!wasGenerated) {
       state.generatedCount += 1;
     }
+
+    // Auto-collapse unselected siblings
+    const parentLink = state.links.find(l => l.to === id);
+    if (parentLink) {
+      const siblings = getChildren(parentLink.from);
+      let hiddenAny = false;
+      for (const sid of siblings) {
+        if (sid === id) continue;
+        const n = state.nodes.get(sid);
+        if (n && !n.generated) {
+          state.selectiveHidden.add(sid);
+          hiddenAny = true;
+        }
+      }
+      if (hiddenAny) {
+        applyCollapseState();
+        autoSave();
+      }
+    }
+
     applyCollapseState();
     updateCounts();
     setStatus("Image generated", "ready");
@@ -497,6 +519,7 @@ function clearOptions() {
       node.element.remove();
       state.nodes.delete(id);
       state.collapsed.delete(id);
+      state.selectiveHidden.delete(id);
     }
   }
   state.links = state.links.filter((link) => !link.to.startsWith("option-") && !link.from.startsWith("option-"));
@@ -518,12 +541,35 @@ function ensureCollapseControl(id, element) {
   button.type = "button";
   button.className = "collapse-dot";
   button.setAttribute("aria-label", "Collapse downstream nodes");
-  button.addEventListener("click", (event) => {
-    event.stopPropagation();
-    toggleCollapse(id);
-  });
+  attachMultiClickCollapseHandler(button, id);
   element.prepend(button);
   return button;
+}
+
+function attachMultiClickCollapseHandler(button, nodeId) {
+  let clicks = 0;
+  let timer = null;
+
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    clicks++;
+    if (clicks === 1) {
+      timer = setTimeout(() => {
+        toggleSelectiveCollapse(nodeId);
+        clicks = 0;
+      }, 280);
+    } else if (clicks === 2) {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        toggleCollapse(nodeId);
+        clicks = 0;
+      }, 280);
+    } else if (clicks >= 3) {
+      clearTimeout(timer);
+      expandAllCollapsed();
+      clicks = 0;
+    }
+  });
 }
 
 function toggleCollapse(id) {
@@ -539,9 +585,45 @@ function toggleCollapse(id) {
   autoSave();
 }
 
+function toggleSelectiveCollapse(id) {
+  const descendants = getDescendants(id);
+  if (!descendants.size) return;
+
+  const unGeneratedDescendants = [...descendants].filter(did => {
+    const n = state.nodes.get(did);
+    return n && !n.generated;
+  });
+
+  if (!unGeneratedDescendants.length) return;
+
+  const anyVisible = unGeneratedDescendants.some(did => !state.selectiveHidden.has(did) && !isHiddenByCollapsedAncestor(did));
+
+  if (anyVisible) {
+    for (const did of unGeneratedDescendants) {
+      state.selectiveHidden.add(did);
+    }
+  } else {
+    for (const did of unGeneratedDescendants) {
+      state.selectiveHidden.delete(did);
+    }
+  }
+  applyCollapseState();
+  autoSave();
+}
+
+function expandAllCollapsed() {
+  state.collapsed.clear();
+  state.selectiveHidden.clear();
+  applyCollapseState();
+  autoSave();
+}
+
 function applyCollapseState() {
   for (const [id, node] of state.nodes.entries()) {
-    node.element.classList.toggle("collapsed-hidden", isHiddenByCollapsedAncestor(id));
+    const hiddenByAncestor = isHiddenByCollapsedAncestor(id);
+    const selectivelyHidden = state.selectiveHidden.has(id);
+    node.element.classList.toggle("collapsed-hidden", hiddenByAncestor);
+    node.element.classList.toggle("selective-hidden", selectivelyHidden && !hiddenByAncestor);
   }
   updateCollapseControls();
   drawLinks();
@@ -552,14 +634,21 @@ function updateCollapseControls() {
     const button = Array.from(node.element.children).find((child) => child.classList?.contains("collapse-dot"));
     if (!button) continue;
 
-    const count = getDescendants(id).size;
-    const collapsed = state.collapsed.has(id);
-    button.disabled = count === 0;
-    button.textContent = collapsed ? String(count) : "";
-    button.classList.toggle("is-collapsed", collapsed);
-    button.classList.toggle("has-children", count > 0);
-    button.title = count > 0
-      ? (collapsed ? `展开 ${count} 个后续节点` : `收起 ${count} 个后续节点`)
+    const descendants = getDescendants(id);
+    const fullCollapsed = state.collapsed.has(id);
+
+    const hiddenCount = [...descendants].filter(did => {
+      const n = state.nodes.get(did);
+      return n && (n.element.classList.contains("collapsed-hidden") || n.element.classList.contains("selective-hidden"));
+    }).length;
+
+    const hasChildren = descendants.size > 0;
+    button.disabled = !hasChildren;
+    button.textContent = (fullCollapsed || hiddenCount > 0) ? String(hiddenCount || descendants.size) : "";
+    button.classList.toggle("is-collapsed", fullCollapsed || hiddenCount > 0);
+    button.classList.toggle("has-children", hasChildren);
+    button.title = hasChildren
+      ? (fullCollapsed ? `展开 ${descendants.size} 个后续节点` : hiddenCount > 0 ? `展开 ${hiddenCount} 个后续节点` : `收起 ${descendants.size} 个后续节点`)
       : "没有后续节点";
     button.setAttribute("aria-label", button.title);
   }
@@ -659,7 +748,8 @@ function drawLinks() {
 function isNodeVisible(node) {
   return Boolean(node)
     && !node.element.classList.contains("hidden")
-    && !node.element.classList.contains("collapsed-hidden");
+    && !node.element.classList.contains("collapsed-hidden")
+    && !node.element.classList.contains("selective-hidden");
 }
 
 function anchor(node, side) {
@@ -835,6 +925,7 @@ function computeStateHash() {
     nodes: Array.from(state.nodes.entries()).map(([k, v]) => [k, { x: v.x, y: v.y, width: v.width, height: v.height, generated: v.generated, option: v.option }]),
     links: state.links,
     collapsed: Array.from(state.collapsed),
+    selectiveHidden: Array.from(state.selectiveHidden),
     chatMessages: state.chatMessages,
     view: state.view,
     sourceImage: state.sourceImage ? state.sourceImage.slice(0, 200) : null,
@@ -852,6 +943,7 @@ async function prepareStateForSave() {
     nodes: {},
     links: state.links,
     collapsed: Array.from(state.collapsed),
+    selectiveHidden: Array.from(state.selectiveHidden),
     generatedCount: state.generatedCount,
     view: state.view
   };
@@ -954,6 +1046,7 @@ async function loadSession(sessionId) {
     state.chatMessages = [];
     state.links = [];
     state.collapsed.clear();
+    state.selectiveHidden.clear();
     state.generatedCount = 0;
     state.sourceImage = null;
     state.sourceImageHash = null;
@@ -1053,6 +1146,9 @@ async function loadSession(sessionId) {
 
     for (const n of data.nodes) {
       if (n.collapsed) state.collapsed.add(n.nodeId);
+    }
+    if (data.selectiveHidden) {
+      for (const id of data.selectiveHidden) state.selectiveHidden.add(id);
     }
 
     state.chatMessages = data.chatMessages.map(m => ({ role: m.role, content: m.content }));
