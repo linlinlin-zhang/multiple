@@ -116,6 +116,8 @@ const i18n = {
     "source.urlPlaceholder": "https://...",
     "source.analyzeUrl": "分析链接",
     "chat.placeholder": "输入想继续探索的方向、风格或约束",
+    "chat.placeholderWithSelection": "对 {title} 继续探索…",
+    "chat.selectCardFirst": "请先双击选中一张卡片",
     "chat.send": "发送",
     "chat.attach": "上传图片或文本文件",
     "status.ready": "Ready",
@@ -205,6 +207,8 @@ const i18n = {
     "source.urlPlaceholder": "https://...",
     "source.analyzeUrl": "Analyze Link",
     "chat.placeholder": "Enter direction, style or constraint to explore",
+    "chat.placeholderWithSelection": "Explore {title}…",
+    "chat.selectCardFirst": "Please double-click a card to select it first",
     "chat.send": "Send",
     "chat.attach": "Upload image or text file",
     "status.ready": "Ready",
@@ -341,7 +345,16 @@ function renderAllText() {
   if (urlAnalyzeBtn) urlAnalyzeBtn.textContent = t("source.analyzeUrl");
 
   const chatIn = document.querySelector("#chatInput");
-  if (chatIn) chatIn.placeholder = t("chat.placeholder");
+  if (chatIn) {
+    const hasSelection = state.selectedNodeId !== null;
+    if (hasSelection) {
+      const node = state.nodes.get(state.selectedNodeId);
+      const title = node?.option?.title || node?.id || "";
+      chatIn.placeholder = t("chat.placeholderWithSelection", { title: title.slice(0, 20) });
+    } else {
+      chatIn.placeholder = t("chat.placeholder");
+    }
+  }
   const chatSend = document.querySelector("#chatSendButton");
   if (chatSend) chatSend.textContent = t("chat.send");
   const chatAttach = document.querySelector("#chatAttachButton");
@@ -468,6 +481,17 @@ function wireControls() {
   fileInput.addEventListener("change", handleFile);
   analyzeButton.addEventListener("click", analyzeSource);
   chatForm.addEventListener("submit", handleChatSubmit);
+  chatInput?.addEventListener("keydown", (event) => {
+    if (chatInput.disabled && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      showSelectionToast();
+    }
+  });
+  chatInput?.addEventListener("focus", () => {
+    if (chatInput.disabled) {
+      showSelectionToast();
+    }
+  });
   navToggle.addEventListener("click", toggleNav);
 
   // Source tabs (file / url)
@@ -1343,7 +1367,39 @@ function deselectNode() {
 }
 
 function updateDialogState() {
-  // Wired in 09-02
+  const hasSelection = state.selectedNodeId !== null;
+  const node = hasSelection ? state.nodes.get(state.selectedNodeId) : null;
+
+  // Enable/disable chat input
+  if (chatInput) {
+    chatInput.disabled = !hasSelection;
+    if (hasSelection && node) {
+      const title = node.option?.title || node.id;
+      chatInput.placeholder = t("chat.placeholderWithSelection", { title: title.slice(0, 20) });
+    } else {
+      chatInput.placeholder = t("chat.placeholder");
+    }
+  }
+  if (chatSendButton) {
+    chatSendButton.disabled = !hasSelection;
+  }
+
+  // Toggle no-selection class on chatbar for visual feedback
+  if (chatForm) {
+    chatForm.classList.toggle("no-selection", !hasSelection);
+  }
+}
+
+let toastTimer = null;
+function showSelectionToast() {
+  const toast = document.querySelector("#selectionToast");
+  if (!toast) return;
+  toast.textContent = t("chat.selectCardFirst");
+  toast.classList.add("visible");
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.classList.remove("visible");
+  }, 2500);
 }
 
 function registerNode(id, element, data) {
