@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Canvas Intelligence & Rich Input
-status: unknown
-stopped_at: Completed 08-03-PLAN.md
-last_updated: "2026-04-26T15:06:08.392Z"
+status: complete
+stopped_at: Milestone v1.1 archived and tagged
+last_updated: "2026-04-26T21:50:00.000Z"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -15,7 +15,7 @@ progress:
 
 # ORYZAE Image Board — Project State
 
-**Milestone:** Canvas Intelligence & Rich Input v1.1
+**Milestone:** Canvas Intelligence & Rich Input v1.1 (shipped)
 **Core Value:** 用户上传一张图，就能在画布上获得 AI 驱动的创作方向并生成新图；刷新页面后历史会话不丢失，可随时翻阅过往探索并查看 AI 对每张生成图的讲解。
 **Project Reference:** [PROJECT.md](./PROJECT.md)
 **Last Updated:** 2026-04-26
@@ -26,13 +26,14 @@ progress:
 
 | Field | Value |
 |-------|-------|
-| Phase | 7 — Settings & Personalization |
-| Plan | 07-01, 07-02, 07-03 (all complete) |
-| Status | Complete |
-| Progress | 3/4 phases complete (75%) |
+| Milestone | v1.1 — Complete |
+| Phases | 5/6/7/8 (all complete) |
+| Plans | 12/12 complete |
+| Status | Archived |
+| Next | Define v2 with `/gsd-new-milestone` |
 
 ```
-[████████████████████████████░░░░░░░░░░░░] 75%
+[████████████████████████████████████████] 100%
 ```
 
 ---
@@ -42,15 +43,12 @@ progress:
 | Metric | Value |
 |--------|-------|
 | v1.0 requirements validated | 17/17 |
-| v1.1 requirements defined | 14/14 |
-| Phases complete | 2/4 |
-| Plans complete | 6/6 |
+| v1.1 requirements validated | 14/14 |
+| Phases complete | 8/8 |
+| Plans complete | 24/24 |
 | Blockers | 1 |
 
 ---
-| Phase 06 P02 | 10m | 2 tasks | 4 files |
-| Phase 08 P01 | 12m | 3 tasks | 3 files |
-| Phase 08 P03 | 15m | 4 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -71,22 +69,14 @@ progress:
 
 ### TODOs
 
-- [ ] Set up PostgreSQL and Prisma schema (Session, Node, Link, Asset, ShareToken)
-- [ ] Implement file storage layer with SHA-256 addressing
-- [ ] Wire auto-save with 2-second debounce into existing canvas
-- [ ] Build history browser React UI from `app/` prototype
-- [ ] Add share token generation and read-only viewer
-- [ ] Integrate AI title/explanation generation
-- [x] Canvas interaction polish (dialog, grid, dots, collapse, scroll) — executed
-- [x] Multi-format input (text files, web links) — Phase 6 complete
-- [x] Settings panel (API config, dark mode, i18n) — Phase 7 complete
-- [ ] Auto-arrange canvas
-- [ ] Image viewer / modify / download
+- [x] v1.0 Persistence & History — shipped 2026-04-26
+- [x] v1.1 Canvas Intelligence & Rich Input — shipped 2026-04-26
+- [ ] Define v2 milestone scope and requirements
 
 ### Blockers
 
 | # | Blocker | Impact | Resolution |
-|---|---------|--------|------------|
+|---|---------|--------|----------|
 | 1 | PostgreSQL not running locally | Migration cannot be applied; `scripts/test-db.js` fails | User must start PostgreSQL, update `.env` DATABASE_URL, then run `npx prisma migrate deploy` |
 
 ---
@@ -95,5 +85,5 @@ progress:
 
 **Current session started:** 2026-04-26
 **Last session resumed:** 2026-04-26
-**Stopped at:** Completed 08-03-PLAN.md
-**Next expected action:** Execute Phase 8 (/gsd-execute-phase 8) or verify Phase 7
+**Stopped at:** Milestone v1.1 archived
+**Next expected action:** Define v2 milestone (`/gsd-new-milestone`) or continue ad-hoc work

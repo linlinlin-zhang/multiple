@@ -33,24 +33,24 @@
 - ✓ **DATA-01**: PostgreSQL + Prisma 持久化 — v1.0
 - ✓ **DATA-02**: 服务端文件存储 — v1.0
 
+**v1.1 — Canvas Intelligence & Rich Input**
+
+- ✓ **CANV-01**: 工作台对话框背景精简为仅包围对话框大小 — v1.1
+- ✓ **CANV-02**: 提高画布网格密度 — v1.1
+- ✓ **CANV-03**: 移除卡片左上角圆点装饰 — v1.1
+- ✓ **CANV-04**: 节点折叠/展开：连接点单击收纳未成图卡片，双击收纳全部后续卡片，三击展开全部 — v1.1
+- ✓ **CANV-05**: 鼠标滚动画布平移，Ctrl+滚动画布缩放 — v1.1
+- ✓ **INPT-01**: 支持上传文本文件（Word / TXT / PDF / PPT）并由 AI 分析生成创作方向 — v1.1
+- ✓ **INPT-02**: 支持上传网页链接并由 AI 分析网站内容生成创作方向 — v1.1
+- ✓ **SETT-01**: 设置面板：用户可配置分析 / 对话 / 成图模型的 API 及参数 — v1.1
+- ✓ **SETT-02**: 深色模式切换 — v1.1
+- ✓ **SETT-03**: 中英文语言切换 — v1.1
+- ✓ **TOOL-01**: 一键整理画布：自动收缩未成图节点并美观重排剩余节点 — v1.1
+- ✓ **TOOL-02**: 图片查看弹窗：点击卡片图片放大展示 — v1.1
+- ✓ **TOOL-03**: 图片修改：弹窗内支持一键重生成或自定义 prompt 修改 — v1.1
+- ✓ **TOOL-04**: 图片下载：弹窗内支持下载图片 — v1.1
+
 ### Active
-
-**Milestone v1.1 — Canvas Intelligence & Rich Input**
-
-- [ ] **CANV-01**: 工作台对话框背景精简为仅包围对话框大小
-- [ ] **CANV-02**: 提高画布网格密度
-- [ ] **CANV-03**: 移除卡片左上角圆点装饰
-- [ ] **CANV-04**: 节点折叠/展开：连接点单击收纳未成图卡片，双击收纳全部后续卡片，三击展开全部
-- [ ] **CANV-05**: 鼠标滚动画布平移，Ctrl+滚动画布缩放
-- [ ] **INPT-01**: 支持上传文本文件（Word / TXT / PDF / PPT）并由 AI 分析生成创作方向
-- [ ] **INPT-02**: 支持上传网页链接并由 AI 分析网站内容生成创作方向
-- [ ] **SETT-01**: 设置面板：用户可配置分析 / 对话 / 成图模型的 API 及参数
-- [ ] **SETT-02**: 深色模式切换
-- [ ] **SETT-03**: 中英文语言切换
-- [ ] **TOOL-01**: 一键整理画布：自动收缩未成图节点并美观重排剩余节点
-- [ ] **TOOL-02**: 图片查看弹窗：点击卡片图片放大展示
-- [ ] **TOOL-03**: 图片修改：弹窗内支持一键重生成或自定义 prompt 修改
-- [ ] **TOOL-04**: 图片下载：弹窗内支持下载图片
 
 **Future / v2**
 
@@ -67,66 +67,44 @@
 - 移动端 App — Web 优先，移动端适配仅保证可用性
 - 视频生成 — 仅支持图片生成
 - 第三方 OAuth 登录 — 邮件/密码都未引入，OAuth 更不需要
+- S3/对象存储 — 本地文件存储足够，S3 可作为未来配置项
+- 实时语音输入 — 超出当前 milestone 范围
 
 ## Context
 
-- Brownfield 项目：已有可运行的画板原型（`server.js` + `public/app.js`），零运行时依赖
-- UI 原型参考：`app/` 文件夹内含 React + Vite + Tailwind + shadcn/ui 的文件柜式界面，需迁移并适配到本项目
-- 当前两个巨石文件（server.js / app.js 各 ~650 行），无测试、无类型、无模块化
-- Demo 模式在缺少 API key 时静默启用，存在生产环境误触发风险
-- 画布状态全在客户端内存，刷新即丢失
+- Brownfield 项目：已有可运行的画板原型（`server.js` + `public/app.js`）
+- UI 基于 React + Vite + Tailwind 的文件柜式历史浏览器，由 server.js 托管构建产物
+- 数据库持久化通过 PostgreSQL + Prisma 实现
+- 支持多种输入格式：图片、文本文件、网页链接
+- 画布支持一键整理、节点折叠/展开、深色模式、中英文切换
+- Demo 模式在缺少 API key 时静默启用
 
-## Current Milestone: v1.1 Canvas Intelligence & Rich Input
+## Current Milestone: TBD
 
-**Goal:** 将画布升级为智能创作工作台，支持多种输入格式、更高效的画布交互、完善的图片管理与个性化设置。
+**Shipped:** v1.1 Canvas Intelligence & Rich Input (2026-04-26)
 
-**Target features:**
-- Canvas 交互优化：对话框精简、更密网格、去除圆点、节点折叠展开、滚动画布
-- 多格式输入分析：文本文件（Word/TXT/PDF/PPT）、网页链接的 AI 分析
-- 设置系统：API 配置、深色模式、中英文语言切换
-- 画布智能整理：一键自动排布节点
-- 图片工具链：查看弹窗、修改重生成、下载
-
-**Key Decisions (v1.1)**
-
-| Decision | Rationale | Outcome |
-|----------|-----------|---------|
-| 文本文件直接读取而非截图分析 | 大模型视觉 API 对文档截图效果差，文本提取更准确 | — Pending |
-| 网页链接分析采用搜索+摘要而非全页抓取 | 避免处理复杂网页渲染，更稳定可靠 | — Pending |
-
-## Constraints
-
-- **Tech Stack**: Node.js >= 18，现有代码为纯 JavaScript ES modules；新增 PostgreSQL + Prisma，保持后端可维护性
-- **UI Migration**: `app/` 文件夹内的 React 组件需整合进现有服务端渲染方案，或改为独立前端构建产物由 server.js 托管
-- **Timeline**: 优先解决“刷新不丢工作”这一核心痛点，再扩展历史浏览 UI
-- **Compatibility**: 保持现有画布交互体验不变，新功能为增量添加
-- **Performance**: 大模型 API 调用成本高，需避免重复调用（如已分析的图不再重复分析）
+**Next milestone ideas:**
+- 搜索与组织：会话搜索、日期筛选、文件夹分类
+- 高级分享：分享链接过期、批量导出
+- 性能优化：大画布性能、懒加载、虚拟滚动
 
 ## Key Decisions
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| 引入 PostgreSQL + Prisma | 用户明确要求数据库持久化，且需要结构化查询会话历史 | — Pending |
-| 保留现有零依赖服务端核心 | 画板核心逻辑稳定运行，仅新增持久化层和 API | — Pending |
-| `app/` React UI 作为独立构建产物 | Vite 构建后由 server.js 静态托管，与现有 `public/` 并存或逐步替换 | — Pending |
-| 分享链接为只读 | 用户明确选择，协作编辑延后 | — Pending |
+| 引入 PostgreSQL + Prisma | 用户明确要求数据库持久化，且需要结构化查询会话历史 | Validated v1.0 |
+| 保留现有零依赖服务端核心 | 画板核心逻辑稳定运行，仅新增持久化层和 API | Validated v1.0 |
+| `app/` React UI 作为独立构建产物 | Vite 构建后由 server.js 静态托管，与现有 `public/` 并存 | Validated v1.0 |
+| 分享链接为只读 | 用户明确选择，协作编辑延后 | Validated v1.0 |
+| 文本文件直接读取而非截图分析 | 大模型视觉 API 对文档截图效果差，文本提取更准确 | Validated v1.1 |
+| 网页链接分析采用搜索+摘要而非全页抓取 | 避免处理复杂网页渲染，更稳定可靠 | Validated v1.1 |
 
-## Evolution
+## Constraints
 
-This document evolves at phase transitions and milestone boundaries.
-
-**After each phase transition** (via `/gsd-transition`):
-1. Requirements invalidated? → Move to Out of Scope with reason
-2. Requirements validated? → Move to Validated with phase reference
-3. New requirements emerged? → Add to Active
-4. Decisions to log? → Add to Key Decisions
-5. "What This Is" still accurate? → Update if drifted
-
-**After each milestone** (via `/gsd-complete-milestone`):
-1. Full review of all sections
-2. Core Value check — still the right priority?
-3. Audit Out of Scope — reasons still valid?
-4. Update Context with current state
+- **Tech Stack**: Node.js >= 18，现有代码为纯 JavaScript ES modules；PostgreSQL + Prisma 持久化
+- **Compatibility**: 保持现有画布交互体验不变，新功能为增量添加
+- **Performance**: 大模型 API 调用成本高，需避免重复调用
 
 ---
-*Last updated: 2026-04-26 — milestone v1.1 initialized*
+
+*Last updated: 2026-04-26 — v1.1 shipped*
