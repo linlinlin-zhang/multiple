@@ -59,6 +59,10 @@
           <svg id="linkLayer" class="link-layer" viewBox="0 0 2400 1500" aria-hidden="true"></svg>
 
           <section id="sourceNode" class="node source-node" data-node-id="source" style="left: 96px; top: 88px;">
+            <div class="source-tabs">
+              <button type="button" class="source-tab active" data-tab="file">文件</button>
+              <button type="button" class="source-tab" data-tab="url">链接</button>
+            </div>
             <label class="upload-target" for="fileInput">
               <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.docx,.pdf,.pptx" />
               <span id="emptyState" class="empty-state">
@@ -67,6 +71,10 @@
               </span>
               <img id="sourcePreview" class="source-preview" alt="上传的源图" />
             </label>
+            <div class="url-input-panel hidden">
+              <input id="urlInput" type="url" placeholder="https://..." autocomplete="off" />
+              <button id="urlAnalyzeButton" class="primary-button" disabled>分析链接</button>
+            </div>
             <div class="node-caption">
               <span id="sourceName">Source image</span>
               <button id="analyzeButton" class="primary-button" disabled>分析</button>

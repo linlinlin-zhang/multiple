@@ -20,13 +20,16 @@ const chatInput = document.querySelector("#chatInput");
 const chatMessages = document.querySelector("#chatMessages");
 const chatSendButton = document.querySelector("#chatSendButton");
 const navToggle = document.querySelector("#navToggle");
+const urlInput = document.querySelector("#urlInput");
+const urlAnalyzeButton = document.querySelector("#urlAnalyzeButton");
 
 const state = {
   sourceImage: null,
   sourceImageHash: null,
-  sourceType: "image",         // "image" | "text"
+  sourceType: "image",         // "image" | "text" | "url"
   sourceText: null,            // for txt/md/json
   sourceDataUrl: null,         // for docx/pdf/pptx
+  sourceUrl: null,             // for url sources
   fileName: "",
   latestAnalysis: null,
   chatMessages: [],
@@ -87,6 +90,22 @@ function wireControls() {
   analyzeButton.addEventListener("click", analyzeSource);
   chatForm.addEventListener("submit", handleChatSubmit);
   navToggle.addEventListener("click", toggleNav);
+
+  // Source tabs (file / url)
+  document.querySelectorAll(".source-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.tab;
+      document.querySelectorAll(".source-tab").forEach(t => t.classList.toggle("active", t === tab));
+      document.querySelector(".upload-target").classList.toggle("hidden", target !== "file");
+      document.querySelector(".url-input-panel").classList.toggle("hidden", target !== "url");
+    });
+  });
+
+  // URL input wiring
+  urlInput?.addEventListener("input", () => {
+    if (urlAnalyzeButton) urlAnalyzeButton.disabled = !urlInput.value.trim();
+  });
+  urlAnalyzeButton?.addEventListener("click", analyzeUrl);
 
   document.querySelector("#zoomInButton").addEventListener("click", () => zoomBy(0.08));
   document.querySelector("#zoomOutButton").addEventListener("click", () => zoomBy(-0.08));
@@ -326,8 +345,9 @@ async function handleFile(event) {
 async function analyzeSource() {
   if (state.sourceType === "image" && !state.sourceImage) return;
   if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) return;
+  if (state.sourceType === "url" && !state.sourceUrl) return;
 
-  setStatus(state.sourceType === "image" ? "Analyzing image" : "Analyzing document", "busy");
+  setStatus(state.sourceType === "image" ? "Analyzing image" : state.sourceType === "url" ? "Analyzing URL" : "Analyzing document", "busy");
   analyzeButton.disabled = true;
 
   try {
@@ -338,6 +358,8 @@ async function analyzeSource() {
         imageDataUrl: sourceImageDataUrl,
         fileName: state.fileName
       });
+    } else if (state.sourceType === "url") {
+      data = await postJson("/api/analyze-url", { url: state.sourceUrl });
     } else {
       data = await postJson("/api/analyze-text", {
         text: state.sourceText,
@@ -356,6 +378,54 @@ async function analyzeSource() {
   } finally {
     analyzeButton.disabled = false;
   }
+}
+
+async function analyzeUrl() {
+  const url = urlInput?.value.trim();
+  if (!url) return;
+  setStatus("Analyzing URL", "busy");
+  if (urlAnalyzeButton) urlAnalyzeButton.disabled = true;
+
+  try {
+    const data = await postJson("/api/analyze-url", { url });
+    state.sourceType = "url";
+    state.sourceUrl = url;
+    state.fileName = new URL(url).hostname;
+    state.latestAnalysis = data;
+
+    // Render source preview as a link card
+    renderUrlSource(url, data.title);
+    renderAnalysis(data);
+    renderOptions(data.options || []);
+    setStatus("Branches ready", "ready");
+    autoSave();
+  } catch (error) {
+    setStatus(error.message || "URL analysis failed", "error");
+  } finally {
+    if (urlAnalyzeButton) urlAnalyzeButton.disabled = false;
+  }
+}
+
+function renderUrlSource(url, title) {
+  sourcePreview.src = "";
+  sourcePreview.classList.remove("has-image");
+  emptyState.classList.add("hidden");
+
+  // Remove any existing link card
+  const existing = document.querySelector(".url-source-card");
+  if (existing) existing.remove();
+
+  const linkCard = document.createElement("a");
+  linkCard.href = url;
+  linkCard.target = "_blank";
+  linkCard.rel = "noopener noreferrer";
+  linkCard.className = "url-source-card";
+  linkCard.textContent = title || url;
+  sourcePreview.parentElement.appendChild(linkCard);
+
+  sourceName.textContent = new URL(url).hostname;
+  if (analyzeButton) analyzeButton.disabled = false;
+  updateSourceBadge();
 }
 
 async function handleChatSubmit(event) {
@@ -429,11 +499,13 @@ function renderAnalysis(data) {
   // Update analysis node eyebrow based on source type
   const eyebrow = analysisNode.querySelector(".eyebrow");
   if (eyebrow) {
-    eyebrow.textContent = state.sourceType === "text" ? "DOCUMENT READ" : "IMAGE READ";
+    const labels = { image: "IMAGE READ", text: "DOCUMENT READ", url: "LINK READ" };
+    eyebrow.textContent = labels[state.sourceType] || "MODEL READ";
   }
   const heading = analysisNode.querySelector("h2");
   if (heading) {
-    heading.textContent = state.sourceType === "text" ? "文档理解" : "图像理解";
+    const titles = { image: "图像理解", text: "文档理解", url: "链接理解" };
+    heading.textContent = titles[state.sourceType] || "内容理解";
   }
 
   state.links = [{ from: "source", to: "analysis", kind: "analysis" }];
@@ -1029,6 +1101,7 @@ async function prepareStateForSave() {
     sourceType: state.sourceType,
     sourceText: state.sourceText,
     sourceDataUrl: state.sourceDataUrl,
+    sourceUrl: state.sourceUrl,
     fileName: state.fileName,
     latestAnalysis: state.latestAnalysis,
     chatMessages: state.chatMessages,
@@ -1072,6 +1145,7 @@ async function getSourceImageDataUrl() {
 }
 
 function getSourceBadgeClass() {
+  if (state.sourceType === "url") return "link";
   if (state.sourceType === "text") {
     const ext = (state.fileName || "").split(".").pop()?.toLowerCase();
     if (["docx", "pdf", "pptx"].includes(ext)) return "document";
@@ -1081,6 +1155,9 @@ function getSourceBadgeClass() {
 }
 
 function getSourceBadgeLabel() {
+  if (state.sourceType === "url") {
+    return state.fileName || "LINK";
+  }
   if (state.sourceType === "text") {
     const ext = (state.fileName || "").split(".").pop()?.toLowerCase();
     const map = { txt: "TXT", md: "MD", json: "JSON", docx: "DOCX", pdf: "PDF", pptx: "PPTX" };
@@ -1171,6 +1248,7 @@ async function loadSession(sessionId) {
     state.generatedCount = 0;
     state.sourceImage = null;
     state.sourceImageHash = null;
+    state.sourceUrl = null;
     state.fileName = "";
     state.latestAnalysis = null;
 
@@ -1202,12 +1280,27 @@ async function loadSession(sessionId) {
       sourceName.textContent = trimMiddle(state.fileName, 28);
       analyzeButton.disabled = false;
       updateSourceBadge();
+    } else if (data.state?.sourceType === "url" && data.state?.sourceUrl) {
+      // Restore URL source without upload asset
+      state.sourceType = "url";
+      state.sourceUrl = data.state.sourceUrl;
+      state.fileName = data.state.fileName || new URL(data.state.sourceUrl).hostname;
+      state.sourceImage = null;
+      state.sourceImageHash = null;
+      state.sourceText = null;
+      state.sourceDataUrl = null;
+
+      renderUrlSource(state.sourceUrl, data.state?.latestAnalysis?.title || "");
+      sourceName.textContent = trimMiddle(state.fileName, 28);
+      analyzeButton.disabled = false;
+      updateSourceBadge();
     } else {
       state.sourceType = "image";
       state.sourceImage = null;
       state.sourceImageHash = null;
       state.sourceText = null;
       state.sourceDataUrl = null;
+      state.sourceUrl = null;
       sourcePreview.src = "";
       sourcePreview.classList.remove("has-image");
       emptyState.classList.remove("hidden");
@@ -1231,7 +1324,7 @@ async function loadSession(sessionId) {
       state.latestAnalysis = null;
     }
 
-    // Restore text source fields from persisted state if present
+    // Restore source fields from persisted state if present
     if (data.state?.sourceType) {
       state.sourceType = data.state.sourceType;
     }
@@ -1240,6 +1333,9 @@ async function loadSession(sessionId) {
     }
     if (data.state?.sourceDataUrl) {
       state.sourceDataUrl = data.state.sourceDataUrl;
+    }
+    if (data.state?.sourceUrl) {
+      state.sourceUrl = data.state.sourceUrl;
     }
 
     const optionNodes = data.nodes.filter(n => n.type === "option" || n.type === "generated");
