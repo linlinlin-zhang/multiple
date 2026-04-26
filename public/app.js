@@ -39,6 +39,14 @@ const viewerImage = document.querySelector("#viewerImage");
 const viewerTitle = document.querySelector("#viewerTitle");
 const viewerExplanation = document.querySelector("#viewerExplanation");
 
+const viewerRegenerate = document.querySelector("#viewerRegenerate");
+const viewerModify = document.querySelector("#viewerModify");
+const viewerDownload = document.querySelector("#viewerDownload");
+const viewerModifyPanel = document.querySelector("#viewerModifyPanel");
+const viewerPromptInput = document.querySelector("#viewerPromptInput");
+const viewerSubmitModify = document.querySelector("#viewerSubmitModify");
+const viewerCancelModify = document.querySelector("#viewerCancelModify");
+
 const state = {
   sourceImage: null,
   sourceImageHash: null,
@@ -71,6 +79,7 @@ const settingsCache = {
 let currentSessionId = null;
 let autoSaveTimer = null;
 let lastSavedStateHash = "";
+let currentViewerNodeId = null;
 
 const optionPositions = [
   { x: 850, y: 112, tilt: -1.5 },
@@ -148,6 +157,12 @@ const i18n = {
     "generated.result": "生成结果",
     "viewer.title": "图片详情",
     "viewer.close": "关闭",
+    "viewer.regenerate": "重生成",
+    "viewer.modify": "修改",
+    "viewer.download": "下载",
+    "viewer.confirmModify": "确认修改",
+    "viewer.cancelModify": "取消",
+    "viewer.promptPlaceholder": "输入自定义提示词...",
     "collapse.expand": "展开 {count} 个后续节点",
     "collapse.collapse": "收起 {count} 个后续节点",
     "collapse.noChildren": "没有后续节点",
@@ -231,6 +246,12 @@ const i18n = {
     "generated.result": "Generated Result",
     "viewer.title": "Image Details",
     "viewer.close": "Close",
+    "viewer.regenerate": "Regenerate",
+    "viewer.modify": "Modify",
+    "viewer.download": "Download",
+    "viewer.confirmModify": "Confirm",
+    "viewer.cancelModify": "Cancel",
+    "viewer.promptPlaceholder": "Enter custom prompt...",
     "collapse.expand": "Expand {count} downstream nodes",
     "collapse.collapse": "Collapse {count} downstream nodes",
     "collapse.noChildren": "No downstream nodes",
@@ -375,6 +396,13 @@ function renderAllText() {
   if (imageViewerModal) imageViewerModal.setAttribute("aria-label", t("viewer.title"));
   const closeImageViewerBtn = document.querySelector("#closeImageViewer");
   if (closeImageViewerBtn) closeImageViewerBtn.setAttribute("aria-label", t("viewer.close"));
+
+  if (viewerRegenerate) viewerRegenerate.textContent = t("viewer.regenerate");
+  if (viewerModify) viewerModify.textContent = t("viewer.modify");
+  if (viewerDownload) viewerDownload.textContent = t("viewer.download");
+  if (viewerSubmitModify) viewerSubmitModify.textContent = t("viewer.confirmModify");
+  if (viewerCancelModify) viewerCancelModify.textContent = t("viewer.cancelModify");
+  if (viewerPromptInput) viewerPromptInput.placeholder = t("viewer.promptPlaceholder");
 
   const optionTmpl = document.querySelector("#optionTemplate");
   if (optionTmpl) {
@@ -594,6 +622,62 @@ function wireControls() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !imageViewerModal?.classList.contains("hidden")) {
       closeImageViewer();
+    }
+  });
+
+  viewerRegenerate?.addEventListener("click", () => {
+    if (!currentViewerNodeId) return;
+    const node = state.nodes.get(currentViewerNodeId);
+    if (!node || !node.option) return;
+    closeImageViewer();
+    generateOption(currentViewerNodeId, node.option);
+  });
+
+  viewerModify?.addEventListener("click", () => {
+    viewerModifyPanel?.classList.remove("hidden");
+    viewerPromptInput?.focus();
+  });
+
+  viewerCancelModify?.addEventListener("click", () => {
+    viewerModifyPanel?.classList.add("hidden");
+  });
+
+  viewerSubmitModify?.addEventListener("click", async () => {
+    if (!currentViewerNodeId) return;
+    const node = state.nodes.get(currentViewerNodeId);
+    if (!node || !node.option) return;
+    const customPrompt = viewerPromptInput?.value.trim();
+    if (!customPrompt) return;
+
+    const modifiedOption = { ...node.option, prompt: customPrompt };
+    closeImageViewer();
+    await generateOption(currentViewerNodeId, modifiedOption);
+  });
+
+  viewerDownload?.addEventListener("click", async () => {
+    if (!currentViewerNodeId) return;
+    const node = state.nodes.get(currentViewerNodeId);
+    if (!node) return;
+
+    const imageUrl = node.element.querySelector(".generated-image")?.src;
+    if (!imageUrl) return;
+
+    if (imageUrl.includes("/api/assets/") && node.imageHash) {
+      try {
+        const sep = imageUrl.includes("?") ? "&" : "?";
+        const res = await fetch(`${imageUrl}${sep}download=1`);
+        if (!res.ok) throw new Error("Fetch failed");
+        const blob = await res.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        const fileName = `${node.option?.id || "generated"}_${node.imageHash.slice(0, 8)}.png`;
+        downloadImage(blobUrl, fileName);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      } catch (err) {
+        console.error("Download failed:", err);
+        downloadImage(imageUrl, `${node.option?.id || "generated"}.png`);
+      }
+    } else {
+      downloadImage(imageUrl, `${node.option?.id || "generated"}.png`);
     }
   });
 
@@ -1191,10 +1275,14 @@ function openImageViewer(nodeId) {
   const img = node.element.querySelector(".generated-image");
   if (!img) return;
 
+  currentViewerNodeId = nodeId;
   viewerImage.src = img.src;
   viewerImage.alt = node.option?.title || t("generated.result");
   viewerTitle.textContent = node.option?.title || "";
   viewerExplanation.textContent = node.explanation || "";
+
+  if (viewerPromptInput) viewerPromptInput.value = node.option?.prompt || "";
+  if (viewerModifyPanel) viewerModifyPanel.classList.add("hidden");
 
   imageViewerModal.classList.remove("hidden");
   document.body.style.overflow = "hidden";
@@ -1207,6 +1295,8 @@ function closeImageViewer() {
   imageViewerModal.classList.add("hidden");
   viewerImage.src = "";
   document.body.style.overflow = "";
+  currentViewerNodeId = null;
+  if (viewerModifyPanel) viewerModifyPanel.classList.add("hidden");
 }
 
 function clearOptions() {
