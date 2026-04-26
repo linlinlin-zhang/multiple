@@ -93,9 +93,9 @@ Plans:
 **UI hint:** yes
 
 Plans:
-- [ ] 08-01-PLAN.md — Auto-arrange canvas layout (collapse un-generated nodes, tree layout algorithm, animate to new positions)
-- [ ] 08-02-PLAN.md — Image viewer modal (click image to open, show enlarged image + AI explanation, dark backdrop, Esc/click/X to close)
-- [ ] 08-03-PLAN.md — Image modify and download (regenerate, custom prompt modify, download with Content-Disposition)
+- [x] 08-01-PLAN.md — Auto-arrange canvas layout (collapse un-generated nodes, tree layout algorithm, animate to new positions)
+- [x] 08-02-PLAN.md — Image viewer modal (click image to open, show enlarged image + AI explanation, dark backdrop, Esc/click/X to close)
+- [x] 08-03-PLAN.md — Image modify and download (regenerate, custom prompt modify, download with Content-Disposition)
 
 ---
 
