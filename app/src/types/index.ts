@@ -17,7 +17,7 @@ export interface Node {
   y: number;
   width: number;
   height: number;
-  data: any;
+  data: any; // sourceType: "image" | "text" | "url"; fileName; sourceUrl; sourceText; etc.
   collapsed: boolean;
   createdAt: string;
 }
@@ -41,6 +41,8 @@ export interface Asset {
   fileName: string | null;
   createdAt: string;
 }
+
+// Upload assets may have non-image mimeTypes, e.g., application/pdf, text/plain
 
 export interface ChatMessage {
   id: string;

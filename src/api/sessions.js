@@ -38,7 +38,10 @@ function serializeState(state) {
         : n.id === "source"
           ? {
               fileName: state.fileName || null,
-              imageHash: state.sourceImageHash || extractAssetHash(state.sourceImage) || null
+              imageHash: state.sourceImageHash || extractAssetHash(state.sourceImage) || null,
+              sourceType: state.sourceType || "image",
+              sourceUrl: state.sourceUrl || null,
+              sourceText: state.sourceText || null
             }
           : n.id === "analysis"
             ? {
@@ -460,10 +463,11 @@ export async function handleExportSession(sessionId, res) {
       }
     }
 
-    const safeTitle = (session.title || "session").replace(/[^a-z0-9一-龥_-]+/gi, "_").slice(0, 40);
+    const safeTitle = (session.title || "session").replace(/[^a-z0-9_-]+/gi, "_").slice(0, 40) || "session";
+    const encodedTitle = encodeURIComponent(`${session.title || "session"}_${sessionId.slice(0, 8)}.json`);
     res.writeHead(200, {
       "Content-Type": "application/json; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${safeTitle}_${sessionId.slice(0, 8)}.json"`,
+      "Content-Disposition": `attachment; filename="${safeTitle}_${sessionId.slice(0, 8)}.json"; filename*=UTF-8''${encodedTitle}`,
       "Cache-Control": "no-cache"
     });
     res.end(JSON.stringify(exportPayload, null, 2));
