@@ -39,6 +39,11 @@
 **Estimated Complexity:** Medium
 **Plans:** 3 plans
 
+Plans:
+- [ ] 09-01-PLAN.md — Card selection mechanism (double-click, blue outline, single-selection model)
+- [ ] 09-02-PLAN.md — Dialog binding and validation (disable input, toast on type without selection)
+- [ ] 09-03-PLAN.md — Card delete and rename (hover delete button, inline title editing)
+
 ### Phase 10: Dialog Refactor & Generation Control
 **Goal:** 对话框绑定选中卡片，支持直接生成方向，添加思考模式切换。
 **Depends on:** Phase 9 (card selection mechanism)
