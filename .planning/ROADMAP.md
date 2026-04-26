@@ -18,7 +18,7 @@
 
 ### v1.2 Interactive Canvas & Deep Analysis
 
-- [ ] Phase 9: Card Selection & Basic Interaction
+- [x] Phase 9: Card Selection & Basic Interaction
 - [ ] Phase 10: Dialog Refactor & Generation Control
 - [ ] Phase 11: Research Mode & Deep Analysis
 - [ ] Phase 12: Image Sharing
@@ -92,7 +92,7 @@ Plans:
 | 6. Multi-format Input & AI Analysis | v1.1 | 3/3 | Complete | 2026-04-26 |
 | 7. Settings & Personalization | v1.1 | 3/3 | Complete | 2026-04-26 |
 | 8. Canvas Intelligence & Image Tools | v1.1 | 3/3 | Complete | 2026-04-26 |
-| 9. Card Selection & Basic Interaction | v1.2 | 0/3 | Not started | - |
+| 9. Card Selection & Basic Interaction | v1.2 | 3/3 | Complete | 2026-04-26 |
 | 10. Dialog Refactor & Generation Control | v1.2 | 0/3 | Not started | - |
 | 11. Research Mode & Deep Analysis | v1.2 | 0/3 | Not started | - |
 | 12. Image Sharing | v1.2 | 0/2 | Not started | - |
