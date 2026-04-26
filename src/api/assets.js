@@ -47,10 +47,17 @@ export async function handleGetAsset(req, res) {
     const buffer = await readFile(hash, { kind });
     const contentType = detectMimeType(buffer);
 
-    res.writeHead(200, {
+    const isDownload = url.searchParams.get("download") === "1";
+    const headers = {
       "Content-Type": contentType,
       "Cache-Control": "public, max-age=31536000, immutable"
-    });
+    };
+    if (isDownload) {
+      const ext = contentType.split("/").pop()?.replace("jpeg", "jpg") || "png";
+      headers["Content-Disposition"] = `attachment; filename="oryzae_${hash.slice(0, 8)}.${ext}"`;
+    }
+
+    res.writeHead(200, headers);
     res.end(buffer);
   } catch (error) {
     console.error("[handleGetAsset]", error);
