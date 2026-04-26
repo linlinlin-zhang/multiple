@@ -427,6 +427,11 @@ body.nav-collapsed .nav-settings {
   z-index: 8;
 }
 
+.board.is-arranging .node {
+  pointer-events: none;
+  transition: none;
+}
+
 .collapse-dot {
   position: absolute;
   left: -38px;
