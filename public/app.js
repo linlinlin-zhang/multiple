@@ -24,6 +24,9 @@ const navToggle = document.querySelector("#navToggle");
 const state = {
   sourceImage: null,
   sourceImageHash: null,
+  sourceType: "image",         // "image" | "text"
+  sourceText: null,            // for txt/md/json
+  sourceDataUrl: null,         // for docx/pdf/pptx
   fileName: "",
   latestAnalysis: null,
   chatMessages: [],
@@ -81,7 +84,7 @@ async function init() {
 
 function wireControls() {
   fileInput.addEventListener("change", handleFile);
-  analyzeButton.addEventListener("click", analyzeImage);
+  analyzeButton.addEventListener("click", analyzeSource);
   chatForm.addEventListener("submit", handleChatSubmit);
   navToggle.addEventListener("click", toggleNav);
 
@@ -227,45 +230,121 @@ async function handleFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
-  setStatus("Compressing image", "busy");
-  try {
-    const image = await resizeImage(file, 1600, 0.88);
-    state.sourceImage = image.dataUrl;
-    state.fileName = file.name;
+  const isImage = file.type.startsWith("image/");
+  const isTextDoc = /\.(txt|md|json|docx|pdf|pptx)$/i.test(file.name);
 
-    sourcePreview.src = image.dataUrl;
-    sourcePreview.classList.add("has-image");
-    emptyState.classList.add("hidden");
-    sourceName.textContent = trimMiddle(file.name, 28);
-    analyzeButton.disabled = false;
+  if (isImage) {
+    setStatus("Compressing image", "busy");
+    try {
+      const image = await resizeImage(file, 1600, 0.88);
+      state.sourceImage = image.dataUrl;
+      state.sourceType = "image";
+      state.sourceText = null;
+      state.sourceDataUrl = null;
+      state.fileName = file.name;
 
-    clearOptions();
-    state.latestAnalysis = null;
-    state.chatMessages = [];
-    renderChatMessages();
-    state.collapsed.clear();
-    analysisNode.classList.add("hidden");
-    state.links = [];
-    applyCollapseState();
-    updateCounts();
-    setStatus("Image ready", "ready");
-    autoSave();
-  } catch (error) {
-    setStatus(error.message || "Image error", "error");
+      sourcePreview.src = image.dataUrl;
+      sourcePreview.classList.add("has-image");
+      emptyState.classList.add("hidden");
+      sourceName.textContent = trimMiddle(file.name, 28);
+      analyzeButton.disabled = false;
+
+      clearOptions();
+      state.latestAnalysis = null;
+      state.chatMessages = [];
+      renderChatMessages();
+      state.collapsed.clear();
+      analysisNode.classList.add("hidden");
+      state.links = [];
+      applyCollapseState();
+      updateCounts();
+      setStatus("Image ready", "ready");
+      updateSourceBadge();
+      autoSave();
+    } catch (error) {
+      setStatus(error.message || "Image error", "error");
+    }
+    return;
   }
+
+  if (isTextDoc) {
+    setStatus("Reading document", "busy");
+    try {
+      state.fileName = file.name;
+      state.sourceType = "text";
+      state.sourceImage = null;
+      state.sourceImageHash = null;
+
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      const isPlainText = ["txt", "md", "json"].includes(ext);
+
+      if (isPlainText) {
+        const text = await file.text();
+        state.sourceText = text;
+        state.sourceDataUrl = null;
+      } else {
+        const arrayBuffer = await file.arrayBuffer();
+        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        const mimeMap = {
+          docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          pdf: "application/pdf",
+          pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        };
+        const mime = mimeMap[ext] || "application/octet-stream";
+        state.sourceDataUrl = `data:${mime};base64,${base64}`;
+        state.sourceText = null;
+      }
+
+      // Show document preview in source node
+      sourcePreview.src = "";
+      sourcePreview.classList.remove("has-image");
+      emptyState.classList.add("hidden");
+      sourceName.textContent = trimMiddle(file.name, 28);
+      analyzeButton.disabled = false;
+
+      clearOptions();
+      state.latestAnalysis = null;
+      state.chatMessages = [];
+      renderChatMessages();
+      state.collapsed.clear();
+      analysisNode.classList.add("hidden");
+      state.links = [];
+      applyCollapseState();
+      updateCounts();
+      updateSourceBadge();
+      setStatus("Document ready", "ready");
+      autoSave();
+    } catch (error) {
+      setStatus(error.message || "Document error", "error");
+    }
+    return;
+  }
+
+  setStatus("Unsupported file type", "error");
 }
 
-async function analyzeImage() {
-  if (!state.sourceImage) return;
-  setStatus("Analyzing image", "busy");
+async function analyzeSource() {
+  if (state.sourceType === "image" && !state.sourceImage) return;
+  if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) return;
+
+  setStatus(state.sourceType === "image" ? "Analyzing image" : "Analyzing document", "busy");
   analyzeButton.disabled = true;
 
   try {
-    const sourceImageDataUrl = await getSourceImageDataUrl();
-    const data = await postJson("/api/analyze", {
-      imageDataUrl: sourceImageDataUrl,
-      fileName: state.fileName
-    });
+    let data;
+    if (state.sourceType === "image") {
+      const sourceImageDataUrl = await getSourceImageDataUrl();
+      data = await postJson("/api/analyze", {
+        imageDataUrl: sourceImageDataUrl,
+        fileName: state.fileName
+      });
+    } else {
+      data = await postJson("/api/analyze-text", {
+        text: state.sourceText,
+        dataUrl: state.sourceDataUrl,
+        fileName: state.fileName
+      });
+    }
 
     renderAnalysis(data);
     renderOptions(data.options || []);
@@ -338,7 +417,7 @@ function renderChatMessages() {
 }
 
 function renderAnalysis(data) {
-  analysisSummary.textContent = data.summary || "已完成图像理解。";
+  analysisSummary.textContent = data.summary || "已完成内容理解。";
   keywordList.replaceChildren(...(data.moodKeywords || []).slice(0, 8).map((keyword) => {
     const span = document.createElement("span");
     span.className = "keyword";
@@ -346,6 +425,16 @@ function renderAnalysis(data) {
     return span;
   }));
   analysisNode.classList.remove("hidden");
+
+  // Update analysis node eyebrow based on source type
+  const eyebrow = analysisNode.querySelector(".eyebrow");
+  if (eyebrow) {
+    eyebrow.textContent = state.sourceType === "text" ? "DOCUMENT READ" : "IMAGE READ";
+  }
+  const heading = analysisNode.querySelector("h2");
+  if (heading) {
+    heading.textContent = state.sourceType === "text" ? "文档理解" : "图像理解";
+  }
 
   state.links = [{ from: "source", to: "analysis", kind: "analysis" }];
   state.selectiveHidden.clear();
@@ -937,6 +1026,9 @@ async function prepareStateForSave() {
   const payload = {
     sourceImage: state.sourceImage,
     sourceImageHash: state.sourceImageHash,
+    sourceType: state.sourceType,
+    sourceText: state.sourceText,
+    sourceDataUrl: state.sourceDataUrl,
     fileName: state.fileName,
     latestAnalysis: state.latestAnalysis,
     chatMessages: state.chatMessages,
@@ -977,6 +1069,35 @@ async function getSourceImageDataUrl() {
     });
   }
   return state.sourceImage;
+}
+
+function getSourceBadgeClass() {
+  if (state.sourceType === "text") {
+    const ext = (state.fileName || "").split(".").pop()?.toLowerCase();
+    if (["docx", "pdf", "pptx"].includes(ext)) return "document";
+    return "text";
+  }
+  return "image";
+}
+
+function getSourceBadgeLabel() {
+  if (state.sourceType === "text") {
+    const ext = (state.fileName || "").split(".").pop()?.toLowerCase();
+    const map = { txt: "TXT", md: "MD", json: "JSON", docx: "DOCX", pdf: "PDF", pptx: "PPTX" };
+    return map[ext] || "TEXT";
+  }
+  return "IMG";
+}
+
+function updateSourceBadge() {
+  let badge = sourceNode.querySelector(".source-badge");
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = "source-badge";
+    sourceNode.querySelector(".node-caption")?.prepend(badge);
+  }
+  badge.className = `source-badge ${getSourceBadgeClass()}`;
+  badge.textContent = getSourceBadgeLabel();
 }
 
 async function saveSession({ isAuto = false } = {}) {
@@ -1060,20 +1181,39 @@ async function loadSession(sessionId) {
 
     const sourceAsset = data.assets.find(a => a.kind === "upload");
     if (sourceAsset) {
-      state.sourceImage = `/api/assets/${sourceAsset.hash}?kind=upload`;
-      state.sourceImageHash = sourceAsset.hash;
+      const isText = data.state?.sourceType === "text" || sourceAsset.mimeType?.startsWith("text/") || /\.(txt|md|json|docx|pdf|pptx)$/i.test(sourceAsset.fileName || "");
+      state.sourceType = isText ? "text" : "image";
       state.fileName = sourceAsset.fileName || "";
-      sourcePreview.src = state.sourceImage;
-      sourcePreview.classList.add("has-image");
+
+      if (state.sourceType === "image") {
+        state.sourceImage = `/api/assets/${sourceAsset.hash}?kind=upload`;
+        state.sourceImageHash = sourceAsset.hash;
+        sourcePreview.src = state.sourceImage;
+        sourcePreview.classList.add("has-image");
+      } else {
+        state.sourceImage = null;
+        state.sourceImageHash = null;
+        state.sourceText = data.state?.sourceText || null;
+        state.sourceDataUrl = data.state?.sourceDataUrl || null;
+        sourcePreview.src = "";
+        sourcePreview.classList.remove("has-image");
+      }
       emptyState.classList.add("hidden");
       sourceName.textContent = trimMiddle(state.fileName, 28);
       analyzeButton.disabled = false;
+      updateSourceBadge();
     } else {
+      state.sourceType = "image";
+      state.sourceImage = null;
+      state.sourceImageHash = null;
+      state.sourceText = null;
+      state.sourceDataUrl = null;
       sourcePreview.src = "";
       sourcePreview.classList.remove("has-image");
       emptyState.classList.remove("hidden");
       sourceName.textContent = "Source image";
       analyzeButton.disabled = true;
+      updateSourceBadge();
     }
 
     const analysisNodeData = data.nodes.find(n => n.type === "analysis");
@@ -1089,6 +1229,17 @@ async function loadSession(sessionId) {
     } else {
       analysisNode.classList.add("hidden");
       state.latestAnalysis = null;
+    }
+
+    // Restore text source fields from persisted state if present
+    if (data.state?.sourceType) {
+      state.sourceType = data.state.sourceType;
+    }
+    if (data.state?.sourceText) {
+      state.sourceText = data.state.sourceText;
+    }
+    if (data.state?.sourceDataUrl) {
+      state.sourceDataUrl = data.state.sourceDataUrl;
     }
 
     const optionNodes = data.nodes.filter(n => n.type === "option" || n.type === "generated");
