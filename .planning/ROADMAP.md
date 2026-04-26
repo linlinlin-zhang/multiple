@@ -28,7 +28,7 @@
 ### 🚧 v1.1 Canvas Intelligence & Rich Input (In Progress)
 
 - [x] Phase 5: Canvas Interaction Polish
-- [ ] Phase 6: Multi-format Input & AI Analysis
+- [x] Phase 6: Multi-format Input & AI Analysis
 - [ ] Phase 7: Settings & Personalization
 - [ ] Phase 8: Canvas Intelligence & Image Tools
 
@@ -98,6 +98,6 @@
 | 3. Sharing & Snapshots | v1.0 | 3/3 | Complete | 2026-04-25 |
 | 4. AI Titles & Explanations | v1.0 | 3/3 | Complete | 2026-04-26 |
 | 5. Canvas Interaction Polish | v1.1 | 3/3 | Complete | 2026-04-26 |
-| 6. Multi-format Input & AI Analysis | v1.1 | 0/3 | Not started | - |
+| 6. Multi-format Input & AI Analysis | v1.1 | 3/3 | Complete | 2026-04-26 |
 | 7. Settings & Personalization | v1.1 | 0/3 | Not started | - |
 | 8. Canvas Intelligence & Image Tools | v1.1 | 0/3 | Not started | - |
