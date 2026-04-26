@@ -1751,6 +1751,7 @@ function computeStateHash() {
     collapsed: Array.from(state.collapsed),
     selectiveHidden: Array.from(state.selectiveHidden),
     chatMessages: state.chatMessages,
+    selectedNodeId: state.selectedNodeId,
     view: state.view,
     sourceImage: state.sourceImage ? state.sourceImage.slice(0, 200) : null,
     latestAnalysis: state.latestAnalysis
@@ -1773,6 +1774,7 @@ async function prepareStateForSave() {
     collapsed: Array.from(state.collapsed),
     selectiveHidden: Array.from(state.selectiveHidden),
     generatedCount: state.generatedCount,
+    selectedNodeId: state.selectedNodeId,
     view: state.view
   };
 
@@ -2066,6 +2068,10 @@ async function loadSession(sessionId) {
 
     applyCollapseState();
     updateCounts();
+
+    if (data.state?.selectedNodeId && state.nodes.has(data.state.selectedNodeId)) {
+      selectNode(data.state.selectedNodeId);
+    }
 
     currentSessionId = sessionId;
     lastSavedStateHash = computeStateHash();
