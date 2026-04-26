@@ -183,6 +183,18 @@
       </form>
     </aside>
 
+    <aside id="imageViewerModal" class="image-viewer-modal hidden" aria-label="图片查看器" role="dialog" aria-modal="true">
+      <div class="image-viewer-backdrop" data-close-modal></div>
+      <div class="image-viewer-content">
+        <button id="closeImageViewer" class="image-viewer-close" aria-label="关闭">×</button>
+        <img id="viewerImage" class="viewer-image" src="" alt="" />
+        <div class="viewer-meta">
+          <h3 id="viewerTitle"></h3>
+          <p id="viewerExplanation"></p>
+        </div>
+      </div>
+    </aside>
+
     <script type="module" src="/app.js?v=6"></script>
   </body>
 </html>
