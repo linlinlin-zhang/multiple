@@ -2000,3 +2000,133 @@ async function renderSessionList() {
     list.innerHTML = "<span class='session-item-meta'>" + t("status.error") + "</span>";
   }
 }
+
+function arrangeCanvasLayout() {
+  // 1. Collapse un-generated option nodes
+  let hiddenAny = false;
+  for (const [id, node] of state.nodes.entries()) {
+    if (id.startsWith("option-") && !node.generated) {
+      state.selectiveHidden.add(id);
+      hiddenAny = true;
+    }
+  }
+  if (hiddenAny) {
+    applyCollapseState();
+    updateCollapseControls();
+  }
+
+  // 2. Build visible tree structure and compute depths
+  const visibleNodeIds = [];
+  for (const [id, node] of state.nodes.entries()) {
+    if (isNodeVisible(node)) visibleNodeIds.push(id);
+  }
+
+  const depthMap = new Map();
+  for (const id of visibleNodeIds) {
+    if (id === "source") {
+      depthMap.set(id, 0);
+    } else if (id === "analysis") {
+      depthMap.set(id, 1);
+    } else {
+      const parentLink = state.links.find(l => l.to === id);
+      if (parentLink) {
+        const parentDepth = depthMap.get(parentLink.from);
+        if (typeof parentDepth === "number") {
+          depthMap.set(id, parentDepth + 1);
+        } else {
+          depthMap.set(id, 2);
+        }
+      } else {
+        depthMap.set(id, id.startsWith("option-") ? 2 : 0);
+      }
+    }
+  }
+
+  // Group by depth
+  const depthGroups = new Map();
+  for (const [id, depth] of depthMap.entries()) {
+    if (!depthGroups.has(depth)) depthGroups.set(depth, []);
+    depthGroups.get(depth).push(id);
+  }
+
+  // 3. Compute tree layout positions
+  const COLUMN_GAP = 420;
+  const ROW_GAP = 40;
+  const START_X = 96;
+  const START_Y = 120;
+  const BOARD_WIDTH = 2400;
+  const BOARD_HEIGHT = 1500;
+
+  const targetPositions = new Map();
+  const depths = Array.from(depthGroups.keys()).sort((a, b) => a - b);
+
+  for (const depth of depths) {
+    const x = START_X + depth * COLUMN_GAP;
+    const nodesAtDepth = depthGroups.get(depth);
+    const totalHeight = nodesAtDepth.reduce((sum, id) => {
+      const node = state.nodes.get(id);
+      return sum + (node?.height || 220) + ROW_GAP;
+    }, 0) - ROW_GAP;
+
+    let y = START_Y;
+    if (totalHeight < BOARD_HEIGHT - START_Y * 2) {
+      y = (BOARD_HEIGHT - totalHeight) / 2;
+    }
+
+    for (const nodeId of nodesAtDepth) {
+      const node = state.nodes.get(nodeId);
+      if (!node) continue;
+      const clampedX = clamp(x, 0, BOARD_WIDTH - (node.width || 318));
+      const clampedY = clamp(y, 0, BOARD_HEIGHT - (node.height || 220));
+      targetPositions.set(nodeId, { x: clampedX, y: clampedY });
+      y += (node.height || 220) + ROW_GAP;
+    }
+  }
+
+  // 4. Animate to new positions
+  animateNodesToPositions(targetPositions, 400);
+}
+
+function animateNodesToPositions(targetPositions, duration = 400) {
+  if (!targetPositions.size) return;
+
+  board.classList.add("is-arranging");
+
+  const startPositions = [];
+  for (const [id, target] of targetPositions.entries()) {
+    const node = state.nodes.get(id);
+    if (!node) continue;
+    startPositions.push({ id, node, startX: node.x, startY: node.y, targetX: target.x, targetY: target.y });
+  }
+
+  const ease = t => 1 - Math.pow(1 - t, 3);
+  const startTime = performance.now();
+
+  function step(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = ease(progress);
+
+    for (const item of startPositions) {
+      const { node, startX, startY, targetX, targetY } = item;
+      const currentX = startX + (targetX - startX) * eased;
+      const currentY = startY + (targetY - startY) * eased;
+      node.x = currentX;
+      node.y = currentY;
+      node.element.style.left = `${currentX}px`;
+      node.element.style.top = `${currentY}px`;
+    }
+
+    drawLinks();
+
+    if (progress < 1) {
+      requestAnimationFrame(step);
+    } else {
+      board.classList.remove("is-arranging");
+      drawLinks();
+      autoSave();
+    }
+  }
+
+  requestAnimationFrame(step);
+}
