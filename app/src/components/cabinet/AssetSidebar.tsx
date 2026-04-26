@@ -1,5 +1,6 @@
 import { Image, FileText, ExternalLink, MessageSquare } from "lucide-react";
 import Sidebar from "./Sidebar";
+import { useI18n } from "@/lib/i18n";
 import type { SessionDetail, Asset, Node } from "@/types";
 
 interface AssetSidebarProps {
@@ -39,7 +40,7 @@ interface SidebarItemData {
   icon?: React.ReactNode;
 }
 
-function transformSessionToItems(session: SessionDetail): SidebarItemData[] {
+function transformSessionToItems(session: SessionDetail, t: (key: string) => string): SidebarItemData[] {
   const items: SidebarItemData[] = [];
 
   // Images group (generated assets)
@@ -47,9 +48,9 @@ function transformSessionToItems(session: SessionDetail): SidebarItemData[] {
   for (const asset of images) {
     items.push({
       id: asset.id,
-      title: asset.fileName || "Generated Image",
+      title: asset.fileName || t("asset.generatedImage"),
       summary: `${asset.mimeType} · ${formatBytes(asset.fileSize)}`,
-      groupLabel: "Images",
+      groupLabel: t("asset.images"),
       icon: getAssetIcon("image"),
     });
   }
@@ -64,9 +65,9 @@ function transformSessionToItems(session: SessionDetail): SidebarItemData[] {
       asset.mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
     items.push({
       id: asset.id,
-      title: isText ? asset.fileName || "Document" : asset.fileName || "Uploaded File",
+      title: isText ? asset.fileName || t("asset.document") : asset.fileName || t("asset.uploadedFile"),
       summary: `${asset.mimeType} · ${formatBytes(asset.fileSize)}`,
-      groupLabel: "Files",
+      groupLabel: t("asset.files"),
       icon: getAssetIcon("file"),
     });
   }
@@ -77,17 +78,17 @@ function transformSessionToItems(session: SessionDetail): SidebarItemData[] {
   );
   for (const node of linkNodes) {
     const url = node.data.sourceUrl as string;
-    let domain = "Web Link";
+    let domain = t("asset.webLink");
     try {
       domain = new URL(url).hostname;
     } catch {
-      // fallback to "Web Link"
+      // fallback
     }
     items.push({
       id: node.id,
       title: domain,
       summary: url.length > 60 ? url.slice(0, 60) + "..." : url,
-      groupLabel: "Links",
+      groupLabel: t("asset.links"),
       icon: getAssetIcon("link"),
     });
   }
@@ -98,9 +99,9 @@ function transformSessionToItems(session: SessionDetail): SidebarItemData[] {
     const content = msg.content;
     items.push({
       id: msg.id,
-      title: msg.role === "user" ? "You" : "AI",
+      title: msg.role === "user" ? t("detail.you") : t("detail.ai"),
       summary: content.length > 80 ? content.slice(0, 80) + "..." : content,
-      groupLabel: "Chat",
+      groupLabel: t("asset.chat"),
       icon: getAssetIcon("chat"),
     });
   }
@@ -109,11 +110,12 @@ function transformSessionToItems(session: SessionDetail): SidebarItemData[] {
 }
 
 export default function AssetSidebar({ session, selectedAssetId, onSelectAsset }: AssetSidebarProps) {
-  const items = session ? transformSessionToItems(session) : [];
+  const { t } = useI18n();
+  const items = session ? transformSessionToItems(session, t) : [];
 
   return (
     <Sidebar
-      title="Session Assets"
+      title={t("sidebar.assets")}
       items={items}
       selectedId={selectedAssetId}
       onSelect={onSelectAsset}

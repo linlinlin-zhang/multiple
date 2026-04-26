@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { File, ExternalLink } from "lucide-react";
 import { buildAssetUrl } from "../../hooks/useHistory";
+import { useI18n } from "@/lib/i18n";
 import type { SessionDetail, Asset, Node, ChatMessage } from "@/types";
 
 interface AssetDetailPaneProps {
@@ -30,8 +31,9 @@ function MetadataGrid({ rows }: { rows: { label: string; value: string }[] }) {
 }
 
 function ImageAssetDetail({ asset, nodes }: { asset: Asset; nodes?: Node[] }) {
+  const { t } = useI18n();
   const url = buildAssetUrl(asset.hash, asset.kind);
-  const title = asset.fileName || "Generated Image";
+  const title = asset.fileName || t("asset.generatedImage");
   const matchingNode = nodes?.find((n) => n.data?.imageHash === asset.hash);
   const explanation = matchingNode?.data?.explanation as string | undefined;
   return (
@@ -44,16 +46,16 @@ function ImageAssetDetail({ asset, nodes }: { asset: Asset; nodes?: Node[] }) {
       />
       <MetadataGrid
         rows={[
-          { label: "File name", value: asset.fileName || "—" },
-          { label: "MIME type", value: asset.mimeType },
-          { label: "Size", value: formatBytes(asset.fileSize) },
-          { label: "Hash", value: `${asset.hash.slice(0, 16)}...` },
-          { label: "Created", value: new Date(asset.createdAt).toLocaleString() },
+          { label: t("detail.fileName"), value: asset.fileName || "—" },
+          { label: t("detail.mimeType"), value: asset.mimeType },
+          { label: t("detail.size"), value: formatBytes(asset.fileSize) },
+          { label: t("detail.hash"), value: `${asset.hash.slice(0, 16)}...` },
+          { label: t("detail.created"), value: new Date(asset.createdAt).toLocaleString() },
         ]}
       />
       {explanation && (
         <div className="mt-4 p-4 bg-cabinet-bg rounded-3xl border border-cabinet-border">
-          <p className="text-xs font-medium text-cabinet-inkMuted mb-1">AI 讲解</p>
+          <p className="text-xs font-medium text-cabinet-inkMuted mb-1">{t("detail.explanation")}</p>
           <p className="text-sm text-cabinet-ink leading-relaxed">{explanation}</p>
         </div>
       )}
@@ -62,6 +64,7 @@ function ImageAssetDetail({ asset, nodes }: { asset: Asset; nodes?: Node[] }) {
 }
 
 function FileAssetDetail({ asset }: { asset: Asset }) {
+  const { t } = useI18n();
   const [preview, setPreview] = useState<string | null>(null);
 
   useEffect(() => {
@@ -86,21 +89,21 @@ function FileAssetDetail({ asset }: { asset: Asset }) {
       <div className="flex flex-col items-center justify-center py-12">
         <File size={64} className="text-cabinet-inkMuted" />
         <div className="text-[15px] text-cabinet-ink mt-4 font-medium">
-          {asset.fileName || "Uploaded File"}
+          {asset.fileName || t("asset.uploadedFile")}
         </div>
       </div>
       <MetadataGrid
         rows={[
-          { label: "File name", value: asset.fileName || "—" },
-          { label: "MIME type", value: asset.mimeType },
-          { label: "Size", value: formatBytes(asset.fileSize) },
-          { label: "Hash", value: `${asset.hash.slice(0, 16)}...` },
-          { label: "Created", value: new Date(asset.createdAt).toLocaleString() },
+          { label: t("detail.fileName"), value: asset.fileName || "—" },
+          { label: t("detail.mimeType"), value: asset.mimeType },
+          { label: t("detail.size"), value: formatBytes(asset.fileSize) },
+          { label: t("detail.hash"), value: `${asset.hash.slice(0, 16)}...` },
+          { label: t("detail.created"), value: new Date(asset.createdAt).toLocaleString() },
         ]}
       />
       {preview !== null && (
         <div className="mt-4">
-          <div className="text-[13px] text-cabinet-inkMuted mb-1">Preview</div>
+          <div className="text-[13px] text-cabinet-inkMuted mb-1">{t("detail.preview")}</div>
           <pre className="text-[13px] text-cabinet-ink bg-cabinet-bg rounded-2xl border border-cabinet-border p-4 max-h-[300px] overflow-auto whitespace-pre-wrap break-all">
             {preview}
           </pre>
@@ -111,6 +114,7 @@ function FileAssetDetail({ asset }: { asset: Asset }) {
 }
 
 function LinkAssetDetail({ node }: { node: Node }) {
+  const { t } = useI18n();
   const url = node.data?.sourceUrl as string | undefined;
   const description = node.data?.option?.description as string | undefined;
   const title = node.data?.fileName as string | undefined;
@@ -132,19 +136,19 @@ function LinkAssetDetail({ node }: { node: Node }) {
       </div>
       {title && (
         <div className="mt-4">
-          <div className="text-[13px] text-cabinet-inkMuted">Title</div>
+          <div className="text-[13px] text-cabinet-inkMuted">{t("detail.title")}</div>
           <div className="text-[14px] text-cabinet-ink mt-1">{title}</div>
         </div>
       )}
       {description && (
         <div className="mt-4">
-          <div className="text-[13px] text-cabinet-inkMuted">Description</div>
+          <div className="text-[13px] text-cabinet-inkMuted">{t("detail.description")}</div>
           <div className="text-[14px] text-cabinet-ink mt-1">{description}</div>
         </div>
       )}
       {summary && (
         <div className="mt-4 p-4 bg-cabinet-bg rounded-3xl border border-cabinet-border">
-          <p className="text-xs font-medium text-cabinet-inkMuted mb-1">AI Summary</p>
+          <p className="text-xs font-medium text-cabinet-inkMuted mb-1">{t("detail.aiSummary")}</p>
           <p className="text-sm text-cabinet-ink leading-relaxed">{summary}</p>
         </div>
       )}
@@ -153,6 +157,7 @@ function LinkAssetDetail({ node }: { node: Node }) {
 }
 
 function ChatAssetDetail({ msg }: { msg: ChatMessage }) {
+  const { t } = useI18n();
   return (
     <div className="flex flex-col h-full overflow-y-auto cabinet-scrollbar px-8 pb-12">
       <div className="flex items-center gap-2 mt-4">
@@ -163,7 +168,7 @@ function ChatAssetDetail({ msg }: { msg: ChatMessage }) {
               : "bg-cabinet-blue text-cabinet-paper"
           }`}
         >
-          {msg.role === "user" ? "You" : "AI"}
+          {msg.role === "user" ? t("detail.you") : t("detail.ai")}
         </span>
         <span className="text-[13px] text-cabinet-inkMuted">
           {new Date(msg.createdAt).toLocaleString()}
@@ -177,11 +182,12 @@ function ChatAssetDetail({ msg }: { msg: ChatMessage }) {
 }
 
 export default function AssetDetailPane({ session, selectedAssetId }: AssetDetailPaneProps) {
+  const { t } = useI18n();
   if (!selectedAssetId) {
     return (
       <div className="flex-1 bg-cabinet-paper flex flex-col h-full overflow-hidden items-center justify-center">
         <span className="text-sm text-cabinet-inkMuted">
-          Select an asset from the sidebar to view details.
+          {t("detail.selectAsset")}
         </span>
       </div>
     );
@@ -190,7 +196,7 @@ export default function AssetDetailPane({ session, selectedAssetId }: AssetDetai
   if (!session) {
     return (
       <div className="flex-1 bg-cabinet-paper flex flex-col h-full overflow-hidden items-center justify-center">
-        <span className="text-sm text-cabinet-inkMuted">Loading session...</span>
+        <span className="text-sm text-cabinet-inkMuted">{t("detail.loadingSession")}</span>
       </div>
     );
   }
@@ -234,7 +240,7 @@ export default function AssetDetailPane({ session, selectedAssetId }: AssetDetai
 
   return (
     <div className="flex-1 bg-cabinet-paper flex flex-col h-full overflow-hidden items-center justify-center">
-      <span className="text-sm text-cabinet-inkMuted">Asset not found.</span>
+      <span className="text-sm text-cabinet-inkMuted">{t("detail.assetNotFound")}</span>
     </div>
   );
 }

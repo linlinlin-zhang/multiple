@@ -3,6 +3,7 @@ import { useSession } from "../../hooks/useHistory";
 import AssetSidebar from "./AssetSidebar";
 import AssetDetailPane from "./AssetDetailPane";
 import NodeGraphThumbnail from "./NodeGraphThumbnail";
+import { useI18n } from "@/lib/i18n";
 import { Menu, X } from "lucide-react";
 
 interface HistoryPageProps {
@@ -45,6 +46,7 @@ export default function HistoryPage({ sessionId }: HistoryPageProps) {
   const { session, loading, error, refetch } = useSession(sessionId);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { t } = useI18n();
   const nodeCount = session?.nodeCount ?? session?.nodes.length ?? 0;
   const assetCount = session?.assetCount ?? session?.assets.length ?? 0;
 
@@ -97,7 +99,7 @@ export default function HistoryPage({ sessionId }: HistoryPageProps) {
           />
           <div className="relative w-[280px] bg-cabinet-paper h-full shadow-lg">
             <div className="flex items-center justify-between px-4 py-3 border-b border-cabinet-border">
-              <span className="text-sm font-medium text-cabinet-ink">Session Assets</span>
+              <span className="text-sm font-medium text-cabinet-ink">{t("sidebar.assets")}</span>
               <button
                 onClick={() => setSidebarOpen(false)}
                 className="w-8 h-8 flex items-center justify-center rounded hover:bg-cabinet-itemBg"
@@ -153,16 +155,16 @@ export default function HistoryPage({ sessionId }: HistoryPageProps) {
                 <div className="flex items-center gap-3 mt-2 text-[13px] text-cabinet-inkMuted flex-wrap">
                   <span>{new Date(session.createdAt).toLocaleString()}</span>
                   <span>·</span>
-                  <span>{nodeCount} nodes</span>
+                  <span>{nodeCount} {t("history.nodeCount")}</span>
                   <span>·</span>
-                  <span>{assetCount} assets</span>
+                  <span>{assetCount} {t("history.assetCount")}</span>
                 </div>
               </div>
               <a
                 href={`/?session=${session.id}`}
                 className="inline-flex items-center px-5 py-2 bg-cabinet-blue text-cabinet-paper text-sm font-medium rounded-full hover:bg-cabinet-cyan transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cabinet-blue focus-visible:ring-offset-2 flex-shrink-0"
               >
-                Open in Canvas
+                {t("cabinet.openInCanvas")}
               </a>
             </div>
           </div>

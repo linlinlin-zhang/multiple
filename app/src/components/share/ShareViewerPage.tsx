@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import NodeGraphThumbnail from "../cabinet/NodeGraphThumbnail";
 import { buildAssetUrl } from "../../hooks/useHistory";
+import { useI18n } from "@/lib/i18n";
 
 interface ShareSnapshot {
   title: string;
@@ -53,6 +54,7 @@ export default function ShareViewerPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<ShareResponse | null>(null);
+  const { t } = useI18n();
 
   const token = window.location.pathname.split("/").pop() || "";
 
@@ -88,22 +90,22 @@ export default function ShareViewerPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-cabinet-bg text-cabinet-text font-sans flex flex-col items-center justify-center">
-        <div className="w-6 h-6 border-2 border-cabinet-border border-t-cabinet-accent rounded-full animate-spin mb-3" />
-        <p className="text-sm text-cabinet-muted">加载分享内容...</p>
+      <div className="min-h-screen bg-cabinet-bg text-cabinet-ink font-sans flex flex-col items-center justify-center">
+        <div className="w-7 h-7 border-2 border-cabinet-border border-t-cabinet-blue rounded-full animate-spin mb-3" />
+        <p className="text-sm text-cabinet-inkMuted">{t("share.loading")}</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-cabinet-bg text-cabinet-text font-sans flex flex-col items-center justify-center px-4">
-        <p className="text-red-600 mb-4">无法加载分享内容：{error}</p>
+      <div className="min-h-screen bg-cabinet-bg text-cabinet-ink font-sans flex flex-col items-center justify-center px-4">
+        <p className="text-[#d53b00] mb-4">{t("share.loadFailed")}{error}</p>
         <button
           onClick={() => window.location.reload()}
-          className="px-4 py-2 bg-white border border-cabinet-border rounded-lg text-sm hover:bg-cabinet-bg transition-colors"
+          className="px-5 py-2 bg-cabinet-blue text-white rounded-full text-sm hover:bg-cabinet-cyan hover:scale-110 transition-transform"
         >
-          重试
+          {t("share.retry")}
         </button>
       </div>
     );
@@ -111,8 +113,8 @@ export default function ShareViewerPage() {
 
   if (!data) {
     return (
-      <div className="min-h-screen bg-cabinet-bg text-cabinet-text font-sans flex items-center justify-center">
-        <p className="text-cabinet-muted">无法加载分享内容。</p>
+      <div className="min-h-screen bg-cabinet-bg text-cabinet-ink font-sans flex items-center justify-center">
+        <p className="text-cabinet-inkMuted">{t("share.loadFailed")}</p>
       </div>
     );
   }
@@ -121,38 +123,36 @@ export default function ShareViewerPage() {
   const hasContent = snapshot.nodes.length > 0 || snapshot.assets.length > 0;
 
   return (
-    <div className="min-h-screen bg-cabinet-bg text-cabinet-text font-sans">
-      {/* Header */}
-      <header className="bg-white/80 backdrop-blur border-b border-cabinet-border px-6 py-4 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">{snapshot.title || "未命名会话"}</h1>
-        <span className="text-sm text-cabinet-muted">
-          分享于 {new Date(data.createdAt).toLocaleString("zh-CN")}
+    <div className="min-h-screen bg-cabinet-bg text-cabinet-ink font-sans">
+      <header className="bg-black text-white px-6 py-5 flex items-center justify-between gap-4">
+        <h1 className="text-xl md:text-2xl font-light leading-tight">
+          {snapshot.title || t("session.unnamed")}
+        </h1>
+        <span className="text-sm text-white/70">
+          {t("share.sharedAt")} {new Date(data.createdAt).toLocaleString()}
         </span>
       </header>
 
-      {/* Main */}
-      <main className="max-w-[1200px] mx-auto px-4 md:px-8 py-6 space-y-6">
+      <main className="max-w-[1200px] mx-auto px-4 md:px-8 py-8 space-y-6">
         {!hasContent ? (
-          <div className="bg-white rounded-xl border border-cabinet-border p-8 text-center">
-            <p className="text-cabinet-muted">该会话没有可展示的内容。</p>
+          <div className="bg-white rounded-3xl border border-cabinet-border p-8 text-center shadow-[0_8px_16px_rgba(0,0,0,0.08)]">
+            <p className="text-cabinet-inkMuted">{t("share.noContent")}</p>
           </div>
         ) : (
           <>
-            {/* Node Graph Thumbnail */}
-            <div className="bg-white rounded-xl border border-cabinet-border p-4 shadow-sm">
-              <h2 className="text-sm font-medium text-cabinet-muted mb-3">节点图概览</h2>
+            <section className="bg-white rounded-3xl border border-cabinet-border p-5 shadow-[0_8px_16px_rgba(0,0,0,0.08)]">
+              <h2 className="text-base font-medium text-cabinet-ink mb-4">{t("share.nodeOverview")}</h2>
               <NodeGraphThumbnail nodes={snapshot.nodes as any} links={snapshot.links as any} />
-            </div>
+            </section>
 
-            {/* Assets Grid */}
             {snapshot.assets.length > 0 && (
-              <div className="bg-white rounded-xl border border-cabinet-border p-4 shadow-sm">
-                <h2 className="text-sm font-medium text-cabinet-muted mb-3">素材</h2>
+              <section className="bg-white rounded-3xl border border-cabinet-border p-5 shadow-[0_8px_16px_rgba(0,0,0,0.08)]">
+                <h2 className="text-base font-medium text-cabinet-ink mb-4">{t("share.assets")}</h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {snapshot.assets.map((asset, idx) => (
                     <div
                       key={`${asset.hash}-${idx}`}
-                      className="bg-white rounded-lg border border-cabinet-border overflow-hidden shadow-sm"
+                      className="bg-white rounded-3xl border border-cabinet-border overflow-hidden shadow-[0_5px_9px_rgba(0,0,0,0.06)]"
                     >
                       <img
                         src={buildAssetUrl(asset.hash, asset.kind)}
@@ -160,58 +160,47 @@ export default function ShareViewerPage() {
                         alt={asset.fileName || asset.hash.slice(0, 8)}
                         className="w-full h-32 object-cover"
                       />
-                      <div className="p-2 flex items-center justify-between">
-                        <span className="text-xs text-cabinet-muted truncate max-w-[70%]">
+                      <div className="p-3 flex items-center justify-between gap-2">
+                        <span className="text-xs text-cabinet-inkMuted truncate">
                           {asset.fileName || asset.hash.slice(0, 12)}
                         </span>
-                        <span className="text-[10px] text-cabinet-muted">
+                        <span className="text-[11px] text-cabinet-inkMuted shrink-0">
                           {formatBytes(asset.fileSize)}
                         </span>
                       </div>
-                      <div className="px-2 pb-2">
-                        <span
-                          className={`inline-block text-[10px] px-1.5 py-0.5 rounded ${
-                            asset.kind === "upload"
-                              ? "bg-blue-50 text-blue-700"
-                              : "bg-purple-50 text-purple-700"
-                          }`}
-                        >
-                          {asset.kind === "upload" ? "原图" : "生成图"}
+                      <div className="px-3 pb-3">
+                        <span className="inline-block text-[11px] px-2 py-1 rounded-full bg-cabinet-bg text-cabinet-blue">
+                          {asset.kind === "upload" ? t("share.upload") : t("share.generated")}
                         </span>
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
 
-            {/* Chat Messages */}
             {snapshot.chatMessages.length > 0 && (
-              <div className="bg-white rounded-xl border border-cabinet-border p-4 shadow-sm">
-                <h2 className="text-sm font-medium text-cabinet-muted mb-3">对话记录</h2>
+              <section className="bg-white rounded-3xl border border-cabinet-border p-5 shadow-[0_8px_16px_rgba(0,0,0,0.08)]">
+                <h2 className="text-base font-medium text-cabinet-ink mb-4">{t("share.chatRecord")}</h2>
                 <div className="space-y-3">
                   {snapshot.chatMessages.map((msg, idx) => (
                     <div key={idx} className="flex gap-3">
                       <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium shrink-0 ${
+                        className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-medium shrink-0 ${
                           msg.role === "user"
-                            ? "bg-gray-100 text-gray-700"
-                            : "bg-green-50 text-green-700"
+                            ? "bg-cabinet-bg text-cabinet-ink"
+                            : "bg-cabinet-blue text-white"
                         }`}
                       >
-                        {msg.role === "user" ? "用户" : "AI"}
+                        {msg.role === "user" ? t("share.me") : t("share.ai")}
                       </div>
-                      <div
-                        className={`p-3 rounded-lg text-sm whitespace-pre-wrap flex-1 ${
-                          msg.role === "user" ? "bg-gray-50" : "bg-green-50/50"
-                        }`}
-                      >
+                      <div className="p-4 rounded-3xl text-sm whitespace-pre-wrap flex-1 bg-cabinet-bg text-cabinet-ink leading-relaxed">
                         {msg.content}
                       </div>
                     </div>
                   ))}
                 </div>
-              </div>
+              </section>
             )}
           </>
         )}

@@ -12,6 +12,10 @@
         if (t === "dark" || t === "light") {
           document.documentElement.setAttribute("data-theme", t);
         }
+        var l = localStorage.getItem("oryzae-lang");
+        if (l === "zh" || l === "en") {
+          document.documentElement.setAttribute("lang", l === "zh" ? "zh-CN" : "en");
+        }
       })();
     </script>
   </head>

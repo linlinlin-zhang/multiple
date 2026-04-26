@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import FolderTab from "./FolderTab";
 import { useHistory } from "../../hooks/useHistory";
 import HistoryPage from "./HistoryPage";
+import { useI18n } from "@/lib/i18n";
 import { Menu, X, Clock, Sun, Moon } from "lucide-react";
 
 const INACTIVE_COLORS = [
@@ -70,6 +71,7 @@ export default function FileCabinet() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [showMoreSidebar, setShowMoreSidebar] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme);
+  const { lang, setLang, t } = useI18n();
 
   useEffect(() => {
     if (activeSessionId === null && sessions.length > 0) {
@@ -121,11 +123,11 @@ export default function FileCabinet() {
           />
           <div className="relative w-[280px] bg-cabinet-paper h-full shadow-lg flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-cabinet-border">
-              <span className="text-sm font-medium text-cabinet-ink">历史记录</span>
+              <span className="text-sm font-medium text-cabinet-ink">{t("history.record")}</span>
               <button
                 onClick={() => setShowMoreSidebar(false)}
                 className="w-8 h-8 flex items-center justify-center rounded hover:bg-cabinet-itemBg"
-                aria-label="Close sidebar"
+                aria-label={t("cabinet.closeSidebar")}
               >
                 <X size={18} className="text-cabinet-ink" />
               </button>
@@ -133,7 +135,7 @@ export default function FileCabinet() {
             <div className="flex-1 overflow-y-auto cabinet-scrollbar">
               {sessions.length === 0 ? (
                 <div className="px-4 py-6 text-sm text-cabinet-inkMuted text-center">
-                  暂无历史会话
+                  {t("history.noSessions")}
                 </div>
               ) : (
                 sessions.map((session) => (
@@ -152,11 +154,11 @@ export default function FileCabinet() {
                     <div className="flex items-center gap-2">
                       <Clock size={14} className="text-cabinet-inkMuted flex-shrink-0" />
                       <div className="text-sm font-medium text-cabinet-ink truncate leading-tight">
-                        {session.title || "未命名会话"}
+                        {session.title || t("session.unnamed")}
                       </div>
                     </div>
                     <div className="text-xs text-cabinet-ink2 truncate mt-1 leading-tight">
-                      {new Date(session.createdAt).toLocaleString()} · {session.nodeCount} nodes
+                      {new Date(session.createdAt).toLocaleString()} · {session.nodeCount} {t("history.nodeCount")}
                     </div>
                   </button>
                 ))
@@ -179,15 +181,15 @@ export default function FileCabinet() {
                   ? "bg-cabinet-blue text-cabinet-paper border-cabinet-blue"
                   : "bg-cabinet-paper text-cabinet-ink border-cabinet-border hover:bg-cabinet-itemBg"
               }`}
-              title={showMoreSidebar ? "隐藏历史记录" : "显示历史记录"}
-              aria-label={showMoreSidebar ? "Hide history sidebar" : "Show history sidebar"}
+              title={showMoreSidebar ? t("cabinet.hideHistory") : t("cabinet.showHistory")}
+              aria-label={showMoreSidebar ? t("cabinet.hideHistory") : t("cabinet.showHistory")}
             >
               <Menu size={18} />
             </button>
             <div className="flex items-end overflow-x-auto flex-1">
               {sessions.length === 0 ? (
                 <FolderTab
-                  label="No sessions"
+                  label={t("cabinet.noSessions")}
                   tabId="none"
                   active={false}
                   zIndex={1}
@@ -201,7 +203,7 @@ export default function FileCabinet() {
                     return (
                       <FolderTab
                         key={session.id}
-                        label={session.title || "未命名会话"}
+                        label={session.title || t("session.unnamed")}
                         tabId={session.id}
                         active={activeSessionId === session.id}
                         zIndex={index + 1}
@@ -214,7 +216,7 @@ export default function FileCabinet() {
                   })}
                   {hasMore && (
                     <FolderTab
-                      label={`更多 (${sessions.length - MAX_VISIBLE_TABS})`}
+                      label={`${t("history.more")} (${sessions.length - MAX_VISIBLE_TABS})`}
                       tabId="more"
                       active={showMoreSidebar}
                       zIndex={MAX_VISIBLE_TABS + 1}
@@ -230,54 +232,28 @@ export default function FileCabinet() {
             <button
               onClick={handleToggleTheme}
               className="w-10 h-10 flex items-center justify-center rounded-lg border flex-shrink-0 transition-colors mb-[3px] bg-cabinet-paper text-cabinet-ink border-cabinet-border hover:bg-cabinet-itemBg"
-              title={theme === "dark" ? "切换亮色模式" : "切换深色模式"}
-              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              title={theme === "dark" ? t("settings.lightMode") : t("settings.darkMode")}
+              aria-label={theme === "dark" ? t("settings.lightMode") : t("settings.darkMode")}
             >
               {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
             </button>
-          </div>
-              {sessions.length === 0 ? (
-                <FolderTab
-                  label="No sessions"
-                  tabId="none"
-                  active={false}
-                  zIndex={1}
-                  overlap={false}
-                  onClick={() => {}}
-                />
-              ) : (
-                <>
-                  {visibleSessions.map((session, index) => {
-                    const palette = INACTIVE_COLORS[index % 3];
-                    return (
-                      <FolderTab
-                        key={session.id}
-                        label={session.title || "未命名会话"}
-                        tabId={session.id}
-                        active={activeSessionId === session.id}
-                        zIndex={index + 1}
-                        overlap={index > 0}
-                        onClick={() => handleSessionSelect(session.id)}
-                        inactiveColor={palette.bg}
-                        inactiveText={palette.text}
-                      />
-                    );
-                  })}
-                  {hasMore && (
-                    <FolderTab
-                      label={`更多 (${sessions.length - MAX_VISIBLE_TABS})`}
-                      tabId="more"
-                      active={showMoreSidebar}
-                      zIndex={MAX_VISIBLE_TABS + 1}
-                      overlap={true}
-                      onClick={toggleMoreSidebar}
-                      inactiveColor="#ffffff"
-                      inactiveText="#000000"
-                    />
-                  )}
-                </>
-              )}
-            </div>
+            <select
+              value={lang}
+              onChange={(e) => {
+                const next = e.target.value as "zh" | "en";
+                setLang(next);
+                fetch("/api/settings", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ language: next })
+                }).catch(console.error);
+              }}
+              className="h-10 px-2 rounded-lg border flex-shrink-0 mb-[3px] bg-cabinet-paper text-cabinet-ink border-cabinet-border hover:bg-cabinet-itemBg text-sm"
+              aria-label={t("settings.language")}
+            >
+              <option value="zh">{t("lang.zh")}</option>
+              <option value="en">{t("lang.en")}</option>
+            </select>
           </div>
         )}
 
@@ -297,11 +273,11 @@ export default function FileCabinet() {
           {showMoreSidebar && (
             <div className="hidden md:flex w-[260px] min-w-[260px] flex-col bg-cabinet-paper border border-cabinet-border border-r-0">
               <div className="flex items-center justify-between px-4 py-3 border-b border-cabinet-border">
-                <span className="text-sm font-medium text-cabinet-ink">历史记录</span>
+                <span className="text-sm font-medium text-cabinet-ink">{t("history.record")}</span>
                 <button
                   onClick={() => setShowMoreSidebar(false)}
                   className="w-8 h-8 flex items-center justify-center rounded hover:bg-cabinet-itemBg"
-                  aria-label="Close sidebar"
+                  aria-label={t("cabinet.closeSidebar")}
                 >
                   <X size={18} className="text-cabinet-ink" />
                 </button>
@@ -309,7 +285,7 @@ export default function FileCabinet() {
               <div className="flex-1 overflow-y-auto cabinet-scrollbar">
                 {sessions.length === 0 ? (
                   <div className="px-4 py-6 text-sm text-cabinet-inkMuted text-center">
-                    暂无历史会话
+                    {t("history.noSessions")}
                   </div>
                 ) : (
                   sessions.map((session) => (
@@ -328,11 +304,11 @@ export default function FileCabinet() {
                       <div className="flex items-center gap-2">
                         <Clock size={14} className="text-cabinet-inkMuted flex-shrink-0" />
                         <div className="text-sm font-medium text-cabinet-ink truncate leading-tight">
-                          {session.title || "未命名会话"}
+                          {session.title || t("session.unnamed")}
                         </div>
                       </div>
                       <div className="text-xs text-cabinet-ink2 truncate mt-1 leading-tight">
-                        {new Date(session.createdAt).toLocaleString()} · {session.nodeCount} nodes
+                        {new Date(session.createdAt).toLocaleString()} · {session.nodeCount} {t("history.nodeCount")}
                       </div>
                     </button>
                   ))
@@ -346,7 +322,7 @@ export default function FileCabinet() {
               <Spinner />
             ) : sessions.length === 0 && !loading ? (
               <div className="flex items-center justify-center h-full text-cabinet-inkMuted text-base">
-                暂无历史会话
+                {t("history.noSessions")}
               </div>
             ) : (
               <HistoryPage sessionId={activeSessionId} />
