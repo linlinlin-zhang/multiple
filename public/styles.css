@@ -1354,6 +1354,47 @@ body.nav-collapsed .nav-settings {
   }
 }
 
+.viewer-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.viewer-modify-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.viewer-modify-panel.hidden {
+  display: none;
+}
+
+.viewer-modify-panel textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--paper);
+  resize: vertical;
+  font-family: inherit;
+}
+
+.viewer-modify-panel textarea:focus {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.viewer-modify-actions {
+  display: flex;
+  gap: 10px;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
