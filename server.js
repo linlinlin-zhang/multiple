@@ -70,6 +70,11 @@ const server = http.createServer(async (req, res) => {
       return await handleAnalyzeText(body, res);
     }
 
+    if (req.method === "POST" && url.pathname === "/api/analyze-url") {
+      const body = await readJson(req);
+      return await handleAnalyzeUrl(body, res);
+    }
+
     if (req.method === "POST" && url.pathname === "/api/generate") {
       const body = await readJson(req);
       return await handleGenerate(body, res);
@@ -324,6 +329,104 @@ async function handleAnalyze(body, res) {
   normalized.provider = "api";
   normalized.model = response?.model || ANALYSIS_CONFIG.model;
   return sendJson(res, 200, normalized);
+}
+
+function isValidPublicUrl(urlString) {
+  if (typeof urlString !== "string" || !urlString.trim()) return false;
+  if (urlString.length > 2048) return false;
+
+  let parsed;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    return false;
+  }
+
+  // Reject non-http(s) protocols
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return false;
+  }
+
+  const hostname = parsed.hostname.toLowerCase();
+
+  // Reject localhost and loopback
+  if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "0.0.0.0") {
+    return false;
+  }
+
+  // Reject private IP ranges
+  if (/^(10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.|127\.)/.test(hostname)) {
+    return false;
+  }
+
+  return true;
+}
+
+async function handleAnalyzeUrl(body, res) {
+  const url = typeof body?.url === "string" ? body.url.trim() : "";
+
+  if (!isValidPublicUrl(url)) {
+    return sendJson(res, 400, { error: "Invalid URL. Only http:// and https:// links are supported." });
+  }
+
+  let domain;
+  try {
+    domain = new URL(url).hostname;
+  } catch {
+    return sendJson(res, 400, { error: "Invalid URL. Only http:// and https:// links are supported." });
+  }
+
+  if (isDemoRole(ANALYSIS_CONFIG)) {
+    const demo = buildDemoAnalysis(domain);
+    demo.domain = domain;
+    return sendJson(res, 200, demo);
+  }
+
+  const prompt = [
+    "你是一个网络内容创意导演，正在为一个画布式图片生成应用分析用户提供的网页链接。",
+    "请基于你对该网页内容的理解和搜索能力，总结其核心主题、视觉氛围、可延展的叙事方向，并给出 5 个不同的成图方向。",
+    "这些方向会作为画布上的分支节点展示，用户点击后会调用成图模型。",
+    "请只返回严格 JSON，不要 Markdown，不要代码块。",
+    "",
+    "JSON 结构：{ title, summary, detectedSubjects, moodKeywords, options[...] }",
+    "（与图像分析完全一致的结构）",
+    "",
+    "要求：方向之间要明显不同；不要生成暴力、色情、仇恨或侵犯隐私的内容。",
+    "",
+    `网页链接：${url}`,
+    `网页域名：${domain}`,
+    "",
+    "请尽可能基于该网页的内容主题生成视觉方向。如果无法访问该链接，请基于域名和常见内容类型给出合理的创意推测。"
+  ].join("\n");
+
+  const analysisPayload = {
+    messages: [
+      {
+        role: "user",
+        content: prompt
+      }
+    ]
+  };
+
+  if (ANALYSIS_CONFIG.provider === "kimi" && /^kimi-k2\./.test(ANALYSIS_CONFIG.model)) {
+    analysisPayload.thinking = { type: "disabled" };
+  } else if (ANALYSIS_CONFIG.provider === "openrouter") {
+    analysisPayload.reasoning = { effort: "none", exclude: true };
+  }
+
+  try {
+    const response = await chatCompletions(ANALYSIS_CONFIG, analysisPayload);
+    const text = collectChatContent(response);
+    const parsed = parseJsonFromText(text);
+    const normalized = normalizeAnalysis(parsed, domain);
+    normalized.provider = "api";
+    normalized.model = response?.model || ANALYSIS_CONFIG.model;
+    normalized.domain = domain;
+    return sendJson(res, 200, normalized);
+  } catch (error) {
+    console.error("[handleAnalyzeUrl] error:", error);
+    return sendJson(res, 500, { error: "URL analysis failed", message: error.message });
+  }
 }
 
 async function handleAnalyzeText(body, res) {
