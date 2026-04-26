@@ -29,7 +29,7 @@
 
 - [x] Phase 5: Canvas Interaction Polish
 - [x] Phase 6: Multi-format Input & AI Analysis
-- [ ] Phase 7: Settings & Personalization
+- [x] Phase 7: Settings & Personalization
 - [ ] Phase 8: Canvas Intelligence & Image Tools
 
 ---
@@ -74,6 +74,11 @@
 **Plans:** 3 plans
 **UI hint:** yes
 
+Plans:
+- [x] 07-01-PLAN.md — API Configuration settings (backend settings storage, frontend panel, runtime config override)
+- [x] 07-02-PLAN.md — Dark Mode (CSS theming, toggle, persistence, canvas + history browser support)
+- [x] 07-03-PLAN.md — i18n Language Switch (dictionary system, toggle, all UI text extraction, persistence)
+
 ### Phase 8: Canvas Intelligence & Image Tools
 **Goal:** 一键整理画布布局，提供图片查看、修改和下载功能。
 **Depends on:** v1.0 Phase 1-4, Phase 5 (画布交互)
@@ -87,6 +92,11 @@
 **Plans:** 3 plans
 **UI hint:** yes
 
+Plans:
+- [ ] 08-01-PLAN.md — Auto-arrange canvas layout (collapse un-generated nodes, tree layout algorithm, animate to new positions)
+- [ ] 08-02-PLAN.md — Image viewer modal (click image to open, show enlarged image + AI explanation, dark backdrop, Esc/click/X to close)
+- [ ] 08-03-PLAN.md — Image modify and download (regenerate, custom prompt modify, download with Content-Disposition)
+
 ---
 
 ## Progress
@@ -99,5 +109,5 @@
 | 4. AI Titles & Explanations | v1.0 | 3/3 | Complete | 2026-04-26 |
 | 5. Canvas Interaction Polish | v1.1 | 3/3 | Complete | 2026-04-26 |
 | 6. Multi-format Input & AI Analysis | v1.1 | 3/3 | Complete | 2026-04-26 |
-| 7. Settings & Personalization | v1.1 | 0/3 | Not started | - |
+| 7. Settings & Personalization | v1.1 | 3/3 | Complete | 2026-04-26 |
 | 8. Canvas Intelligence & Image Tools | v1.1 | 0/3 | Not started | - |
