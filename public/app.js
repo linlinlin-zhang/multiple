@@ -62,6 +62,7 @@ const state = {
   collapsed: new Set(),        // full collapse (double-click)
   selectiveHidden: new Set(),  // selective hide (single-click / auto-collapse)
   generatedCount: 0,
+  selectedNodeId: null,
   view: {
     x: 0,
     y: 0,
@@ -1300,6 +1301,7 @@ function closeImageViewer() {
 }
 
 function clearOptions() {
+  deselectNode();
   for (const [id, node] of Array.from(state.nodes.entries())) {
     if (id.startsWith("option-")) {
       node.element.remove();
@@ -1313,9 +1315,45 @@ function clearOptions() {
   applyCollapseState();
 }
 
+function selectNode(nodeId) {
+  if (!state.nodes.has(nodeId)) return;
+  if (state.selectedNodeId === nodeId) {
+    deselectNode();
+    return;
+  }
+  deselectNode();
+  state.selectedNodeId = nodeId;
+  const node = state.nodes.get(nodeId);
+  if (node && node.element) {
+    node.element.classList.add("is-selected");
+    node.element.style.zIndex = "9";
+  }
+  updateDialogState();
+}
+
+function deselectNode() {
+  if (state.selectedNodeId === null) return;
+  const node = state.nodes.get(state.selectedNodeId);
+  if (node && node.element) {
+    node.element.classList.remove("is-selected");
+    node.element.style.zIndex = "";
+  }
+  state.selectedNodeId = null;
+  updateDialogState();
+}
+
+function updateDialogState() {
+  // Wired in 09-02
+}
+
 function registerNode(id, element, data) {
   state.nodes.set(id, { id, element, ...data });
   ensureCollapseControl(id, element);
+  element.addEventListener("dblclick", (event) => {
+    if (event.target.closest(".collapse-dot")) return;
+    if (event.target.closest("button, input, textarea, a")) return;
+    selectNode(id);
+  });
   updateCollapseControls();
 }
 
