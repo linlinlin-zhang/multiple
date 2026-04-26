@@ -34,6 +34,11 @@ const settingsModel = document.querySelector("#settingsModel");
 const settingsApiKey = document.querySelector("#settingsApiKey");
 const settingsTemperature = document.querySelector("#settingsTemperature");
 
+const imageViewerModal = document.querySelector("#imageViewerModal");
+const viewerImage = document.querySelector("#viewerImage");
+const viewerTitle = document.querySelector("#viewerTitle");
+const viewerExplanation = document.querySelector("#viewerExplanation");
+
 const state = {
   sourceImage: null,
   sourceImageHash: null,
@@ -141,6 +146,8 @@ const i18n = {
     "generated.download": "下载",
     "generated.regenerate": "重生成",
     "generated.result": "生成结果",
+    "viewer.title": "图片详情",
+    "viewer.close": "关闭",
     "collapse.expand": "展开 {count} 个后续节点",
     "collapse.collapse": "收起 {count} 个后续节点",
     "collapse.noChildren": "没有后续节点",
@@ -222,6 +229,8 @@ const i18n = {
     "generated.download": "Download",
     "generated.regenerate": "Regenerate",
     "generated.result": "Generated Result",
+    "viewer.title": "Image Details",
+    "viewer.close": "Close",
     "collapse.expand": "Expand {count} downstream nodes",
     "collapse.collapse": "Collapse {count} downstream nodes",
     "collapse.noChildren": "No downstream nodes",
@@ -362,6 +371,10 @@ function renderAllText() {
   if (analysisEyebrow) analysisEyebrow.textContent = t("analysis.eyebrow");
   const analysisTitle = document.querySelector("#analysisNode h2");
   if (analysisTitle) analysisTitle.textContent = t("analysis.title");
+
+  if (imageViewerModal) imageViewerModal.setAttribute("aria-label", t("viewer.title"));
+  const closeImageViewerBtn = document.querySelector("#closeImageViewer");
+  if (closeImageViewerBtn) closeImageViewerBtn.setAttribute("aria-label", t("viewer.close"));
 
   const optionTmpl = document.querySelector("#optionTemplate");
   if (optionTmpl) {
@@ -574,6 +587,15 @@ function wireControls() {
       saveLanguage(languageSelect.value);
     });
   }
+
+  // Image viewer modal wiring
+  imageViewerModal?.querySelector("[data-close-modal]")?.addEventListener("click", closeImageViewer);
+  document.querySelector("#closeImageViewer")?.addEventListener("click", closeImageViewer);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !imageViewerModal?.classList.contains("hidden")) {
+      closeImageViewer();
+    }
+  });
 
   viewport.addEventListener("click", (event) => {
     if (!settingsPanel?.classList.contains("hidden") && event.target === viewport) {
@@ -1124,6 +1146,11 @@ function turnIntoGeneratedNode(element, option, imageDataUrl) {
   img.className = "generated-image";
   img.src = imageDataUrl;
   img.alt = option.title || "生成图";
+  img.style.cursor = "zoom-in";
+  img.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openImageViewer(element.dataset.nodeId);
+  });
   element.appendChild(img);
 
   const eyebrow = document.createElement("p");
@@ -1155,6 +1182,31 @@ function turnIntoGeneratedNode(element, option, imageDataUrl) {
 
   actions.append(download, regenerate);
   element.appendChild(actions);
+}
+
+function openImageViewer(nodeId) {
+  const node = state.nodes.get(nodeId);
+  if (!node || !node.generated) return;
+
+  const img = node.element.querySelector(".generated-image");
+  if (!img) return;
+
+  viewerImage.src = img.src;
+  viewerImage.alt = node.option?.title || t("generated.result");
+  viewerTitle.textContent = node.option?.title || "";
+  viewerExplanation.textContent = node.explanation || "";
+
+  imageViewerModal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+
+  const closeBtn = imageViewerModal.querySelector("#closeImageViewer");
+  if (closeBtn) closeBtn.focus();
+}
+
+function closeImageViewer() {
+  imageViewerModal.classList.add("hidden");
+  viewerImage.src = "";
+  document.body.style.overflow = "";
 }
 
 function clearOptions() {
