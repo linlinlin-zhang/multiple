@@ -45,6 +45,8 @@ export default function HistoryPage({ sessionId }: HistoryPageProps) {
   const { session, loading, error, refetch } = useSession(sessionId);
   const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const nodeCount = session?.nodeCount ?? session?.nodes.length ?? 0;
+  const assetCount = session?.assetCount ?? session?.assets.length ?? 0;
 
   // Auto-select first asset when session loads
   useEffect(() => {
@@ -80,7 +82,7 @@ export default function HistoryPage({ sessionId }: HistoryPageProps) {
       {/* Mobile sidebar toggle */}
       <button
         onClick={() => setSidebarOpen(true)}
-        className="md:hidden absolute top-3 left-3 z-30 w-9 h-9 flex items-center justify-center rounded bg-cabinet-paper border border-cabinet-border shadow-sm"
+        className="md:hidden absolute top-3 left-3 z-30 w-10 h-10 flex items-center justify-center rounded-full bg-cabinet-paper border border-cabinet-border shadow-[0_8px_16px_rgba(0,0,0,0.08)]"
         aria-label="Open sidebar"
       >
         <Menu size={18} className="text-cabinet-ink" />
@@ -129,11 +131,11 @@ export default function HistoryPage({ sessionId }: HistoryPageProps) {
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-cabinet-paper">
         {/* Error banner */}
         {error && (
-          <div className="px-4 md:px-6 py-3 bg-red-50 border-b border-red-100 flex items-center justify-between flex-shrink-0">
-            <span className="text-sm text-red-600">{error}</span>
+          <div className="px-4 md:px-6 py-3 bg-cabinet-paper border-b border-cabinet-border flex items-center justify-between flex-shrink-0">
+            <span className="text-sm text-[#d53b00]">{error}</span>
             <button
               onClick={refetch}
-              className="text-sm text-red-700 font-medium hover:underline"
+              className="text-sm text-cabinet-blue font-medium hover:underline"
             >
               Retry
             </button>
@@ -148,17 +150,17 @@ export default function HistoryPage({ sessionId }: HistoryPageProps) {
                 <h1 className="text-xl md:text-2xl font-medium text-cabinet-ink leading-tight">
                   {session.title || "Untitled Session"}
                 </h1>
-                <div className="flex items-center gap-3 mt-2 text-[13px] font-mono text-cabinet-inkMuted flex-wrap">
+                <div className="flex items-center gap-3 mt-2 text-[13px] text-cabinet-inkMuted flex-wrap">
                   <span>{new Date(session.createdAt).toLocaleString()}</span>
                   <span>·</span>
-                  <span>{session.nodeCount} nodes</span>
+                  <span>{nodeCount} nodes</span>
                   <span>·</span>
-                  <span>{session.assetCount} assets</span>
+                  <span>{assetCount} assets</span>
                 </div>
               </div>
               <a
                 href={`/?session=${session.id}`}
-                className="inline-flex items-center px-4 py-2 bg-cabinet-ink text-cabinet-paper text-sm font-medium rounded hover:bg-cabinet-ink2 transition-colors flex-shrink-0"
+                className="inline-flex items-center px-5 py-2 bg-cabinet-blue text-cabinet-paper text-sm font-medium rounded-full hover:bg-cabinet-cyan transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cabinet-blue focus-visible:ring-offset-2 flex-shrink-0"
               >
                 Open in Canvas
               </a>

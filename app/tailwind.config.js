@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: ["class"],
+  darkMode: ["class", "[data-theme='dark']"],
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
@@ -48,19 +48,23 @@ module.exports = {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
-        // Filing cabinet custom colors
+        // PlayStation-inspired product colors
         cabinet: {
-          bg: "#d8e2ec",
-          paper: "#f0ece4",
-          ink: "#1a1a1a",
-          ink2: "#5a5a5a",
-          inkMuted: "#8a8a8a",
-          itemBg: "#d8d4cc",
-          border: "#c0bbb3",
+          bg: "#f5f7fa",
+          paper: "#ffffff",
+          ink: "#000000",
+          ink2: "#1f1f1f",
+          inkMuted: "#6b6b6b",
+          itemBg: "#f5f7fa",
+          border: "#f3f3f3",
+          blue: "#0070cc",
+          cyan: "#1eaedb",
+          black: "#000000",
+          muted: "#cccccc",
           tab: {
-            notes: "#e5ddd4",
-            projects: "#a0a098",
-            archive: "#5a6a7a",
+            notes: "#ffffff",
+            projects: "#f5f7fa",
+            archive: "#000000",
           },
         },
       },
