@@ -154,9 +154,20 @@ function wireControls() {
   });
 
   viewport.addEventListener("wheel", (event) => {
-    if (!event.ctrlKey && !event.metaKey) return;
     event.preventDefault();
-    zoomBy(event.deltaY < 0 ? 0.06 : -0.06);
+    if (event.ctrlKey || event.metaKey) {
+      zoomBy(event.deltaY < 0 ? 0.06 : -0.06);
+    } else {
+      let dx = event.deltaX;
+      let dy = event.deltaY;
+      if (event.shiftKey && Math.abs(dy) > 0 && dx === 0) {
+        dx = dy;
+        dy = 0;
+      }
+      state.view.x -= dx;
+      state.view.y -= dy;
+      updateBoardTransform();
+    }
   }, { passive: false });
 
   let panStart = null;
