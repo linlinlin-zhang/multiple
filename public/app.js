@@ -411,7 +411,11 @@ function renderAllText() {
   const analysisEyebrow = document.querySelector("#analysisNode .eyebrow");
   if (analysisEyebrow) analysisEyebrow.textContent = t("analysis.eyebrow");
   const analysisTitle = document.querySelector("#analysisNode h2");
-  if (analysisTitle) analysisTitle.textContent = t("analysis.title");
+  if (analysisTitle && !analysisTitle.querySelector(".node-title-input")) {
+    // only update if not currently editing
+    const titles = { image: t("analysis.titleImage"), text: t("analysis.titleText"), url: t("analysis.titleUrl") };
+    analysisTitle.textContent = titles[state.sourceType] || t("analysis.title");
+  }
 
   if (imageViewerModal) imageViewerModal.setAttribute("aria-label", t("viewer.title"));
   const closeImageViewerBtn = document.querySelector("#closeImageViewer");
