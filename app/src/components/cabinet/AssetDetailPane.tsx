@@ -111,9 +111,9 @@ function FileAssetDetail({ asset }: { asset: Asset }) {
 }
 
 function LinkAssetDetail({ node }: { node: Node }) {
-  const url = node.data?.option?.referenceUrl as string | undefined;
+  const url = node.data?.sourceUrl as string | undefined;
   const description = node.data?.option?.description as string | undefined;
-  const title = node.data?.option?.title as string | undefined;
+  const title = node.data?.fileName as string | undefined;
   const summary = node.data?.summary as string | undefined;
   return (
     <div className="flex flex-col h-full overflow-y-auto cabinet-scrollbar px-8 pb-12">

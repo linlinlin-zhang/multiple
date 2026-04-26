@@ -71,12 +71,12 @@ function transformSessionToItems(session: SessionDetail): SidebarItemData[] {
     });
   }
 
-  // Links group (nodes with referenceUrl)
+  // Links group (source nodes with sourceUrl)
   const linkNodes = session.nodes.filter(
-    (n: Node) => n.data?.option?.referenceUrl && typeof n.data.option.referenceUrl === "string"
+    (n: Node) => n.type === "source" && n.data?.sourceUrl && typeof n.data.sourceUrl === "string"
   );
   for (const node of linkNodes) {
-    const url = node.data.option.referenceUrl as string;
+    const url = node.data.sourceUrl as string;
     let domain = "Web Link";
     try {
       domain = new URL(url).hostname;
