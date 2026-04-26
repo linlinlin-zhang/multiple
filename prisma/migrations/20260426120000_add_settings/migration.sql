@@ -11,3 +11,4 @@ CREATE TABLE "Settings" (
   CONSTRAINT "Settings_pkey" PRIMARY KEY ("id")
 );
 CREATE UNIQUE INDEX "Settings_role_key" ON "Settings"("role");
+ALTER TABLE "Settings" ADD COLUMN "theme" TEXT NOT NULL DEFAULT 'light';

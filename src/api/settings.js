@@ -14,6 +14,8 @@ export async function handleGetSettings(res) {
   for (const role of ["analysis", "chat", "image"]) {
     result[role] = map[role] || DEFAULTS[role];
   }
+  const globalRow = rows.find(r => r.role === "global");
+  result.theme = globalRow?.theme || "light";
   res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" });
   res.end(JSON.stringify(result));
 }
@@ -24,8 +26,20 @@ export async function handleUpdateSettings(body, res) {
     res.end(JSON.stringify({ error: "Invalid body" }));
     return;
   }
-  const allowed = ["analysis", "chat", "image"];
   const result = {};
+
+  // Handle theme update (global row)
+  if (typeof body.theme === "string") {
+    const themeValue = body.theme === "dark" ? "dark" : "light";
+    const globalUpserted = await prisma.settings.upsert({
+      where: { role: "global" },
+      update: { theme: themeValue },
+      create: { role: "global", endpoint: "", model: "", apiKey: "", theme: themeValue }
+    });
+    result.theme = globalUpserted.theme;
+  }
+
+  const allowed = ["analysis", "chat", "image"];
   for (const role of allowed) {
     const cfg = body[role];
     if (!cfg || typeof cfg !== "object") continue;

@@ -91,11 +91,12 @@ model ShareToken {
 
 model Settings {
   id          String   @id @default(uuid())
-  role        String   @unique // "analysis" | "chat" | "image"
-  endpoint    String
-  model       String
-  apiKey      String
+  role        String   @unique // "analysis" | "chat" | "image" | "global"
+  endpoint    String   @default("")
+  model       String   @default("")
+  apiKey      String   @default("")
   temperature Float    @default(0.7)
+  theme       String   @default("light")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
