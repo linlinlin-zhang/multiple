@@ -7,8 +7,10 @@ import { handleListHistory } from "./src/api/history.js";
 import { handleStoreAsset, handleGetAsset } from "./src/api/assets.js";
 import { handleCreateShare, handleGetShare } from "./src/api/share.js";
 import { handleImportSession } from "./src/api/import.js";
+import { handleGetSettings, handleUpdateSettings } from "./src/api/settings.js";
 import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js";
 import { extractTextFromBuffer } from "./src/lib/textExtract.js";
+import { PrismaClient } from "@prisma/client";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,24 +20,11 @@ loadDotEnv(path.join(__dirname, ".env"));
 
 const PORT = Number(process.env.PORT || 3000);
 const DEMO_MODE = process.env.DEMO_MODE === "true";
-const CHAT_CONFIG = buildModelConfig("CHAT", {
-  provider: "kimi",
-  model: "kimi-k2.6",
-  baseUrl: "https://api.moonshot.cn/v1",
-  apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
-});
-const ANALYSIS_CONFIG = buildModelConfig("ANALYSIS", {
-  provider: "kimi",
-  model: "kimi-k2.6",
-  baseUrl: "https://api.moonshot.cn/v1",
-  apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
-});
-const IMAGE_CONFIG = buildModelConfig("IMAGE", {
-  provider: "tencent-tokenhub-image",
-  model: "hy-image-v3.0",
-  baseUrl: "https://tokenhub.tencentmaas.com/v1/api/image",
-  apiKeyEnv: ["TENCENT_TOKENHUB_API_KEY", "TOKENHUB_API_KEY"]
-});
+
+const prisma = new PrismaClient();
+
+let runtimeConfigs = { chat: null, analysis: null, image: null };
+
 const IMAGE_POLL_INTERVAL_MS = Number(process.env.IMAGE_POLL_INTERVAL_MS || 2000);
 const IMAGE_POLL_ATTEMPTS = Number(process.env.IMAGE_POLL_ATTEMPTS || 30);
 const IMAGE_INCLUDE_DATA_URL = process.env.IMAGE_INCLUDE_DATA_URL === "true";
@@ -49,10 +38,21 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, {
         ok: true,
         mode: appMode(),
-        chat: roleHealth(CHAT_CONFIG),
-        analysis: roleHealth(ANALYSIS_CONFIG),
-        image: roleHealth(IMAGE_CONFIG)
+        chat: roleHealth(runtimeConfigs.chat),
+        analysis: roleHealth(runtimeConfigs.analysis),
+        image: roleHealth(runtimeConfigs.image)
       });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/settings") {
+      return await handleGetSettings(res);
+    }
+
+    if (req.method === "PUT" && url.pathname === "/api/settings") {
+      const body = await readJson(req);
+      const result = await handleUpdateSettings(body, res);
+      await refreshConfigs();
+      return result;
     }
 
     if (req.method === "POST" && url.pathname === "/api/chat") {
@@ -163,22 +163,61 @@ server.listen(PORT, () => {
 });
 
 ensureStorageDirs().catch(console.error);
+refreshConfigs().catch(console.error);
 
-function buildModelConfig(role, defaults) {
-  const roleProvider = process.env[`${role}_PROVIDER`] || defaults.provider;
+async function refreshConfigs() {
+  const rows = await prisma.settings.findMany();
+  const dbMap = Object.fromEntries(
+    rows.map((r) => [
+      r.role,
+      { endpoint: r.endpoint, model: r.model, apiKey: r.apiKey, temperature: r.temperature }
+    ])
+  );
+
+  runtimeConfigs.chat = buildModelConfig("CHAT", {
+    provider: "kimi",
+    model: "kimi-k2.6",
+    baseUrl: "https://api.moonshot.cn/v1",
+    apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
+  }, dbMap.chat);
+
+  runtimeConfigs.analysis = buildModelConfig("ANALYSIS", {
+    provider: "kimi",
+    model: "kimi-k2.6",
+    baseUrl: "https://api.moonshot.cn/v1",
+    apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
+  }, dbMap.analysis);
+
+  runtimeConfigs.image = buildModelConfig("IMAGE", {
+    provider: "tencent-tokenhub-image",
+    model: "hy-image-v3.0",
+    baseUrl: "https://tokenhub.tencentmaas.com/v1/api/image",
+    apiKeyEnv: ["TENCENT_TOKENHUB_API_KEY", "TOKENHUB_API_KEY"]
+  }, dbMap.image);
+}
+
+function buildModelConfig(role, defaults, dbSettings = null) {
+  const roleProvider = (dbSettings?.provider) || process.env[`${role}_PROVIDER`] || defaults.provider;
   const apiKey =
+    (dbSettings?.apiKey ?? "") ||
     firstEnv(defaults.apiKeyEnv || []) ||
     process.env[`${role}_API_KEY`] ||
     "";
   const baseUrl = (
+    (dbSettings?.endpoint || "").replace(/\/+$/, "") ||
     process.env[`${role}_API_BASE_URL`] ||
     defaults.baseUrl
   ).replace(/\/+$/, "");
   const model =
+    (dbSettings?.model) ||
     process.env[`${role}_MODEL`] ||
     defaults.model;
+  const temperature =
+    typeof dbSettings?.temperature === "number"
+      ? dbSettings.temperature
+      : (parseFloat(process.env[`${role}_TEMPERATURE`]) || defaults.temperature || 0.7);
 
-  return { role: role.toLowerCase(), provider: roleProvider, apiKey, baseUrl, model };
+  return { role: role.toLowerCase(), provider: roleProvider, apiKey, baseUrl, model, temperature };
 }
 
 function firstEnv(keys) {
@@ -202,7 +241,7 @@ function isDemoRole(config) {
 }
 
 function appMode() {
-  const modes = [CHAT_CONFIG, ANALYSIS_CONFIG, IMAGE_CONFIG].map((config) => roleHealth(config).mode);
+  const modes = [runtimeConfigs.chat, runtimeConfigs.analysis, runtimeConfigs.image].map((config) => roleHealth(config).mode);
   if (modes.every((mode) => mode === "demo")) return "demo";
   if (modes.some((mode) => mode === "demo")) return "mixed";
   return "api";
@@ -218,10 +257,10 @@ async function handleChat(body, res) {
     return sendJson(res, 400, { error: "message is required" });
   }
 
-  if (isDemoRole(CHAT_CONFIG)) {
+  if (isDemoRole(runtimeConfigs.chat)) {
     return sendJson(res, 200, {
       provider: "demo",
-      model: CHAT_CONFIG.model,
+      model: runtimeConfigs.chat.model,
       reply: buildDemoChatReply(message, analysis)
     });
   }
@@ -245,7 +284,7 @@ async function handleChat(body, res) {
     content.push({ type: "image_url", image_url: { url: imageDataUrl } });
   }
 
-  const response = await chatCompletions(CHAT_CONFIG, {
+  const response = await chatCompletions(runtimeConfigs.chat, {
     messages: [
       {
         role: "system",
@@ -262,7 +301,7 @@ async function handleChat(body, res) {
   const reply = collectChatContent(response);
   return sendJson(res, 200, {
     provider: "api",
-    model: CHAT_CONFIG.model,
+    model: runtimeConfigs.chat.model,
     reply: reply || "我读到了，我们可以继续把这个方向压成一个更明确的生成分支。"
   });
 }
@@ -273,7 +312,7 @@ async function handleAnalyze(body, res) {
     return sendJson(res, 400, { error: "imageDataUrl is required" });
   }
 
-  if (isDemoRole(ANALYSIS_CONFIG)) {
+  if (isDemoRole(runtimeConfigs.analysis)) {
     return sendJson(res, 200, buildDemoAnalysis(body?.fileName));
   }
 
@@ -316,18 +355,18 @@ async function handleAnalyze(body, res) {
     ]
   };
 
-  if (ANALYSIS_CONFIG.provider === "kimi" && /^kimi-k2\./.test(ANALYSIS_CONFIG.model)) {
+  if (runtimeConfigs.analysis.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.analysis.model)) {
     analysisPayload.thinking = { type: "disabled" };
-  } else if (ANALYSIS_CONFIG.provider === "openrouter") {
+  } else if (runtimeConfigs.analysis.provider === "openrouter") {
     analysisPayload.reasoning = { effort: "none", exclude: true };
   }
 
-  const response = await chatCompletions(ANALYSIS_CONFIG, analysisPayload);
+  const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
   const text = collectChatContent(response);
   const parsed = parseJsonFromText(text);
   const normalized = normalizeAnalysis(parsed, body?.fileName);
   normalized.provider = "api";
-  normalized.model = response?.model || ANALYSIS_CONFIG.model;
+  normalized.model = response?.model || runtimeConfigs.analysis.model;
   return sendJson(res, 200, normalized);
 }
 
@@ -376,7 +415,7 @@ async function handleAnalyzeUrl(body, res) {
     return sendJson(res, 400, { error: "Invalid URL. Only http:// and https:// links are supported." });
   }
 
-  if (isDemoRole(ANALYSIS_CONFIG)) {
+  if (isDemoRole(runtimeConfigs.analysis)) {
     const demo = buildDemoAnalysis(domain);
     demo.domain = domain;
     return sendJson(res, 200, demo);
@@ -408,19 +447,19 @@ async function handleAnalyzeUrl(body, res) {
     ]
   };
 
-  if (ANALYSIS_CONFIG.provider === "kimi" && /^kimi-k2\./.test(ANALYSIS_CONFIG.model)) {
+  if (runtimeConfigs.analysis.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.analysis.model)) {
     analysisPayload.thinking = { type: "disabled" };
-  } else if (ANALYSIS_CONFIG.provider === "openrouter") {
+  } else if (runtimeConfigs.analysis.provider === "openrouter") {
     analysisPayload.reasoning = { effort: "none", exclude: true };
   }
 
   try {
-    const response = await chatCompletions(ANALYSIS_CONFIG, analysisPayload);
+    const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
     const text = collectChatContent(response);
     const parsed = parseJsonFromText(text);
     const normalized = normalizeAnalysis(parsed, domain);
     normalized.provider = "api";
-    normalized.model = response?.model || ANALYSIS_CONFIG.model;
+    normalized.model = response?.model || runtimeConfigs.analysis.model;
     normalized.domain = domain;
     return sendJson(res, 200, normalized);
   } catch (error) {
@@ -461,7 +500,7 @@ async function handleAnalyzeText(body, res) {
     return sendJson(res, 400, { error: "File appears to be empty or unreadable." });
   }
 
-  if (isDemoRole(ANALYSIS_CONFIG)) {
+  if (isDemoRole(runtimeConfigs.analysis)) {
     const demo = buildDemoAnalysis(safeFileName);
     if (storedHash) demo.sourceHash = storedHash;
     return sendJson(res, 200, demo);
@@ -506,18 +545,18 @@ async function handleAnalyzeText(body, res) {
     ]
   };
 
-  if (ANALYSIS_CONFIG.provider === "kimi" && /^kimi-k2\./.test(ANALYSIS_CONFIG.model)) {
+  if (runtimeConfigs.analysis.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.analysis.model)) {
     analysisPayload.thinking = { type: "disabled" };
-  } else if (ANALYSIS_CONFIG.provider === "openrouter") {
+  } else if (runtimeConfigs.analysis.provider === "openrouter") {
     analysisPayload.reasoning = { effort: "none", exclude: true };
   }
 
-  const response = await chatCompletions(ANALYSIS_CONFIG, analysisPayload);
+  const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
   const text = collectChatContent(response);
   const parsed = parseJsonFromText(text);
   const normalized = normalizeAnalysis(parsed, safeFileName);
   normalized.provider = "api";
-  normalized.model = response?.model || ANALYSIS_CONFIG.model;
+  normalized.model = response?.model || runtimeConfigs.analysis.model;
   if (storedHash) normalized.sourceHash = storedHash;
   return sendJson(res, 200, normalized);
 }
@@ -535,10 +574,10 @@ async function handleGenerate(body, res) {
     return sendJson(res, 400, { error: "imageDataUrl and option are required" });
   }
 
-  if (isDemoRole(IMAGE_CONFIG)) {
+  if (isDemoRole(runtimeConfigs.image)) {
     return sendJson(res, 200, {
       provider: "demo",
-      model: IMAGE_CONFIG.model,
+      model: runtimeConfigs.image.model,
       prompt: option.prompt,
       imageDataUrl: buildDemoImage(option)
     });
@@ -572,7 +611,7 @@ async function handleGenerate(body, res) {
 
   return sendJson(res, 200, {
     provider: "api",
-    model: IMAGE_CONFIG.model,
+    model: runtimeConfigs.image.model,
     prompt,
     imageDataUrl: stored ? `/api/assets/${stored.hash}?kind=generated` : generatedImage,
     hash: stored ? stored.hash : undefined,
@@ -614,10 +653,10 @@ async function handleExplain(body, res) {
     return sendJson(res, 400, { error: "prompt is required" });
   }
 
-  if (isDemoRole(CHAT_CONFIG)) {
+  if (isDemoRole(runtimeConfigs.chat)) {
     return sendJson(res, 200, {
       provider: "demo",
-      model: CHAT_CONFIG.model,
+      model: runtimeConfigs.chat.model,
       explanation: `这张图片基于「${optionTitle || "生成方向"}」方向创作。画面保留了原图的核心视觉记忆，同时引入了新的构图与光影处理，整体呈现出 ${summary ? summary.slice(0, 20) : "与原图呼应"} 的视觉效果。`
     });
   }
@@ -638,7 +677,7 @@ async function handleExplain(body, res) {
     prompt
   ].join("\n");
 
-  const response = await chatCompletions(CHAT_CONFIG, {
+  const response = await chatCompletions(runtimeConfigs.chat, {
     messages: [
       {
         role: "system",
@@ -655,7 +694,7 @@ async function handleExplain(body, res) {
   const explanation = collectChatContent(response)?.trim() || "";
   return sendJson(res, 200, {
     provider: "api",
-    model: CHAT_CONFIG.model,
+    model: runtimeConfigs.chat.model,
     explanation
   });
 }
@@ -712,14 +751,14 @@ async function generateTokenHubImage(prompt, imageUrl, imageDataUrl) {
   }
 
   const submitPayload = {
-    model: IMAGE_CONFIG.model,
+    model: runtimeConfigs.image.model,
     prompt
   };
   if (images.length) {
     submitPayload.images = images;
   }
 
-  const submitted = await tokenHubImageRequest(`${IMAGE_CONFIG.baseUrl}/submit`, submitPayload);
+  const submitted = await tokenHubImageRequest(`${runtimeConfigs.image.baseUrl}/submit`, submitPayload);
   const jobId = submitted?.id;
   if (!jobId) {
     throw new Error("TokenHub image submit did not return a job id.");
@@ -727,8 +766,8 @@ async function generateTokenHubImage(prompt, imageUrl, imageDataUrl) {
 
   for (let attempt = 0; attempt < IMAGE_POLL_ATTEMPTS; attempt += 1) {
     await delay(IMAGE_POLL_INTERVAL_MS);
-    const queried = await tokenHubImageRequest(`${IMAGE_CONFIG.baseUrl}/query`, {
-      model: IMAGE_CONFIG.model,
+    const queried = await tokenHubImageRequest(`${runtimeConfigs.image.baseUrl}/query`, {
+      model: runtimeConfigs.image.model,
       id: jobId
     });
 
@@ -756,7 +795,7 @@ async function tokenHubImageRequest(url, payload) {
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${IMAGE_CONFIG.apiKey}`,
+      Authorization: `Bearer ${runtimeConfigs.image.apiKey}`,
       "Content-Type": "application/json"
     },
     body: JSON.stringify(payload)
