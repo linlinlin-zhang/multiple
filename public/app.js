@@ -181,7 +181,10 @@ const i18n = {
     "image.error": "图片读取失败",
     "image.chooseFile": "请选择图片文件",
     "session.unnamed": "未命名会话",
-    "session.exploration": "的探索"
+    "session.exploration": "的探索",
+    "node.delete": "删除",
+    "node.cannotDeleteSource": "初始卡片不可删除",
+    "node.cannotDeleteWithChildren": "该卡片有子节点，不可删除"
   },
   en: {
     "nav.workbench": "Workbench",
@@ -272,7 +275,10 @@ const i18n = {
     "image.error": "Image read failed",
     "image.chooseFile": "Please select an image file",
     "session.unnamed": "Untitled Session",
-    "session.exploration": " Exploration"
+    "session.exploration": " Exploration",
+    "node.delete": "Delete",
+    "node.cannotDeleteSource": "Source card cannot be deleted",
+    "node.cannotDeleteWithChildren": "Cannot delete a card with children"
   }
 };
 
@@ -1391,10 +1397,10 @@ function updateDialogState() {
 }
 
 let toastTimer = null;
-function showSelectionToast() {
+function showSelectionToast(message) {
   const toast = document.querySelector("#selectionToast");
   if (!toast) return;
-  toast.textContent = t("chat.selectCardFirst");
+  toast.textContent = message || t("chat.selectCardFirst");
   toast.classList.add("visible");
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
@@ -1410,6 +1416,18 @@ function registerNode(id, element, data) {
     if (event.target.closest("button, input, textarea, a")) return;
     selectNode(id);
   });
+
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "node-delete-btn";
+  deleteBtn.setAttribute("aria-label", t("node.delete"));
+  deleteBtn.innerHTML = "&#x2715;"; // Unicode multiplication X
+  deleteBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    deleteNode(id);
+  });
+  element.appendChild(deleteBtn);
+
   updateCollapseControls();
 }
 
@@ -1536,6 +1554,48 @@ function updateCollapseControls() {
 
 function getChildren(id) {
   return state.links.filter((link) => link.from === id).map((link) => link.to);
+}
+
+function canDeleteNode(nodeId) {
+  if (nodeId === "source") return false;
+  const children = getChildren(nodeId);
+  if (children.length > 0) return false;
+  return true;
+}
+
+function deleteNode(nodeId) {
+  if (!canDeleteNode(nodeId)) {
+    const reason = nodeId === "source" ? t("node.cannotDeleteSource") : t("node.cannotDeleteWithChildren");
+    showSelectionToast(reason);
+    return;
+  }
+  const node = state.nodes.get(nodeId);
+  if (!node) return;
+
+  // Deselect if this node was selected
+  if (state.selectedNodeId === nodeId) {
+    deselectNode();
+  }
+
+  // Remove from state
+  state.nodes.delete(nodeId);
+  state.collapsed.delete(nodeId);
+  state.selectiveHidden.delete(nodeId);
+
+  // Remove links connected to this node
+  state.links = state.links.filter(l => l.from !== nodeId && l.to !== nodeId);
+
+  // Remove DOM element
+  node.element.remove();
+
+  // Update counts and UI
+  if (node.generated) {
+    state.generatedCount = Math.max(0, state.generatedCount - 1);
+  }
+  updateCounts();
+  updateCollapseControls();
+  drawLinks();
+  autoSave();
 }
 
 function getDescendants(id) {

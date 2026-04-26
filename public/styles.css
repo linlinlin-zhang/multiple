@@ -434,6 +434,45 @@ body.nav-collapsed .nav-settings {
   z-index: 9;
 }
 
+.node-delete-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: none;
+  background: rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 180ms ease, background 180ms ease, transform 180ms ease;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.node:hover .node-delete-btn {
+  opacity: 1;
+}
+
+.node-delete-btn:hover {
+  background: var(--danger);
+  transform: scale(1.12);
+}
+
+.node-delete-btn:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.source-node .node-delete-btn {
+  display: none;
+}
+
 .board.is-arranging .node {
   pointer-events: none;
   transition: none;
