@@ -925,6 +925,54 @@ body.nav-collapsed .nav-settings {
   box-shadow: none;
 }
 
+.chat-input:disabled {
+  background: transparent;
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.chat-send-button:disabled {
+  background: #e2e2e2;
+  color: #8f8f8f;
+  transform: none;
+  box-shadow: none;
+}
+
+html[data-theme="dark"] .chat-send-button:disabled {
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.chatbar.no-selection {
+  opacity: 0.85;
+}
+
+.selection-toast {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-12px);
+  padding: 10px 20px;
+  border-radius: 999px;
+  background: rgba(32, 41, 57, 0.92);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 400;
+  box-shadow: var(--shadow-16);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease;
+  z-index: 300;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+}
+
+.selection-toast.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
 .chat-attach-button {
   width: 38px;
   height: 38px;
