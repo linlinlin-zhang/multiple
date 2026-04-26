@@ -23,6 +23,17 @@ const navToggle = document.querySelector("#navToggle");
 const urlInput = document.querySelector("#urlInput");
 const urlAnalyzeButton = document.querySelector("#urlAnalyzeButton");
 
+const settingsPanel = document.querySelector("#settingsPanel");
+const settingsBtn = document.querySelector("#settingsBtn");
+const closeSettingsPanel = document.querySelector("#closeSettingsPanel");
+const settingsForm = document.querySelector("#settingsForm");
+const settingsResetBtn = document.querySelector("#settingsResetBtn");
+const settingsTabs = document.querySelectorAll(".settings-tab");
+const settingsEndpoint = document.querySelector("#settingsEndpoint");
+const settingsModel = document.querySelector("#settingsModel");
+const settingsApiKey = document.querySelector("#settingsApiKey");
+const settingsTemperature = document.querySelector("#settingsTemperature");
+
 const state = {
   sourceImage: null,
   sourceImageHash: null,
@@ -43,6 +54,13 @@ const state = {
     y: 0,
     scale: 0.86
   }
+};
+
+const settingsCache = {
+  currentRole: "analysis",
+  analysis: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
+  chat: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
+  image: { endpoint: "", model: "", apiKey: "", temperature: 0.7 }
 };
 
 let currentSessionId = null;
@@ -71,6 +89,7 @@ async function init() {
   updateBoardTransform();
   checkHealth();
   setStatus("Ready", "ready");
+  await loadSettings();
 
   const urlParams = new URLSearchParams(window.location.search);
   const resumeSessionId = urlParams.get("session");
@@ -176,6 +195,54 @@ function wireControls() {
     document.querySelector("#sessionPanel")?.classList.add("hidden");
   });
 
+  // Settings panel wiring
+  settingsBtn?.addEventListener("click", () => {
+    settingsPanel?.classList.toggle("hidden");
+    populateSettingsForm();
+  });
+  closeSettingsPanel?.addEventListener("click", () => {
+    settingsPanel?.classList.add("hidden");
+  });
+  settingsTabs?.forEach(tab => {
+    tab.addEventListener("click", () => {
+      settingsTabs.forEach(t => t.classList.toggle("active", t === tab));
+      settingsCache.currentRole = tab.dataset.role || "analysis";
+      populateSettingsForm();
+    });
+  });
+  settingsForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const role = settingsCache.currentRole;
+    const payload = {
+      [role]: {
+        endpoint: settingsEndpoint?.value?.trim() || "",
+        model: settingsModel?.value?.trim() || "",
+        apiKey: settingsApiKey?.value?.trim() || "",
+        temperature: Number(settingsTemperature?.value ?? 0.7)
+      }
+    };
+    try {
+      const data = await putJson("/api/settings", payload);
+      if (data[role]) {
+        settingsCache[role] = data[role];
+      }
+      showSaveConfirmation("已保存");
+      checkHealth();
+    } catch (err) {
+      showSaveConfirmation("保存失败：" + (err instanceof Error ? err.message : String(err)));
+    }
+  });
+  settingsResetBtn?.addEventListener("click", async () => {
+    await loadSettings();
+    populateSettingsForm();
+    showSaveConfirmation("已重置");
+  });
+  viewport.addEventListener("click", (event) => {
+    if (!settingsPanel?.classList.contains("hidden") && event.target === viewport) {
+      settingsPanel.classList.add("hidden");
+    }
+  });
+
   viewport.addEventListener("wheel", (event) => {
     event.preventDefault();
     if (event.ctrlKey || event.metaKey) {
@@ -243,6 +310,50 @@ async function checkHealth() {
   } catch {
     modeBadge.textContent = "offline";
   }
+}
+
+async function loadSettings() {
+  try {
+    const data = await getJson("/api/settings");
+    for (const role of ["analysis", "chat", "image"]) {
+      if (data[role]) {
+        settingsCache[role] = {
+          endpoint: data[role].endpoint || "",
+          model: data[role].model || "",
+          apiKey: data[role].apiKey || "",
+          temperature: typeof data[role].temperature === "number" ? data[role].temperature : 0.7
+        };
+      }
+    }
+  } catch (err) {
+    console.error("Failed to load settings:", err);
+  }
+}
+
+function populateSettingsForm() {
+  const role = settingsCache.currentRole;
+  const cfg = settingsCache[role];
+  if (!cfg) return;
+  if (settingsEndpoint) settingsEndpoint.value = cfg.endpoint || "";
+  if (settingsModel) settingsModel.value = cfg.model || "";
+  if (settingsApiKey) settingsApiKey.value = cfg.apiKey || "";
+  if (settingsTemperature) settingsTemperature.value = String(typeof cfg.temperature === "number" ? cfg.temperature : 0.7);
+}
+
+function showSaveConfirmation(text) {
+  const actions = document.querySelector(".settings-actions");
+  if (!actions) return;
+  let el = actions.querySelector(".settings-confirm");
+  if (!el) {
+    el = document.createElement("span");
+    el.className = "settings-confirm";
+    el.style.cssText = "font-size:13px;color:var(--ps-blue);align-self:center;";
+    actions.appendChild(el);
+  }
+  el.textContent = text;
+  setTimeout(() => {
+    if (el) el.textContent = "";
+  }, 2000);
 }
 
 async function handleFile(event) {

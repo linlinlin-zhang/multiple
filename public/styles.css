@@ -1096,6 +1096,83 @@ body.nav-collapsed .nav-settings {
 .source-badge.document { background: #fce8e6; color: #c5221f; }
 .source-badge.link { background: #f3e8fd; color: #7b1fa2; }
 
+.settings-panel {
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 380px;
+  height: 100vh;
+  background: var(--paper);
+  border-left: 1px solid var(--divider);
+  z-index: 110;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s ease;
+  box-shadow: -18px 0 42px rgba(0, 0, 0, 0.16);
+}
+.settings-panel.hidden {
+  transform: translateX(100%);
+}
+.settings-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--divider);
+  font-weight: 400;
+}
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 18px 0;
+  border-bottom: 1px solid var(--divider);
+}
+.settings-tab {
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--inkMuted);
+  cursor: pointer;
+  border: none;
+  transition: background 160ms ease, color 160ms ease;
+}
+.settings-tab.active {
+  background: var(--itemBg);
+  color: var(--ink);
+}
+.settings-form {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  overflow-y: auto;
+}
+.settings-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--inkMuted);
+}
+.settings-form input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--ink);
+  background: var(--paper);
+}
+.settings-form input:focus {
+  outline: none;
+  box-shadow: var(--ring);
+}
+.settings-actions {
+  display: flex;
+  gap: 10px;
+  padding-top: 8px;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
