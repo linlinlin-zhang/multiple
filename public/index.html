@@ -192,6 +192,18 @@
         <div class="viewer-meta">
           <h3 id="viewerTitle"></h3>
           <p id="viewerExplanation"></p>
+          <div class="viewer-actions">
+            <button id="viewerRegenerate" class="primary-button">重生成</button>
+            <button id="viewerModify" class="secondary-button">修改</button>
+            <button id="viewerDownload" class="secondary-button">下载</button>
+          </div>
+          <div id="viewerModifyPanel" class="viewer-modify-panel hidden">
+            <textarea id="viewerPromptInput" rows="3" placeholder="输入自定义提示词..."></textarea>
+            <div class="viewer-modify-actions">
+              <button id="viewerSubmitModify" class="primary-button">确认修改</button>
+              <button id="viewerCancelModify" class="secondary-button">取消</button>
+            </div>
+          </div>
         </div>
       </div>
     </aside>
