@@ -8,6 +8,7 @@ import { handleStoreAsset, handleGetAsset } from "./src/api/assets.js";
 import { handleCreateShare, handleGetShare } from "./src/api/share.js";
 import { handleImportSession } from "./src/api/import.js";
 import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js";
+import { extractTextFromBuffer } from "./src/lib/textExtract.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,10 +25,10 @@ const CHAT_CONFIG = buildModelConfig("CHAT", {
   apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
 });
 const ANALYSIS_CONFIG = buildModelConfig("ANALYSIS", {
-  provider: "openrouter",
-  model: "tencent/hy3-preview:free",
-  baseUrl: "https://openrouter.ai/api/v1",
-  apiKeyEnv: ["OPENROUTER_API_KEY"]
+  provider: "kimi",
+  model: "kimi-k2.6",
+  baseUrl: "https://api.moonshot.cn/v1",
+  apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
 });
 const IMAGE_CONFIG = buildModelConfig("IMAGE", {
   provider: "tencent-tokenhub-image",
@@ -56,71 +57,76 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/api/chat") {
       const body = await readJson(req);
-      return handleChat(body, res);
+      return await handleChat(body, res);
     }
 
     if (req.method === "POST" && url.pathname === "/api/analyze") {
       const body = await readJson(req);
-      return handleAnalyze(body, res);
+      return await handleAnalyze(body, res);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/analyze-text") {
+      const body = await readJson(req);
+      return await handleAnalyzeText(body, res);
     }
 
     if (req.method === "POST" && url.pathname === "/api/generate") {
       const body = await readJson(req);
-      return handleGenerate(body, res);
+      return await handleGenerate(body, res);
     }
 
     if (req.method === "POST" && url.pathname === "/api/explain") {
       const body = await readJson(req);
-      return handleExplain(body, res);
+      return await handleExplain(body, res);
     }
 
     // Asset routes
     if (req.method === "POST" && url.pathname === "/api/assets") {
       const body = await readJson(req);
-      return handleStoreAsset(body, res);
+      return await handleStoreAsset(body, res);
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/assets/")) {
-      return handleGetAsset(req, res);
+      return await handleGetAsset(req, res);
     }
 
     // Session routes
     if (req.method === "POST" && url.pathname === "/api/sessions") {
       const body = await readJson(req);
-      return handleCreateSession(body, res);
+      return await handleCreateSession(body, res);
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/export")) {
       const id = url.pathname.split("/")[3];
-      return handleExportSession(id, res);
+      return await handleExportSession(id, res);
     }
     if (req.method === "GET" && /^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
       const id = url.pathname.split("/")[3];
-      return handleGetSession(id, res);
+      return await handleGetSession(id, res);
     }
     if (req.method === "PUT" && /^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
       const id = url.pathname.split("/")[3];
       const body = await readJson(req);
-      return handleUpdateSession(id, body, res);
+      return await handleUpdateSession(id, body, res);
     }
 
     // Import route
     if (req.method === "POST" && url.pathname === "/api/import") {
       const body = await readJson(req);
-      return handleImportSession(body, res);
+      return await handleImportSession(body, res);
     }
 
     // Share routes
     if (req.method === "POST" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/share")) {
       const id = url.pathname.split("/")[3];
-      return handleCreateShare(id, res);
+      return await handleCreateShare(id, res);
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/share/")) {
       const token = url.pathname.split("/")[3];
-      return handleGetShare(token, res);
+      return await handleGetShare(token, res);
     }
 
     // History route
     if (req.method === "GET" && url.pathname === "/api/history") {
-      return handleListHistory(Object.fromEntries(url.searchParams), res);
+      return await handleListHistory(Object.fromEntries(url.searchParams), res);
     }
 
     if (req.method === "GET") {
@@ -293,7 +299,7 @@ async function handleAnalyze(body, res) {
     "要求：方向之间要明显不同；不要生成暴力、色情、仇恨或侵犯隐私的内容；如果图片包含人物，不要识别真实身份。"
   ].join("\n");
 
-  const response = await chatCompletions(ANALYSIS_CONFIG, {
+  const analysisPayload = {
     messages: [
       {
         role: "user",
@@ -302,16 +308,121 @@ async function handleAnalyze(body, res) {
           { type: "image_url", image_url: { url: imageDataUrl } }
         ]
       }
-    ],
-    reasoning: { effort: "none", exclude: true }
-  });
+    ]
+  };
 
+  if (ANALYSIS_CONFIG.provider === "kimi" && /^kimi-k2\./.test(ANALYSIS_CONFIG.model)) {
+    analysisPayload.thinking = { type: "disabled" };
+  } else if (ANALYSIS_CONFIG.provider === "openrouter") {
+    analysisPayload.reasoning = { effort: "none", exclude: true };
+  }
+
+  const response = await chatCompletions(ANALYSIS_CONFIG, analysisPayload);
   const text = collectChatContent(response);
   const parsed = parseJsonFromText(text);
   const normalized = normalizeAnalysis(parsed, body?.fileName);
   normalized.provider = "api";
-  normalized.model = ANALYSIS_CONFIG.model;
+  normalized.model = response?.model || ANALYSIS_CONFIG.model;
   return sendJson(res, 200, normalized);
+}
+
+async function handleAnalyzeText(body, res) {
+  const fileName = typeof body?.fileName === "string" ? body.fileName.trim() : "";
+  const safeFileName = fileName || "document";
+
+  let extractedText = "";
+  let storedHash = null;
+
+  if (typeof body?.text === "string" && body.text.trim().length >= 10) {
+    extractedText = body.text.trim();
+  } else if (typeof body?.dataUrl === "string" && body.dataUrl.startsWith("data:")) {
+    try {
+      const parsed = parseDataUrl(body.dataUrl);
+      const ext = extensionFromFileName(safeFileName) || parsed.ext || "txt";
+      const result = extractTextFromBuffer(parsed.buffer, ext);
+      extractedText = result.text;
+
+      // Store the original file for history browser
+      try {
+        const stored = await storeFile(parsed.buffer, { kind: "upload", ext });
+        storedHash = stored.hash;
+      } catch (storeErr) {
+        console.error("[handleAnalyzeText] storeFile failed:", storeErr);
+      }
+    } catch (parseErr) {
+      return sendJson(res, 400, { error: parseErr.message || "Failed to parse uploaded file." });
+    }
+  }
+
+  if (!extractedText || extractedText.length < 10) {
+    return sendJson(res, 400, { error: "File appears to be empty or unreadable." });
+  }
+
+  if (isDemoRole(ANALYSIS_CONFIG)) {
+    const demo = buildDemoAnalysis(safeFileName);
+    if (storedHash) demo.sourceHash = storedHash;
+    return sendJson(res, 200, demo);
+  }
+
+  const prompt = [
+    "你是一个文本创意导演，正在为一个画布式图片生成应用分析用户上传的文档。",
+    "请理解文档内容、主题、氛围、可延展的视觉叙事方向，并给出 5 个不同的成图方向。",
+    "这些方向会作为画布上的分支节点展示，用户点击后会调用成图模型。",
+    "请只返回严格 JSON，不要 Markdown，不要代码块。",
+    "",
+    "JSON 结构：",
+    "{",
+    '  "title": "不超过10个字的简短标题，概括文档核心主题",',
+    '  "summary": "一句话中文摘要",',
+    '  "detectedSubjects": ["主体1", "主体2"],',
+    '  "moodKeywords": ["关键词1", "关键词2"],',
+    '  "options": [',
+    "    {",
+    '      "id": "short-lowercase-id",',
+    '      "title": "不超过10个字的方向标题",',
+    '      "description": "40-70字中文说明，说明生成后会是什么画面",',
+    '      "prompt": "给图像生成模型的详细中文提示词，明确风格、构图、光影、材质、保留文档关键意象",',
+    '      "tone": "cinematic/editorial/documentary/surreal/minimal/graphic 中的一个",',
+    '      "layoutHint": "portrait/landscape/square/board 中的一个"',
+    "    }",
+    "  ]",
+    "}",
+    "",
+    "要求：方向之间要明显不同；不要生成暴力、色情、仇恨或侵犯隐私的内容。",
+    "",
+    "文档内容：",
+    extractedText.slice(0, 6000)
+  ].join("\n");
+
+  const analysisPayload = {
+    messages: [
+      {
+        role: "user",
+        content: prompt
+      }
+    ]
+  };
+
+  if (ANALYSIS_CONFIG.provider === "kimi" && /^kimi-k2\./.test(ANALYSIS_CONFIG.model)) {
+    analysisPayload.thinking = { type: "disabled" };
+  } else if (ANALYSIS_CONFIG.provider === "openrouter") {
+    analysisPayload.reasoning = { effort: "none", exclude: true };
+  }
+
+  const response = await chatCompletions(ANALYSIS_CONFIG, analysisPayload);
+  const text = collectChatContent(response);
+  const parsed = parseJsonFromText(text);
+  const normalized = normalizeAnalysis(parsed, safeFileName);
+  normalized.provider = "api";
+  normalized.model = response?.model || ANALYSIS_CONFIG.model;
+  if (storedHash) normalized.sourceHash = storedHash;
+  return sendJson(res, 200, normalized);
+}
+
+function extensionFromFileName(fileName) {
+  if (!fileName) return "";
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  return ext || "";
 }
 
 async function handleGenerate(body, res) {
@@ -447,13 +558,18 @@ async function handleExplain(body, res) {
 }
 
 async function chatCompletions(config, payload) {
+  const requestPayload = {
+    model: config.model,
+    ...payload
+  };
+
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(requestPayload)
   });
 
   const text = await response.text();
@@ -867,6 +983,46 @@ function normalizeDataUrl(value) {
     return null;
   }
   return value;
+}
+
+function parseDataUrl(value) {
+  if (typeof value !== "string") {
+    throw new Error("Invalid data URL format");
+  }
+  const rasterMatch = /^data:([a-z0-9+\/-]+);base64,([a-zA-Z0-9+/=]+)$/i.exec(value);
+  if (rasterMatch) {
+    const mimeType = rasterMatch[1].toLowerCase();
+    const ext = extensionFromMimeType(mimeType) || "bin";
+    return {
+      buffer: Buffer.from(rasterMatch[2], "base64"),
+      mimeType,
+      ext
+    };
+  }
+  const plainMatch = /^data:([a-z0-9+\/-]+)(?:;[^,]*)?,(.*)$/is.exec(value);
+  if (plainMatch) {
+    const mimeType = plainMatch[1].toLowerCase();
+    const payload = plainMatch[2] || "";
+    const buffer = Buffer.from(decodeURIComponent(payload), "utf8");
+    return {
+      buffer,
+      mimeType,
+      ext: extensionFromMimeType(mimeType) || "txt"
+    };
+  }
+  throw new Error("Invalid data URL format");
+}
+
+function extensionFromMimeType(mimeType) {
+  const map = {
+    "text/plain": "txt",
+    "text/markdown": "md",
+    "application/json": "json",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "application/pdf": "pdf"
+  };
+  return map[mimeType] || "";
 }
 
 function arrayOfStrings(value, fallback) {
