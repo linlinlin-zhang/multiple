@@ -1126,6 +1126,7 @@ function renderAnalysis(data) {
   if (heading) {
     const titles = { image: t("analysis.titleImage"), text: t("analysis.titleText"), url: t("analysis.titleUrl") };
     heading.textContent = titles[state.sourceType] || t("analysis.title");
+    makeTitleEditable("analysis", heading);
   }
 
   state.links = [{ from: "source", to: "analysis", kind: "analysis" }];
@@ -1149,6 +1150,9 @@ function renderOptions(options) {
     element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
     element.querySelector(".option-title").textContent = option.title || t("generated.result");
     element.querySelector(".option-description").textContent = option.description || "";
+
+    const titleEl = element.querySelector(".option-title");
+    if (titleEl) makeTitleEditable(id, titleEl);
 
     const button = element.querySelector(".generate-button");
     button.addEventListener("click", () => generateOption(id, option));
@@ -1276,6 +1280,7 @@ function turnIntoGeneratedNode(element, option, imageDataUrl) {
   const title = document.createElement("h3");
   title.textContent = option.title || t("generated.result");
   element.appendChild(title);
+  makeTitleEditable(element.dataset.nodeId, title);
 
   const desc = document.createElement("p");
   desc.className = "generated-description";
@@ -1561,6 +1566,60 @@ function canDeleteNode(nodeId) {
   const children = getChildren(nodeId);
   if (children.length > 0) return false;
   return true;
+}
+
+function makeTitleEditable(nodeId, titleElement) {
+  if (!titleElement) return;
+
+  titleElement.addEventListener("dblclick", (event) => {
+    event.stopPropagation();
+    if (titleElement.querySelector(".node-title-input")) return; // already editing
+
+    const originalText = titleElement.textContent;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "node-title-input";
+    input.value = originalText;
+
+    // Replace title text with input
+    titleElement.textContent = "";
+    titleElement.appendChild(input);
+    input.focus();
+    input.select();
+
+    function save() {
+      const newText = input.value.trim();
+      if (newText && newText !== originalText) {
+        titleElement.textContent = newText;
+        // Update node data
+        const node = state.nodes.get(nodeId);
+        if (node) {
+          if (node.option) node.option.title = newText;
+          autoSave();
+        }
+      } else {
+        titleElement.textContent = originalText;
+      }
+    }
+
+    function cancel() {
+      titleElement.textContent = originalText;
+    }
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        save();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        cancel();
+      }
+    });
+
+    input.addEventListener("blur", () => {
+      save();
+    });
+  });
 }
 
 function deleteNode(nodeId) {
@@ -2147,6 +2206,9 @@ async function loadSession(sessionId) {
         option,
         generated: n.type === "generated"
       });
+
+      const titleEl = element.querySelector(".option-title, h3");
+      if (titleEl) makeTitleEditable(nodeId, titleEl);
 
       if (n.type === "generated" && (n.data?.imageHash || n.data?.imageDataUrl)) {
         const hash = n.data?.imageHash || n.data?.imageDataUrl;

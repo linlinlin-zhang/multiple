@@ -473,6 +473,28 @@ body.nav-collapsed .nav-settings {
   display: none;
 }
 
+.node-title-input {
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  color: inherit;
+  background: var(--paper);
+  border: 1px solid var(--ps-blue);
+  border-radius: 8px;
+  padding: 4px 8px;
+  width: 100%;
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+.option-title:hover,
+.generated-node h3:hover,
+.analysis-node h2:hover {
+  background: rgba(0, 112, 204, 0.06);
+  border-radius: 6px;
+  cursor: text;
+}
+
 .board.is-arranging .node {
   pointer-events: none;
   transition: none;
