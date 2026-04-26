@@ -127,6 +127,7 @@ const i18n = {
     "session.fit": "重置视图",
     "session.zoomOut": "缩小",
     "session.zoomIn": "放大",
+    "session.arrange": "一键整理",
     "health.checking": "checking",
     "health.demo": "demo",
     "health.api": "api",
@@ -207,6 +208,7 @@ const i18n = {
     "session.fit": "Reset View",
     "session.zoomOut": "Zoom Out",
     "session.zoomIn": "Zoom In",
+    "session.arrange": "Arrange Canvas",
     "health.checking": "checking",
     "health.demo": "demo",
     "health.api": "api",
@@ -348,7 +350,8 @@ function renderAllText() {
     "session.save": "#saveButton",
     "session.fit": "#fitButton",
     "session.zoomOut": "#zoomOutButton",
-    "session.zoomIn": "#zoomInButton"
+    "session.zoomIn": "#zoomInButton",
+    "session.arrange": "#arrangeButton"
   };
   for (const [key, selector] of Object.entries(btnTitles)) {
     const el = document.querySelector(selector);
@@ -445,6 +448,7 @@ function wireControls() {
   document.querySelector("#zoomOutButton").addEventListener("click", () => zoomBy(-0.08));
   document.querySelector("#fitButton").addEventListener("click", resetView);
   document.querySelector("#saveButton")?.addEventListener("click", () => saveSession());
+  document.querySelector("#arrangeButton")?.addEventListener("click", arrangeCanvasLayout);
 
   document.querySelector("#chatAttachButton")?.addEventListener("click", handleAttachClick);
 
