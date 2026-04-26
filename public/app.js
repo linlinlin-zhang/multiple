@@ -63,7 +63,7 @@ async function init() {
   wireControls();
   updateBoardTransform();
   checkHealth();
-  setStatus("READY", "ready");
+  setStatus("Ready", "ready");
 
   const urlParams = new URLSearchParams(window.location.search);
   const resumeSessionId = urlParams.get("session");
@@ -215,7 +215,7 @@ async function handleFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
-  setStatus("COMPRESSING IMAGE", "busy");
+  setStatus("Compressing image", "busy");
   try {
     const image = await resizeImage(file, 1600, 0.88);
     state.sourceImage = image.dataUrl;
@@ -236,16 +236,16 @@ async function handleFile(event) {
     state.links = [];
     applyCollapseState();
     updateCounts();
-    setStatus("IMAGE READY", "ready");
+    setStatus("Image ready", "ready");
     autoSave();
   } catch (error) {
-    setStatus(error.message || "IMAGE ERROR", "error");
+    setStatus(error.message || "Image error", "error");
   }
 }
 
 async function analyzeImage() {
   if (!state.sourceImage) return;
-  setStatus("ANALYZING IMAGE", "busy");
+  setStatus("Analyzing image", "busy");
   analyzeButton.disabled = true;
 
   try {
@@ -258,10 +258,10 @@ async function analyzeImage() {
     renderAnalysis(data);
     renderOptions(data.options || []);
     state.latestAnalysis = data;
-    setStatus("BRANCHES READY", "ready");
+    setStatus("Branches ready", "ready");
     autoSave();
   } catch (error) {
-    setStatus(error.message || "ANALYSIS FAILED", "error");
+    setStatus(error.message || "Analysis failed", "error");
   } finally {
     analyzeButton.disabled = false;
   }
@@ -274,7 +274,7 @@ async function handleChatSubmit(event) {
 
   chatInput.value = "";
   appendChatMessage("user", message);
-  setStatus("CHAT THINKING", "busy");
+  setStatus("Chat thinking", "busy");
   chatSendButton.disabled = true;
 
   try {
@@ -286,11 +286,11 @@ async function handleChatSubmit(event) {
       messages: state.chatMessages.slice(-8)
     });
     appendChatMessage("assistant", data.reply || "我已经读到你的想法了。");
-    setStatus("CHAT READY", "ready");
+    setStatus("Chat ready", "ready");
     autoSave();
   } catch (error) {
     appendChatMessage("assistant", error.message || "对话请求失败。");
-    setStatus("CHAT FAILED", "error");
+    setStatus("Chat failed", "error");
   } finally {
     chatSendButton.disabled = false;
     chatInput.focus();
@@ -315,7 +315,7 @@ function renderChatMessages() {
 
     const role = document.createElement("span");
     role.className = "chat-role";
-    role.textContent = message.role === "user" ? "YOU" : "AI";
+    role.textContent = message.role === "user" ? "You" : "AI";
 
     const text = document.createElement("span");
     text.textContent = ` ${message.content}`;
@@ -352,7 +352,6 @@ function renderOptions(options) {
     element.style.left = `${position.x}px`;
     element.style.top = `${position.y}px`;
     element.style.setProperty("--tilt", `${position.tilt}deg`);
-    element.querySelector(".pin").classList.add(index % 2 ? "pin-teal" : "pin-gold");
     element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
     element.querySelector(".option-title").textContent = option.title || "生成方向";
     element.querySelector(".option-description").textContent = option.description || "";
@@ -385,7 +384,7 @@ async function generateOption(id, option) {
   const button = element.querySelector(".generate-button");
   element.classList.add("loading");
   if (button) button.disabled = true;
-  setStatus(`GENERATING ${option.title || "IMAGE"}`, "busy");
+  setStatus(`Generating ${option.title || "image"}`, "busy");
 
   try {
     const sourceImageDataUrl = await getSourceImageDataUrl();
@@ -430,12 +429,12 @@ async function generateOption(id, option) {
     }
     applyCollapseState();
     updateCounts();
-    setStatus("IMAGE GENERATED", "ready");
+    setStatus("Image generated", "ready");
     autoSave();
   } catch (error) {
     element.classList.remove("loading");
     if (button) button.disabled = false;
-    setStatus(error.message || "GENERATION FAILED", "error");
+    setStatus(error.message || "Generation failed", "error");
   }
 }
 
@@ -443,10 +442,6 @@ function turnIntoGeneratedNode(element, option, imageDataUrl) {
   element.className = "node option-node generated-node";
   element.innerHTML = "";
   ensureCollapseControl(element.dataset.nodeId, element);
-
-  const pin = document.createElement("div");
-  pin.className = "pin pin-teal";
-  element.appendChild(pin);
 
   const img = document.createElement("img");
   img.className = "generated-image";
@@ -940,7 +935,7 @@ function autoSave() {
 }
 
 async function loadSession(sessionId) {
-  setStatus("LOADING SESSION", "busy");
+  setStatus("Loading session", "busy");
   try {
     const data = await getJson(`/api/sessions/${sessionId}`);
 
@@ -973,7 +968,7 @@ async function loadSession(sessionId) {
       sourcePreview.src = "";
       sourcePreview.classList.remove("has-image");
       emptyState.classList.remove("hidden");
-      sourceName.textContent = "SOURCE IMAGE";
+      sourceName.textContent = "Source image";
       analyzeButton.disabled = true;
     }
 
@@ -1004,7 +999,6 @@ async function loadSession(sessionId) {
       element.style.left = `${n.x || position.x}px`;
       element.style.top = `${n.y || position.y}px`;
       element.style.setProperty("--tilt", `${position.tilt}deg`);
-      element.querySelector(".pin").classList.add(optionNodes.indexOf(n) % 2 ? "pin-teal" : "pin-gold");
       element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
       element.querySelector(".option-title").textContent = option.title || "生成方向";
       element.querySelector(".option-description").textContent = option.description || "";
@@ -1063,9 +1057,9 @@ async function loadSession(sessionId) {
     url.searchParams.set("session", sessionId);
     window.history.replaceState({}, "", url);
 
-    setStatus("SESSION LOADED", "ready");
+    setStatus("Session loaded", "ready");
   } catch (error) {
-    setStatus(error.message || "LOAD FAILED", "error");
+    setStatus(error.message || "Load failed", "error");
   }
 }
 
@@ -1095,7 +1089,7 @@ async function renderSessionList() {
       if (session.isDemo) {
         const badge = document.createElement("span");
         badge.className = "session-item-demo";
-        badge.textContent = "DEMO";
+        badge.textContent = "Demo";
         title.appendChild(badge);
       }
 
