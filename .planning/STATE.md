@@ -1,22 +1,22 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: Canvas Intelligence & Rich Input
-status: complete
-stopped_at: Milestone v1.1 archived and tagged
-last_updated: "2026-04-26T21:50:00.000Z"
+milestone: v1.2
+milestone_name: Interactive Canvas & Deep Analysis
+status: planning
+stopped_at: New milestone v1.2 initialized, requirements defined
+last_updated: "2026-04-26T22:00:00.000Z"
 progress:
   total_phases: 4
-  completed_phases: 4
-  total_plans: 12
-  completed_plans: 12
-  percent: 100
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # ORYZAE Image Board — Project State
 
-**Milestone:** Canvas Intelligence & Rich Input v1.1 (shipped)
-**Core Value:** 用户上传一张图，就能在画布上获得 AI 驱动的创作方向并生成新图；刷新页面后历史会话不丢失，可随时翻阅过往探索并查看 AI 对每张生成图的讲解。
+**Milestone:** Interactive Canvas & Deep Analysis v1.2
+**Core Value:** 用户通过选中卡片与画布深度交互，选择快速分析或深度探索模式，自定义卡片名称，并通过对话框直接控制生成方向。
 **Project Reference:** [PROJECT.md](./PROJECT.md)
 **Last Updated:** 2026-04-26
 
@@ -26,14 +26,14 @@ progress:
 
 | Field | Value |
 |-------|-------|
-| Milestone | v1.1 — Complete |
-| Phases | 5/6/7/8 (all complete) |
-| Plans | 12/12 complete |
-| Status | Archived |
-| Next | Define v2 with `/gsd-new-milestone` |
+| Milestone | v1.2 — Planning |
+| Phase | 9 — Card Selection & Basic Interaction |
+| Plans | 0/11 planned |
+| Status | Not started |
+| Progress | 0/4 phases complete (0%) |
 
 ```
-[████████████████████████████████████████] 100%
+[                                        ] 0%
 ```
 
 ---
@@ -44,8 +44,9 @@ progress:
 |--------|-------|
 | v1.0 requirements validated | 17/17 |
 | v1.1 requirements validated | 14/14 |
-| Phases complete | 8/8 |
-| Plans complete | 24/24 |
+| v1.2 requirements defined | 14/14 |
+| Phases complete (v1.2) | 0/4 |
+| Plans complete (v1.2) | 0/11 |
 | Blockers | 1 |
 
 ---
@@ -60,7 +61,7 @@ progress:
 | 2 | Local filesystem + SHA-256 for image storage | 2026-04-25 | Avoid base64 in DB, content-addressable deduplication |
 | 3 | `app/` React UI as independent Vite build | 2026-04-25 | Reuse existing prototype, served by server.js alongside `public/` |
 | 4 | Share links are immutable snapshots | 2026-04-25 | Prevents drift between shared and live session |
-| 5 | Manual migration SQL created offline | 2026-04-25 | PostgreSQL not available in execution environment; user applies with `npx prisma migrate deploy` |
+| 5 | Manual migration SQL created offline | 2026-04-25 | PostgreSQL not available in execution environment |
 | 6 | NodeGraphThumbnail anchor calculation uses Math.min(height*0.48, height-32) | 2026-04-25 | Exactly matches public/app.js anchor() behavior |
 | 7 | Mobile sidebar implemented as fixed overlay with backdrop | 2026-04-25 | Avoids z-index issues with SVG thumbnails |
 | 8 | Link shadow drawn as separate path layer | 2026-04-25 | Better performance with many links vs SVG filter per-link |
@@ -71,7 +72,10 @@ progress:
 
 - [x] v1.0 Persistence & History — shipped 2026-04-26
 - [x] v1.1 Canvas Intelligence & Rich Input — shipped 2026-04-26
-- [ ] Define v2 milestone scope and requirements
+- [ ] Phase 9: Card Selection & Basic Interaction
+- [ ] Phase 10: Dialog Refactor & Generation Control
+- [ ] Phase 11: Research Mode & Deep Analysis
+- [ ] Phase 12: Image Sharing
 
 ### Blockers
 
@@ -85,5 +89,5 @@ progress:
 
 **Current session started:** 2026-04-26
 **Last session resumed:** 2026-04-26
-**Stopped at:** Milestone v1.1 archived
-**Next expected action:** Define v2 milestone (`/gsd-new-milestone`) or continue ad-hoc work
+**Stopped at:** Milestone v1.2 requirements defined, ready for planning
+**Next expected action:** Plan Phase 9 (`/gsd-plan-phase 9`)
