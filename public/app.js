@@ -64,6 +64,7 @@ const state = {
   selectiveHidden: new Set(),  // selective hide (single-click / auto-collapse)
   generatedCount: 0,
   selectedNodeId: null,
+  thinkingMode: "no-thinking",
   view: {
     x: 0,
     y: 0,
@@ -460,6 +461,7 @@ function renderAllText() {
   updateStatusText();
   updateCounts();
   updateCollapseControls();
+  updateThinkingToggleUI();
 }
 
 function updateStatusText() {
@@ -496,6 +498,7 @@ async function init() {
   await loadSettings();
   await loadTheme();
   await loadLanguage();
+  loadThinkingMode();
 
   const urlParams = new URLSearchParams(window.location.search);
   const resumeSessionId = urlParams.get("session");
@@ -553,6 +556,13 @@ function wireControls() {
   document.querySelector("#chatGenerateButton")?.addEventListener("click", (event) => {
     event.preventDefault();
     generateDirectionFromDialog();
+  });
+
+  // Thinking mode toggle wiring
+  document.querySelectorAll(".thinking-option").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      setThinkingMode(btn.dataset.mode);
+    });
   });
 
   document.querySelector("#exportBtn")?.addEventListener("click", async () => {
@@ -806,6 +816,39 @@ function toggleNav() {
   localStorage.setItem("oryzae.navCollapsed", String(collapsed));
   navToggle.setAttribute("aria-expanded", String(!collapsed));
   navToggle.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
+}
+
+function setThinkingMode(mode) {
+  if (mode !== "thinking" && mode !== "no-thinking") return;
+  state.thinkingMode = mode;
+  localStorage.setItem("oryzae-thinking-mode", mode);
+  updateThinkingToggleUI();
+}
+
+function loadThinkingMode() {
+  const saved = localStorage.getItem("oryzae-thinking-mode");
+  if (saved === "thinking" || saved === "no-thinking") {
+    state.thinkingMode = saved;
+  } else {
+    state.thinkingMode = "no-thinking";
+  }
+  updateThinkingToggleUI();
+}
+
+function updateThinkingToggleUI() {
+  const toggle = document.querySelector("#thinkingToggle");
+  const options = document.querySelectorAll(".thinking-option");
+  if (!toggle) return;
+
+  const label = toggle.querySelector(".thinking-label");
+  if (label) {
+    label.textContent = state.thinkingMode === "thinking" ? t("thinking.thinking") : t("thinking.fast");
+  }
+
+  options.forEach((btn) => {
+    const isActive = btn.dataset.mode === state.thinkingMode;
+    btn.classList.toggle("active", isActive);
+  });
 }
 
 async function checkHealth() {
