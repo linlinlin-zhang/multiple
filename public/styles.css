@@ -1801,6 +1801,46 @@ html[data-theme="dark"] .chat-generate-button:disabled {
   margin-top: 4px;
 }
 
+.share-button {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--ps-blue);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+  padding: 0;
+}
+
+.share-button:hover {
+  background: var(--ps-blue-hover);
+  transform: scale(1.12);
+  box-shadow: var(--ring);
+}
+
+.share-button:active {
+  opacity: 0.6;
+}
+
+.share-button:focus-visible {
+  outline: none;
+  box-shadow: var(--ring);
+}
+
+/* Dark mode compatibility */
+html[data-theme="dark"] .share-button {
+  background: var(--ps-blue);
+  color: #ffffff;
+}
+
+html[data-theme="dark"] .share-button:hover {
+  background: var(--ps-blue-hover);
+}
+
 .viewer-modify-panel {
   display: flex;
   flex-direction: column;
