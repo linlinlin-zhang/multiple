@@ -11,8 +11,8 @@ interface FolderTabProps {
   inactiveText?: string;
 }
 
-const ACTIVE_BG = "#f0ece4";
-const ACTIVE_TEXT = "#1a1a1a";
+const ACTIVE_BG = "#0070cc";
+const ACTIVE_TEXT = "#ffffff";
 
 export default function FolderTab({
   label,
@@ -21,8 +21,8 @@ export default function FolderTab({
   zIndex,
   overlap = true,
   onClick,
-  inactiveColor = "#d8cfc4",
-  inactiveText = "#1a1a1a",
+  inactiveColor = "#ffffff",
+  inactiveText = "#000000",
 }: FolderTabProps) {
   const [bouncing, setBouncing] = useState(false);
 
@@ -47,22 +47,24 @@ export default function FolderTab({
     <button
       onClick={handleClick}
       className={`
-        relative text-[14px] font-medium tracking-[0.02em]
+        relative text-[14px] font-medium tracking-[0]
         flex items-center justify-center
-        select-none cursor-pointer flex-shrink-0 truncate max-w-[120px]
+        select-none cursor-pointer flex-shrink-0 truncate max-w-[150px]
         ${bouncing ? "animate-tab-bounce" : ""}
       `}
       style={{
         zIndex,
         backgroundColor: bgColor,
         color: textColor,
-        clipPath: "polygon(5% 0%, 95% 0%, 100% 100%, 0% 100%)",
-        borderRadius: "5px 5px 0 0",
-        marginLeft: overlap ? "-22px" : "0",
-        paddingLeft: "32px",
-        paddingRight: "32px",
-        transition: "background-color 0.15s ease, color 0.15s ease",
-        transform: active ? "translateY(0)" : "translateY(3px)",
+        clipPath: "none",
+        borderRadius: "999px",
+        border: active ? "1px solid #0070cc" : "1px solid #f3f3f3",
+        boxShadow: active ? "0 0 0 2px #ffffff, 0 0 0 4px #0070cc" : "0 5px 9px rgba(0,0,0,0.06)",
+        marginLeft: overlap ? "8px" : "0",
+        paddingLeft: "24px",
+        paddingRight: "24px",
+        transition: "background-color 0.15s ease, color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease",
+        transform: active ? "translateY(0)" : "translateY(4px)",
         height: "40px",
       }}
       title={label}

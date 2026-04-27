@@ -56,7 +56,7 @@ export default function Sidebar({ title, items, selectedId, onSelect, onCreate }
           <div key={groupLabel}>
             {/* Group label */}
             <div className="px-4 pt-4 pb-2">
-              <span className="text-[11px] font-medium text-cabinet-inkMuted uppercase tracking-[0.08em]">
+              <span className="text-[12px] font-medium text-cabinet-inkMuted tracking-[0]">
                 {groupLabel}
               </span>
             </div>

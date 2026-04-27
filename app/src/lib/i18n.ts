@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, createElement, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 
 export type Lang = "zh" | "en";
 
@@ -210,7 +210,7 @@ export function I18nProvider({ children, initialLang = "zh" }: { children: React
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  return <I18nContext.Provider value={{ lang, t, setLang }}>{children}</I18nContext.Provider>;
+  return createElement(I18nContext.Provider, { value: { lang, t, setLang } }, children);
 }
 
 export function useI18n() {

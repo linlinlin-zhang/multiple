@@ -5,3 +5,13 @@ node_modules/
 
 /app/generated/prisma
 storage/
+.playwright-mcp/
+main-styled*.png
+history-styled*.png
+public/home-assets/*.jpg
+public/assets/*.js
+public/assets/*.css
+public/history/assets/*.js
+public/history/assets/*.css
+example
+home-tube*.png

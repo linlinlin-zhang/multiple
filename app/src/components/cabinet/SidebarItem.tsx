@@ -18,7 +18,7 @@ export default function SidebarItem({ title, summary, selected, onClick, icon }:
     >
       {selected && (
         <div
-          className="absolute left-0 top-2 bottom-2 w-[3px] bg-cabinet-ink"
+          className="absolute left-0 top-2 bottom-2 w-[3px] bg-cabinet-blue rounded-r-full"
         />
       )}
       <div className="flex items-center gap-2">
