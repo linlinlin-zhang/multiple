@@ -192,6 +192,8 @@ const i18n = {
     "viewer.promptPlaceholder": "输入自定义提示词...",
     "viewer.share": "分享",
     "viewer.shareInProgress": "生成分享链接中...",
+    "viewer.shareCopied": "分享链接已复制到剪贴板",
+    "viewer.shareFailed": "分享链接生成失败",
     "collapse.expand": "展开 {count} 个后续节点",
     "collapse.collapse": "收起 {count} 个后续节点",
     "collapse.noChildren": "没有后续节点",
@@ -308,6 +310,8 @@ const i18n = {
     "viewer.promptPlaceholder": "Enter custom prompt...",
     "viewer.share": "Share",
     "viewer.shareInProgress": "Generating share link...",
+    "viewer.shareCopied": "Share link copied to clipboard",
+    "viewer.shareFailed": "Failed to generate share link",
     "collapse.expand": "Expand {count} downstream nodes",
     "collapse.collapse": "Collapse {count} downstream nodes",
     "collapse.noChildren": "No downstream nodes",
@@ -1787,11 +1791,37 @@ function closeImageViewer() {
   if (viewerModifyPanel) viewerModifyPanel.classList.add("hidden");
 }
 
-function handleShareImage(nodeId) {
+async function handleShareImage(nodeId) {
   const node = state.nodes.get(nodeId);
   if (!node || !node.generated) return;
+
+  if (!currentSessionId) {
+    showToast(t("viewer.shareFailed"));
+    return;
+  }
+
   showToast(t("viewer.shareInProgress"));
-  // TODO: fully implement share flow in plan 12-02
+
+  try {
+    const res = await postJson("/api/share-image", { nodeId, sessionId: currentSessionId });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      console.error("[handleShareImage] API error:", err);
+      showToast(t("viewer.shareFailed"));
+      return;
+    }
+    const data = await res.json();
+    if (!data.ok || !data.shareUrl) {
+      showToast(t("viewer.shareFailed"));
+      return;
+    }
+    const fullUrl = window.location.origin + data.shareUrl;
+    await navigator.clipboard.writeText(fullUrl);
+    showToast(t("viewer.shareCopied"));
+  } catch (err) {
+    console.error("[handleShareImage] error:", err);
+    showToast(t("viewer.shareFailed"));
+  }
 }
 
 function openReferenceModal(nodeId) {
