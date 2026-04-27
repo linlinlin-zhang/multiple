@@ -18,7 +18,7 @@ progress:
 **Milestone:** Interactive Canvas & Deep Analysis v1.2
 **Core Value:** 用户通过选中卡片与画布深度交互，选择快速分析或深度探索模式，自定义卡片名称，并通过对话框直接控制生成方向。
 **Project Reference:** [PROJECT.md](./PROJECT.md)
-**Last Updated:** 2026-04-26
+**Last Updated:** 2026-04-27
 
 ---
 
@@ -27,13 +27,13 @@ progress:
 | Field | Value |
 |-------|-------|
 | Milestone | v1.2 — In Progress |
-| Phase | 9 — Card Selection & Basic Interaction |
-| Plans | 09-01, 09-02, 09-03 (all complete) |
+| Phase | 10 — Dialog Refactor & Generation Control |
+| Plans | 10-01, 10-02, 10-03 (all complete) |
 | Status | Complete |
-| Progress | 1/4 phases complete (25%) |
+| Progress | 2/4 phases complete (50%) |
 
 ```
-[████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 25%
+[████████████████████░░░░░░░░░░░░░░░░░░░░] 50%
 ```
 
 ---
@@ -45,12 +45,13 @@ progress:
 | v1.0 requirements validated | 17/17 |
 | v1.1 requirements validated | 14/14 |
 | v1.2 requirements defined | 14/14 |
-| Phases complete (v1.2) | 1/4 |
-| Plans complete (v1.2) | 3/11 |
+| Phases complete (v1.2) | 2/4 |
+| Plans complete (v1.2) | 6/11 |
 | Blockers | 1 |
 
 ---
 | Phase 09 P01 | ~3 min | 3 tasks | 2 files |
+| Phase 10 P03 | ~25 min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -74,7 +75,7 @@ progress:
 - [x] v1.0 Persistence & History — shipped 2026-04-26
 - [x] v1.1 Canvas Intelligence & Rich Input — shipped 2026-04-26
 - [x] Phase 9: Card Selection & Basic Interaction
-- [ ] Phase 10: Dialog Refactor & Generation Control
+- [x] Phase 10: Dialog Refactor & Generation Control
 - [ ] Phase 11: Research Mode & Deep Analysis
 - [ ] Phase 12: Image Sharing
 
@@ -90,5 +91,5 @@ progress:
 
 **Current session started:** 2026-04-26
 **Last session resumed:** 2026-04-26
-**Stopped at:** Completed 09-03-PLAN.md
-**Next expected action:** Plan Phase 10 (`/gsd-plan-phase 10`)
+**Stopped at:** Completed 10-03-PLAN.md
+**Next expected action:** Plan Phase 11 (`/gsd-plan-phase 11`)
