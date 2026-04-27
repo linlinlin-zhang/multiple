@@ -131,6 +131,16 @@
           <div class="chat-input-row">
             <button id="chatAttachButton" class="chat-attach-button" type="button" title="上传图片或文本文件">+</button>
             <input id="chatInput" class="chat-input" type="text" autocomplete="off" placeholder="输入想继续探索的方向、风格或约束" />
+            <div class="thinking-toggle-wrapper">
+              <button id="thinkingToggle" class="thinking-toggle" type="button">
+                <span class="thinking-label">思考</span>
+                <span class="thinking-arrow">∨</span>
+              </button>
+              <div class="thinking-dropdown">
+                <button class="thinking-option" data-mode="thinking">思考</button>
+                <button class="thinking-option" data-mode="no-thinking">快速</button>
+              </div>
+            </div>
             <button id="chatGenerateButton" class="chat-generate-button" type="button" title="生成方向">生成</button>
             <button id="chatSendButton" class="chat-send-button" type="submit">发送</button>
           </div>
