@@ -991,6 +991,24 @@ body.nav-collapsed .nav-settings {
   box-shadow: 0 0 0 3px rgba(0, 112, 204, 0.12), var(--shadow-08);
 }
 
+.chat-context-indicator {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-bottom: 2px;
+  opacity: 1;
+  transition: opacity 180ms ease;
+}
+
+.chat-context-indicator.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .chat-input:disabled {
   background: transparent;
   color: var(--muted);

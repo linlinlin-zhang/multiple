@@ -118,6 +118,7 @@ const i18n = {
     "chat.placeholder": "输入想继续探索的方向、风格或约束",
     "chat.placeholderWithSelection": "对 {title} 继续探索…",
     "chat.placeholderWithCard": "与 '{title}' 对话...",
+    "chat.contextIndicator": "对话上下文：{title}",
     "chat.selectCardFirst": "请先双击选中一张卡片",
     "chat.send": "发送",
     "chat.attach": "上传图片或文本文件",
@@ -215,6 +216,7 @@ const i18n = {
     "chat.placeholder": "Enter direction, style or constraint to explore",
     "chat.placeholderWithSelection": "Explore {title}…",
     "chat.placeholderWithCard": "Chat with '{title}'...",
+    "chat.contextIndicator": "Context: {title}",
     "chat.selectCardFirst": "Please double-click a card to select it first",
     "chat.send": "Send",
     "chat.attach": "Upload image or text file",
@@ -1124,18 +1126,27 @@ async function handleChatSubmit(event) {
 }
 
 function appendChatMessage(role, content) {
-  state.chatMessages.push({ role, content });
+  state.chatMessages.push({ role, content, branchNodeId: state.selectedNodeId });
   renderChatMessages();
+}
+
+function getBranchMessages() {
+  const selectedId = state.selectedNodeId;
+  if (!selectedId) return [];
+  // Show messages that were sent while this node (or any ancestor) was selected
+  // For now, filter by exact selectedNodeId match for clear scoping
+  return state.chatMessages.filter(m => m.branchNodeId === selectedId);
 }
 
 function renderChatMessages() {
   chatMessages.replaceChildren();
 
-  if (!state.chatMessages.length) {
+  const branchMessages = getBranchMessages();
+  if (!branchMessages.length) {
     return;
   }
 
-  for (const message of state.chatMessages.slice(-3)) {
+  for (const message of branchMessages.slice(-3)) {
     const line = document.createElement("span");
     line.className = `chat-line ${message.role}`;
 
@@ -1149,6 +1160,32 @@ function renderChatMessages() {
     line.append(role, text);
     chatMessages.appendChild(line);
   }
+}
+
+function renderChatContextIndicator() {
+  let indicator = document.querySelector(".chat-context-indicator");
+  if (!indicator) {
+    indicator = document.createElement("div");
+    indicator.className = "chat-context-indicator";
+    const chatbar = document.querySelector(".chatbar");
+    if (chatbar) {
+      chatbar.insertBefore(indicator, chatbar.firstChild);
+    } else {
+      return;
+    }
+  }
+
+  const selectedId = state.selectedNodeId;
+  if (!selectedId) {
+    indicator.textContent = "";
+    indicator.classList.add("hidden");
+    return;
+  }
+
+  const node = state.nodes.get(selectedId);
+  const title = node?.option?.title || node?.id || "";
+  indicator.textContent = t("chat.contextIndicator", { title: title.slice(0, 24) });
+  indicator.classList.remove("hidden");
 }
 
 function renderAnalysis(data) {
@@ -1450,6 +1487,9 @@ function updateDialogState() {
   if (chatInputRow) {
     chatInputRow.classList.toggle("has-selection", hasSelection);
   }
+
+  renderChatContextIndicator();
+  renderChatMessages();
 }
 
 let toastTimer = null;
