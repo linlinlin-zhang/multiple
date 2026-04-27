@@ -152,6 +152,9 @@ export async function handleCreateImageShare(body, res) {
       return sendJson(res, 404, { error: "Generated node not found" });
     }
 
+    const analysisNode = session.nodes.find((n) => n.nodeId === "analysis");
+    const analysisData = analysisNode?.data || {};
+
     const nodeData = node.data || {};
     const snapshotData = {
       type: "image",
@@ -162,7 +165,13 @@ export async function handleCreateImageShare(body, res) {
       explanation: nodeData.explanation || null,
       option: nodeData.option || null,
       title: session.title || "Shared Image",
-      createdAt: session.createdAt
+      createdAt: session.createdAt,
+      analysis: {
+        title: analysisData.title || null,
+        summary: analysisData.summary || null,
+        detectedSubjects: analysisData.detectedSubjects || null,
+        moodKeywords: analysisData.moodKeywords || null
+      }
     };
 
     const shareToken = await prisma.shareToken.create({
@@ -227,7 +236,8 @@ export async function handleGetImageShare(token, res) {
       explanation: snapshot.explanation,
       option: snapshot.option,
       title: snapshot.title,
-      sessionCreatedAt: snapshot.createdAt
+      sessionCreatedAt: snapshot.createdAt,
+      analysis: snapshot.analysis || null
     });
   } catch (error) {
     console.error("[handleGetImageShare]", error);
