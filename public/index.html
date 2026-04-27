@@ -104,7 +104,19 @@
             </div>
             <div class="node-caption">
               <span id="sourceName">Source image</span>
-              <button id="analyzeButton" class="primary-button" disabled>分析</button>
+              <div class="research-dropdown-wrapper">
+                <button id="researchButton" class="research-button" type="button" disabled>研究</button>
+                <div class="research-dropdown">
+                  <div class="research-option" data-mode="analyze">
+                    <span class="option-label">分析</span>
+                    <div class="option-tooltip">调用 no-thinking 模式，快速视觉分析</div>
+                  </div>
+                  <div class="research-option" data-mode="explore">
+                    <span class="option-label">探索</span>
+                    <div class="option-tooltip">调用 thinking 模式，深入分析并搜集相关资料</div>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 

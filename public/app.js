@@ -9,7 +9,7 @@ const sourceNode = document.querySelector("#sourceNode");
 const analysisNode = document.querySelector("#analysisNode");
 const analysisSummary = document.querySelector("#analysisSummary");
 const keywordList = document.querySelector("#keywordList");
-const analyzeButton = document.querySelector("#analyzeButton");
+const researchButton = document.querySelector("#researchButton");
 const modeBadge = document.querySelector("#modeBadge");
 const statusText = document.querySelector("#statusText");
 const statusDot = document.querySelector(".status-dot");
@@ -115,6 +115,12 @@ const i18n = {
     "source.uploadPrompt": "上传图片或文档",
     "source.uploadHint": "选择图片、Word、PDF、PPT 或 TXT，生成分支方向",
     "source.analyze": "分析",
+    "research.button": "研究",
+    "research.analyze": "分析",
+    "research.explore": "探索",
+    "research.analyzeTooltip": "调用 no-thinking 模式，快速视觉分析",
+    "research.exploreTooltip": "调用 thinking 模式，深入分析并搜集相关资料",
+    "research.cannotResearch": "该卡片无法进行研究",
     "source.urlPlaceholder": "https://...",
     "source.analyzeUrl": "分析链接",
     "chat.placeholder": "输入想继续探索的方向、风格或约束",
@@ -219,6 +225,12 @@ const i18n = {
     "source.uploadPrompt": "Upload image or document",
     "source.uploadHint": "Select image, Word, PDF, PPT or TXT to generate branches",
     "source.analyze": "Analyze",
+    "research.button": "Research",
+    "research.analyze": "Analyze",
+    "research.explore": "Explore",
+    "research.analyzeTooltip": "Call no-thinking mode for quick visual analysis",
+    "research.exploreTooltip": "Call thinking mode for deep analysis and research",
+    "research.cannotResearch": "This card cannot be researched",
     "source.urlPlaceholder": "https://...",
     "source.analyzeUrl": "Analyze Link",
     "chat.placeholder": "Enter direction, style or constraint to explore",
@@ -365,8 +377,18 @@ function renderAllText() {
   if (emptyStateStrong) emptyStateStrong.textContent = t("source.uploadPrompt");
   const emptyStateSpan = document.querySelector("#emptyState span");
   if (emptyStateSpan) emptyStateSpan.textContent = t("source.uploadHint");
-  const analyzeBtn = document.querySelector("#analyzeButton");
-  if (analyzeBtn) analyzeBtn.textContent = t("source.analyze");
+  const researchBtn = document.querySelector("#researchButton");
+  if (researchBtn) researchBtn.textContent = t("research.button");
+
+  document.querySelectorAll(".research-option").forEach((opt) => {
+    const label = opt.querySelector(".option-label");
+    const tooltip = opt.querySelector(".option-tooltip");
+    const mode = opt.dataset.mode;
+    if (label && mode === "analyze") label.textContent = t("research.analyze");
+    if (label && mode === "explore") label.textContent = t("research.explore");
+    if (tooltip && mode === "analyze") tooltip.textContent = t("research.analyzeTooltip");
+    if (tooltip && mode === "explore") tooltip.textContent = t("research.exploreTooltip");
+  });
   const urlIn = document.querySelector("#urlInput");
   if (urlIn) urlIn.placeholder = t("source.urlPlaceholder");
   const urlAnalyzeBtn = document.querySelector("#urlAnalyzeButton");
@@ -515,7 +537,28 @@ async function init() {
 
 function wireControls() {
   fileInput.addEventListener("change", handleFile);
-  analyzeButton.addEventListener("click", analyzeSource);
+  // Research dropdown wiring
+  const researchDropdownWrapper = document.querySelector(".research-dropdown-wrapper");
+  if (researchDropdownWrapper) {
+    researchDropdownWrapper.addEventListener("mouseenter", () => {
+      researchDropdownWrapper.classList.add("is-open");
+    });
+    researchDropdownWrapper.addEventListener("mouseleave", () => {
+      researchDropdownWrapper.classList.remove("is-open");
+    });
+  }
+
+  document.querySelectorAll(".research-option").forEach((option) => {
+    option.addEventListener("click", () => {
+      const mode = option.dataset.mode;
+      if (mode === "analyze") {
+        handleAnalyze("analyze");
+      } else if (mode === "explore") {
+        handleExplore();
+      }
+      researchDropdownWrapper?.classList.remove("is-open");
+    });
+  });
   chatForm.addEventListener("submit", handleChatSubmit);
   chatInput?.addEventListener("keydown", (event) => {
     if (chatInput.disabled && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
@@ -960,7 +1003,7 @@ async function handleFile(event) {
       sourcePreview.classList.add("has-image");
       emptyState.classList.add("hidden");
       sourceName.textContent = trimMiddle(file.name, 28);
-      analyzeButton.disabled = false;
+      if (researchButton) researchButton.disabled = false;
 
       clearOptions();
       state.latestAnalysis = null;
@@ -1013,7 +1056,7 @@ async function handleFile(event) {
       sourcePreview.classList.remove("has-image");
       emptyState.classList.add("hidden");
       sourceName.textContent = trimMiddle(file.name, 28);
-      analyzeButton.disabled = false;
+      if (researchButton) researchButton.disabled = false;
 
       clearOptions();
       state.latestAnalysis = null;
@@ -1036,13 +1079,43 @@ async function handleFile(event) {
   setStatus(t("file.unsupported"), "error");
 }
 
-async function analyzeSource() {
+function canResearchNode(nodeId) {
+  if (!nodeId) return false;
+  const node = state.nodes.get(nodeId);
+  if (!node) return false;
+  // Only source and analysis nodes can be researched
+  if (nodeId === "source" || nodeId === "analysis") return true;
+  // Option nodes (not yet generated) can be researched
+  if (node.option && !node.generated) return true;
+  return false;
+}
+
+function handleAnalyze(mode = "analyze") {
+  // If a node is selected, validate it can be researched
+  if (state.selectedNodeId && !canResearchNode(state.selectedNodeId)) {
+    showSelectionToast(t("research.cannotResearch"));
+    return;
+  }
+  analyzeSource(mode);
+}
+
+function handleExplore() {
+  // If a node is selected, validate it can be researched
+  if (state.selectedNodeId && !canResearchNode(state.selectedNodeId)) {
+    showSelectionToast(t("research.cannotResearch"));
+    return;
+  }
+  // Stub for explore mode - to be implemented in 11-02
+  showSelectionToast("Explore mode coming soon");
+}
+
+async function analyzeSource(mode = "analyze") {
   if (state.sourceType === "image" && !state.sourceImage) return;
   if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) return;
   if (state.sourceType === "url" && !state.sourceUrl) return;
 
   setStatus(t("status.busy"), "busy");
-  analyzeButton.disabled = true;
+  if (researchButton) researchButton.disabled = true;
 
   try {
     let data;
@@ -1051,16 +1124,16 @@ async function analyzeSource() {
       data = await postJson("/api/analyze", {
         imageDataUrl: sourceImageDataUrl,
         fileName: state.fileName,
-        thinkingMode: state.thinkingMode
+        thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode
       });
     } else if (state.sourceType === "url") {
-      data = await postJson("/api/analyze-url", { url: state.sourceUrl, thinkingMode: state.thinkingMode });
+      data = await postJson("/api/analyze-url", { url: state.sourceUrl, thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode });
     } else {
       data = await postJson("/api/analyze-text", {
         text: state.sourceText,
         dataUrl: state.sourceDataUrl,
         fileName: state.fileName,
-        thinkingMode: state.thinkingMode
+        thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode
       });
     }
 
@@ -1072,7 +1145,7 @@ async function analyzeSource() {
   } catch (error) {
     setStatus(error.message || "Analysis failed", "error");
   } finally {
-    analyzeButton.disabled = false;
+    if (researchButton) researchButton.disabled = false;
   }
 }
 
@@ -1120,7 +1193,7 @@ function renderUrlSource(url, title) {
   sourcePreview.parentElement.appendChild(linkCard);
 
   sourceName.textContent = new URL(url).hostname;
-  if (analyzeButton) analyzeButton.disabled = false;
+  if (researchButton) researchButton.disabled = false;
   updateSourceBadge();
 }
 
@@ -2383,7 +2456,7 @@ async function loadSession(sessionId) {
       }
       emptyState.classList.add("hidden");
       sourceName.textContent = trimMiddle(state.fileName, 28);
-      analyzeButton.disabled = false;
+      if (researchButton) researchButton.disabled = false;
       updateSourceBadge();
     } else if (data.state?.sourceType === "url" && data.state?.sourceUrl) {
       // Restore URL source without upload asset
@@ -2397,7 +2470,7 @@ async function loadSession(sessionId) {
 
       renderUrlSource(state.sourceUrl, data.state?.latestAnalysis?.title || "");
       sourceName.textContent = trimMiddle(state.fileName, 28);
-      analyzeButton.disabled = false;
+      if (researchButton) researchButton.disabled = false;
       updateSourceBadge();
     } else {
       state.sourceType = "image";
@@ -2410,7 +2483,7 @@ async function loadSession(sessionId) {
       sourcePreview.classList.remove("has-image");
       emptyState.classList.remove("hidden");
       sourceName.textContent = "Source image";
-      analyzeButton.disabled = true;
+      if (researchButton) researchButton.disabled = true;
       updateSourceBadge();
     }
 
