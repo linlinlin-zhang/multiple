@@ -19,6 +19,7 @@ const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
 const chatMessages = document.querySelector("#chatMessages");
 const chatSendButton = document.querySelector("#chatSendButton");
+const chatGenerateButton = document.querySelector("#chatGenerateButton");
 const navToggle = document.querySelector("#navToggle");
 const urlInput = document.querySelector("#urlInput");
 const urlAnalyzeButton = document.querySelector("#urlAnalyzeButton");
@@ -121,7 +122,10 @@ const i18n = {
     "chat.contextIndicator": "对话上下文：{title}",
     "chat.selectCardFirst": "请先双击选中一张卡片",
     "chat.send": "发送",
+    "chat.generate": "生成",
+    "chat.emptyPrompt": "请输入方向描述",
     "chat.attach": "上传图片或文本文件",
+    "chat.generatedCannotGenerate": "生成图节点无法继续生成方向",
     "status.ready": "Ready",
     "status.busy": "Busy",
     "status.saved": "已保存",
@@ -219,7 +223,10 @@ const i18n = {
     "chat.contextIndicator": "Context: {title}",
     "chat.selectCardFirst": "Please double-click a card to select it first",
     "chat.send": "Send",
+    "chat.generate": "Generate",
+    "chat.emptyPrompt": "Please enter a direction description",
     "chat.attach": "Upload image or text file",
+    "chat.generatedCannotGenerate": "Generated image nodes cannot spawn new directions",
     "status.ready": "Ready",
     "status.busy": "Busy",
     "status.saved": "Saved",
@@ -1123,6 +1130,110 @@ async function handleChatSubmit(event) {
     chatSendButton.disabled = false;
     chatInput.focus();
   }
+}
+
+function generateDirectionFromDialog() {
+  const promptText = chatInput.value.trim();
+  if (!promptText) {
+    showSelectionToast(t("chat.emptyPrompt"));
+    return;
+  }
+
+  const selectedNodeId = state.selectedNodeId;
+  if (!selectedNodeId) {
+    showSelectionToast(t("chat.selectCardFirst"));
+    return;
+  }
+
+  const selectedNode = state.nodes.get(selectedNodeId);
+  if (!selectedNode) return;
+
+  // Prevent generation from generated nodes
+  if (selectedNode.generated) {
+    showSelectionToast(t("chat.generatedCannotGenerate"));
+    return;
+  }
+
+  // Build option object from dialog text
+  const option = {
+    id: `custom-${Date.now()}`,
+    title: promptText,
+    description: promptText,
+    prompt: promptText,
+    tone: "custom",
+    layoutHint: "square"
+  };
+
+  // Create the option node as child of selected node
+  const newNodeId = createOptionNode(option, selectedNodeId);
+
+  // Clear input
+  chatInput.value = "";
+
+  // Auto-select the new option node
+  if (newNodeId) {
+    selectNode(newNodeId);
+  }
+
+  // Save session
+  autoSave();
+}
+
+function createOptionNode(option, parentNodeId) {
+  const parentNode = state.nodes.get(parentNodeId);
+  if (!parentNode) return null;
+
+  // Compute position offset from parent
+  const offsetX = 380;
+  const offsetY = 40;
+  const newX = (parentNode.x || 0) + offsetX;
+  const newY = (parentNode.y || 0) + offsetY;
+
+  const id = `option-${option.id}`;
+
+  // Remove existing node with same id if any
+  if (state.nodes.has(id)) {
+    const existing = state.nodes.get(id);
+    existing.element.remove();
+    state.nodes.delete(id);
+    state.collapsed.delete(id);
+    state.selectiveHidden.delete(id);
+    state.links = state.links.filter(l => l.from !== id && l.to !== id);
+  }
+
+  const fragment = optionTemplate.content.cloneNode(true);
+  const element = fragment.querySelector(".option-node");
+  element.dataset.nodeId = id;
+  element.style.left = `${newX}px`;
+  element.style.top = `${newY}px`;
+  element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
+  element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
+  element.querySelector(".option-title").textContent = option.title || t("generated.result");
+  element.querySelector(".option-description").textContent = option.description || "";
+
+  const titleEl = element.querySelector(".option-title");
+  if (titleEl) makeTitleEditable(id, titleEl);
+
+  const button = element.querySelector(".generate-button");
+  button.addEventListener("click", () => generateOption(id, option));
+
+  board.appendChild(element);
+  registerNode(id, element, {
+    x: newX,
+    y: newY,
+    width: 318,
+    height: element.offsetHeight,
+    option
+  });
+
+  state.links.push({ from: parentNodeId, to: id, kind: "option" });
+  makeDraggable(element, id);
+
+  applyCollapseState();
+  updateCounts();
+  drawLinks();
+
+  return id;
 }
 
 function appendChatMessage(role, content) {
