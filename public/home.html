@@ -3,17 +3,57 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>主页 / ORYZAE</title>
-    <link rel="stylesheet" href="/styles.css?v=5" />
+    <title>tube / ORYZAE</title>
+    <meta name="description" content="A rotating photo tube homepage for ORYZAE." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000000'/%3E%3Ccircle cx='32' cy='32' r='18' fill='%230070cc'/%3E%3Cpath d='M22 32h20M32 22v20' stroke='%23ffffff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/home.css?v=2" />
   </head>
   <body>
-    <main class="placeholder-page">
-      <section class="placeholder-panel">
-        <p class="eyebrow">HOME</p>
-        <h1>主页占位</h1>
-        <p>这里先保留主页入口，等主页信息架构确定后再接入正式内容。</p>
-        <a class="placeholder-link" href="/">返回工作界面</a>
+    <main class="tube-home" aria-label="ORYZAE homepage">
+      <section class="tube-panel" aria-label="tube parameters">
+        <h1>tube</h1>
+        <dl class="readout">
+          <div><dt>vortex shape</dt><dd id="vortexValue">0.0</dd></div>
+          <div><dt>show parameters overlay</dt><dd>1.0</dd></div>
+          <div><dt>photo resolution</dt><dd>1000.0</dd></div>
+          <div><dt>animation stiffness</dt><dd>0.03</dd></div>
+        </dl>
+
+        <p class="section-label">Tube parameters</p>
+        <dl class="readout compact">
+          <div><dt>Radius</dt><dd>4.5</dd></div>
+          <div><dt>Rows</dt><dd>12.0</dd></div>
+          <div><dt>Columns</dt><dd>2.0</dd></div>
+          <div><dt>Height</dt><dd id="heightValue">18.06</dd></div>
+        </dl>
+
+        <p class="section-label">Supersquad parameters</p>
+        <dl class="readout compact">
+          <div><dt>XY Exponent</dt><dd>0.84</dd></div>
+          <div><dt>Z Exponent</dt><dd>0.69</dd></div>
+        </dl>
+
+        <div class="tube-actions">
+          <a href="/" aria-label="Open realtime workspace">work</a>
+          <a href="/history/" aria-label="Open history browser">history</a>
+        </div>
+
+        <p class="hint">scroll to rotate // click to expand</p>
+        <p class="version">multi-modal portfolio_v1.0</p>
       </section>
+
+      <section class="tube-stage" aria-label="rotating photo tube">
+        <svg id="tubeLines" class="tube-lines" aria-hidden="true"></svg>
+        <div class="axis-line" aria-hidden="true"></div>
+        <div id="tubeWorld" class="tube-world"></div>
+      </section>
+
+      <aside id="focusOverlay" class="focus-overlay" aria-hidden="true">
+        <button id="focusClose" type="button" aria-label="Close expanded photo">x</button>
+        <img id="focusImage" alt="" />
+      </aside>
     </main>
+
+    <script type="module" src="/home.js?v=2"></script>
   </body>
 </html>
