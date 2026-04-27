@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { handleCreateSession, handleGetSession, handleUpdateSession, handleExportSession } from "./src/api/sessions.js";
 import { handleListHistory } from "./src/api/history.js";
 import { handleStoreAsset, handleGetAsset } from "./src/api/assets.js";
-import { handleCreateShare, handleGetShare } from "./src/api/share.js";
+import { handleCreateShare, handleGetShare, handleCreateImageShare, handleGetImageShare } from "./src/api/share.js";
 import { handleImportSession } from "./src/api/import.js";
 import { handleGetSettings, handleUpdateSettings } from "./src/api/settings.js";
 import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js";
@@ -133,6 +133,14 @@ const server = http.createServer(async (req, res) => {
       const token = url.pathname.split("/")[3];
       return await handleGetShare(token, res);
     }
+    if (req.method === "POST" && url.pathname === "/api/share-image") {
+      const body = await readJson(req);
+      return await handleCreateImageShare(body, res);
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/api/share-image/")) {
+      const token = url.pathname.split("/")[3];
+      return await handleGetImageShare(token, res);
+    }
 
     // History route
     if (req.method === "GET" && url.pathname === "/api/history") {
@@ -148,6 +156,9 @@ const server = http.createServer(async (req, res) => {
       }
       if (/^\/share\/[^/]+\/?$/.test(url.pathname)) {
         return serveStatic("/share.html", res);
+      }
+      if (/^\/share-image\/[^/]+\/?$/.test(url.pathname)) {
+        return serveStatic("/share-image.html", res);
       }
       return serveStatic(url.pathname, res);
     }

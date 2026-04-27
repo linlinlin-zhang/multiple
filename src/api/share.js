@@ -8,6 +8,12 @@ function sendJson(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
+function addDays(date, days) {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
+
 /**
  * POST /api/sessions/:id/share
  */
@@ -117,5 +123,114 @@ export async function handleGetShare(token, res) {
   } catch (error) {
     console.error("[handleGetShare]", error);
     return sendJson(res, 500, { error: error.message || "Failed to get share" });
+  }
+}
+
+/**
+ * POST /api/share-image
+ */
+export async function handleCreateImageShare(body, res) {
+  try {
+    const nodeId = typeof body?.nodeId === "string" ? body.nodeId.trim() : "";
+    const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
+
+    if (!nodeId || !sessionId) {
+      return sendJson(res, 400, { error: "nodeId and sessionId are required" });
+    }
+
+    const session = await prisma.session.findUnique({
+      where: { id: sessionId },
+      include: { nodes: true }
+    });
+
+    if (!session) {
+      return sendJson(res, 404, { error: "Session not found" });
+    }
+
+    const node = session.nodes.find((n) => n.nodeId === nodeId);
+    if (!node || node.type !== "generated") {
+      return sendJson(res, 404, { error: "Generated node not found" });
+    }
+
+    const nodeData = node.data || {};
+    const snapshotData = {
+      type: "image",
+      nodeId,
+      sessionId,
+      imageHash: nodeData.imageHash || null,
+      imageDataUrl: nodeData.imageDataUrl || null,
+      explanation: nodeData.explanation || null,
+      option: nodeData.option || null,
+      title: session.title || "Shared Image",
+      createdAt: session.createdAt
+    };
+
+    const shareToken = await prisma.shareToken.create({
+      data: {
+        sessionId,
+        snapshotData,
+        expiresAt: addDays(new Date(), 30)
+      }
+    });
+
+    return sendJson(res, 200, {
+      ok: true,
+      shareUrl: `/share-image/${shareToken.token}`,
+      token: shareToken.token,
+      createdAt: shareToken.createdAt
+    });
+  } catch (error) {
+    console.error("[handleCreateImageShare]", error);
+    return sendJson(res, 500, { error: error.message || "Failed to create image share" });
+  }
+}
+
+/**
+ * GET /api/share-image/:token
+ */
+export async function handleGetImageShare(token, res) {
+  try {
+    if (!token || typeof token !== "string") {
+      return sendJson(res, 400, { error: "token is required" });
+    }
+
+    const shareToken = await prisma.shareToken.findUnique({
+      where: { token },
+      select: {
+        token: true,
+        snapshotData: true,
+        createdAt: true,
+        expiresAt: true
+      }
+    });
+
+    if (!shareToken) {
+      return sendJson(res, 404, { error: "Share not found" });
+    }
+
+    if (shareToken.expiresAt && new Date() > shareToken.expiresAt) {
+      return sendJson(res, 410, { error: "Share link has expired" });
+    }
+
+    const snapshot = shareToken.snapshotData || {};
+    if (snapshot.type !== "image") {
+      return sendJson(res, 404, { error: "Image share not found" });
+    }
+
+    return sendJson(res, 200, {
+      ok: true,
+      token: shareToken.token,
+      createdAt: shareToken.createdAt,
+      expiresAt: shareToken.expiresAt,
+      imageHash: snapshot.imageHash,
+      imageDataUrl: snapshot.imageDataUrl,
+      explanation: snapshot.explanation,
+      option: snapshot.option,
+      title: snapshot.title,
+      sessionCreatedAt: snapshot.createdAt
+    });
+  } catch (error) {
+    console.error("[handleGetImageShare]", error);
+    return sendJson(res, 500, { error: error.message || "Failed to get image share" });
   }
 }
