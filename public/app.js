@@ -43,6 +43,7 @@ const viewerExplanation = document.querySelector("#viewerExplanation");
 const viewerRegenerate = document.querySelector("#viewerRegenerate");
 const viewerModify = document.querySelector("#viewerModify");
 const viewerDownload = document.querySelector("#viewerDownload");
+const imageShareButton = document.querySelector("#imageShareButton");
 const viewerModifyPanel = document.querySelector("#viewerModifyPanel");
 const viewerPromptInput = document.querySelector("#viewerPromptInput");
 const viewerSubmitModify = document.querySelector("#viewerSubmitModify");
@@ -189,6 +190,8 @@ const i18n = {
     "viewer.confirmModify": "确认修改",
     "viewer.cancelModify": "取消",
     "viewer.promptPlaceholder": "输入自定义提示词...",
+    "viewer.share": "分享",
+    "viewer.shareInProgress": "生成分享链接中...",
     "collapse.expand": "展开 {count} 个后续节点",
     "collapse.collapse": "收起 {count} 个后续节点",
     "collapse.noChildren": "没有后续节点",
@@ -303,6 +306,8 @@ const i18n = {
     "viewer.confirmModify": "Confirm",
     "viewer.cancelModify": "Cancel",
     "viewer.promptPlaceholder": "Enter custom prompt...",
+    "viewer.share": "Share",
+    "viewer.shareInProgress": "Generating share link...",
     "collapse.expand": "Expand {count} downstream nodes",
     "collapse.collapse": "Collapse {count} downstream nodes",
     "collapse.noChildren": "No downstream nodes",
@@ -481,6 +486,7 @@ function renderAllText() {
   if (viewerRegenerate) viewerRegenerate.textContent = t("viewer.regenerate");
   if (viewerModify) viewerModify.textContent = t("viewer.modify");
   if (viewerDownload) viewerDownload.textContent = t("viewer.download");
+  if (imageShareButton) imageShareButton.setAttribute("title", t("viewer.share"));
   if (viewerSubmitModify) viewerSubmitModify.textContent = t("viewer.confirmModify");
   if (viewerCancelModify) viewerCancelModify.textContent = t("viewer.cancelModify");
   if (viewerPromptInput) viewerPromptInput.placeholder = t("viewer.promptPlaceholder");
@@ -1761,6 +1767,11 @@ function openImageViewer(nodeId) {
   if (viewerPromptInput) viewerPromptInput.value = node.option?.prompt || "";
   if (viewerModifyPanel) viewerModifyPanel.classList.add("hidden");
 
+  const shareBtn = imageViewerModal.querySelector("#imageShareButton");
+  if (shareBtn) {
+    shareBtn.onclick = () => handleShareImage(nodeId);
+  }
+
   imageViewerModal.classList.remove("hidden");
   document.body.style.overflow = "hidden";
 
@@ -1774,6 +1785,13 @@ function closeImageViewer() {
   document.body.style.overflow = "";
   currentViewerNodeId = null;
   if (viewerModifyPanel) viewerModifyPanel.classList.add("hidden");
+}
+
+function handleShareImage(nodeId) {
+  const node = state.nodes.get(nodeId);
+  if (!node || !node.generated) return;
+  showToast(t("viewer.shareInProgress"));
+  // TODO: fully implement share flow in plan 12-02
 }
 
 function openReferenceModal(nodeId) {
@@ -1903,9 +1921,13 @@ function updateDialogState() {
 
 let toastTimer = null;
 function showSelectionToast(message) {
+  showToast(message || t("chat.selectCardFirst"));
+}
+
+function showToast(message) {
   const toast = document.querySelector("#selectionToast");
   if (!toast) return;
-  toast.textContent = message || t("chat.selectCardFirst");
+  toast.textContent = message;
   toast.classList.add("visible");
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
