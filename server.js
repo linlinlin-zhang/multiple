@@ -75,6 +75,11 @@ const server = http.createServer(async (req, res) => {
       return await handleAnalyzeUrl(body, res);
     }
 
+    if (req.method === "POST" && url.pathname === "/api/analyze-explore") {
+      const body = await readJson(req);
+      return await handleAnalyzeExplore(body, res);
+    }
+
     if (req.method === "POST" && url.pathname === "/api/generate") {
       const body = await readJson(req);
       return await handleGenerate(body, res);
@@ -445,6 +450,141 @@ function isValidPublicUrl(urlString) {
   }
 
   return true;
+}
+
+async function handleAnalyzeExplore(body, res) {
+  const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
+  const text = typeof body?.text === "string" ? body.text.trim() : "";
+  const dataUrl = typeof body?.dataUrl === "string" ? body.dataUrl.trim() : "";
+  const url = typeof body?.url === "string" ? body.url.trim() : "";
+  const fileName = typeof body?.fileName === "string" ? body.fileName.trim() : "";
+  const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
+
+  const hasContent = imageDataUrl || text || dataUrl || url;
+  if (!hasContent) {
+    return sendJson(res, 400, { error: "imageDataUrl, text, dataUrl, or url is required" });
+  }
+
+  if (isDemoRole(runtimeConfigs.analysis)) {
+    return sendJson(res, 200, buildDemoExplore(fileName));
+  }
+
+  const lang = body?.language === "en" ? "en" : "zh";
+  const prompt = lang === "en"
+    ? [
+        "You are a visual creative director with deep research capabilities, analyzing content for a canvas-based image generation app.",
+        "Use thinking mode to deeply understand the content, subjects, atmosphere, and extensible narrative directions.",
+        "Then provide 5 different image generation directions AND gather 2-4 relevant reference materials.",
+        "These directions will be displayed as branch nodes on the canvas; users click them to invoke the image generation model.",
+        "Return strict JSON only, no Markdown, no code blocks.",
+        "",
+        "JSON structure:",
+        "{",
+        '  "title": "Short title under 10 words summarizing the core visual theme",',
+        '  "summary": "One-sentence English summary",',
+        '  "detectedSubjects": ["subject1", "subject2"],',
+        '  "moodKeywords": ["keyword1", "keyword2"],',
+        '  "options": [',
+        "    {",
+        '      "id": "short-lowercase-id",',
+        '      "title": "Direction title under 10 words",',
+        '      "description": "40-70 word English description of what the generated image will look like",',
+        '      "prompt": "Detailed English prompt for the image generation model, specifying style, composition, lighting, materials, and key elements to preserve from the original image",',
+        '      "tone": "one of cinematic/editorial/documentary/surreal/minimal/graphic",',
+        '      "layoutHint": "one of portrait/landscape/square/board"',
+        "    }",
+        "  ],",
+        '  "references": [',
+        "    {",
+        '      "title": "Reference title",',
+        '      "url": "https://example.com/reference",',
+        '      "description": "Brief description of why this reference is relevant",',
+        '      "type": "web"',
+        "    }",
+        "  ]",
+        "}",
+        "",
+        'Reference type must be one of: "web" (website/article), "doc" (document/paper), "image" (image gallery/portfolio).',
+        "Requirements: directions must be clearly different from each other; references should be real, relevant, and helpful for the creative direction; do not generate violent, sexual, hateful, or privacy-violating content."
+      ].join("\n")
+    : [
+        "你是一个具备深度研究能力的视觉创意导演，正在为画布式图片生成应用分析内容。",
+        "请使用思考模式深入理解内容、主体、氛围、可延展的叙事方向。",
+        "然后给出 5 个不同的成图方向，并搜集 2-4 条相关的参考资料。",
+        "这些方向会作为画布上的分支节点展示，用户点击后会调用成图模型。",
+        "请只返回严格 JSON，不要 Markdown，不要代码块。",
+        "",
+        "JSON 结构：",
+        "{",
+        '  "title": "不超过10个字的简短标题，概括核心视觉主题",',
+        '  "summary": "一句话中文摘要",',
+        '  "detectedSubjects": ["主体1", "主体2"],',
+        '  "moodKeywords": ["关键词1", "关键词2"],',
+        '  "options": [',
+        "    {",
+        '      "id": "short-lowercase-id",',
+        '      "title": "不超过10个字的方向标题",',
+        '      "description": "40-70字中文说明，说明生成后会是什么画面",',
+        '      "prompt": "给图像生成模型的详细中文提示词，明确风格、构图、光影、材质、保留原图关键元素",',
+        '      "tone": "cinematic/editorial/documentary/surreal/minimal/graphic 中的一个",',
+        '      "layoutHint": "portrait/landscape/square/board 中的一个"',
+        "    }",
+        "  ],",
+        '  "references": [',
+        "    {",
+        '      "title": "参考资料标题",',
+        '      "url": "https://example.com/reference",',
+        '      "description": "简要说明这条参考为什么相关",',
+        '      "type": "web"',
+        "    }",
+        "  ]",
+        "}",
+        "",
+        '参考资料 type 必须是以下之一："web"（网站/文章）、"doc"（文档/论文）、"image"（图片集/作品集）。',
+        "要求：方向之间要明显不同；参考资料应当真实、相关、对创意方向有帮助；不要生成暴力、色情、仇恨或侵犯隐私的内容。"
+      ].join("\n");
+
+  const content = [];
+  if (imageDataUrl) {
+    content.push({ type: "text", text: prompt });
+    content.push({ type: "image_url", image_url: { url: imageDataUrl } });
+  } else if (url) {
+    content.push({ type: "text", text: `${prompt}\n\n网页链接：${url}` });
+  } else if (text) {
+    content.push({ type: "text", text: `${prompt}\n\n文档内容：\n${text.slice(0, 6000)}` });
+  } else if (dataUrl) {
+    try {
+      const parsed = parseDataUrl(dataUrl);
+      const ext = extensionFromFileName(fileName) || parsed.ext || "txt";
+      const result = extractTextFromBuffer(parsed.buffer, ext);
+      content.push({ type: "text", text: `${prompt}\n\n文档内容：\n${result.text.slice(0, 6000)}` });
+    } catch (parseErr) {
+      return sendJson(res, 400, { error: parseErr.message || "Failed to parse uploaded file." });
+    }
+  }
+
+  const analysisPayload = {
+    messages: [{ role: "user", content }]
+  };
+
+  if (runtimeConfigs.analysis.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.analysis.model)) {
+    analysisPayload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
+  } else if (runtimeConfigs.analysis.provider === "openrouter") {
+    analysisPayload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
+  }
+
+  try {
+    const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
+    const text = collectChatContent(response);
+    const parsed = parseJsonFromText(text);
+    const normalized = normalizeExplore(parsed, fileName);
+    normalized.provider = "api";
+    normalized.model = response?.model || runtimeConfigs.analysis.model;
+    return sendJson(res, 200, normalized);
+  } catch (error) {
+    console.error("[handleAnalyzeExplore] error:", error);
+    return sendJson(res, 500, { error: "Explore analysis failed", message: error.message });
+  }
 }
 
 async function handleAnalyzeUrl(body, res) {
@@ -972,6 +1112,34 @@ function normalizeAnalysis(value, fileName = "source image") {
   };
 }
 
+function normalizeExplore(value, fileName = "source image") {
+  const fallback = buildDemoExplore(fileName);
+  const options = Array.isArray(value?.options) ? value.options : fallback.options;
+  const references = Array.isArray(value?.references) ? value.references : fallback.references;
+
+  return {
+    provider: "api",
+    title: stringOr(value?.title, fallback.title),
+    summary: stringOr(value?.summary, fallback.summary),
+    detectedSubjects: arrayOfStrings(value?.detectedSubjects, fallback.detectedSubjects).slice(0, 6),
+    moodKeywords: arrayOfStrings(value?.moodKeywords, fallback.moodKeywords).slice(0, 8),
+    options: options.slice(0, 6).map((option, index) => ({
+      id: slug(option?.id || option?.title || `option-${index + 1}`),
+      title: stringOr(option?.title, fallback.options[index % fallback.options.length].title).slice(0, 20),
+      description: stringOr(option?.description, fallback.options[index % fallback.options.length].description),
+      prompt: stringOr(option?.prompt, fallback.options[index % fallback.options.length].prompt),
+      tone: stringOr(option?.tone, fallback.options[index % fallback.options.length].tone),
+      layoutHint: stringOr(option?.layoutHint, fallback.options[index % fallback.options.length].layoutHint)
+    })),
+    references: references.slice(0, 6).map((ref, index) => ({
+      title: stringOr(ref?.title, fallback.references[index % fallback.references.length].title).slice(0, 80),
+      url: stringOr(ref?.url, fallback.references[index % fallback.references.length].url).slice(0, 512),
+      description: stringOr(ref?.description, fallback.references[index % fallback.references.length].description).slice(0, 200),
+      type: ["web", "doc", "image"].includes(ref?.type) ? ref.type : "web"
+    }))
+  };
+}
+
 function normalizeOption(option) {
   if (!option || typeof option !== "object") return null;
   return {
@@ -1080,6 +1248,33 @@ function buildDemoAnalysis(fileName = "source image") {
         prompt: "基于参考图生成一张视觉系统概念板，包含主视觉、局部材质切片、色彩样本、构图缩略图和整洁网格，现代设计工作室风格，不要出现真实文字。",
         tone: "graphic",
         layoutHint: "board"
+      }
+    ]
+  };
+}
+
+function buildDemoExplore(fileName = "source image") {
+  const base = buildDemoAnalysis(fileName);
+  return {
+    ...base,
+    references: [
+      {
+        title: "Pinterest 视觉灵感板",
+        url: "https://www.pinterest.com/search/pins/?q=creative+visual+moodboard",
+        description: "大量视觉灵感与情绪板参考，适合快速浏览不同风格的视觉参考。",
+        type: "web"
+      },
+      {
+        title: "Behance 创意项目集",
+        url: "https://www.behance.net/search/projects/creative%20direction",
+        description: "全球创意人分享的高质量视觉项目，可作为风格与构图的参考。",
+        type: "web"
+      },
+      {
+        title: "电影色彩分析图集",
+        url: "https://www.flickr.com/search/?q=cinematic+color+grading",
+        description: "电影级调色与光影处理的图片参考，适合延展电影感方向。",
+        type: "image"
       }
     ]
   };
