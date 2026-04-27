@@ -151,6 +151,8 @@ const i18n = {
     "health.mixed": "mixed",
     "chat.systemContext": "你是这个画布式图片生成应用里的创意对话助手。你的任务是帮助用户理解当前图片、比较分支方向、提出新的生成建议，或把用户的想法整理成可执行的视觉方向。回答用中文，保持简洁，通常 1-3 句。不要假装已经生成了新图片；如果用户想生成，请建议他点击方向节点或说明你会如何改提示词。",
     "chat.systemRole": "你是 Kimi K2.6 no thinking 模式下的创意对话助手。回答简洁、直接、可执行。",
+    "chat.selectedCardContext": "当前用户正在与画布上的以下卡片对话：\n类型：{type}\n标题：{title}\n内容摘要：{summary}",
+    "chat.selectedCardPrompt": "提示词：{prompt}",
     "analysis.systemPrompt": "你是一个视觉创意导演，正在为一个画布式图片生成应用分析用户上传的图片。请快速理解图片内容、主体、氛围、可延展的叙事方向，并给出 5 个不同的成图方向。这些方向会作为画布上的分支节点展示，用户点击后会调用成图模型。请只返回严格 JSON，不要 Markdown，不要代码块。",
     "generate.systemPrompt": "请基于参考图生成一张新图，保留原图最重要的主体、颜色关系或视觉记忆点，但不要只是复制。成图方向：{title}\n\n方向说明：{description}\n\n详细提示词：{prompt}\n\n输出应是一张完整、可独立展示的图片；构图清晰；不要添加水印、UI 截图边框或说明文字。",
     "explain.systemContext": "你是一位视觉创意评论助手，正在为画布式图片生成应用中的每张生成图撰写简短的内容讲解。用户会看到：原图分析摘要、选中的创作方向、以及实际发给成图模型的提示词。你的任务是用 1-2 句话（30-60 字）描述这张生成图在视觉上做了什么、保留了什么、改变了什么。语气专业、简洁、有画面感。不要重复提示词原文，要提炼成观众能感知的视觉描述。",
@@ -245,6 +247,8 @@ const i18n = {
     "health.mixed": "mixed",
     "chat.systemContext": "You are the creative dialogue assistant in this canvas-based image generation app. Your task is to help users understand the current image, compare branch directions, propose new generation ideas, or organize user thoughts into executable visual directions. Answer in English, keep it concise, usually 1-3 sentences. Do not pretend to have generated a new image; if the user wants to generate, suggest clicking a direction node or explain how you would modify the prompt.",
     "chat.systemRole": "You are the Kimi K2.6 no-thinking creative dialogue assistant. Answers are concise, direct, and actionable.",
+    "chat.selectedCardContext": "The user is currently chatting about the following card on the canvas:\nType: {type}\nTitle: {title}\nSummary: {summary}",
+    "chat.selectedCardPrompt": "Prompt: {prompt}",
     "analysis.systemPrompt": "You are a visual creative director analyzing user-uploaded images for a canvas-based image generation app. Quickly understand the image content, subjects, atmosphere, and extensible narrative directions, then provide 5 different image generation directions. These directions will be displayed as branch nodes on the canvas; users click them to invoke the image generation model. Return strict JSON only, no Markdown, no code blocks.",
     "generate.systemPrompt": "Generate a new image based on the reference image, preserving the most important subjects, color relationships, or visual memory points, but do not simply copy. Direction: {title}\n\nDescription: {description}\n\nDetailed prompt: {prompt}\n\nOutput should be a complete, standalone image; clear composition; no watermarks, UI screenshot borders, or explanatory text.",
     "explain.systemContext": "You are a visual creative commentary assistant writing short descriptions for each generated image in a canvas-based image generation app. The user sees: original image analysis summary, selected creative direction, and the actual prompt sent to the image generation model. Your task is to describe in 1-2 sentences (30-60 words) what this generated image did visually, what it preserved, and what it changed. Tone: professional, concise, evocative. Do not repeat the prompt verbatim; distill it into a description the viewer can perceive.",
@@ -1052,6 +1056,25 @@ function renderUrlSource(url, title) {
   updateSourceBadge();
 }
 
+function buildSelectedNodeContext() {
+  const nodeId = state.selectedNodeId;
+  if (!nodeId) return null;
+  const node = state.nodes.get(nodeId);
+  if (!node) return null;
+
+  let type = "unknown";
+  if (nodeId === "source") type = "source";
+  else if (nodeId === "analysis") type = "analysis";
+  else if (node.generated) type = "generated";
+  else if (node.option) type = "option";
+
+  const title = node.option?.title || node.id;
+  const summary = node.explanation || node.option?.description || state.latestAnalysis?.summary || "";
+  const prompt = node.option?.prompt || "";
+
+  return { type, title, summary, prompt };
+}
+
 async function handleChatSubmit(event) {
   event.preventDefault();
   const message = chatInput.value.trim();
@@ -1064,11 +1087,27 @@ async function handleChatSubmit(event) {
 
   try {
     const sourceImageDataUrl = await getSourceImageDataUrl();
+    const selectedContext = buildSelectedNodeContext();
+
+    let systemContext = t("chat.systemContext");
+    if (selectedContext) {
+      systemContext += "\n\n" + t("chat.selectedCardContext", {
+        type: selectedContext.type,
+        title: selectedContext.title,
+        summary: selectedContext.summary.slice(0, 200)
+      });
+      if (selectedContext.prompt) {
+        systemContext += "\n" + t("chat.selectedCardPrompt", { prompt: selectedContext.prompt.slice(0, 300) });
+      }
+    }
+
     const data = await postJson("/api/chat", {
       message,
       imageDataUrl: sourceImageDataUrl,
       analysis: state.latestAnalysis,
-      messages: state.chatMessages.slice(-8)
+      messages: state.chatMessages.slice(-8),
+      systemContext,
+      selectedNodeId: state.selectedNodeId
     });
     appendChatMessage("assistant", data.reply || t("chat.systemContext"));
     setStatus(t("status.ready"), "ready");
