@@ -25,13 +25,12 @@ OPENAI_API_KEY=你的 key
 默认按三类模型拆到不同 API：
 
 ```bash
-KIMI_API_KEY=对话模型 key
+KIMI_API_KEY=Kimi key（对话和视觉理解共用）
 CHAT_API_BASE_URL=https://api.moonshot.cn/v1
 CHAT_MODEL=kimi-k2.6
 
-OPENROUTER_API_KEY=视觉理解 key
-ANALYSIS_API_BASE_URL=https://openrouter.ai/api/v1
-ANALYSIS_MODEL=tencent/hy3-preview:free
+ANALYSIS_API_BASE_URL=https://api.moonshot.cn/v1
+ANALYSIS_MODEL=kimi-k2.6
 
 TENCENT_TOKENHUB_API_KEY=成图模型 key
 IMAGE_API_BASE_URL=https://tokenhub.tencentmaas.com/v1/api/image
