@@ -117,6 +117,7 @@ const i18n = {
     "source.analyzeUrl": "分析链接",
     "chat.placeholder": "输入想继续探索的方向、风格或约束",
     "chat.placeholderWithSelection": "对 {title} 继续探索…",
+    "chat.placeholderWithCard": "与 '{title}' 对话...",
     "chat.selectCardFirst": "请先双击选中一张卡片",
     "chat.send": "发送",
     "chat.attach": "上传图片或文本文件",
@@ -213,6 +214,7 @@ const i18n = {
     "source.analyzeUrl": "Analyze Link",
     "chat.placeholder": "Enter direction, style or constraint to explore",
     "chat.placeholderWithSelection": "Explore {title}…",
+    "chat.placeholderWithCard": "Chat with '{title}'...",
     "chat.selectCardFirst": "Please double-click a card to select it first",
     "chat.send": "Send",
     "chat.attach": "Upload image or text file",
@@ -360,7 +362,7 @@ function renderAllText() {
     if (hasSelection) {
       const node = state.nodes.get(state.selectedNodeId);
       const title = node?.option?.title || node?.id || "";
-      chatIn.placeholder = t("chat.placeholderWithSelection", { title: title.slice(0, 20) });
+      chatIn.placeholder = t("chat.placeholderWithCard", { title: title.slice(0, 20) });
     } else {
       chatIn.placeholder = t("chat.placeholder");
     }
@@ -1429,7 +1431,7 @@ function updateDialogState() {
     chatInput.disabled = !hasSelection;
     if (hasSelection && node) {
       const title = node.option?.title || node.id;
-      chatInput.placeholder = t("chat.placeholderWithSelection", { title: title.slice(0, 20) });
+      chatInput.placeholder = t("chat.placeholderWithCard", { title: title.slice(0, 20) });
     } else {
       chatInput.placeholder = t("chat.placeholder");
     }
@@ -1441,6 +1443,12 @@ function updateDialogState() {
   // Toggle no-selection class on chatbar for visual feedback
   if (chatForm) {
     chatForm.classList.toggle("no-selection", !hasSelection);
+  }
+
+  // Toggle has-selection on chat-input-row for bound-card visual cue
+  const chatInputRow = chatForm?.querySelector(".chat-input-row");
+  if (chatInputRow) {
+    chatInputRow.classList.toggle("has-selection", hasSelection);
   }
 }
 

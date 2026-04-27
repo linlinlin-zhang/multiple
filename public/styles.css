@@ -986,6 +986,11 @@ body.nav-collapsed .nav-settings {
   box-shadow: none;
 }
 
+.chat-input-row.has-selection {
+  border-color: rgba(0, 112, 204, 0.45);
+  box-shadow: 0 0 0 3px rgba(0, 112, 204, 0.12), var(--shadow-08);
+}
+
 .chat-input:disabled {
   background: transparent;
   color: var(--muted);
