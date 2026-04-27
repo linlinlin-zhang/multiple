@@ -378,6 +378,8 @@ function renderAllText() {
   }
   const chatSend = document.querySelector("#chatSendButton");
   if (chatSend) chatSend.textContent = t("chat.send");
+  const chatGenerate = document.querySelector("#chatGenerateButton");
+  if (chatGenerate) chatGenerate.textContent = t("chat.generate");
   const chatAttach = document.querySelector("#chatAttachButton");
   if (chatAttach) chatAttach.title = t("chat.attach");
 
@@ -542,6 +544,10 @@ function wireControls() {
   document.querySelector("#arrangeButton")?.addEventListener("click", arrangeCanvasLayout);
 
   document.querySelector("#chatAttachButton")?.addEventListener("click", handleAttachClick);
+  document.querySelector("#chatGenerateButton")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    generateDirectionFromDialog();
+  });
 
   document.querySelector("#exportBtn")?.addEventListener("click", async () => {
     if (!currentSessionId) {
@@ -1586,6 +1592,9 @@ function updateDialogState() {
   }
   if (chatSendButton) {
     chatSendButton.disabled = !hasSelection;
+  }
+  if (chatGenerateButton) {
+    chatGenerateButton.disabled = !hasSelection;
   }
 
   // Toggle no-selection class on chatbar for visual feedback
