@@ -1050,15 +1050,17 @@ async function analyzeSource() {
       const sourceImageDataUrl = await getSourceImageDataUrl();
       data = await postJson("/api/analyze", {
         imageDataUrl: sourceImageDataUrl,
-        fileName: state.fileName
+        fileName: state.fileName,
+        thinkingMode: state.thinkingMode
       });
     } else if (state.sourceType === "url") {
-      data = await postJson("/api/analyze-url", { url: state.sourceUrl });
+      data = await postJson("/api/analyze-url", { url: state.sourceUrl, thinkingMode: state.thinkingMode });
     } else {
       data = await postJson("/api/analyze-text", {
         text: state.sourceText,
         dataUrl: state.sourceDataUrl,
-        fileName: state.fileName
+        fileName: state.fileName,
+        thinkingMode: state.thinkingMode
       });
     }
 
@@ -1173,7 +1175,8 @@ async function handleChatSubmit(event) {
       analysis: state.latestAnalysis,
       messages: state.chatMessages.slice(-8),
       systemContext,
-      selectedNodeId: state.selectedNodeId
+      selectedNodeId: state.selectedNodeId,
+      thinkingMode: state.thinkingMode
     });
     appendChatMessage("assistant", data.reply || t("chat.systemContext"));
     setStatus(t("status.ready"), "ready");
@@ -1436,7 +1439,8 @@ async function generateOption(id, option) {
     const sourceImageDataUrl = await getSourceImageDataUrl();
     const data = await postJson("/api/generate", {
       imageDataUrl: sourceImageDataUrl,
-      option
+      option,
+      thinkingMode: state.thinkingMode
     });
 
     let imageUrl = data.imageDataUrl;
@@ -1458,7 +1462,8 @@ async function generateOption(id, option) {
       const explainRes = await postJson("/api/explain", {
         prompt: data.prompt || option.prompt,
         optionTitle: option.title,
-        summary: state.latestAnalysis?.summary || ""
+        summary: state.latestAnalysis?.summary || "",
+        thinkingMode: state.thinkingMode
       });
       explanation = explainRes.explanation || "";
     } catch (e) {

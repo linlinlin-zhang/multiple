@@ -252,6 +252,7 @@ async function handleChat(body, res) {
   const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
   const analysis = normalizeChatAnalysis(body?.analysis);
   const messages = normalizeChatMessages(body?.messages);
+  const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
 
   if (!message) {
     return sendJson(res, 400, { error: "message is required" });
@@ -293,7 +294,7 @@ async function handleChat(body, res) {
     content.push({ type: "image_url", image_url: { url: imageDataUrl } });
   }
 
-  const response = await chatCompletions(runtimeConfigs.chat, {
+  const chatPayload = {
     messages: [
       {
         role: "system",
@@ -305,9 +306,17 @@ async function handleChat(body, res) {
         role: "user",
         content
       }
-    ],
-    thinking: { type: "disabled" }
-  });
+    ]
+  };
+
+  // Apply thinking mode parameter based on provider
+  if (runtimeConfigs.chat.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.chat.model)) {
+    chatPayload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
+  } else if (runtimeConfigs.chat.provider === "openrouter") {
+    chatPayload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
+  }
+
+  const response = await chatCompletions(runtimeConfigs.chat, chatPayload);
 
   const reply = collectChatContent(response);
   return sendJson(res, 200, {
@@ -319,6 +328,7 @@ async function handleChat(body, res) {
 
 async function handleAnalyze(body, res) {
   const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
+  const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
   if (!imageDataUrl) {
     return sendJson(res, 400, { error: "imageDataUrl is required" });
   }
@@ -392,9 +402,9 @@ async function handleAnalyze(body, res) {
   };
 
   if (runtimeConfigs.analysis.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.analysis.model)) {
-    analysisPayload.thinking = { type: "disabled" };
+    analysisPayload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
   } else if (runtimeConfigs.analysis.provider === "openrouter") {
-    analysisPayload.reasoning = { effort: "none", exclude: true };
+    analysisPayload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
   }
 
   const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
@@ -439,6 +449,7 @@ function isValidPublicUrl(urlString) {
 
 async function handleAnalyzeUrl(body, res) {
   const url = typeof body?.url === "string" ? body.url.trim() : "";
+  const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
 
   if (!isValidPublicUrl(url)) {
     return sendJson(res, 400, { error: "Invalid URL. Only http:// and https:// links are supported." });
@@ -484,9 +495,9 @@ async function handleAnalyzeUrl(body, res) {
   };
 
   if (runtimeConfigs.analysis.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.analysis.model)) {
-    analysisPayload.thinking = { type: "disabled" };
+    analysisPayload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
   } else if (runtimeConfigs.analysis.provider === "openrouter") {
-    analysisPayload.reasoning = { effort: "none", exclude: true };
+    analysisPayload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
   }
 
   try {
@@ -507,6 +518,7 @@ async function handleAnalyzeUrl(body, res) {
 async function handleAnalyzeText(body, res) {
   const fileName = typeof body?.fileName === "string" ? body.fileName.trim() : "";
   const safeFileName = fileName || "document";
+  const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
 
   let extractedText = "";
   let storedHash = null;
@@ -582,9 +594,9 @@ async function handleAnalyzeText(body, res) {
   };
 
   if (runtimeConfigs.analysis.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.analysis.model)) {
-    analysisPayload.thinking = { type: "disabled" };
+    analysisPayload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
   } else if (runtimeConfigs.analysis.provider === "openrouter") {
-    analysisPayload.reasoning = { effort: "none", exclude: true };
+    analysisPayload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
   }
 
   const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
@@ -648,6 +660,7 @@ async function handleGenerate(body, res) {
         "输出应是一张完整、可独立展示的图片；构图清晰；不要添加水印、UI 截图边框或说明文字。"
       ].join("\n");
 
+  // thinkingMode is accepted for consistency but image generation APIs don't support it directly
   const result = await generateTokenHubImage(prompt, body?.imageUrl || null, imageDataUrl);
 
   const generatedImage = result.imageDataUrl || result.imageUrl || "";
@@ -699,6 +712,7 @@ async function handleExplain(body, res) {
   const prompt = typeof body?.prompt === "string" ? body.prompt.trim() : "";
   const optionTitle = typeof body?.optionTitle === "string" ? body.optionTitle.trim() : "";
   const summary = typeof body?.summary === "string" ? body.summary.trim() : "";
+  const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
 
   if (!prompt) {
     return sendJson(res, 400, { error: "prompt is required" });
@@ -746,7 +760,7 @@ async function handleExplain(body, res) {
         prompt
       ].join("\n");
 
-  const response = await chatCompletions(runtimeConfigs.chat, {
+  const explainPayload = {
     messages: [
       {
         role: "system",
@@ -758,9 +772,16 @@ async function handleExplain(body, res) {
         role: "user",
         content: context
       }
-    ],
-    thinking: { type: "disabled" }
-  });
+    ]
+  };
+
+  if (runtimeConfigs.chat.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.chat.model)) {
+    explainPayload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
+  } else if (runtimeConfigs.chat.provider === "openrouter") {
+    explainPayload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
+  }
+
+  const response = await chatCompletions(runtimeConfigs.chat, explainPayload);
 
   const explanation = collectChatContent(response)?.trim() || "";
   return sendJson(res, 200, {
