@@ -121,6 +121,8 @@ const i18n = {
     "research.analyzeTooltip": "调用 no-thinking 模式，快速视觉分析",
     "research.exploreTooltip": "调用 thinking 模式，深入分析并搜集相关资料",
     "research.cannotResearch": "该卡片无法进行研究",
+    "research.exploring": "探索中...",
+    "research.exploreComplete": "探索完成",
     "source.urlPlaceholder": "https://...",
     "source.analyzeUrl": "分析链接",
     "chat.placeholder": "输入想继续探索的方向、风格或约束",
@@ -231,6 +233,8 @@ const i18n = {
     "research.analyzeTooltip": "Call no-thinking mode for quick visual analysis",
     "research.exploreTooltip": "Call thinking mode for deep analysis and research",
     "research.cannotResearch": "This card cannot be researched",
+    "research.exploring": "Exploring...",
+    "research.exploreComplete": "Explore complete",
     "source.urlPlaceholder": "https://...",
     "source.analyzeUrl": "Analyze Link",
     "chat.placeholder": "Enter direction, style or constraint to explore",
@@ -1105,8 +1109,50 @@ function handleExplore() {
     showSelectionToast(t("research.cannotResearch"));
     return;
   }
-  // Stub for explore mode - to be implemented in 11-02
-  showSelectionToast("Explore mode coming soon");
+  exploreSource();
+}
+
+async function exploreSource() {
+  if (state.sourceType === "image" && !state.sourceImage) return;
+  if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) return;
+  if (state.sourceType === "url" && !state.sourceUrl) return;
+
+  setStatus(t("research.exploring"), "busy");
+  if (researchButton) researchButton.disabled = true;
+
+  try {
+    let data;
+    if (state.sourceType === "image") {
+      const sourceImageDataUrl = await getSourceImageDataUrl();
+      data = await postJson("/api/analyze-explore", {
+        imageDataUrl: sourceImageDataUrl,
+        fileName: state.fileName,
+        thinkingMode: "thinking"
+      });
+    } else if (state.sourceType === "url") {
+      data = await postJson("/api/analyze-explore", {
+        url: state.sourceUrl,
+        thinkingMode: "thinking"
+      });
+    } else {
+      data = await postJson("/api/analyze-explore", {
+        text: state.sourceText,
+        dataUrl: state.sourceDataUrl,
+        fileName: state.fileName,
+        thinkingMode: "thinking"
+      });
+    }
+
+    renderAnalysis(data);
+    renderExploreOptions(data.options || [], data.references || []);
+    state.latestAnalysis = data;
+    setStatus(t("research.exploreComplete"), "ready");
+    autoSave();
+  } catch (error) {
+    setStatus(error.message || "Explore failed", "error");
+  } finally {
+    if (researchButton) researchButton.disabled = false;
+  }
 }
 
 async function analyzeSource(mode = "analyze") {
@@ -1480,6 +1526,59 @@ function renderOptions(options) {
 
     const button = element.querySelector(".generate-button");
     button.addEventListener("click", () => generateOption(id, option));
+
+    board.appendChild(element);
+    registerNode(id, element, {
+      x: position.x,
+      y: position.y,
+      width: 318,
+      height: element.offsetHeight,
+      option
+    });
+    state.links.push({ from: "analysis", to: id, kind: "option" });
+    makeDraggable(element, id);
+  });
+
+  applyCollapseState();
+  updateCounts();
+}
+
+function renderExploreOptions(options, references) {
+  clearOptions();
+
+  options.forEach((option, index) => {
+    const fragment = optionTemplate.content.cloneNode(true);
+    const element = fragment.querySelector(".option-node");
+    const position = optionPositions[index % optionPositions.length];
+    const id = `option-${option.id || index}`;
+
+    element.dataset.nodeId = id;
+    element.style.left = `${position.x}px`;
+    element.style.top = `${position.y}px`;
+    element.style.setProperty("--tilt", `${position.tilt}deg`);
+    element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
+    element.querySelector(".option-title").textContent = option.title || t("generated.result");
+    element.querySelector(".option-description").textContent = option.description || "";
+
+    const titleEl = element.querySelector(".option-title");
+    if (titleEl) makeTitleEditable(id, titleEl);
+
+    const button = element.querySelector(".generate-button");
+    button.addEventListener("click", () => generateOption(id, option));
+
+    // Store references on the option data
+    if (references.length > 0) {
+      option.references = references;
+    }
+
+    // Add reference badge if references exist
+    if (references.length > 0) {
+      const badge = document.createElement("span");
+      badge.className = "reference-badge";
+      badge.textContent = `${references.length}`;
+      badge.title = `${references.length} reference${references.length > 1 ? 's' : ''}`;
+      element.appendChild(badge);
+    }
 
     board.appendChild(element);
     registerNode(id, element, {
