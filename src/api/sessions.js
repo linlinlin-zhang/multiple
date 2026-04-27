@@ -33,7 +33,8 @@ function serializeState(state) {
             option: n.option,
             imageHash: n.imageHash || null,
             imageDataUrl: n.imageDataUrl || null,
-            explanation: n.explanation || null
+            explanation: n.explanation || null,
+            references: n.option?.references || null
           }
         : n.id === "source"
           ? {

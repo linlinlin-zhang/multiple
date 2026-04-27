@@ -2618,6 +2618,10 @@ async function loadSession(sessionId) {
     const optionNodes = data.nodes.filter(n => n.type === "option" || n.type === "generated");
     for (const n of optionNodes) {
       const option = n.data?.option || { title: t("generated.result"), description: "", tone: "cinematic", layoutHint: "square" };
+      // Restore references from persisted data
+      if (n.data?.references) {
+        option.references = n.data.references;
+      }
       const position = optionPositions[optionNodes.indexOf(n) % optionPositions.length];
       const nodeId = n.nodeId;
 
@@ -2633,6 +2637,15 @@ async function loadSession(sessionId) {
 
       const button = element.querySelector(".generate-button");
       button.addEventListener("click", () => generateOption(nodeId, option));
+
+      // Restore reference badge if references exist
+      if (option.references && option.references.length > 0) {
+        const badge = document.createElement("span");
+        badge.className = "reference-badge";
+        badge.textContent = `${option.references.length}`;
+        badge.title = `${option.references.length} reference${option.references.length > 1 ? 's' : ''}`;
+        element.appendChild(badge);
+      }
 
       board.appendChild(element);
       registerNode(nodeId, element, {
