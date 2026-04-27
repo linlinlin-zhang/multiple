@@ -48,6 +48,9 @@ const viewerPromptInput = document.querySelector("#viewerPromptInput");
 const viewerSubmitModify = document.querySelector("#viewerSubmitModify");
 const viewerCancelModify = document.querySelector("#viewerCancelModify");
 
+const referenceModal = document.querySelector("#referenceModal");
+const referenceList = document.querySelector(".reference-list");
+
 const state = {
   sourceImage: null,
   sourceImageHash: null,
@@ -204,7 +207,9 @@ const i18n = {
     "session.exploration": "的探索",
     "node.delete": "删除",
     "node.cannotDeleteSource": "初始卡片不可删除",
-    "node.cannotDeleteWithChildren": "该卡片有子节点，不可删除"
+    "node.cannotDeleteWithChildren": "该卡片有子节点，不可删除",
+    "reference.title": "参考资料",
+    "reference.empty": "暂无参考资料"
   },
   en: {
     "nav.workbench": "Workbench",
@@ -316,7 +321,9 @@ const i18n = {
     "session.exploration": " Exploration",
     "node.delete": "Delete",
     "node.cannotDeleteSource": "Source card cannot be deleted",
-    "node.cannotDeleteWithChildren": "Cannot delete a card with children"
+    "node.cannotDeleteWithChildren": "Cannot delete a card with children",
+    "reference.title": "References",
+    "reference.empty": "No references available"
   }
 };
 
@@ -741,6 +748,15 @@ function wireControls() {
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !imageViewerModal?.classList.contains("hidden")) {
       closeImageViewer();
+    }
+  });
+
+  // Reference modal wiring
+  referenceModal?.querySelector(".modal-close")?.addEventListener("click", closeReferenceModal);
+  referenceModal?.querySelector(".modal-backdrop")?.addEventListener("click", closeReferenceModal);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && referenceModal?.style.display !== "none") {
+      closeReferenceModal();
     }
   });
 
@@ -1760,6 +1776,53 @@ function closeImageViewer() {
   if (viewerModifyPanel) viewerModifyPanel.classList.add("hidden");
 }
 
+function openReferenceModal(nodeId) {
+  const node = state.nodes.get(nodeId);
+  if (!node || !node.option?.references || node.option.references.length === 0) return;
+
+  if (referenceList) {
+    referenceList.replaceChildren();
+    for (const ref of node.option.references) {
+      const item = document.createElement("div");
+      item.className = "reference-item";
+
+      const badge = document.createElement("span");
+      badge.className = "ref-type-badge";
+      badge.textContent = ref.type || "web";
+
+      const link = document.createElement("a");
+      link.href = ref.url || "#";
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = ref.title || ref.url || "Untitled";
+
+      const desc = document.createElement("p");
+      desc.textContent = ref.description || "";
+
+      item.append(badge, link, desc);
+      referenceList.appendChild(item);
+    }
+  }
+
+  const titleEl = referenceModal?.querySelector(".reference-modal-title");
+  if (titleEl) titleEl.textContent = t("reference.title");
+
+  if (referenceModal) {
+    referenceModal.style.display = "";
+    document.body.style.overflow = "hidden";
+    const closeBtn = referenceModal.querySelector(".modal-close");
+    if (closeBtn) closeBtn.focus();
+  }
+}
+
+function closeReferenceModal() {
+  if (referenceModal) {
+    referenceModal.style.display = "none";
+    document.body.style.overflow = "";
+  }
+  if (referenceList) referenceList.replaceChildren();
+}
+
 function clearOptions() {
   deselectNode();
   for (const [id, node] of Array.from(state.nodes.entries())) {
@@ -1856,6 +1919,11 @@ function registerNode(id, element, data) {
   element.addEventListener("dblclick", (event) => {
     if (event.target.closest(".collapse-dot")) return;
     if (event.target.closest("button, input, textarea, a")) return;
+    const node = state.nodes.get(id);
+    if (node?.option?.references && node.option.references.length > 0) {
+      openReferenceModal(id);
+      return;
+    }
     selectNode(id);
   });
 
