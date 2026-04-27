@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: Interactive Canvas & Deep Analysis
-status: unknown
-stopped_at: Completed 10-03-PLAN.md
+status: complete
+stopped_at: Archived milestone
 last_updated: "2026-04-27T11:10:41.893Z"
 progress:
   total_phases: 4
@@ -26,14 +26,14 @@ progress:
 
 | Field | Value |
 |-------|-------|
-| Milestone | v1.2 — In Progress |
-| Phase | 10 — Dialog Refactor & Generation Control |
-| Plans | 10-01, 10-02, 10-03 (all complete) |
+| Milestone | v1.2 — Complete |
+| Phase | 12 — Image Sharing |
+| Plans | 12-01, 12-02 (all complete) |
 | Status | Complete |
-| Progress | 2/4 phases complete (50%) |
+| Progress | 4/4 phases complete (100%) |
 
 ```
-[████████████████████░░░░░░░░░░░░░░░░░░░░] 50%
+[████████████████████████████████████████] 100%
 ```
 
 ---
@@ -44,15 +44,12 @@ progress:
 |--------|-------|
 | v1.0 requirements validated | 17/17 |
 | v1.1 requirements validated | 14/14 |
-| v1.2 requirements defined | 14/14 |
-| Phases complete (v1.2) | 2/4 |
-| Plans complete (v1.2) | 6/11 |
+| v1.2 requirements validated | 14/14 |
+| Phases complete (v1.2) | 4/4 |
+| Plans complete (v1.2) | 11/11 |
 | Blockers | 1 |
 
 ---
-| Phase 09 P01 | ~3 min | 3 tasks | 2 files |
-| Phase 10 P03 | ~25 min | 3 tasks | 4 files |
-| Phase 12 P02 | ~15 min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -70,15 +67,15 @@ progress:
 | 8 | Link shadow drawn as separate path layer | 2026-04-25 | Better performance with many links vs SVG filter per-link |
 | 9 | 文本文件直接读取而非截图分析 | 2026-04-26 | 大模型视觉 API 对文档截图效果差，文本提取更准确 |
 | 10 | 网页链接分析采用搜索+摘要而非全页抓取 | 2026-04-26 | 避免处理复杂网页渲染，更稳定可靠 |
+| 11 | Card selection as dialog anchor | 2026-04-27 | All chat/generation context must be explicit; no implicit global context |
+| 12 | Explore mode gathers references via AI model | 2026-04-27 | Avoid server-side web scraping complexity; leverage model's search capability |
+| 13 | Share-image as standalone page | 2026-04-27 | Lightweight, no React dependency, easy to cache and share |
 
 ### TODOs
 
 - [x] v1.0 Persistence & History — shipped 2026-04-26
 - [x] v1.1 Canvas Intelligence & Rich Input — shipped 2026-04-26
-- [x] Phase 9: Card Selection & Basic Interaction
-- [x] Phase 10: Dialog Refactor & Generation Control
-- [x] Phase 11: Research Mode & Deep Analysis
-- [x] Phase 12: Image Sharing
+- [x] v1.2 Interactive Canvas & Deep Analysis — shipped 2026-04-27
 
 ### Blockers
 
@@ -91,6 +88,6 @@ progress:
 ## Session Continuity
 
 **Current session started:** 2026-04-26
-**Last session resumed:** 2026-04-26
-**Stopped at:** Completed 12-02-PLAN.md
-**Next expected action:** All planned phases complete
+**Last session resumed:** 2026-04-27
+**Stopped at:** Milestone v1.2 archived
+**Next expected action:** Define v3 milestone with `/gsd-new-milestone`
