@@ -28,11 +28,12 @@ const imageByColumn = new Map([
   [5, { src: imageCards[2], width: 82, height: 124 }],
 ]);
 
-const rowCount = 12;
+const rowCount = 11;
 const columnsPerLayer = 8;
 const stepCount = rowCount * columnsPerLayer;
 const endPaddingLayers = 0.05;
 const scrollLimit = (stepCount - 1) / (columnsPerLayer * 2) + endPaddingLayers;
+const defaultScrollTarget = -0.15;
 const cards = [];
 const state = {
   auto: -0.89,
@@ -101,7 +102,7 @@ function makeCards() {
 function initialScrollTarget() {
   if (window.location.hash === "#top") return -scrollLimit;
   if (window.location.hash === "#bottom") return scrollLimit;
-  return -0.65;
+  return defaultScrollTarget;
 }
 
 function viewportModel() {
@@ -115,17 +116,18 @@ function viewportModel() {
     radiusX: compact ? Math.max(150, width * 0.25) : Math.min(390, width * 0.17),
     radiusZ: compact ? 310 : 500,
     stepGap: compact ? 70 : 86,
+    travelGap: compact ? 86 : 132,
     perspective: compact ? 900 : 1120,
     width,
     height,
   };
 }
 
-function project(point, model) {
+function project(point, model, travelY = 0) {
   const scale = model.perspective / (model.perspective - point.z);
   return {
     x: model.centerX + point.x * scale,
-    y: model.centerY + point.y * scale,
+    y: model.centerY + point.y * scale + travelY,
     scale,
   };
 }
@@ -223,11 +225,12 @@ function render(now) {
   const scrollProgress = clamp(state.current + state.velocity, -scrollLimit, scrollLimit);
   const spin = state.auto;
   const model = viewportModel();
+  const travelY = (defaultScrollTarget - scrollProgress) * model.travelGap;
   const projected = [];
 
   for (const card of cards) {
     const point = cardPoint(card, model, scrollProgress, spin);
-    const pos = project(point, model);
+    const pos = project(point, model, travelY);
     const depthScale = clamp(pos.scale, 0.42, 1.16);
     const visible =
       pos.x > -260 &&
@@ -280,8 +283,8 @@ function closeFocus() {
 
 window.addEventListener("wheel", (event) => {
   event.preventDefault();
-  state.target = clamp(state.target + event.deltaY * 0.006, -scrollLimit, scrollLimit);
-  state.velocity = clamp(state.velocity + event.deltaY * 0.0003, -0.9, 0.9);
+  state.target = clamp(state.target + event.deltaY * 0.0014, -scrollLimit, scrollLimit);
+  state.velocity = clamp(state.velocity + event.deltaY * 0.00007, -0.42, 0.42);
 }, { passive: false });
 
 window.addEventListener("pointerdown", (event) => {
@@ -293,7 +296,7 @@ window.addEventListener("pointermove", (event) => {
   if (!state.pointerDown) return;
   const delta = event.clientY - state.pointerY;
   state.pointerY = event.clientY;
-  state.target = clamp(state.target + delta * 0.012, -scrollLimit, scrollLimit);
+  state.target = clamp(state.target + delta * 0.004, -scrollLimit, scrollLimit);
 });
 
 window.addEventListener("pointerup", () => {
