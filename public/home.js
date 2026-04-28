@@ -28,12 +28,12 @@ const imageByColumn = new Map([
   [5, { src: imageCards[2], width: 82, height: 124 }],
 ]);
 
-const rowCount = 11;
+const rowCount = 6;
 const columnsPerLayer = 8;
 const stepCount = rowCount * columnsPerLayer;
 const endPaddingLayers = 0.05;
 const scrollLimit = (stepCount - 1) / (columnsPerLayer * 2) + endPaddingLayers;
-const defaultScrollTarget = -0.15;
+const defaultScrollTarget = 0;
 const cards = [];
 const state = {
   auto: -0.89,
@@ -158,6 +158,9 @@ function renderLines(projected, model) {
   const byStep = new Map(projected.map((item) => [item.step, item]));
 
   for (let step = 0; step < stepCount - 1; step++) {
+    const column = step % columnsPerLayer;
+    if (column === columnsPerLayer - 1) continue;
+
     const current = byStep.get(step);
     const next = byStep.get(step + 1);
     if (current && next && shouldConnect(current, next, model, "spiral")) {
@@ -185,20 +188,48 @@ function shouldConnect(a, b, model, type) {
     type === "vertical" ? model.stepGap * columnsPerLayer * 1.12 : model.stepGap * 1.55;
 
   if (type === "vertical") {
-    return layerDistance <= maxLayerDistance && segmentTouchesViewport(a, b, model, 520);
+    return (
+      a.lineVisible &&
+      b.lineVisible &&
+      layerDistance <= maxLayerDistance &&
+      screenDistance <= Math.min(640, model.height * 0.76) &&
+      segmentTouchesViewport(a, b, model, 90)
+    );
   }
 
-  const maxScreenDistance = Math.min(560, model.width * 0.36);
+  const maxScreenDistance = Math.min(420, model.width * 0.28);
 
   return (
-    segmentTouchesViewport(a, b, model, 220) &&
+    a.lineVisible &&
+    b.lineVisible &&
+    segmentTouchesViewport(a, b, model, 80) &&
     layerDistance <= maxLayerDistance &&
     screenDistance <= maxScreenDistance
   );
 }
 
 function linePath(a, b, opacity, className) {
-  return `<path class="${className}" d="M ${a.x.toFixed(2)} ${a.y.toFixed(2)} L ${b.x.toFixed(2)} ${b.y.toFixed(2)}" style="opacity:${opacity}" />`;
+  const start = cardEdgePoint(a, b);
+  const end = cardEdgePoint(b, a);
+  return `<path class="${className}" d="M ${start.x.toFixed(2)} ${start.y.toFixed(2)} L ${end.x.toFixed(2)} ${end.y.toFixed(2)}" style="opacity:${opacity}" />`;
+}
+
+function cardEdgePoint(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  const ux = dx / length;
+  const uy = dy / length;
+  const halfWidth = (from.renderWidth ?? 0) / 2;
+  const halfHeight = (from.renderHeight ?? 0) / 2;
+  const xDistance = Math.abs(ux) > 0.001 ? halfWidth / Math.abs(ux) : Infinity;
+  const yDistance = Math.abs(uy) > 0.001 ? halfHeight / Math.abs(uy) : Infinity;
+  const distance = Math.min(xDistance, yDistance);
+
+  return {
+    x: from.x + ux * distance,
+    y: from.y + uy * distance,
+  };
 }
 
 function segmentTouchesViewport(a, b, model, padding) {
@@ -237,6 +268,11 @@ function render(now) {
       pos.x < model.width + 260 &&
       pos.y > -360 &&
       pos.y < model.height + 360;
+    const lineVisible =
+      pos.x > -180 &&
+      pos.x < model.width + 180 &&
+      pos.y > -180 &&
+      pos.y < model.height + 180;
     const side = Math.sin(point.angle);
     const yaw = -side * 48;
     const alpha = card.media ? 0.96 : clamp(0.36 + (point.depth + 1) * 0.3, 0.26, 0.88);
@@ -262,6 +298,7 @@ function render(now) {
       renderWidth: card.width * depthScale,
       renderHeight: card.height * depthScale,
       visible,
+      lineVisible,
     });
   }
 
