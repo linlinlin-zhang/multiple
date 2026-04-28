@@ -32,7 +32,7 @@ const rowCount = 6;
 const columnsPerLayer = 8;
 const stepCount = rowCount * columnsPerLayer;
 const endPaddingLayers = 0.05;
-const scrollLimit = (stepCount - 1) / (columnsPerLayer * 2) + endPaddingLayers;
+const scrollLimit = (rowCount - 2) / 2 + endPaddingLayers;
 const defaultScrollTarget = 0;
 const cards = [];
 const state = {
@@ -116,7 +116,7 @@ function viewportModel() {
     radiusX: compact ? Math.max(150, width * 0.25) : Math.min(390, width * 0.17),
     radiusZ: compact ? 310 : 500,
     stepGap: compact ? 70 : 86,
-    travelGap: compact ? 86 : 132,
+    travelGap: compact ? 170 : 300,
     perspective: compact ? 900 : 1120,
     width,
     height,
@@ -198,13 +198,16 @@ function shouldConnect(a, b, model, type) {
   }
 
   const maxScreenDistance = Math.min(420, model.width * 0.28);
+  const depthSpan = Math.abs(a.depth - b.depth);
 
   return (
     a.lineVisible &&
     b.lineVisible &&
     segmentTouchesViewport(a, b, model, 80) &&
     layerDistance <= maxLayerDistance &&
-    screenDistance <= maxScreenDistance
+    screenDistance <= maxScreenDistance &&
+    depthSpan < 0.52 &&
+    Math.min(a.depth, b.depth) > -0.72
   );
 }
 
@@ -256,7 +259,11 @@ function render(now) {
   const scrollProgress = clamp(state.current + state.velocity, -scrollLimit, scrollLimit);
   const spin = state.auto;
   const model = viewportModel();
-  const travelY = (defaultScrollTarget - scrollProgress) * model.travelGap;
+  const travelY = clamp(
+    (defaultScrollTarget - scrollProgress) * model.travelGap,
+    -model.height * 0.34,
+    model.height * 0.34
+  );
   const projected = [];
 
   for (const card of cards) {
@@ -275,7 +282,7 @@ function render(now) {
       pos.y < model.height + 180;
     const side = Math.sin(point.angle);
     const yaw = -side * 48;
-    const alpha = card.media ? 0.96 : clamp(0.36 + (point.depth + 1) * 0.3, 0.26, 0.88);
+    const alpha = point.depth < -0.62 ? 0.28 : 1;
 
     card.element.style.transform = [
       `translate3d(${(pos.x - card.width / 2).toFixed(2)}px, ${(pos.y - card.height / 2).toFixed(2)}px, 0)`,
@@ -284,7 +291,7 @@ function render(now) {
       `scale(${depthScale.toFixed(3)})`,
     ].join(" ");
     card.element.style.opacity = visible ? alpha.toFixed(3) : "0";
-    card.element.style.zIndex = String(Math.round(point.z + 2000));
+    card.element.style.zIndex = String(Math.round(pos.scale * 100000 + point.z));
     card.element.classList.toggle("is-near", point.depth > 0.15);
     card.element.classList.toggle("is-far", point.depth < -0.35);
 
@@ -293,6 +300,7 @@ function render(now) {
       x: pos.x,
       y: pos.y,
       z: point.z,
+      depth: point.depth,
       localY: point.localY,
       stepY: point.stepY,
       renderWidth: card.width * depthScale,
