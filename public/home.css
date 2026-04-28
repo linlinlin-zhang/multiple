@@ -2,7 +2,7 @@
   --tube-bg: #a9bac8;
   --tube-ink: #1c1d1f;
   --tube-muted: rgba(28, 29, 31, 0.62);
-  --tube-line: rgba(0, 0, 0, 0.42);
+  --tube-line: rgba(0, 0, 0, 0.5);
   --tube-hairline: rgba(0, 0, 0, 0.18);
 }
 
@@ -34,10 +34,7 @@ button {
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background:
-    linear-gradient(90deg, transparent 0 calc(50% - 1px), rgba(0, 0, 0, 0.16) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)),
-    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.09) 0 1px, transparent 1px 160px),
-    var(--tube-bg);
+  background: var(--tube-bg);
 }
 
 .tube-panel {
@@ -153,12 +150,7 @@ button {
 
 .tube-stage::before,
 .tube-stage::after {
-  content: "";
-  position: absolute;
-  top: -8vh;
-  bottom: -8vh;
-  width: 1px;
-  background: var(--tube-hairline);
+  display: none;
 }
 
 .tube-stage::before {
@@ -172,7 +164,7 @@ button {
 .tube-lines {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: 7;
   width: 100%;
   height: 100%;
   pointer-events: none;
@@ -184,6 +176,14 @@ button {
   stroke-width: 1;
   stroke-linecap: round;
   vector-effect: non-scaling-stroke;
+}
+
+.tube-lines .tube-line-spiral {
+  stroke: rgba(0, 0, 0, 0.34);
+}
+
+.tube-lines .tube-line-vertical {
+  stroke: rgba(0, 0, 0, 0.5);
 }
 
 .axis-line {
@@ -225,7 +225,7 @@ button {
   inset: 0;
   overflow: hidden;
   background: var(--panel-color);
-  opacity: 0.9;
+  opacity: 1;
   box-shadow: none;
   backface-visibility: hidden;
 }

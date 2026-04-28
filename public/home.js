@@ -17,8 +17,9 @@ const palette = [
   "#f4ef43",
 ];
 
-const rowCount = 14;
-const columns = 2;
+const rowCount = 12;
+const columnsPerLayer = 8;
+const stepCount = rowCount * columnsPerLayer;
 const cards = [];
 const state = {
   auto: 0,
@@ -31,42 +32,39 @@ const state = {
 };
 
 function makeCards() {
-  for (let row = 0; row < rowCount; row++) {
-    for (let column = 0; column < columns; column++) {
-      const card = document.createElement("button");
-      const inner = document.createElement("span");
-      const width = column === 0 ? 218 : 188;
-      const height = column === 0 ? 142 : 124;
+  for (let step = 0; step < stepCount; step++) {
+    const card = document.createElement("button");
+    const inner = document.createElement("span");
+    const width = 188 + (step % 3) * 18;
+    const height = 118 + (step % 4) * 8;
+    const color = palette[step % palette.length];
 
-      card.type = "button";
-      card.className = "tube-card panel";
-      card.dataset.row = String(row);
-      card.dataset.column = String(column);
-      card.style.setProperty("--card-w", `${width}px`);
-      card.style.setProperty("--card-h", `${height}px`);
-      card.style.setProperty("--panel-color", palette[(row * 2 + column) % palette.length]);
+    card.type = "button";
+    card.className = "tube-card panel";
+    card.dataset.step = String(step);
+    card.style.setProperty("--card-w", `${width}px`);
+    card.style.setProperty("--card-h", `${height}px`);
+    card.style.setProperty("--panel-color", color);
 
-      inner.className = "tube-card-inner";
-      card.appendChild(inner);
-      world.appendChild(card);
+    inner.className = "tube-card-inner";
+    card.appendChild(inner);
+    world.appendChild(card);
 
-      card.addEventListener("click", () => {
-        focusImage.removeAttribute("src");
-        focusImage.alt = "";
-        focusOverlay.style.setProperty("--focus-color", palette[(row * 2 + column) % palette.length]);
-        focusOverlay.classList.add("open", "color-open");
-        focusOverlay.setAttribute("aria-hidden", "false");
-      });
+    card.addEventListener("click", () => {
+      focusImage.removeAttribute("src");
+      focusImage.alt = "";
+      focusOverlay.style.setProperty("--focus-color", color);
+      focusOverlay.classList.add("open", "color-open");
+      focusOverlay.setAttribute("aria-hidden", "false");
+    });
 
-      cards.push({
-        row,
-        column,
-        element: card,
-        width,
-        height,
-        tilt: ((row % 5) - 2) * 2.5 + (column === 0 ? -2 : 2),
-      });
-    }
+    cards.push({
+      step,
+      element: card,
+      width,
+      height,
+      tilt: ((step % 7) - 3) * 1.4,
+    });
   }
 }
 
@@ -76,11 +74,11 @@ function viewportModel() {
   const compact = width < 900;
 
   return {
-    centerX: compact ? width * 0.58 : width * 0.57,
+    centerX: compact ? width * 0.58 : width * 0.6,
     centerY: height * 0.5,
-    radiusX: compact ? Math.max(140, width * 0.23) : Math.min(390, width * 0.19),
-    radiusZ: compact ? 310 : 470,
-    rowGap: compact ? 128 : 156,
+    radiusX: compact ? Math.max(140, width * 0.23) : Math.min(360, width * 0.16),
+    radiusZ: compact ? 310 : 500,
+    stepGap: compact ? 58 : 72,
     perspective: compact ? 900 : 1120,
     width,
     height,
@@ -97,73 +95,108 @@ function project(point, model) {
 }
 
 function cardPoint(card, model, progress) {
-  const scrollRows = progress * 0.38;
-  const rawRow = card.row - (rowCount - 1) / 2 - scrollRows;
-  const wrappedRow = wrapRow(rawRow);
-  const angle = progress * 0.82 + card.row * 0.52 + card.column * Math.PI;
+  const scrollSteps = progress * columnsPerLayer;
+  const rawStep = card.step - (stepCount - 1) / 2 - scrollSteps;
+  const wrappedStep = wrapRow(rawStep);
+  const column = card.step % columnsPerLayer;
+  const angle = progress * Math.PI * 2 + column * (Math.PI * 2 / columnsPerLayer);
   const sin = Math.sin(angle);
   const cos = Math.cos(angle);
+  const radiusPulse = 1 + Math.sin(column * 0.85) * 0.025;
 
   return {
-    x: sin * model.radiusX,
-    y: wrappedRow * model.rowGap,
+    x: sin * model.radiusX * radiusPulse,
+    y: wrappedStep * model.stepGap,
     z: cos * model.radiusZ,
     angle,
     depth: cos,
-    localY: wrappedRow * model.rowGap,
+    localY: wrappedStep * model.stepGap,
+    stepY: wrappedStep * model.stepGap,
   };
 }
 
 function wrapRow(row) {
-  const span = rowCount;
+  const span = stepCount;
   return ((row + span / 2) % span + span) % span - span / 2;
 }
 
 function renderLines(projected, model) {
   const paths = [];
-  const byCell = new Map(projected.map((item) => [`${item.row}-${item.column}`, item]));
+  const byStep = new Map(projected.map((item) => [item.step, item]));
 
-  for (let row = 0; row < rowCount; row++) {
-    const front = byCell.get(`${row}-0`);
-    const back = byCell.get(`${row}-1`);
-    if (front && back && shouldConnect(front, back, model, 2.4, 640)) {
-      paths.push(linePath(front, back, 0.46));
+  for (let step = 0; step < stepCount - 1; step++) {
+    const current = byStep.get(step);
+    const next = byStep.get(step + 1);
+    if (current && next && shouldConnect(current, next, model, "spiral")) {
+      paths.push(linePath(current, next, 0.24, "tube-line-spiral"));
     }
   }
 
-  for (let row = 0; row < rowCount - 1; row++) {
-    for (let column = 0; column < columns; column++) {
-      const current = byCell.get(`${row}-${column}`);
-      const next = byCell.get(`${row + 1}-${column}`);
-      if (current && next && shouldConnect(current, next, model, 1.34, 360)) {
-        paths.push(linePath(current, next, 0.34));
-      }
+  for (let step = 0; step < stepCount - columnsPerLayer; step++) {
+    const current = byStep.get(step);
+    const nextLayer = byStep.get(step + columnsPerLayer);
+    if (current && nextLayer && shouldConnect(current, nextLayer, model, "vertical")) {
+      paths.push(linePath(current, nextLayer, 0.46, "tube-line-vertical"));
     }
   }
 
   lineLayer.innerHTML = paths.join("");
 }
 
-function shouldConnect(a, b, model, rowMultiplier, maxScreenDistance) {
-  const yDistance = Math.abs(a.localY - b.localY);
+function shouldConnect(a, b, model, type) {
+  const layerDistance = Math.abs(a.stepY - b.stepY);
   const screenDistance = Math.hypot(a.x - b.x, a.y - b.y);
+  const maxLayerDistance =
+    type === "vertical" ? model.stepGap * columnsPerLayer * 1.12 : model.stepGap * 1.55;
+  const maxScreenDistance =
+    type === "vertical" ? Math.min(model.height * 0.78, 680) : Math.min(480, model.width * 0.3);
   const onScreen =
-    a.y > -model.rowGap * 2 &&
-    a.y < model.height + model.rowGap * 2 &&
-    b.y > -model.rowGap * 2 &&
-    b.y < model.height + model.rowGap * 2;
+    a.visible &&
+    b.visible &&
+    a.y > -model.stepGap * 2 &&
+    a.y < model.height + model.stepGap * 2 &&
+    b.y > -model.stepGap * 2 &&
+    b.y < model.height + model.stepGap * 2;
 
-  return onScreen && yDistance <= model.rowGap * rowMultiplier && screenDistance <= maxScreenDistance;
+  return (
+    onScreen &&
+    layerDistance <= maxLayerDistance &&
+    screenDistance <= maxScreenDistance
+  );
 }
 
-function linePath(a, b, opacity) {
-  return `<path d="M ${a.x.toFixed(2)} ${a.y.toFixed(2)} L ${b.x.toFixed(2)} ${b.y.toFixed(2)}" style="opacity:${opacity}" />`;
+function linePath(a, b, opacity, className) {
+  const start = edgePoint(a, b);
+  const end = edgePoint(b, a);
+  return `<path class="${className}" d="M ${start.x.toFixed(2)} ${start.y.toFixed(2)} L ${end.x.toFixed(2)} ${end.y.toFixed(2)}" style="opacity:${opacity}" />`;
+}
+
+function edgePoint(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  const halfW = from.renderWidth / 2;
+  const halfH = from.renderHeight / 2;
+
+  if (absX < 0.001 && absY < 0.001) {
+    return { x: from.x, y: from.y };
+  }
+
+  const ratioX = absX > 0 ? halfW / absX : Number.POSITIVE_INFINITY;
+  const ratioY = absY > 0 ? halfH / absY : Number.POSITIVE_INFINITY;
+  const ratio = Math.min(ratioX, ratioY);
+
+  return {
+    x: from.x + dx * ratio,
+    y: from.y + dy * ratio,
+  };
 }
 
 function render(now) {
   const dt = Math.min(0.04, (now - state.lastTime) / 1000);
   state.lastTime = now;
-  state.auto += dt * 0.16;
+  state.auto += dt * 0.035;
   state.current += (state.target - state.current) * 0.08;
   state.velocity *= 0.9;
 
@@ -191,19 +224,30 @@ function render(now) {
     card.element.classList.toggle("is-near", point.depth > 0.15);
     card.element.classList.toggle("is-far", point.depth < -0.35);
 
+    const rect = card.element.getBoundingClientRect();
+
+    const screenVisible =
+      rect.right > 0 &&
+      rect.left < model.width &&
+      rect.top > -12 &&
+      rect.bottom < model.height + 12;
+
     projected.push({
-      row: card.row,
-      column: card.column,
-      x: pos.x,
-      y: pos.y,
+      step: card.step,
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
       z: point.z,
       localY: point.localY,
+      stepY: point.stepY,
+      renderWidth: rect.width,
+      renderHeight: rect.height,
+      visible: screenVisible,
     });
   }
 
   renderLines(projected, model);
   vortexValue.textContent = (Math.sin(progress) * 0.84).toFixed(1);
-  heightValue.textContent = (18.06 + Math.cos(progress * 0.4) * 0.34).toFixed(2);
+  heightValue.textContent = (rowCount * columnsPerLayer * model.stepGap / 380).toFixed(2);
 
   requestAnimationFrame(render);
 }
@@ -219,8 +263,8 @@ function closeFocus() {
 
 window.addEventListener("wheel", (event) => {
   event.preventDefault();
-  state.target += event.deltaY * 0.006;
-  state.velocity += event.deltaY * 0.0004;
+  state.target += event.deltaY * 0.0014;
+  state.velocity += event.deltaY * 0.00012;
 }, { passive: false });
 
 window.addEventListener("pointerdown", (event) => {
@@ -232,7 +276,7 @@ window.addEventListener("pointermove", (event) => {
   if (!state.pointerDown) return;
   const delta = event.clientY - state.pointerY;
   state.pointerY = event.clientY;
-  state.target += delta * 0.012;
+  state.target += delta * 0.0035;
 });
 
 window.addEventListener("pointerup", () => {
