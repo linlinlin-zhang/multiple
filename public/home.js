@@ -17,14 +17,25 @@ const palette = [
   "#f4ef43",
 ];
 
-const rowCount = 5;
+const imageCards = [
+  "/home-assets/ref-dog.jpg",
+  "/home-assets/ref-kitchen.jpg",
+  "/home-assets/ref-gradient.jpg",
+];
+const imageByColumn = new Map([
+  [3, { src: imageCards[0], width: 96, height: 122 }],
+  [4, { src: imageCards[1], width: 162, height: 116 }],
+  [5, { src: imageCards[2], width: 82, height: 124 }],
+]);
+
+const rowCount = 12;
 const columnsPerLayer = 8;
 const stepCount = rowCount * columnsPerLayer;
 const endPaddingLayers = 0.05;
 const scrollLimit = (stepCount - 1) / (columnsPerLayer * 2) + endPaddingLayers;
 const cards = [];
 const state = {
-  auto: 0,
+  auto: -0.89,
   current: initialScrollTarget(),
   target: initialScrollTarget(),
   velocity: 0,
@@ -37,9 +48,11 @@ function makeCards() {
   for (let step = 0; step < stepCount; step++) {
     const card = document.createElement("button");
     const inner = document.createElement("span");
-    const width = 188 + (step % 3) * 18;
-    const height = 118 + (step % 4) * 8;
     const color = palette[step % palette.length];
+    const column = step % columnsPerLayer;
+    const media = imageByColumn.get(column) ?? null;
+    const width = media?.width ?? 122 + (step % 4) * 14;
+    const height = media?.height ?? 82 + (step % 3) * 9;
 
     card.type = "button";
     card.className = "tube-card panel";
@@ -49,14 +62,28 @@ function makeCards() {
     card.style.setProperty("--panel-color", color);
 
     inner.className = "tube-card-inner";
+    if (media) {
+      const image = document.createElement("img");
+      image.src = media.src;
+      image.alt = "";
+      inner.appendChild(image);
+      card.classList.add("has-image");
+    }
     card.appendChild(inner);
     world.appendChild(card);
 
     card.addEventListener("click", () => {
-      focusImage.removeAttribute("src");
-      focusImage.alt = "";
-      focusOverlay.style.setProperty("--focus-color", color);
-      focusOverlay.classList.add("open", "color-open");
+      if (media) {
+        focusImage.src = media.src;
+        focusImage.alt = "";
+        focusOverlay.classList.remove("color-open");
+      } else {
+        focusImage.removeAttribute("src");
+        focusImage.alt = "";
+        focusOverlay.style.setProperty("--focus-color", color);
+        focusOverlay.classList.add("color-open");
+      }
+      focusOverlay.classList.add("open");
       focusOverlay.setAttribute("aria-hidden", "false");
     });
 
@@ -66,6 +93,7 @@ function makeCards() {
       width,
       height,
       tilt: ((step % 7) - 3) * 1.4,
+      media,
     });
   }
 }
@@ -73,7 +101,7 @@ function makeCards() {
 function initialScrollTarget() {
   if (window.location.hash === "#top") return -scrollLimit;
   if (window.location.hash === "#bottom") return scrollLimit;
-  return 0;
+  return -0.65;
 }
 
 function viewportModel() {
@@ -82,11 +110,11 @@ function viewportModel() {
   const compact = width < 900;
 
   return {
-    centerX: compact ? width * 0.58 : width * 0.6,
+    centerX: compact ? width * 0.54 : width * 0.526,
     centerY: height * 0.5,
-    radiusX: compact ? Math.max(150, width * 0.25) : Math.min(430, width * 0.19),
+    radiusX: compact ? Math.max(150, width * 0.25) : Math.min(390, width * 0.17),
     radiusZ: compact ? 310 : 500,
-    stepGap: compact ? 78 : 96,
+    stepGap: compact ? 70 : 86,
     perspective: compact ? 900 : 1120,
     width,
     height,
@@ -123,26 +151,29 @@ function cardPoint(card, model, scrollProgress, spin) {
 }
 
 function renderLines(projected, model) {
-  const paths = [];
+  const verticalPaths = [];
+  const spiralPaths = [];
   const byStep = new Map(projected.map((item) => [item.step, item]));
 
   for (let step = 0; step < stepCount - 1; step++) {
     const current = byStep.get(step);
     const next = byStep.get(step + 1);
     if (current && next && shouldConnect(current, next, model, "spiral")) {
-      paths.push(linePath(current, next, 0.24, "tube-line-spiral"));
+      spiralPaths.push(linePath(current, next, 0.22, "tube-line-spiral"));
     }
   }
 
-  for (let step = 0; step < stepCount - columnsPerLayer; step++) {
-    const current = byStep.get(step);
-    const nextLayer = byStep.get(step + columnsPerLayer);
-    if (current && nextLayer && shouldConnect(current, nextLayer, model, "vertical")) {
-      paths.push(linePath(current, nextLayer, 0.46, "tube-line-vertical"));
+  for (let column = 0; column < columnsPerLayer; column++) {
+    for (let row = 0; row < rowCount - 1; row++) {
+      const current = byStep.get(row * columnsPerLayer + column);
+      const nextLayer = byStep.get((row + 1) * columnsPerLayer + column);
+      if (current && nextLayer && shouldConnect(current, nextLayer, model, "vertical")) {
+        verticalPaths.push(linePath(current, nextLayer, 0.32, "tube-line-vertical"));
+      }
     }
   }
 
-  lineLayer.innerHTML = paths.join("");
+  lineLayer.innerHTML = verticalPaths.concat(spiralPaths).join("");
 }
 
 function shouldConnect(a, b, model, type) {
@@ -152,64 +183,34 @@ function shouldConnect(a, b, model, type) {
     type === "vertical" ? model.stepGap * columnsPerLayer * 1.12 : model.stepGap * 1.55;
 
   if (type === "vertical") {
-    const yMin = Math.min(a.y, b.y);
-    const yMax = Math.max(a.y, b.y);
-    const xMin = Math.min(a.x, b.x);
-    const xMax = Math.max(a.x, b.x);
-    const yPadding = model.stepGap * columnsPerLayer * 1.1;
-    const xPadding = model.width * 0.2;
-
-    return (
-      layerDistance <= maxLayerDistance &&
-      yMax > -yPadding &&
-      yMin < model.height + yPadding &&
-      xMax > -xPadding &&
-      xMin < model.width + xPadding
-    );
+    return layerDistance <= maxLayerDistance && segmentTouchesViewport(a, b, model, 520);
   }
 
   const maxScreenDistance = Math.min(560, model.width * 0.36);
-  const onScreen =
-    a.visible &&
-    b.visible &&
-    a.y > -model.stepGap * 2 &&
-    a.y < model.height + model.stepGap * 2 &&
-    b.y > -model.stepGap * 2 &&
-    b.y < model.height + model.stepGap * 2;
 
   return (
-    onScreen &&
+    segmentTouchesViewport(a, b, model, 220) &&
     layerDistance <= maxLayerDistance &&
     screenDistance <= maxScreenDistance
   );
 }
 
 function linePath(a, b, opacity, className) {
-  const start = edgePoint(a, b);
-  const end = edgePoint(b, a);
-  return `<path class="${className}" d="M ${start.x.toFixed(2)} ${start.y.toFixed(2)} L ${end.x.toFixed(2)} ${end.y.toFixed(2)}" style="opacity:${opacity}" />`;
+  return `<path class="${className}" d="M ${a.x.toFixed(2)} ${a.y.toFixed(2)} L ${b.x.toFixed(2)} ${b.y.toFixed(2)}" style="opacity:${opacity}" />`;
 }
 
-function edgePoint(from, to) {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const absX = Math.abs(dx);
-  const absY = Math.abs(dy);
-  const halfW = from.renderWidth / 2;
-  const halfH = from.renderHeight / 2;
+function segmentTouchesViewport(a, b, model, padding) {
+  const minX = Math.min(a.x, b.x);
+  const maxX = Math.max(a.x, b.x);
+  const minY = Math.min(a.y, b.y);
+  const maxY = Math.max(a.y, b.y);
 
-  if (absX < 0.001 && absY < 0.001) {
-    return { x: from.x, y: from.y };
-  }
-
-  const ratioX = absX > 0 ? halfW / absX : Number.POSITIVE_INFINITY;
-  const ratioY = absY > 0 ? halfH / absY : Number.POSITIVE_INFINITY;
-  const ratio = Math.min(ratioX, ratioY);
-
-  return {
-    x: from.x + dx * ratio,
-    y: from.y + dy * ratio,
-  };
+  return (
+    maxX > -padding &&
+    minX < model.width + padding &&
+    maxY > -padding &&
+    minY < model.height + padding
+  );
 }
 
 function render(now) {
@@ -227,11 +228,15 @@ function render(now) {
   for (const card of cards) {
     const point = cardPoint(card, model, scrollProgress, spin);
     const pos = project(point, model);
-    const depthScale = clamp(pos.scale, 0.38, 1.28);
-    const visible = pos.y > -360 && pos.y < model.height + 360;
+    const depthScale = clamp(pos.scale, 0.42, 1.16);
+    const visible =
+      pos.x > -260 &&
+      pos.x < model.width + 260 &&
+      pos.y > -360 &&
+      pos.y < model.height + 360;
     const side = Math.sin(point.angle);
     const yaw = -side * 48;
-    const alpha = clamp(0.36 + (point.depth + 1) * 0.3, 0.26, 0.96);
+    const alpha = card.media ? 0.96 : clamp(0.36 + (point.depth + 1) * 0.3, 0.26, 0.88);
 
     card.element.style.transform = [
       `translate3d(${(pos.x - card.width / 2).toFixed(2)}px, ${(pos.y - card.height / 2).toFixed(2)}px, 0)`,
@@ -244,29 +249,21 @@ function render(now) {
     card.element.classList.toggle("is-near", point.depth > 0.15);
     card.element.classList.toggle("is-far", point.depth < -0.35);
 
-    const rect = card.element.getBoundingClientRect();
-
-    const screenVisible =
-      rect.right > 0 &&
-      rect.left < model.width &&
-      rect.top > -12 &&
-      rect.bottom < model.height + 12;
-
     projected.push({
       step: card.step,
-      x: rect.left + rect.width / 2,
-      y: rect.top + rect.height / 2,
+      x: pos.x,
+      y: pos.y,
       z: point.z,
       localY: point.localY,
       stepY: point.stepY,
-      renderWidth: rect.width,
-      renderHeight: rect.height,
-      visible: screenVisible,
+      renderWidth: card.width * depthScale,
+      renderHeight: card.height * depthScale,
+      visible,
     });
   }
 
   renderLines(projected, model);
-  vortexValue.textContent = (Math.sin(spin) * 0.84).toFixed(1);
+  vortexValue.textContent = "0.0";
   heightValue.textContent = "18.06";
 
   requestAnimationFrame(render);

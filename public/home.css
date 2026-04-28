@@ -52,7 +52,7 @@ button {
 
 .tube-panel h1 {
   margin: 0 0 34px;
-  font-size: clamp(58px, 6vw, 112px);
+  font-size: clamp(58px, 5vw, 96px);
   line-height: 0.85;
   letter-spacing: -0.04em;
   font-weight: 800;
@@ -190,7 +190,7 @@ button {
   position: absolute;
   top: -18vh;
   bottom: -18vh;
-  left: 55vw;
+  left: 52.6vw;
   width: 2px;
   z-index: 3;
   background: rgba(0, 0, 0, 0.32);
@@ -231,7 +231,10 @@ button {
 }
 
 .tube-card img {
-  display: none;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .tube-card.is-near .tube-card-inner {
