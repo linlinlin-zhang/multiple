@@ -17,7 +17,7 @@ const palette = [
   "#f4ef43",
 ];
 
-const rowCount = 6;
+const rowCount = 5;
 const columnsPerLayer = 8;
 const stepCount = rowCount * columnsPerLayer;
 const endPaddingLayers = 0.05;
@@ -65,7 +65,7 @@ function makeCards() {
       element: card,
       width,
       height,
-      tilt: ((step % 7) - 3) * 5.8,
+      tilt: ((step % 7) - 3) * 1.4,
     });
   }
 }
@@ -109,7 +109,7 @@ function cardPoint(card, model, scrollProgress, spin) {
   const angle = pathStep * (Math.PI * 2 / columnsPerLayer) + spin;
   const sin = Math.sin(angle);
   const cos = Math.cos(angle);
-  const radiusPulse = 1 + Math.sin(pathStep * 0.18) * 0.025;
+  const radiusPulse = 1;
 
   return {
     x: sin * model.radiusX * radiusPulse,
@@ -150,8 +150,25 @@ function shouldConnect(a, b, model, type) {
   const screenDistance = Math.hypot(a.x - b.x, a.y - b.y);
   const maxLayerDistance =
     type === "vertical" ? model.stepGap * columnsPerLayer * 1.12 : model.stepGap * 1.55;
-  const maxScreenDistance =
-    type === "vertical" ? Math.min(model.height * 0.78, 820) : Math.min(560, model.width * 0.36);
+
+  if (type === "vertical") {
+    const yMin = Math.min(a.y, b.y);
+    const yMax = Math.max(a.y, b.y);
+    const xMin = Math.min(a.x, b.x);
+    const xMax = Math.max(a.x, b.x);
+    const yPadding = model.stepGap * columnsPerLayer * 1.1;
+    const xPadding = model.width * 0.2;
+
+    return (
+      layerDistance <= maxLayerDistance &&
+      yMax > -yPadding &&
+      yMin < model.height + yPadding &&
+      xMax > -xPadding &&
+      xMin < model.width + xPadding
+    );
+  }
+
+  const maxScreenDistance = Math.min(560, model.width * 0.36);
   const onScreen =
     a.visible &&
     b.visible &&
@@ -213,14 +230,12 @@ function render(now) {
     const depthScale = clamp(pos.scale, 0.38, 1.28);
     const visible = pos.y > -360 && pos.y < model.height + 360;
     const side = Math.sin(point.angle);
-    const yaw = -side * 112;
-    const pitch = Math.cos(point.angle) * 20;
+    const yaw = -side * 48;
     const alpha = clamp(0.36 + (point.depth + 1) * 0.3, 0.26, 0.96);
 
     card.element.style.transform = [
       `translate3d(${(pos.x - card.width / 2).toFixed(2)}px, ${(pos.y - card.height / 2).toFixed(2)}px, 0)`,
       `rotateY(${yaw.toFixed(2)}deg)`,
-      `rotateX(${pitch.toFixed(2)}deg)`,
       `rotateZ(${card.tilt.toFixed(2)}deg)`,
       `scale(${depthScale.toFixed(3)})`,
     ].join(" ");
@@ -268,8 +283,8 @@ function closeFocus() {
 
 window.addEventListener("wheel", (event) => {
   event.preventDefault();
-  state.target = clamp(state.target + event.deltaY * 0.009, -scrollLimit, scrollLimit);
-  state.velocity = clamp(state.velocity + event.deltaY * 0.00045, -1.1, 1.1);
+  state.target = clamp(state.target + event.deltaY * 0.006, -scrollLimit, scrollLimit);
+  state.velocity = clamp(state.velocity + event.deltaY * 0.0003, -0.9, 0.9);
 }, { passive: false });
 
 window.addEventListener("pointerdown", (event) => {
@@ -281,7 +296,7 @@ window.addEventListener("pointermove", (event) => {
   if (!state.pointerDown) return;
   const delta = event.clientY - state.pointerY;
   state.pointerY = event.clientY;
-  state.target = clamp(state.target + delta * 0.018, -scrollLimit, scrollLimit);
+  state.target = clamp(state.target + delta * 0.012, -scrollLimit, scrollLimit);
 });
 
 window.addEventListener("pointerup", () => {
