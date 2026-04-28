@@ -17,14 +17,16 @@ const palette = [
   "#f4ef43",
 ];
 
-const rowCount = 12;
+const rowCount = 6;
 const columnsPerLayer = 8;
 const stepCount = rowCount * columnsPerLayer;
+const endPaddingLayers = 0.05;
+const scrollLimit = (stepCount - 1) / (columnsPerLayer * 2) + endPaddingLayers;
 const cards = [];
 const state = {
   auto: 0,
-  current: 0,
-  target: 0,
+  current: initialScrollTarget(),
+  target: initialScrollTarget(),
   velocity: 0,
   lastTime: performance.now(),
   pointerDown: false,
@@ -63,9 +65,15 @@ function makeCards() {
       element: card,
       width,
       height,
-      tilt: ((step % 7) - 3) * 1.4,
+      tilt: ((step % 7) - 3) * 5.8,
     });
   }
+}
+
+function initialScrollTarget() {
+  if (window.location.hash === "#top") return -scrollLimit;
+  if (window.location.hash === "#bottom") return scrollLimit;
+  return 0;
 }
 
 function viewportModel() {
@@ -76,9 +84,9 @@ function viewportModel() {
   return {
     centerX: compact ? width * 0.58 : width * 0.6,
     centerY: height * 0.5,
-    radiusX: compact ? Math.max(140, width * 0.23) : Math.min(360, width * 0.16),
+    radiusX: compact ? Math.max(150, width * 0.25) : Math.min(430, width * 0.19),
     radiusZ: compact ? 310 : 500,
-    stepGap: compact ? 58 : 72,
+    stepGap: compact ? 78 : 96,
     perspective: compact ? 900 : 1120,
     width,
     height,
@@ -94,30 +102,24 @@ function project(point, model) {
   };
 }
 
-function cardPoint(card, model, progress) {
-  const scrollSteps = progress * columnsPerLayer;
-  const rawStep = card.step - (stepCount - 1) / 2 - scrollSteps;
-  const wrappedStep = wrapRow(rawStep);
-  const column = card.step % columnsPerLayer;
-  const angle = progress * Math.PI * 2 + column * (Math.PI * 2 / columnsPerLayer);
+function cardPoint(card, model, scrollProgress, spin) {
+  const scrollSteps = scrollProgress * columnsPerLayer;
+  const pathStep = card.step - scrollSteps;
+  const centeredStep = pathStep - (stepCount - 1) / 2;
+  const angle = pathStep * (Math.PI * 2 / columnsPerLayer) + spin;
   const sin = Math.sin(angle);
   const cos = Math.cos(angle);
-  const radiusPulse = 1 + Math.sin(column * 0.85) * 0.025;
+  const radiusPulse = 1 + Math.sin(pathStep * 0.18) * 0.025;
 
   return {
     x: sin * model.radiusX * radiusPulse,
-    y: wrappedStep * model.stepGap,
+    y: centeredStep * model.stepGap,
     z: cos * model.radiusZ,
     angle,
     depth: cos,
-    localY: wrappedStep * model.stepGap,
-    stepY: wrappedStep * model.stepGap,
+    localY: centeredStep * model.stepGap,
+    stepY: centeredStep * model.stepGap,
   };
-}
-
-function wrapRow(row) {
-  const span = stepCount;
-  return ((row + span / 2) % span + span) % span - span / 2;
 }
 
 function renderLines(projected, model) {
@@ -149,7 +151,7 @@ function shouldConnect(a, b, model, type) {
   const maxLayerDistance =
     type === "vertical" ? model.stepGap * columnsPerLayer * 1.12 : model.stepGap * 1.55;
   const maxScreenDistance =
-    type === "vertical" ? Math.min(model.height * 0.78, 680) : Math.min(480, model.width * 0.3);
+    type === "vertical" ? Math.min(model.height * 0.78, 820) : Math.min(560, model.width * 0.36);
   const onScreen =
     a.visible &&
     b.visible &&
@@ -196,26 +198,29 @@ function edgePoint(from, to) {
 function render(now) {
   const dt = Math.min(0.04, (now - state.lastTime) / 1000);
   state.lastTime = now;
-  state.auto += dt * 0.035;
+  state.auto += dt * 0.032;
   state.current += (state.target - state.current) * 0.08;
   state.velocity *= 0.9;
 
-  const progress = state.auto + state.current + state.velocity;
+  const scrollProgress = clamp(state.current + state.velocity, -scrollLimit, scrollLimit);
+  const spin = state.auto;
   const model = viewportModel();
   const projected = [];
 
   for (const card of cards) {
-    const point = cardPoint(card, model, progress);
+    const point = cardPoint(card, model, scrollProgress, spin);
     const pos = project(point, model);
-    const depthScale = clamp(pos.scale, 0.44, 1.24);
-    const visible = pos.y > -260 && pos.y < model.height + 260;
+    const depthScale = clamp(pos.scale, 0.38, 1.28);
+    const visible = pos.y > -360 && pos.y < model.height + 360;
     const side = Math.sin(point.angle);
-    const yaw = -side * 48;
+    const yaw = -side * 112;
+    const pitch = Math.cos(point.angle) * 20;
     const alpha = clamp(0.36 + (point.depth + 1) * 0.3, 0.26, 0.96);
 
     card.element.style.transform = [
       `translate3d(${(pos.x - card.width / 2).toFixed(2)}px, ${(pos.y - card.height / 2).toFixed(2)}px, 0)`,
       `rotateY(${yaw.toFixed(2)}deg)`,
+      `rotateX(${pitch.toFixed(2)}deg)`,
       `rotateZ(${card.tilt.toFixed(2)}deg)`,
       `scale(${depthScale.toFixed(3)})`,
     ].join(" ");
@@ -246,8 +251,8 @@ function render(now) {
   }
 
   renderLines(projected, model);
-  vortexValue.textContent = (Math.sin(progress) * 0.84).toFixed(1);
-  heightValue.textContent = (rowCount * columnsPerLayer * model.stepGap / 380).toFixed(2);
+  vortexValue.textContent = (Math.sin(spin) * 0.84).toFixed(1);
+  heightValue.textContent = "18.06";
 
   requestAnimationFrame(render);
 }
@@ -263,8 +268,8 @@ function closeFocus() {
 
 window.addEventListener("wheel", (event) => {
   event.preventDefault();
-  state.target += event.deltaY * 0.0014;
-  state.velocity += event.deltaY * 0.00012;
+  state.target = clamp(state.target + event.deltaY * 0.009, -scrollLimit, scrollLimit);
+  state.velocity = clamp(state.velocity + event.deltaY * 0.00045, -1.1, 1.1);
 }, { passive: false });
 
 window.addEventListener("pointerdown", (event) => {
@@ -276,7 +281,7 @@ window.addEventListener("pointermove", (event) => {
   if (!state.pointerDown) return;
   const delta = event.clientY - state.pointerY;
   state.pointerY = event.clientY;
-  state.target += delta * 0.0035;
+  state.target = clamp(state.target + delta * 0.018, -scrollLimit, scrollLimit);
 });
 
 window.addEventListener("pointerup", () => {
