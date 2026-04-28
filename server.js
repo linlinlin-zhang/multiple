@@ -23,7 +23,26 @@ const DEMO_MODE = process.env.DEMO_MODE === "true";
 
 const prisma = new PrismaClient();
 
-let runtimeConfigs = { chat: null, analysis: null, image: null };
+let runtimeConfigs = {
+  chat: buildModelConfig("CHAT", {
+    provider: "kimi",
+    model: "kimi-k2.6",
+    baseUrl: "https://api.moonshot.cn/v1",
+    apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
+  }),
+  analysis: buildModelConfig("ANALYSIS", {
+    provider: "kimi",
+    model: "kimi-k2.6",
+    baseUrl: "https://api.moonshot.cn/v1",
+    apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
+  }),
+  image: buildModelConfig("IMAGE", {
+    provider: "tencent-tokenhub-image",
+    model: "hy-image-v3.0",
+    baseUrl: "https://tokenhub.tencentmaas.com/v1/api/image",
+    apiKeyEnv: ["TENCENT_TOKENHUB_API_KEY", "TOKENHUB_API_KEY"]
+  })
+};
 
 const IMAGE_POLL_INTERVAL_MS = Number(process.env.IMAGE_POLL_INTERVAL_MS || 2000);
 const IMAGE_POLL_ATTEMPTS = Number(process.env.IMAGE_POLL_ATTEMPTS || 30);
@@ -182,34 +201,38 @@ ensureStorageDirs().catch(console.error);
 refreshConfigs().catch(console.error);
 
 async function refreshConfigs() {
-  const rows = await prisma.settings.findMany();
-  const dbMap = Object.fromEntries(
-    rows.map((r) => [
-      r.role,
-      { endpoint: r.endpoint, model: r.model, apiKey: r.apiKey, temperature: r.temperature }
-    ])
-  );
+  try {
+    const rows = await prisma.settings.findMany();
+    const dbMap = Object.fromEntries(
+      rows.map((r) => [
+        r.role,
+        { endpoint: r.endpoint, model: r.model, apiKey: r.apiKey, temperature: r.temperature }
+      ])
+    );
 
-  runtimeConfigs.chat = buildModelConfig("CHAT", {
-    provider: "kimi",
-    model: "kimi-k2.6",
-    baseUrl: "https://api.moonshot.cn/v1",
-    apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
-  }, dbMap.chat);
+    runtimeConfigs.chat = buildModelConfig("CHAT", {
+      provider: "kimi",
+      model: "kimi-k2.6",
+      baseUrl: "https://api.moonshot.cn/v1",
+      apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
+    }, dbMap.chat);
 
-  runtimeConfigs.analysis = buildModelConfig("ANALYSIS", {
-    provider: "kimi",
-    model: "kimi-k2.6",
-    baseUrl: "https://api.moonshot.cn/v1",
-    apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
-  }, dbMap.analysis);
+    runtimeConfigs.analysis = buildModelConfig("ANALYSIS", {
+      provider: "kimi",
+      model: "kimi-k2.6",
+      baseUrl: "https://api.moonshot.cn/v1",
+      apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
+    }, dbMap.analysis);
 
-  runtimeConfigs.image = buildModelConfig("IMAGE", {
-    provider: "tencent-tokenhub-image",
-    model: "hy-image-v3.0",
-    baseUrl: "https://tokenhub.tencentmaas.com/v1/api/image",
-    apiKeyEnv: ["TENCENT_TOKENHUB_API_KEY", "TOKENHUB_API_KEY"]
-  }, dbMap.image);
+    runtimeConfigs.image = buildModelConfig("IMAGE", {
+      provider: "tencent-tokenhub-image",
+      model: "hy-image-v3.0",
+      baseUrl: "https://tokenhub.tencentmaas.com/v1/api/image",
+      apiKeyEnv: ["TENCENT_TOKENHUB_API_KEY", "TOKENHUB_API_KEY"]
+    }, dbMap.image);
+  } catch (err) {
+    console.warn("[refreshConfigs] Database unavailable, using env defaults:", err.message);
+  }
 }
 
 function buildModelConfig(role, defaults, dbSettings = null) {
