@@ -21,9 +21,6 @@
 - [ ] **MC-10**: 蓝图弹窗内支持拖动卡片位置
 - [ ] **MC-11**: 蓝图弹窗内支持在卡片之间绘制连线，定义上下游或并列关系
 - [ ] **MC-12**: 蓝图弹窗内的连线关系可用于指导下一步的探索或成图
-
-### Menu Cleanup (MC)
-
 - [ ] **MC-13**: `/` 功能区移除"放大"命令（zoom-in）
 - [ ] **MC-14**: `/` 功能区移除"缩小"命令（zoom-out）
 - [ ] **MC-15**: `/` 功能区移除"历史浏览器"命令（history）
@@ -53,22 +50,22 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MC-01 | TBD | Pending |
-| MC-02 | TBD | Pending |
-| MC-03 | TBD | Pending |
-| MC-04 | TBD | Pending |
-| MC-05 | TBD | Pending |
-| MC-06 | TBD | Pending |
-| MC-07 | TBD | Pending |
-| MC-08 | TBD | Pending |
-| MC-09 | TBD | Pending |
-| MC-10 | TBD | Pending |
-| MC-11 | TBD | Pending |
-| MC-12 | TBD | Pending |
-| MC-13 | TBD | Pending |
-| MC-14 | TBD | Pending |
-| MC-15 | TBD | Pending |
-| MC-16 | TBD | Pending |
+| MC-01 | Phase 16 | Pending |
+| MC-02 | Phase 16 | Pending |
+| MC-03 | Phase 17 | Pending |
+| MC-04 | Phase 17 | Pending |
+| MC-05 | Phase 17 | Pending |
+| MC-06 | Phase 17 | Pending |
+| MC-07 | Phase 17 | Pending |
+| MC-08 | Phase 18 | Pending |
+| MC-09 | Phase 18 | Pending |
+| MC-10 | Phase 18 | Pending |
+| MC-11 | Phase 18 | Pending |
+| MC-12 | Phase 18 | Pending |
+| MC-13 | Phase 16 | Pending |
+| MC-14 | Phase 16 | Pending |
+| MC-15 | Phase 16 | Pending |
+| MC-16 | Phase 16 | Pending |
 
 ---
 

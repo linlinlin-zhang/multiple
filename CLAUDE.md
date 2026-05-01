@@ -5,8 +5,8 @@ A canvas-based image generation exploration prototype with persistent sessions a
 ## Project
 
 - **Project docs**: `.planning/`
-- **Roadmap**: 4 phases (see `.planning/ROADMAP.md`)
-- **Current focus**: Phase 1 — Database & File Storage Foundation
+- **Roadmap**: 3 phases (see `.planning/ROADMAP.md`)
+- **Current focus**: Phase 16 — Menu Cleanup & New Card
 
 ## Commands
 
@@ -25,4 +25,4 @@ npm run dev      # Start the server
 
 This project uses GSD (Get Shit Done) workflow.
 
-**Next step**: `/gsd-plan-phase 1`
+**Next step**: `/gsd-plan-phase 16`
