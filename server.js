@@ -41,6 +41,18 @@ let runtimeConfigs = {
     model: "hy-image-v3.0",
     baseUrl: "https://tokenhub.tencentmaas.com/v1/api/image",
     apiKeyEnv: ["TENCENT_TOKENHUB_API_KEY", "TOKENHUB_API_KEY"]
+  }),
+  asr: buildModelConfig("ASR", {
+    provider: "openai-audio-transcriptions",
+    model: "whisper-1",
+    baseUrl: "https://api.openai.com/v1",
+    apiKeyEnv: ["ASR_API_KEY", "OPENAI_API_KEY"]
+  }),
+  realtime: buildModelConfig("REALTIME", {
+    provider: "openai-audio-chat",
+    model: "gpt-4o-audio-preview",
+    baseUrl: "https://api.openai.com/v1",
+    apiKeyEnv: ["REALTIME_API_KEY", "OPENAI_API_KEY"]
   })
 };
 
@@ -59,7 +71,9 @@ const server = http.createServer(async (req, res) => {
         mode: appMode(),
         chat: roleHealth(runtimeConfigs.chat),
         analysis: roleHealth(runtimeConfigs.analysis),
-        image: roleHealth(runtimeConfigs.image)
+        image: roleHealth(runtimeConfigs.image),
+        asr: roleHealth(runtimeConfigs.asr),
+        realtime: roleHealth(runtimeConfigs.realtime)
       });
     }
 
@@ -77,6 +91,16 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/chat") {
       const body = await readJson(req);
       return await handleChat(body, res);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/asr") {
+      const body = await readJson(req);
+      return await handleAsr(body, res);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/realtime-voice") {
+      const body = await readJson(req);
+      return await handleRealtimeVoice(body, res);
     }
 
     if (req.method === "POST" && url.pathname === "/api/analyze") {
@@ -230,6 +254,20 @@ async function refreshConfigs() {
       baseUrl: "https://tokenhub.tencentmaas.com/v1/api/image",
       apiKeyEnv: ["TENCENT_TOKENHUB_API_KEY", "TOKENHUB_API_KEY"]
     }, dbMap.image);
+
+    runtimeConfigs.asr = buildModelConfig("ASR", {
+      provider: "openai-audio-transcriptions",
+      model: "whisper-1",
+      baseUrl: "https://api.openai.com/v1",
+      apiKeyEnv: ["ASR_API_KEY", "OPENAI_API_KEY"]
+    }, dbMap.asr);
+
+    runtimeConfigs.realtime = buildModelConfig("REALTIME", {
+      provider: "openai-audio-chat",
+      model: "gpt-4o-audio-preview",
+      baseUrl: "https://api.openai.com/v1",
+      apiKeyEnv: ["REALTIME_API_KEY", "OPENAI_API_KEY"]
+    }, dbMap.realtime);
   } catch (err) {
     console.warn("[refreshConfigs] Database unavailable, using env defaults:", err.message);
   }
@@ -280,10 +318,65 @@ function isDemoRole(config) {
 }
 
 function appMode() {
-  const modes = [runtimeConfigs.chat, runtimeConfigs.analysis, runtimeConfigs.image].map((config) => roleHealth(config).mode);
+  const modes = [runtimeConfigs.chat, runtimeConfigs.analysis, runtimeConfigs.image, runtimeConfigs.asr, runtimeConfigs.realtime].map((config) => roleHealth(config).mode);
   if (modes.every((mode) => mode === "demo")) return "demo";
   if (modes.some((mode) => mode === "demo")) return "mixed";
   return "api";
+}
+
+async function handleAsr(body, res) {
+  const audioDataUrl = typeof body?.audioDataUrl === "string" ? body.audioDataUrl : "";
+  if (!isAudioDataUrl(audioDataUrl)) {
+    return sendJson(res, 400, { error: "audioDataUrl is required" });
+  }
+
+  if (isDemoRole(runtimeConfigs.asr)) {
+    return sendJson(res, 200, {
+      provider: "demo",
+      model: runtimeConfigs.asr.model,
+      text: ""
+    });
+  }
+
+  const language = body?.language === "en" ? "en" : "zh";
+  const text = await transcribeAudio(runtimeConfigs.asr, audioDataUrl, language);
+  return sendJson(res, 200, {
+    provider: "api",
+    model: runtimeConfigs.asr.model,
+    text
+  });
+}
+
+async function handleRealtimeVoice(body, res) {
+  const audioDataUrl = typeof body?.audioDataUrl === "string" ? body.audioDataUrl : "";
+  if (!isAudioDataUrl(audioDataUrl)) {
+    return sendJson(res, 400, { error: "audioDataUrl is required" });
+  }
+
+  if (isDemoRole(runtimeConfigs.realtime)) {
+    return sendJson(res, 200, {
+      provider: "demo",
+      model: runtimeConfigs.realtime.model,
+      transcript: "",
+      reply: "",
+      actions: []
+    });
+  }
+
+  const result = await realtimeVoiceCompletion(runtimeConfigs.realtime, {
+    audioDataUrl,
+    language: body?.language === "en" ? "en" : "zh",
+    selectedContext: body?.selectedContext || null,
+    analysis: normalizeChatAnalysis(body?.analysis),
+    messages: normalizeChatMessages(body?.messages),
+    canvas: body?.canvas && typeof body.canvas === "object" ? body.canvas : {}
+  });
+
+  return sendJson(res, 200, {
+    provider: "api",
+    model: runtimeConfigs.realtime.model,
+    ...result
+  });
 }
 
 async function handleChat(body, res) {
@@ -965,6 +1058,179 @@ async function handleExplain(body, res) {
   });
 }
 
+async function transcribeAudio(config, audioDataUrl, language) {
+  const parsed = parseDataUrl(audioDataUrl);
+  const ext = extensionFromMimeType(parsed.mimeType) || "webm";
+  const form = new FormData();
+  form.append("model", config.model);
+  form.append("file", new Blob([parsed.buffer], { type: parsed.mimeType }), `speech.${ext}`);
+  if (language === "zh" || language === "en") {
+    form.append("language", language);
+  }
+  if (typeof config.temperature === "number") {
+    form.append("temperature", String(config.temperature));
+  }
+
+  const response = await fetch(`${config.baseUrl}/audio/transcriptions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`
+    },
+    body: form
+  });
+
+  const text = await response.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { text };
+  }
+
+  if (!response.ok) {
+    const detail = json?.error?.message || json?.message || text || response.statusText;
+    throw new Error(`${config.role} API ${response.status}: ${detail}`);
+  }
+
+  return String(json?.text || json?.transcript || json?.data?.text || "").trim();
+}
+
+async function realtimeVoiceCompletion(config, context) {
+  const audio = audioInputFromDataUrl(context.audioDataUrl);
+  const lang = context.language === "en" ? "English" : "Chinese";
+  const recentMessages = context.messages
+    .map((item) => `${item.role}: ${item.content}`)
+    .join("\n") || "None";
+  const selected = context.selectedContext
+    ? JSON.stringify(context.selectedContext).slice(0, 1200)
+    : "None";
+  const canvas = JSON.stringify(context.canvas || {}).slice(0, 1800);
+
+  const instruction = [
+    `You are the realtime voice controller for a canvas-based image exploration app. Understand the user's spoken command in ${lang}.`,
+    "Return strict JSON only. Do not wrap it in Markdown.",
+    "Schema:",
+    '{"transcript":"recognized user speech","reply":"short spoken response","actions":[{"type":"zoom_in|zoom_out|reset_view|arrange_canvas|deselect|select_source|select_analysis|select_node|create_direction","nodeId":"optional","parentNodeId":"optional","title":"optional","description":"optional","prompt":"optional"}]}',
+    "Use actions only when the user clearly asks the app to do something. Keep reply concise and suitable for speech.",
+    "",
+    "Current selected card:",
+    selected,
+    "",
+    "Current analysis:",
+    JSON.stringify(context.analysis || {}).slice(0, 1600),
+    "",
+    "Canvas state:",
+    canvas,
+    "",
+    "Recent dialogue:",
+    recentMessages
+  ].join("\n");
+
+  const response = await chatCompletions(config, {
+    temperature: typeof config.temperature === "number" ? config.temperature : 0.7,
+    modalities: ["text"],
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: instruction },
+          { type: "input_audio", input_audio: audio }
+        ]
+      }
+    ]
+  });
+
+  const text = collectChatContent(response).trim();
+  let parsed;
+  try {
+    parsed = parseJsonFromText(text);
+  } catch {
+    parsed = { transcript: "", reply: text, actions: [] };
+  }
+
+  return {
+    transcript: stringOr(parsed?.transcript, ""),
+    reply: stringOr(parsed?.reply, text),
+    actions: normalizeVoiceActions(parsed?.actions || parsed?.action),
+    audioDataUrl: extractVoiceAudioDataUrl(response)
+  };
+}
+
+function audioInputFromDataUrl(audioDataUrl) {
+  const match = /^data:([^;,]+)(?:;[^,]*)?;base64,([a-zA-Z0-9+/=]+)$/i.exec(audioDataUrl);
+  if (!match) {
+    throw new Error("Invalid audio data URL.");
+  }
+  return {
+    data: match[2],
+    format: audioFormatFromMimeType(match[1])
+  };
+}
+
+function audioFormatFromMimeType(mimeType) {
+  const normalized = String(mimeType || "").split(";")[0].trim().toLowerCase();
+  return {
+    "audio/wav": "wav",
+    "audio/wave": "wav",
+    "audio/x-wav": "wav",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/mp4": "mp4",
+    "audio/m4a": "m4a",
+    "audio/webm": "webm",
+    "audio/ogg": "ogg"
+  }[normalized] || "webm";
+}
+
+function normalizeVoiceActions(value) {
+  const raw = Array.isArray(value) ? value : (value ? [value] : []);
+  const allowed = new Set([
+    "zoom_in",
+    "zoom_out",
+    "reset_view",
+    "arrange_canvas",
+    "deselect",
+    "select_source",
+    "select_analysis",
+    "select_node",
+    "create_direction"
+  ]);
+  return raw
+    .map((action) => {
+      if (typeof action === "string") return { type: action };
+      if (!action || typeof action !== "object") return null;
+      return {
+        type: String(action.type || action.name || ""),
+        nodeId: typeof action.nodeId === "string" ? action.nodeId.slice(0, 80) : undefined,
+        parentNodeId: typeof action.parentNodeId === "string" ? action.parentNodeId.slice(0, 80) : undefined,
+        title: typeof action.title === "string" ? action.title.slice(0, 80) : undefined,
+        description: typeof action.description === "string" ? action.description.slice(0, 500) : undefined,
+        prompt: typeof action.prompt === "string" ? action.prompt.slice(0, 1200) : undefined
+      };
+    })
+    .filter((action) => action && allowed.has(action.type));
+}
+
+function extractVoiceAudioDataUrl(response) {
+  const audio =
+    response?.choices?.[0]?.message?.audio ||
+    response?.audio ||
+    response?.output_audio ||
+    null;
+  const data = audio?.data || audio?.b64_json || audio?.content;
+  if (typeof data !== "string" || !data) return "";
+  const format = audio?.format || "wav";
+  const mime = {
+    mp3: "audio/mpeg",
+    mpeg: "audio/mpeg",
+    wav: "audio/wav",
+    webm: "audio/webm",
+    ogg: "audio/ogg",
+    mp4: "audio/mp4"
+  }[String(format).toLowerCase()] || "audio/wav";
+  return `data:${mime};base64,${data}`;
+}
+
 async function chatCompletions(config, payload) {
   const requestPayload = {
     model: config.model,
@@ -1448,11 +1714,15 @@ function normalizeDataUrl(value) {
   return value;
 }
 
+function isAudioDataUrl(value) {
+  return typeof value === "string" && /^data:audio\/[a-z0-9.+-]+(?:;[^,]*)?;base64,/i.test(value);
+}
+
 function parseDataUrl(value) {
   if (typeof value !== "string") {
     throw new Error("Invalid data URL format");
   }
-  const rasterMatch = /^data:([a-z0-9+\/-]+);base64,([a-zA-Z0-9+/=]+)$/i.exec(value);
+  const rasterMatch = /^data:([a-z0-9+\/.-]+)(?:;[^,]*)?;base64,([a-zA-Z0-9+/=]+)$/i.exec(value);
   if (rasterMatch) {
     const mimeType = rasterMatch[1].toLowerCase();
     const ext = extensionFromMimeType(mimeType) || "bin";
@@ -1483,7 +1753,16 @@ function extensionFromMimeType(mimeType) {
     "application/json": "json",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
-    "application/pdf": "pdf"
+    "application/pdf": "pdf",
+    "audio/webm": "webm",
+    "audio/ogg": "ogg",
+    "audio/mp4": "mp4",
+    "audio/m4a": "m4a",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/wav": "wav",
+    "audio/wave": "wav",
+    "audio/x-wav": "wav"
   };
   return map[mimeType] || "";
 }

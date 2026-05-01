@@ -8,7 +8,10 @@ export default defineConfig({
   base: './',
   plugins: [inspectAttr(), react()],
   server: {
-    port: 3000,
+    port: 5173,
+    proxy: {
+      '/api': process.env.VITE_API_PROXY_TARGET || 'http://localhost:3000',
+    },
   },
   resolve: {
     alias: {

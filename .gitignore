@@ -6,6 +6,8 @@ node_modules/
 /app/generated/prisma
 storage/
 .playwright-mcp/
+.claude/
+.codex
 main-styled*.png
 history-styled*.png
 public/home-assets/*.jpg

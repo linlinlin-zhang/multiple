@@ -4,14 +4,16 @@ const prisma = new PrismaClient();
 const DEFAULTS = {
   analysis: { endpoint: "https://api.moonshot.cn/v1", model: "kimi-k2.6", apiKey: "", temperature: 0.7 },
   chat: { endpoint: "https://api.moonshot.cn/v1", model: "kimi-k2.6", apiKey: "", temperature: 0.7 },
-  image: { endpoint: "https://tokenhub.tencentmaas.com/v1/api/image", model: "hy-image-v3.0", apiKey: "", temperature: 0.7 }
+  image: { endpoint: "https://tokenhub.tencentmaas.com/v1/api/image", model: "hy-image-v3.0", apiKey: "", temperature: 0.7 },
+  asr: { endpoint: "https://api.openai.com/v1", model: "whisper-1", apiKey: "", temperature: 0 },
+  realtime: { endpoint: "https://api.openai.com/v1", model: "gpt-4o-audio-preview", apiKey: "", temperature: 0.7 }
 };
 
 export async function handleGetSettings(res) {
   const rows = await prisma.settings.findMany();
   const map = Object.fromEntries(rows.map(r => [r.role, { endpoint: r.endpoint, model: r.model, apiKey: r.apiKey, temperature: r.temperature }]));
   const result = {};
-  for (const role of ["analysis", "chat", "image"]) {
+  for (const role of ["analysis", "chat", "image", "asr", "realtime"]) {
     result[role] = map[role] || DEFAULTS[role];
   }
   const globalRow = rows.find(r => r.role === "global");
@@ -51,7 +53,7 @@ export async function handleUpdateSettings(body, res) {
     result.language = globalUpserted.language;
   }
 
-  const allowed = ["analysis", "chat", "image"];
+  const allowed = ["analysis", "chat", "image", "asr", "realtime"];
   for (const role of allowed) {
     const cfg = body[role];
     if (!cfg || typeof cfg !== "object") continue;

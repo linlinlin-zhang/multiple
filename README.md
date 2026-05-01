@@ -35,6 +35,14 @@ ANALYSIS_MODEL=kimi-k2.6
 TENCENT_TOKENHUB_API_KEY=成图模型 key
 IMAGE_API_BASE_URL=https://tokenhub.tencentmaas.com/v1/api/image
 IMAGE_MODEL=hy-image-v3.0
+
+ASR_API_KEY=语音转文字模型 key
+ASR_API_BASE_URL=https://api.openai.com/v1
+ASR_MODEL=whisper-1
+
+REALTIME_API_KEY=实时语音控制模型 key
+REALTIME_API_BASE_URL=https://api.openai.com/v1
+REALTIME_MODEL=gpt-4o-audio-preview
 ```
 
 没有 key 时应用会自动进入 demo 模式：分析结果和成图节点都会用本地模拟数据生成，方便先调交互。

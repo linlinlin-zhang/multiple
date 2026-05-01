@@ -20,6 +20,12 @@ const chatInput = document.querySelector("#chatInput");
 const chatMessages = document.querySelector("#chatMessages");
 const chatSendButton = document.querySelector("#chatSendButton");
 const chatGenerateButton = document.querySelector("#chatGenerateButton");
+const chatVoiceActions = document.querySelector(".chat-voice-actions");
+const chatAsrButton = document.querySelector("#chatAsrButton");
+const chatRealtimeButton = document.querySelector("#chatRealtimeButton");
+const chatAsrReview = document.querySelector("#chatAsrReview");
+const chatAsrRejectButton = document.querySelector("#chatAsrRejectButton");
+const chatAsrAcceptButton = document.querySelector("#chatAsrAcceptButton");
 const navToggle = document.querySelector("#navToggle");
 const urlInput = document.querySelector("#urlInput");
 const urlAnalyzeButton = document.querySelector("#urlAnalyzeButton");
@@ -80,7 +86,22 @@ const settingsCache = {
   currentRole: "analysis",
   analysis: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
   chat: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
-  image: { endpoint: "", model: "", apiKey: "", temperature: 0.7 }
+  image: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
+  asr: { endpoint: "", model: "", apiKey: "", temperature: 0 },
+  realtime: { endpoint: "", model: "", apiKey: "", temperature: 0.7 }
+};
+
+const voiceState = {
+  asrSessionId: 0,
+  asrRecorder: null,
+  asrStream: null,
+  asrBaseText: "",
+  asrTranscript: "",
+  asrBusy: false,
+  realtimeSessionId: 0,
+  realtimeRecorder: null,
+  realtimeStream: null,
+  realtimeBusy: false
 };
 
 let currentSessionId = null;
@@ -108,6 +129,8 @@ const i18n = {
     "settings.analysis": "分析",
     "settings.chat": "对话",
     "settings.image": "成图",
+    "settings.asr": "语音输入",
+    "settings.realtime": "实时语音",
     "settings.endpoint": "API Endpoint",
     "settings.model": "Model",
     "settings.apiKey": "API Key",
@@ -136,6 +159,18 @@ const i18n = {
     "chat.selectCardFirst": "请先双击选中一张卡片",
     "chat.send": "发送",
     "chat.generate": "生成",
+    "voice.asr": "语音转文字",
+    "voice.asrListening": "正在听写...",
+    "voice.asrTranscribing": "正在转写...",
+    "voice.asrAccept": "保留转写",
+    "voice.asrReject": "删除转写",
+    "voice.realtime": "实时语音控制",
+    "voice.realtimeStop": "结束实时语音控制",
+    "voice.realtimeListening": "实时语音控制中...",
+    "voice.unsupported": "当前浏览器不支持录音。",
+    "voice.permissionDenied": "无法访问麦克风，请检查浏览器权限。",
+    "voice.asrNotConfigured": "ASR API 未配置。",
+    "voice.realtimeNotConfigured": "实时语音 API 未配置。",
     "chat.emptyPrompt": "请输入方向描述",
     "chat.attach": "上传图片或文本文件",
     "chat.generatedCannotGenerate": "生成图节点无法继续生成方向",
@@ -226,6 +261,8 @@ const i18n = {
     "settings.analysis": "Analysis",
     "settings.chat": "Chat",
     "settings.image": "Image",
+    "settings.asr": "Voice Input",
+    "settings.realtime": "Realtime Voice",
     "settings.endpoint": "API Endpoint",
     "settings.model": "Model",
     "settings.apiKey": "API Key",
@@ -254,6 +291,18 @@ const i18n = {
     "chat.selectCardFirst": "Please double-click a card to select it first",
     "chat.send": "Send",
     "chat.generate": "Generate",
+    "voice.asr": "Speech to text",
+    "voice.asrListening": "Listening...",
+    "voice.asrTranscribing": "Transcribing...",
+    "voice.asrAccept": "Keep transcript",
+    "voice.asrReject": "Delete transcript",
+    "voice.realtime": "Realtime voice control",
+    "voice.realtimeStop": "Stop realtime voice control",
+    "voice.realtimeListening": "Realtime voice control active...",
+    "voice.unsupported": "This browser does not support recording.",
+    "voice.permissionDenied": "Could not access the microphone. Check browser permissions.",
+    "voice.asrNotConfigured": "ASR API is not configured.",
+    "voice.realtimeNotConfigured": "Realtime voice API is not configured.",
     "chat.emptyPrompt": "Please enter a direction description",
     "chat.attach": "Upload image or text file",
     "chat.generatedCannotGenerate": "Generated image nodes cannot spawn new directions",
@@ -431,6 +480,27 @@ function renderAllText() {
   if (chatGenerate) chatGenerate.textContent = t("chat.generate");
   const chatAttach = document.querySelector("#chatAttachButton");
   if (chatAttach) chatAttach.title = t("chat.attach");
+  const asrBtn = document.querySelector("#chatAsrButton");
+  if (asrBtn) {
+    asrBtn.title = t("voice.asr");
+    asrBtn.setAttribute("aria-label", t("voice.asr"));
+  }
+  const realtimeBtn = document.querySelector("#chatRealtimeButton");
+  if (realtimeBtn) {
+    const active = Boolean(voiceState.realtimeRecorder);
+    realtimeBtn.title = active ? t("voice.realtimeStop") : t("voice.realtime");
+    realtimeBtn.setAttribute("aria-label", active ? t("voice.realtimeStop") : t("voice.realtime"));
+  }
+  const asrRejectBtn = document.querySelector("#chatAsrRejectButton");
+  if (asrRejectBtn) {
+    asrRejectBtn.title = t("voice.asrReject");
+    asrRejectBtn.setAttribute("aria-label", t("voice.asrReject"));
+  }
+  const asrAcceptBtn = document.querySelector("#chatAsrAcceptButton");
+  if (asrAcceptBtn) {
+    asrAcceptBtn.title = t("voice.asrAccept");
+    asrAcceptBtn.setAttribute("aria-label", t("voice.asrAccept"));
+  }
 
   const settingsPanelTitle = document.querySelector(".settings-panel-header span");
   if (settingsPanelTitle) settingsPanelTitle.textContent = t("settings.title");
@@ -440,6 +510,8 @@ function renderAllText() {
     if (role === "analysis") tab.textContent = t("settings.analysis");
     if (role === "chat") tab.textContent = t("settings.chat");
     if (role === "image") tab.textContent = t("settings.image");
+    if (role === "asr") tab.textContent = t("settings.asr");
+    if (role === "realtime") tab.textContent = t("settings.realtime");
   });
   const settingsLabels = document.querySelectorAll(".settings-form label span");
   if (settingsLabels[0]) settingsLabels[0].textContent = t("settings.endpoint");
@@ -617,6 +689,10 @@ function wireControls() {
   document.querySelector("#arrangeButton")?.addEventListener("click", arrangeCanvasLayout);
 
   document.querySelector("#chatAttachButton")?.addEventListener("click", handleAttachClick);
+  chatAsrButton?.addEventListener("click", toggleAsrDictation);
+  chatAsrRejectButton?.addEventListener("click", rejectAsrTranscript);
+  chatAsrAcceptButton?.addEventListener("click", acceptAsrTranscript);
+  chatRealtimeButton?.addEventListener("click", toggleRealtimeVoice);
   document.querySelector("#chatGenerateButton")?.addEventListener("click", (event) => {
     event.preventDefault();
     generateDirectionFromDialog();
@@ -968,7 +1044,7 @@ async function saveTheme(theme) {
 async function loadSettings() {
   try {
     const data = await getJson("/api/settings");
-    for (const role of ["analysis", "chat", "image"]) {
+    for (const role of ["analysis", "chat", "image", "asr", "realtime"]) {
       if (data[role]) {
         settingsCache[role] = {
           endpoint: data[role].endpoint || "",
@@ -1296,7 +1372,7 @@ async function handleChatSubmit(event) {
   chatInput.value = "";
   appendChatMessage("user", message);
   setStatus(t("status.busy"), "busy");
-  chatSendButton.disabled = true;
+  if (chatSendButton) chatSendButton.disabled = true;
 
   try {
     const sourceImageDataUrl = await getSourceImageDataUrl();
@@ -1330,7 +1406,7 @@ async function handleChatSubmit(event) {
     appendChatMessage("assistant", error.message || "对话请求失败。");
     setStatus(t("status.error"), "error");
   } finally {
-    chatSendButton.disabled = false;
+    if (chatSendButton) chatSendButton.disabled = false;
     chatInput.focus();
   }
 }
@@ -1380,6 +1456,332 @@ function generateDirectionFromDialog() {
 
   // Save session
   autoSave();
+}
+
+async function toggleAsrDictation() {
+  if (voiceState.asrRecorder) {
+    stopAsrRecorder();
+    return;
+  }
+  await startAsrDictation();
+}
+
+async function startAsrDictation() {
+  if (!canRecordAudio()) return;
+
+  const sessionId = voiceState.asrSessionId + 1;
+  voiceState.asrSessionId = sessionId;
+  voiceState.asrBaseText = chatInput?.value || "";
+  voiceState.asrTranscript = "";
+  voiceState.asrBusy = false;
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+    const mimeType = pickAudioMimeType();
+    const options = mimeType ? { mimeType } : undefined;
+    const recorder = new MediaRecorder(stream, options);
+
+    voiceState.asrStream = stream;
+    voiceState.asrRecorder = recorder;
+    setAsrReviewMode(true);
+    chatInput?.classList.add("has-asr-draft");
+    chatAsrButton?.classList.add("is-recording");
+    setStatus(t("voice.asrListening"), "busy");
+
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data?.size) {
+        transcribeAsrChunk(event.data, sessionId);
+      }
+    });
+    recorder.addEventListener("stop", () => {
+      stopMediaStream(voiceState.asrStream);
+      voiceState.asrStream = null;
+      voiceState.asrRecorder = null;
+      chatAsrButton?.classList.remove("is-recording");
+    });
+    recorder.start(1800);
+  } catch (error) {
+    cleanupAsrDraft({ restore: true });
+    setStatus(t("voice.permissionDenied"), "error");
+    showToast(error?.message || t("voice.permissionDenied"));
+  }
+}
+
+async function transcribeAsrChunk(blob, sessionId) {
+  if (voiceState.asrBusy || sessionId !== voiceState.asrSessionId) return;
+  voiceState.asrBusy = true;
+  setStatus(t("voice.asrTranscribing"), "busy");
+
+  try {
+    const audioDataUrl = await blobToDataUrl(blob);
+    const data = await postJson("/api/asr", {
+      audioDataUrl,
+      mimeType: blob.type || "audio/webm",
+      language: currentLang
+    });
+    if (sessionId !== voiceState.asrSessionId) return;
+    if (data.provider === "demo" && !data.text) {
+      showToast(t("voice.asrNotConfigured"));
+      stopAsrRecorder();
+      cleanupAsrDraft({ restore: true });
+      return;
+    }
+    const text = String(data.text || "").trim();
+    if (text) {
+      voiceState.asrTranscript = [voiceState.asrTranscript, text].filter(Boolean).join(" ");
+      const pieces = [voiceState.asrBaseText, voiceState.asrTranscript].filter((part) => part && part.trim());
+      chatInput.value = pieces.join(voiceState.asrBaseText.trim() ? " " : "");
+    }
+    setStatus(t("voice.asrListening"), "busy");
+  } catch (error) {
+    setStatus(error?.message || t("status.error"), "error");
+  } finally {
+    voiceState.asrBusy = false;
+  }
+}
+
+function acceptAsrTranscript() {
+  stopAsrRecorder();
+  cleanupAsrDraft({ restore: false });
+  chatInput?.focus();
+  autoSave();
+}
+
+function rejectAsrTranscript() {
+  stopAsrRecorder();
+  cleanupAsrDraft({ restore: true });
+  chatInput?.focus();
+}
+
+function stopAsrRecorder() {
+  if (voiceState.asrRecorder && voiceState.asrRecorder.state !== "inactive") {
+    voiceState.asrRecorder.stop();
+  } else {
+    stopMediaStream(voiceState.asrStream);
+    voiceState.asrStream = null;
+    voiceState.asrRecorder = null;
+  }
+}
+
+function cleanupAsrDraft({ restore }) {
+  voiceState.asrSessionId += 1;
+  if (restore && chatInput) {
+    chatInput.value = voiceState.asrBaseText;
+  }
+  voiceState.asrBaseText = "";
+  voiceState.asrTranscript = "";
+  voiceState.asrBusy = false;
+  chatInput?.classList.remove("has-asr-draft");
+  chatAsrButton?.classList.remove("is-recording");
+  setAsrReviewMode(false);
+  setStatus(t("status.ready"), "ready");
+}
+
+function setAsrReviewMode(active) {
+  chatVoiceActions?.classList.toggle("hidden", active);
+  chatAsrReview?.classList.toggle("hidden", !active);
+}
+
+async function toggleRealtimeVoice() {
+  if (voiceState.realtimeRecorder) {
+    stopRealtimeVoice();
+    return;
+  }
+  await startRealtimeVoice();
+}
+
+async function startRealtimeVoice() {
+  if (!canRecordAudio()) return;
+
+  const sessionId = voiceState.realtimeSessionId + 1;
+  voiceState.realtimeSessionId = sessionId;
+  voiceState.realtimeBusy = false;
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+    });
+    const mimeType = pickAudioMimeType();
+    const options = mimeType ? { mimeType } : undefined;
+    const recorder = new MediaRecorder(stream, options);
+
+    voiceState.realtimeStream = stream;
+    voiceState.realtimeRecorder = recorder;
+    chatRealtimeButton?.classList.add("is-listening");
+    renderAllText();
+    setStatus(t("voice.realtimeListening"), "busy");
+
+    recorder.addEventListener("dataavailable", (event) => {
+      if (event.data?.size) {
+        handleRealtimeVoiceChunk(event.data, sessionId);
+      }
+    });
+    recorder.addEventListener("stop", () => {
+      stopMediaStream(voiceState.realtimeStream);
+      voiceState.realtimeStream = null;
+      voiceState.realtimeRecorder = null;
+      voiceState.realtimeBusy = false;
+      chatRealtimeButton?.classList.remove("is-listening");
+      renderAllText();
+      setStatus(t("status.ready"), "ready");
+    });
+    recorder.start(3200);
+  } catch (error) {
+    stopRealtimeVoice();
+    setStatus(t("voice.permissionDenied"), "error");
+    showToast(error?.message || t("voice.permissionDenied"));
+  }
+}
+
+function stopRealtimeVoice() {
+  voiceState.realtimeSessionId += 1;
+  if (voiceState.realtimeRecorder && voiceState.realtimeRecorder.state !== "inactive") {
+    voiceState.realtimeRecorder.stop();
+  } else {
+    stopMediaStream(voiceState.realtimeStream);
+    voiceState.realtimeStream = null;
+    voiceState.realtimeRecorder = null;
+    voiceState.realtimeBusy = false;
+    chatRealtimeButton?.classList.remove("is-listening");
+    renderAllText();
+    setStatus(t("status.ready"), "ready");
+  }
+}
+
+async function handleRealtimeVoiceChunk(blob, sessionId) {
+  if (voiceState.realtimeBusy || sessionId !== voiceState.realtimeSessionId) return;
+  voiceState.realtimeBusy = true;
+
+  try {
+    const audioDataUrl = await blobToDataUrl(blob);
+    const data = await postJson("/api/realtime-voice", {
+      audioDataUrl,
+      mimeType: blob.type || "audio/webm",
+      language: currentLang,
+      selectedContext: buildSelectedNodeContext(),
+      analysis: state.latestAnalysis,
+      messages: state.chatMessages.slice(-8),
+      canvas: buildVoiceCanvasContext()
+    });
+    if (sessionId !== voiceState.realtimeSessionId) return;
+    if (data.provider === "demo") {
+      showToast(t("voice.realtimeNotConfigured"));
+      stopRealtimeVoice();
+      return;
+    }
+    if (data.transcript) appendChatMessage("user", data.transcript);
+    if (data.reply) {
+      appendChatMessage("assistant", data.reply);
+      playVoiceReply(data);
+    }
+    applyVoiceActions(data.actions || data.action);
+    autoSave();
+  } catch (error) {
+    setStatus(error?.message || t("status.error"), "error");
+  } finally {
+    voiceState.realtimeBusy = false;
+  }
+}
+
+function buildVoiceCanvasContext() {
+  const visibleNodes = Array.from(state.nodes.values()).filter(isNodeVisible).map((node) => ({
+    id: node.id,
+    title: node.option?.title || node.id,
+    type: node.generated ? "generated" : (node.option ? "option" : node.id)
+  })).slice(0, 30);
+  return {
+    selectedNodeId: state.selectedNodeId,
+    generatedCount: state.generatedCount,
+    visibleNodes
+  };
+}
+
+function applyVoiceActions(value) {
+  const actions = Array.isArray(value) ? value : (value ? [value] : []);
+  for (const action of actions) {
+    const type = typeof action === "string" ? action : action?.type || action?.name;
+    if (!type) continue;
+    if (type === "zoom_in") zoomBy(0.08);
+    if (type === "zoom_out") zoomBy(-0.08);
+    if (type === "reset_view") resetView();
+    if (type === "arrange_canvas") arrangeCanvasLayout();
+    if (type === "deselect") deselectNode();
+    if (type === "select_source") selectNode("source");
+    if (type === "select_analysis" && state.nodes.has("analysis")) selectNode("analysis");
+    if (type === "select_node" && action?.nodeId && state.nodes.has(action.nodeId)) selectNode(action.nodeId);
+    if (type === "create_direction") {
+      const parentId = action?.parentNodeId && state.nodes.has(action.parentNodeId) ? action.parentNodeId : state.selectedNodeId;
+      const parent = parentId ? state.nodes.get(parentId) : null;
+      if (parent && !parent.generated) {
+        const text = String(action.prompt || action.title || "").trim();
+        if (text) {
+          const nodeId = createOptionNode({
+            id: `voice-${Date.now()}`,
+            title: String(action.title || text).slice(0, 20),
+            description: String(action.description || text),
+            prompt: text,
+            tone: "custom",
+            layoutHint: "square"
+          }, parentId);
+          if (nodeId) selectNode(nodeId);
+        }
+      }
+    }
+  }
+}
+
+function playVoiceReply(data) {
+  const audioDataUrl = typeof data?.audioDataUrl === "string" ? data.audioDataUrl : "";
+  if (audioDataUrl.startsWith("data:audio/")) {
+    const audio = new Audio(audioDataUrl);
+    audio.play().catch(() => speakText(data.reply));
+    return;
+  }
+  speakText(data?.reply);
+}
+
+function speakText(text) {
+  const reply = String(text || "").trim();
+  if (!reply || !("speechSynthesis" in window)) return;
+  const utterance = new SpeechSynthesisUtterance(reply);
+  utterance.lang = currentLang === "en" ? "en-US" : "zh-CN";
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
+}
+
+function canRecordAudio() {
+  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+    showToast(t("voice.unsupported"));
+    setStatus(t("voice.unsupported"), "error");
+    return false;
+  }
+  return true;
+}
+
+function pickAudioMimeType() {
+  const candidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus"
+  ];
+  return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+}
+
+function stopMediaStream(stream) {
+  if (!stream) return;
+  stream.getTracks().forEach((track) => track.stop());
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Failed to read audio."));
+    reader.readAsDataURL(blob);
+  });
 }
 
 function createOptionNode(option, parentNodeId) {
@@ -1446,7 +1848,7 @@ function appendChatMessage(role, content) {
 
 function getBranchMessages() {
   const selectedId = state.selectedNodeId;
-  if (!selectedId) return [];
+  if (!selectedId) return state.chatMessages.filter(m => !m.branchNodeId);
   // Show messages that were sent while this node (or any ancestor) was selected
   // For now, filter by exact selectedNodeId match for clear scoping
   return state.chatMessages.filter(m => m.branchNodeId === selectedId);

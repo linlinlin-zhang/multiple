@@ -17,7 +17,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="/styles.css?v=12" />
+    <link rel="stylesheet" href="/styles.css?v=13" />
   </head>
   <body>
     <div class="app-shell">
@@ -153,8 +153,38 @@
                 <button class="thinking-option" data-mode="no-thinking">快速</button>
               </div>
             </div>
-            <button id="chatGenerateButton" class="chat-generate-button" type="button" title="生成方向">生成</button>
-            <button id="chatSendButton" class="chat-send-button" type="submit">发送</button>
+            <div class="chat-voice-actions" aria-label="Voice controls">
+              <button id="chatAsrButton" class="chat-asr-button" type="button" title="语音转文字" aria-label="语音转文字">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/>
+                  <path d="M5 11a7 7 0 0 0 14 0"/>
+                  <path d="M12 18v3"/>
+                  <path d="M8 21h8"/>
+                </svg>
+              </button>
+              <button id="chatRealtimeButton" class="chat-realtime-button" type="button" title="实时语音控制" aria-label="实时语音控制">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 10v4"/>
+                  <path d="M9 7v10"/>
+                  <path d="M13 5v14"/>
+                  <path d="M17 8v8"/>
+                  <path d="M21 11v2"/>
+                </svg>
+              </button>
+            </div>
+            <div id="chatAsrReview" class="chat-asr-review hidden" aria-label="确认转写">
+              <button id="chatAsrRejectButton" class="chat-review-button" type="button" title="删除转写" aria-label="删除转写">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M18 6 6 18"/>
+                  <path d="m6 6 12 12"/>
+                </svg>
+              </button>
+              <button id="chatAsrAcceptButton" class="chat-review-button" type="button" title="保留转写" aria-label="保留转写">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m20 6-11 11-5-5"/>
+                </svg>
+              </button>
+            </div>
           </div>
           <div class="status-cluster">
             <div class="status-readout"><span class="status-dot"></span><span id="statusText">Ready</span></div>
@@ -182,6 +212,8 @@
         <button type="button" class="settings-tab active" data-role="analysis">分析</button>
         <button type="button" class="settings-tab" data-role="chat">对话</button>
         <button type="button" class="settings-tab" data-role="image">成图</button>
+        <button type="button" class="settings-tab" data-role="asr">ASR</button>
+        <button type="button" class="settings-tab" data-role="realtime">实时语音</button>
       </div>
       <form id="settingsForm" class="settings-form" autocomplete="off">
         <label>
@@ -251,6 +283,6 @@
 
     <div id="selectionToast" class="selection-toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="/app.js?v=6"></script>
+    <script type="module" src="/app.js?v=7"></script>
   </body>
 </html>
