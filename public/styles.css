@@ -394,25 +394,32 @@ body.nav-collapsed .nav-settings {
 .link {
   fill: none;
   stroke: var(--line);
-  stroke-width: 3;
+  stroke-width: 2.6;
   stroke-linecap: round;
-  opacity: 0.84;
-  filter: drop-shadow(0 2px 2px rgba(0, 112, 204, 0.14));
+  stroke-linejoin: round;
+  opacity: 0.86;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 1px 1px rgba(0, 112, 204, 0.1));
 }
 
 .link-shadow {
   fill: none;
   stroke: var(--line-shadow);
-  stroke-width: 6;
+  stroke-width: 7;
   stroke-linecap: round;
-  transform: translate(2px, 4px);
+  stroke-linejoin: round;
+  opacity: 0.56;
+  vector-effect: non-scaling-stroke;
+  transform: translate(1px, 3px);
 }
 
 .link-pin {
   fill: var(--paper);
   stroke: var(--ps-blue);
   stroke-width: 2;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.16));
+  opacity: 0.94;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.14));
 }
 
 .node {
@@ -599,7 +606,8 @@ body.nav-collapsed .nav-settings {
 
 .option-title:hover,
 .generated-node h3:hover,
-.analysis-node h2:hover {
+.analysis-node h2:hover,
+#sourceName:hover {
   background: rgba(0, 112, 204, 0.06);
   border-radius: 6px;
   cursor: text;
@@ -856,6 +864,12 @@ body.nav-collapsed .nav-settings {
   color: var(--body);
   font-size: 12px;
   z-index: 2;
+}
+
+#sourceName {
+  min-width: 0;
+  padding: 2px 4px;
+  margin: -2px -4px;
 }
 
 .primary-button,
@@ -3218,6 +3232,205 @@ html[data-theme="dark"] .ref-type-badge {
   }
   .reference-list {
     padding: 10px 18px 18px;
+  }
+}
+
+/* Blueprint modal — follows .reference-modal pattern */
+.blueprint-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.blueprint-modal .modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(4px);
+}
+
+.blueprint-modal .modal-content {
+  position: relative;
+  width: 90vw;
+  height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  border-radius: 24px;
+  box-shadow: var(--shadow-16);
+  overflow: hidden;
+  z-index: 1;
+}
+
+.blueprint-modal .modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--charcoal);
+  background: var(--paper);
+  border: 1px solid var(--divider);
+  font-size: 22px;
+  line-height: 1;
+  z-index: 10;
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.blueprint-modal .modal-close:hover {
+  background: var(--ice);
+  transform: scale(1.08);
+}
+
+.blueprint-modal-title {
+  margin: 0;
+  padding: 16px 24px 8px;
+  font-size: 18px;
+  font-weight: 300;
+  color: var(--ink);
+  border-bottom: 1px solid var(--divider);
+  flex-shrink: 0;
+}
+
+.blueprint-canvas {
+  flex: 1;
+  position: relative;
+  overflow: auto;
+  background: var(--ice);
+  padding: 24px;
+}
+
+.blueprint-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.blueprint-card {
+  position: absolute;
+  width: 200px;
+  background: var(--paper);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  z-index: 1;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.blueprint-card.dragging {
+  cursor: grabbing;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  z-index: 10;
+}
+
+.blueprint-card .edge-handle {
+  opacity: 0.5;
+}
+
+.blueprint-card:hover .edge-handle {
+  opacity: 1;
+}
+
+.blueprint-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.blueprint-card-thumb {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--ice);
+}
+
+.blueprint-link {
+  fill: none;
+  stroke: var(--ps-blue);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.blueprint-link.downstream {
+  stroke: var(--ps-cyan);
+}
+
+.blueprint-link.parallel {
+  stroke: var(--muted);
+  stroke-dasharray: 6 4;
+}
+
+.blueprint-drag-line {
+  fill: none;
+  stroke: var(--ps-blue);
+  stroke-width: 2;
+  stroke-dasharray: 8 4;
+  pointer-events: none;
+}
+
+.blueprint-relationship-picker {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  background: var(--paper);
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  z-index: 20;
+}
+
+.blueprint-relationship-picker button {
+  padding: 4px 10px;
+  border: 1px solid var(--divider);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--ink);
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.blueprint-relationship-picker button:hover {
+  background: var(--ice);
+}
+
+html[data-theme="dark"] .blueprint-card {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+html[data-theme="dark"] .blueprint-card.dragging {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+@media (max-width: 600px) {
+  .blueprint-modal .modal-content {
+    width: 98vw;
+    height: 95vh;
+    border-radius: 12px;
   }
 }
 
