@@ -55,6 +55,12 @@ let runtimeConfigs = {
     model: "qwen3.5-omni-plus-realtime",
     baseUrl: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
     apiKeyEnv: ["DASHSCOPE_API_KEY", "REALTIME_API_KEY"]
+  }),
+  deepthink: buildModelConfig("DEEPTHINK", {
+    provider: "dashscope-qwen",
+    model: "qwen3.6-max-preview",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    apiKeyEnv: ["DASHSCOPE_API_KEY", "DEEPTHINK_API_KEY"]
   })
 };
 
@@ -75,7 +81,8 @@ const server = http.createServer(async (req, res) => {
         analysis: roleHealth(runtimeConfigs.analysis),
         image: roleHealth(runtimeConfigs.image),
         asr: roleHealth(runtimeConfigs.asr),
-        realtime: roleHealth(runtimeConfigs.realtime)
+        realtime: roleHealth(runtimeConfigs.realtime),
+        deepthink: roleHealth(runtimeConfigs.deepthink)
       });
     }
 
@@ -103,6 +110,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/realtime-voice") {
       const body = await readJson(req);
       return await handleRealtimeVoice(body, res);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/deep-think") {
+      const body = await readJson(req);
+      return await handleDeepThink(body, res);
     }
 
     if (req.method === "POST" && url.pathname === "/api/analyze") {
@@ -283,6 +295,13 @@ async function refreshConfigs() {
       baseUrl: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
       apiKeyEnv: ["DASHSCOPE_API_KEY", "REALTIME_API_KEY"]
     }, dbMap.realtime);
+
+    runtimeConfigs.deepthink = buildModelConfig("DEEPTHINK", {
+      provider: "dashscope-qwen",
+      model: "qwen3.6-max-preview",
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      apiKeyEnv: ["DASHSCOPE_API_KEY", "DEEPTHINK_API_KEY"]
+    }, dbMap.deepthink);
   } catch (err) {
     console.warn("[refreshConfigs] Database unavailable, using env defaults:", err.message);
   }
@@ -349,7 +368,7 @@ function isDemoRole(config) {
 }
 
 function appMode() {
-  const modes = [runtimeConfigs.chat, runtimeConfigs.analysis, runtimeConfigs.image, runtimeConfigs.asr, runtimeConfigs.realtime].map((config) => roleHealth(config).mode);
+  const modes = [runtimeConfigs.chat, runtimeConfigs.analysis, runtimeConfigs.image, runtimeConfigs.asr, runtimeConfigs.realtime, runtimeConfigs.deepthink].map((config) => roleHealth(config).mode);
   if (modes.every((mode) => mode === "demo")) return "demo";
   if (modes.some((mode) => mode === "demo")) return "mixed";
   return "api";
@@ -410,6 +429,65 @@ async function handleRealtimeVoice(body, res) {
     provider: "api",
     model: runtimeConfigs.realtime.model,
     ...result
+  });
+}
+
+async function handleDeepThink(body, res) {
+  const message = typeof body?.message === "string" ? body.message.trim().slice(0, 2400) : "";
+  const analysis = normalizeChatAnalysis(body?.analysis);
+  const messages = normalizeChatMessages(body?.messages);
+  const lang = body?.language === "en" ? "en" : "zh";
+  const selectedContext = body?.selectedContext && typeof body.selectedContext === "object" ? body.selectedContext : null;
+  const canvas = body?.canvas && typeof body.canvas === "object" ? body.canvas : {};
+  const prompt = message || analysis.summary || analysis.title || (lang === "en" ? "Expand this canvas." : "扩展当前画布。");
+
+  if (isDemoRole(runtimeConfigs.deepthink)) {
+    return sendJson(res, 200, buildDemoDeepThinkPlan(prompt, lang, runtimeConfigs.deepthink.model));
+  }
+
+  const payload = {
+    temperature: typeof runtimeConfigs.deepthink.temperature === "number" ? runtimeConfigs.deepthink.temperature : 0.7,
+    response_format: { type: "json_object" },
+    enable_thinking: true,
+    messages: [
+      {
+        role: "system",
+        content: buildDeepThinkSystemPrompt(lang)
+      },
+      {
+        role: "user",
+        content: buildDeepThinkUserPrompt({
+          prompt,
+          analysis,
+          selectedContext,
+          canvas,
+          messages: messages.slice(-8),
+          lang
+        })
+      }
+    ]
+  };
+
+  let response;
+  try {
+    response = await chatCompletions(runtimeConfigs.deepthink, payload);
+  } catch (error) {
+    if (!/response_format|enable_thinking|unsupported|invalid/i.test(String(error?.message || ""))) {
+      throw error;
+    }
+    const fallbackPayload = { ...payload };
+    delete fallbackPayload.response_format;
+    delete fallbackPayload.enable_thinking;
+    response = await chatCompletions(runtimeConfigs.deepthink, fallbackPayload);
+  }
+
+  const text = collectChatContent(response).trim();
+  const parsed = parseJsonFromText(text);
+  const plan = normalizeDeepThinkPlan(parsed, prompt, lang);
+  return sendJson(res, 200, {
+    provider: "api",
+    model: response?.model || runtimeConfigs.deepthink.model,
+    ...plan
   });
 }
 
@@ -1138,7 +1216,7 @@ function isDashScopeLiveTranslateConfig(config) {
 }
 
 async function dashScopeLiveTranslateTranscription(config, audioDataUrl, language) {
-  const audio = audioInputFromDataUrl(audioDataUrl);
+  const audio = dashScopeInputAudioFromDataUrl(audioDataUrl);
   const targetLang = language === "en" ? "en" : "zh";
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
@@ -1420,6 +1498,17 @@ function audioInputFromDataUrl(audioDataUrl) {
   }
   return {
     data: match[2],
+    format: audioFormatFromMimeType(match[1])
+  };
+}
+
+function dashScopeInputAudioFromDataUrl(audioDataUrl) {
+  const match = /^data:([^;,]+)(?:;[^,]*)?;base64,[a-zA-Z0-9+/=]+$/i.exec(audioDataUrl);
+  if (!match) {
+    throw new Error("Invalid audio data URL.");
+  }
+  return {
+    data: audioDataUrl,
     format: audioFormatFromMimeType(match[1])
   };
 }
@@ -1752,6 +1841,167 @@ function normalizeExplore(value, fileName = "source image") {
       description: stringOr(ref?.description, fallback.references[index % fallback.references.length].description).slice(0, 200),
       type: ["web", "doc", "image"].includes(ref?.type) ? ref.type : "web"
     }))
+  };
+}
+
+function buildDeepThinkSystemPrompt(lang) {
+  const schema = [
+    "{",
+    '  "reply": "short user-facing summary",',
+    '  "cards": [',
+    "    {",
+    '      "type": "direction|web|image|file|api|note",',
+    '      "title": "short card title",',
+    '      "summary": "what this card contributes to the canvas",',
+    '      "prompt": "generation-ready visual prompt or research instruction",',
+    '      "query": "optional search query or API action name",',
+    '      "url": "optional external URL when already known"',
+    "    }",
+    "  ],",
+    '  "links": [{"from": 0, "to": 1, "label": "optional relationship"}]',
+    "}"
+  ].join("\n");
+
+  if (lang === "en") {
+    return [
+      "You are ORYZAE's deep-thinking canvas planner.",
+      "Return strict JSON only, with no Markdown.",
+      "Do not expose private chain-of-thought. Instead, create visible workspace traces: web cards, image-reference cards, file cards, API/action cards, notes, and generation directions.",
+      "If you have not actually browsed or called a tool, describe the card as a search/action plan using query and prompt fields rather than claiming it is already collected.",
+      "The frontend will turn every card into a canvas node. Make cards concrete, divergent, and useful for image exploration.",
+      "Provide 4-8 cards and 2-6 links.",
+      "Schema:",
+      schema
+    ].join("\n");
+  }
+
+  return [
+    "你是 ORYZAE 的深度思考画布规划器。",
+    "只返回严格 JSON，不要 Markdown。",
+    "不要暴露私有思维链。你需要把思考外化为可见的工作区痕迹：网页卡片、图片参考卡片、文件卡片、API/动作卡片、笔记卡片、成图方向卡片。",
+    "如果你并没有真实浏览网页或调用工具，不要声称已经搜集完成；请把卡片写成可执行的搜索/动作计划，并使用 query 和 prompt 字段。",
+    "前端会把每张卡变成画布节点。卡片要具体、发散，并且能服务于图片探索。",
+    "输出 4-8 张卡片和 2-6 条关系。",
+    "Schema:",
+    schema
+  ].join("\n");
+}
+
+function buildDeepThinkUserPrompt({ prompt, analysis, selectedContext, canvas, messages, lang }) {
+  const label = lang === "en"
+    ? {
+        goal: "User goal",
+        analysis: "Current image/file analysis",
+        selected: "Selected canvas card",
+        canvas: "Visible canvas state",
+        dialogue: "Recent dialogue"
+      }
+    : {
+        goal: "用户目标",
+        analysis: "当前图片/文件分析",
+        selected: "当前选中的画布卡片",
+        canvas: "当前可见画布状态",
+        dialogue: "最近对话"
+      };
+
+  return [
+    `${label.goal}: ${prompt}`,
+    "",
+    `${label.analysis}:`,
+    JSON.stringify(analysis, null, 2).slice(0, 2400),
+    "",
+    `${label.selected}:`,
+    selectedContext ? JSON.stringify(selectedContext, null, 2).slice(0, 1200) : "None",
+    "",
+    `${label.canvas}:`,
+    JSON.stringify(canvas || {}, null, 2).slice(0, 1800),
+    "",
+    `${label.dialogue}:`,
+    JSON.stringify(messages || [], null, 2).slice(0, 1600)
+  ].join("\n");
+}
+
+function normalizeDeepThinkPlan(value, prompt, lang) {
+  const fallback = buildDemoDeepThinkPlan(prompt, lang, runtimeConfigs.deepthink.model);
+  const cards = Array.isArray(value?.cards) ? value.cards : fallback.cards;
+  const links = Array.isArray(value?.links) ? value.links : fallback.links;
+  const allowedTypes = new Set(["direction", "web", "image", "file", "api", "note"]);
+
+  return {
+    reply: stringOr(value?.reply, fallback.reply),
+    cards: cards.slice(0, 8).map((card, index) => {
+      const type = allowedTypes.has(card?.type) ? card.type : "note";
+      const title = stringOr(card?.title, fallback.cards[index % fallback.cards.length].title).slice(0, 48);
+      const summary = stringOr(card?.summary || card?.description, fallback.cards[index % fallback.cards.length].summary).slice(0, 240);
+      return {
+        id: slug(card?.id || `${type}-${title}-${index + 1}`),
+        type,
+        title,
+        summary,
+        prompt: stringOr(card?.prompt, summary).slice(0, 1200),
+        query: stringOr(card?.query, "").slice(0, 240),
+        url: stringOr(card?.url, "").slice(0, 512)
+      };
+    }),
+    links: links.slice(0, 6).map((link) => ({
+      from: Number.isInteger(link?.from) ? link.from : 0,
+      to: Number.isInteger(link?.to) ? link.to : 0,
+      label: stringOr(link?.label, "").slice(0, 40)
+    })).filter((link) => link.from !== link.to)
+  };
+}
+
+function buildDemoDeepThinkPlan(prompt, lang = "zh", model = "demo") {
+  const zh = lang !== "en";
+  return {
+    provider: "demo",
+    model,
+    reply: zh
+      ? "我先把深度思考外化为几张可执行卡片：搜索线索、参考图片、材料拆解和成图方向。"
+      : "I mapped the deep-thinking pass into actionable cards: search leads, visual references, material breakdown, and generation directions.",
+    cards: [
+      {
+        id: "search-context",
+        type: "web",
+        title: zh ? "搜索语境线索" : "Search context",
+        summary: zh ? "围绕当前目标建立外部语境，找到可借鉴的视觉题材、场景和关键词。" : "Build external context around the current goal and identify useful visual themes, scenes, and keywords.",
+        prompt,
+        query: prompt
+      },
+      {
+        id: "reference-image-board",
+        type: "image",
+        title: zh ? "参考图卡片" : "Reference image board",
+        summary: zh ? "规划一组照片或视觉参考，用来校准光线、构图、材质和色彩。" : "Plan a set of visual references for lighting, composition, materials, and color.",
+        prompt: zh ? `为「${prompt}」搜集或生成参考图片，突出光线、构图和材质。` : `Collect or generate references for "${prompt}", emphasizing lighting, composition, and material.`
+      },
+      {
+        id: "material-breakdown",
+        type: "file",
+        title: zh ? "文件材料拆解" : "File material breakdown",
+        summary: zh ? "把当前画布和上传文件拆成可复用素材：主体、局部、色卡、叙事线索。" : "Break the current canvas and uploaded files into reusable subject, detail, palette, and narrative assets.",
+        prompt: zh ? "整理当前材料，提取主体、色彩、构图和叙事线索。" : "Extract subjects, color, composition, and narrative clues from the current materials."
+      },
+      {
+        id: "image-generation-call",
+        type: "api",
+        title: zh ? "成图 API 动作" : "Image API action",
+        summary: zh ? "准备调用成图接口前的提示词结构，并标记需要保留和需要发散的元素。" : "Prepare the image generation prompt structure and mark what to preserve versus diverge.",
+        prompt: zh ? `基于当前图和「${prompt}」生成一张完整图像，保留核心视觉记忆，加入新的叙事形状。` : `Generate a complete image from the current canvas and "${prompt}", preserving core visual memory while adding a new narrative shape.`
+      },
+      {
+        id: "final-direction",
+        type: "direction",
+        title: zh ? "综合发散方向" : "Synthesis direction",
+        summary: zh ? "把搜索、参考和材料拆解合成一个可直接点击生成的方向。" : "Synthesize search, references, and material breakdown into a generation-ready direction.",
+        prompt: zh ? `以「${prompt}」为核心，生成一张由多张卡片线索连接出的视觉探索图。` : `Create a visual exploration image centered on "${prompt}", shaped by linked clue cards.`
+      }
+    ],
+    links: [
+      { from: 0, to: 1, label: zh ? "启发" : "inspires" },
+      { from: 1, to: 3, label: zh ? "转成提示词" : "prompt" },
+      { from: 2, to: 4, label: zh ? "合成" : "synthesize" }
+    ]
   };
 }
 

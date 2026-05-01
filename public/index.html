@@ -143,7 +143,25 @@
               <div class="chat-input-row">
                 <textarea id="chatInput" class="chat-input" rows="3" autocomplete="off" placeholder="输入方向、约束，或 / 命令"></textarea>
                 <div class="chat-input-actions">
-                  <button id="chatAttachButton" class="chat-attach-button" type="button" title="上传图片或文本文件" aria-label="上传图片或文本文件">+</button>
+                  <div class="chat-action-wrapper">
+                    <button id="chatAttachButton" class="chat-attach-button" type="button" title="打开功能区" aria-label="打开功能区" aria-expanded="false">+</button>
+                    <div id="chatActionMenu" class="chat-action-menu hidden" role="menu" aria-label="功能区">
+                      <button id="chatUploadAction" class="chat-action-item" type="button" role="menuitem">
+                        <span class="chat-action-icon">+</span>
+                        <span class="chat-action-copy">
+                          <span class="chat-action-title">上传图片或文件</span>
+                          <span class="chat-action-desc">添加到当前画布或输入框</span>
+                        </span>
+                      </button>
+                      <button id="chatDeepThinkAction" class="chat-action-item" type="button" role="menuitem">
+                        <span class="chat-action-icon">D</span>
+                        <span class="chat-action-copy">
+                          <span class="chat-action-title">深度思考</span>
+                          <span class="chat-action-desc">把思考过程展开成画布卡片</span>
+                        </span>
+                      </button>
+                    </div>
+                  </div>
                   <div class="chat-input-spacer"></div>
                   <div class="thinking-toggle-wrapper">
                     <button id="thinkingToggle" class="thinking-toggle" type="button">
@@ -225,6 +243,7 @@
         <button type="button" class="settings-tab" data-role="image">成图</button>
         <button type="button" class="settings-tab" data-role="asr">ASR</button>
         <button type="button" class="settings-tab" data-role="realtime">实时语音</button>
+        <button type="button" class="settings-tab" data-role="deepthink">深度思考</button>
       </div>
       <form id="settingsForm" class="settings-form" autocomplete="off">
           <label>
@@ -294,6 +313,6 @@
 
     <div id="selectionToast" class="selection-toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="/app.js?v=7"></script>
+    <script type="module" src="/app.js?v=8"></script>
   </body>
 </html>

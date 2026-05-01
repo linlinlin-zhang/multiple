@@ -6,14 +6,15 @@ const DEFAULTS = {
   chat: { endpoint: "https://api.moonshot.cn/v1", model: "kimi-k2.6", apiKey: "", temperature: 0.7 },
   image: { endpoint: "https://tokenhub.tencentmaas.com/v1/api/image", model: "hy-image-v3.0", apiKey: "", temperature: 0.7 },
   asr: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3-livetranslate-flash-2025-12-01", apiKey: "", temperature: 0 },
-  realtime: { endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime", model: "qwen3.5-omni-plus-realtime", apiKey: "", temperature: 0.7 }
+  realtime: { endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime", model: "qwen3.5-omni-plus-realtime", apiKey: "", temperature: 0.7 },
+  deepthink: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-max-preview", apiKey: "", temperature: 0.7 }
 };
 
 export async function handleGetSettings(res) {
   const rows = await prisma.settings.findMany();
   const map = Object.fromEntries(rows.map(r => [r.role, { endpoint: r.endpoint, model: r.model, apiKey: r.apiKey, temperature: r.temperature }]));
   const result = {};
-  for (const role of ["analysis", "chat", "image", "asr", "realtime"]) {
+  for (const role of ["analysis", "chat", "image", "asr", "realtime", "deepthink"]) {
     result[role] = isLegacyVoiceDefault(role, map[role]) ? DEFAULTS[role] : (map[role] || DEFAULTS[role]);
   }
   const globalRow = rows.find(r => r.role === "global");
@@ -68,7 +69,7 @@ export async function handleUpdateSettings(body, res) {
     result.language = globalUpserted.language;
   }
 
-  const allowed = ["analysis", "chat", "image", "asr", "realtime"];
+  const allowed = ["analysis", "chat", "image", "asr", "realtime", "deepthink"];
   for (const role of allowed) {
     const cfg = body[role];
     if (!cfg || typeof cfg !== "object") continue;

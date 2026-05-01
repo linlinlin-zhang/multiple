@@ -19,6 +19,10 @@ const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
 const chatMessages = document.querySelector("#chatMessages");
 const commandMenu = document.querySelector("#commandMenu");
+const chatAttachButton = document.querySelector("#chatAttachButton");
+const chatActionMenu = document.querySelector("#chatActionMenu");
+const chatUploadAction = document.querySelector("#chatUploadAction");
+const chatDeepThinkAction = document.querySelector("#chatDeepThinkAction");
 const chatNewButton = document.querySelector("#chatNewButton");
 const chatHistoryButton = document.querySelector("#chatHistoryButton");
 const chatCloseButton = document.querySelector("#chatCloseButton");
@@ -96,7 +100,8 @@ const settingsCache = {
   chat: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
   image: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
   asr: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3-livetranslate-flash-2025-12-01", apiKey: "", temperature: 0 },
-  realtime: { endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime", model: "qwen3.5-omni-plus-realtime", apiKey: "", temperature: 0.7 }
+  realtime: { endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime", model: "qwen3.5-omni-plus-realtime", apiKey: "", temperature: 0.7 },
+  deepthink: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-max-preview", apiKey: "", temperature: 0.7 }
 };
 
 const voiceState = {
@@ -123,6 +128,7 @@ let lastSavedStateHash = "";
 let currentViewerNodeId = null;
 let activeCommandIndex = 0;
 let currentHealthMode = "checking";
+let deepThinkBusy = false;
 
 const optionPositions = [
   { x: 850, y: 112, tilt: -1.5 },
@@ -168,6 +174,7 @@ const i18n = {
     "settings.image": "成图",
     "settings.asr": "语音输入",
     "settings.realtime": "实时语音",
+    "settings.deepthink": "深度思考",
     "settings.endpoint": "API Endpoint",
     "settings.model": "Model",
     "settings.apiKey": "API Key",
@@ -221,6 +228,13 @@ const i18n = {
     "voice.realtimeNotConfigured": "实时语音 API 未配置。",
     "chat.emptyPrompt": "请输入方向描述",
     "chat.attach": "上传图片或文本文件",
+    "chat.actionMenu": "功能区",
+    "chat.upload": "上传图片或文件",
+    "chat.uploadDesc": "添加到当前画布或输入框",
+    "chat.deepThink": "深度思考",
+    "chat.deepThinkDesc": "把思考过程展开成画布卡片",
+    "deepthink.busy": "深度思考中...",
+    "deepthink.complete": "深度思考完成",
     "chat.generatedCannotGenerate": "生成图节点无法继续生成方向",
     "thinking.mode": "思考模式",
     "thinking.thinking": "思考",
@@ -333,6 +347,7 @@ const i18n = {
     "settings.image": "Image",
     "settings.asr": "Voice Input",
     "settings.realtime": "Realtime Voice",
+    "settings.deepthink": "Deep Think",
     "settings.endpoint": "API Endpoint",
     "settings.model": "Model",
     "settings.apiKey": "API Key",
@@ -386,6 +401,13 @@ const i18n = {
     "voice.realtimeNotConfigured": "Realtime voice API is not configured.",
     "chat.emptyPrompt": "Please enter a direction description",
     "chat.attach": "Upload image or text file",
+    "chat.actionMenu": "Action menu",
+    "chat.upload": "Upload image or file",
+    "chat.uploadDesc": "Add to the canvas or input",
+    "chat.deepThink": "Deep think",
+    "chat.deepThinkDesc": "Expand the thinking process into canvas cards",
+    "deepthink.busy": "Deep thinking...",
+    "deepthink.complete": "Deep thinking complete",
     "chat.generatedCannotGenerate": "Generated image nodes cannot spawn new directions",
     "thinking.mode": "Thinking Mode",
     "thinking.thinking": "Thinking",
@@ -572,10 +594,21 @@ function renderAllText() {
   }
   const chatGenerate = document.querySelector("#chatGenerateButton");
   if (chatGenerate) chatGenerate.textContent = t("chat.generate");
-  const chatAttach = document.querySelector("#chatAttachButton");
-  if (chatAttach) {
-    chatAttach.title = t("chat.attach");
-    chatAttach.setAttribute("aria-label", t("chat.attach"));
+  if (chatAttachButton) {
+    chatAttachButton.title = t("chat.actionMenu");
+    chatAttachButton.setAttribute("aria-label", t("chat.actionMenu"));
+  }
+  if (chatUploadAction) {
+    const title = chatUploadAction.querySelector(".chat-action-title");
+    const desc = chatUploadAction.querySelector(".chat-action-desc");
+    if (title) title.textContent = t("chat.upload");
+    if (desc) desc.textContent = t("chat.uploadDesc");
+  }
+  if (chatDeepThinkAction) {
+    const title = chatDeepThinkAction.querySelector(".chat-action-title");
+    const desc = chatDeepThinkAction.querySelector(".chat-action-desc");
+    if (title) title.textContent = t("chat.deepThink");
+    if (desc) desc.textContent = t("chat.deepThinkDesc");
   }
   const asrBtn = document.querySelector("#chatAsrButton");
   if (asrBtn) {
@@ -607,6 +640,7 @@ function renderAllText() {
     if (role === "image") tab.textContent = t("settings.image");
     if (role === "asr") tab.textContent = t("settings.asr");
     if (role === "realtime") tab.textContent = t("settings.realtime");
+    if (role === "deepthink") tab.textContent = t("settings.deepthink");
   });
   const settingsLabels = document.querySelectorAll(".settings-form label span");
   if (settingsLabels[0]) settingsLabels[0].textContent = t("settings.endpoint");
@@ -998,11 +1032,24 @@ function wireControls() {
   document.querySelector("#saveButton")?.addEventListener("click", () => saveSession());
   document.querySelector("#arrangeButton")?.addEventListener("click", arrangeCanvasLayout);
 
-  document.querySelector("#chatAttachButton")?.addEventListener("click", handleAttachClick);
+  chatAttachButton?.addEventListener("click", toggleChatActionMenu);
+  chatUploadAction?.addEventListener("click", () => {
+    closeChatActionMenu();
+    handleAttachClick();
+  });
+  chatDeepThinkAction?.addEventListener("click", () => {
+    closeChatActionMenu();
+    startDeepThink();
+  });
   chatAsrButton?.addEventListener("click", toggleAsrDictation);
   chatAsrRejectButton?.addEventListener("click", rejectAsrTranscript);
   chatAsrAcceptButton?.addEventListener("click", acceptAsrTranscript);
   chatRealtimeButton?.addEventListener("click", handleChatPrimaryAction);
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".chat-action-wrapper")) {
+      closeChatActionMenu();
+    }
+  });
   document.querySelector("#chatGenerateButton")?.addEventListener("click", (event) => {
     event.preventDefault();
     generateDirectionFromDialog();
@@ -1099,6 +1146,9 @@ function wireControls() {
     if (event.key === "Escape" && !imageViewerModal?.classList.contains("hidden")) {
       closeImageViewer();
     }
+    if (event.key === "Escape") {
+      closeChatActionMenu();
+    }
   });
 
   // Reference modal wiring
@@ -1172,6 +1222,9 @@ function wireControls() {
     }
     if (commandMenu && !commandMenu.contains(event.target) && !chatForm.contains(event.target)) {
       closeCommandMenu();
+    }
+    if (chatActionMenu && !chatActionMenu.contains(event.target) && !chatAttachButton?.contains(event.target)) {
+      closeChatActionMenu();
     }
   });
 
@@ -1517,7 +1570,7 @@ async function saveTheme(theme) {
 async function loadSettings() {
   try {
     const data = await getJson("/api/settings");
-    for (const role of ["analysis", "chat", "image", "asr", "realtime"]) {
+    for (const role of ["analysis", "chat", "image", "asr", "realtime", "deepthink"]) {
       if (data[role]) {
         settingsCache[role] = {
           endpoint: data[role].endpoint || "",
@@ -1941,6 +1994,154 @@ function generateDirectionFromDialog() {
   autoSave();
 }
 
+async function startDeepThink() {
+  if (deepThinkBusy) return;
+
+  const parentNodeId = state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
+  if (!state.nodes.has(parentNodeId)) {
+    showSelectionToast(t("chat.selectCardFirst"));
+    return;
+  }
+
+  const typedPrompt = chatInput?.value.trim() || "";
+  const selectedContext = buildSelectedNodeContext();
+  const prompt = typedPrompt || selectedContext?.summary || state.latestAnalysis?.summary || state.fileName || t("chat.deepThink");
+  deepThinkBusy = true;
+  if (chatDeepThinkAction) chatDeepThinkAction.disabled = true;
+  setStatus(t("deepthink.busy"), "busy");
+
+  if (typedPrompt) {
+    updateActiveChatThreadTitle(typedPrompt);
+    appendChatMessage("user", typedPrompt);
+    chatInput.value = "";
+    updateChatPrimaryButtonMode();
+  }
+
+  try {
+    const data = await postJson("/api/deep-think", {
+      message: prompt,
+      language: currentLang,
+      selectedContext,
+      selectedNodeId: parentNodeId,
+      analysis: state.latestAnalysis,
+      messages: state.chatMessages.slice(-8),
+      canvas: buildVoiceCanvasContext()
+    });
+    appendChatMessage("assistant", data.reply || t("deepthink.complete"));
+    const created = applyDeepThinkPlan(data, parentNodeId);
+    if (created[0]) selectNode(created[0]);
+    setStatus(t("deepthink.complete"), "ready");
+    autoSave();
+  } catch (error) {
+    appendChatMessage("assistant", error.message || t("status.error"));
+    setStatus(t("status.error"), "error");
+  } finally {
+    deepThinkBusy = false;
+    if (chatDeepThinkAction) chatDeepThinkAction.disabled = false;
+    chatInput?.focus();
+  }
+}
+
+function applyDeepThinkPlan(plan, parentNodeId) {
+  const parentNode = state.nodes.get(parentNodeId);
+  if (!parentNode) return [];
+  const cards = Array.isArray(plan?.cards) ? plan.cards.slice(0, 8) : [];
+  const createdIds = [];
+  const visibleRows = Math.min(cards.length || 1, 4);
+
+  cards.forEach((card, index) => {
+    const type = normalizeDeepThinkCardType(card?.type);
+    const row = index % 4;
+    const col = Math.floor(index / 4);
+    const x = (parentNode.x || 0) + 410 + col * 360;
+    const y = (parentNode.y || 0) + (row - (visibleRows - 1) / 2) * 210;
+    const queryLine = card?.query ? `\n${currentLang === "en" ? "Query" : "检索"}: ${card.query}` : "";
+    const urlLine = card?.url ? `\nURL: ${card.url}` : "";
+    const option = {
+      id: `deep-${Date.now()}-${index}-${safeNodeSlug(card?.id || card?.title || type)}`,
+      title: String(card?.title || t("chat.deepThink")).slice(0, 48),
+      description: `${String(card?.summary || "").slice(0, 240)}${queryLine}${urlLine}`.trim(),
+      prompt: String(card?.prompt || card?.summary || card?.query || "").slice(0, 1200),
+      tone: deepThinkTypeLabel(type),
+      layoutHint: "deep-think",
+      deepThinkType: type,
+      references: buildDeepThinkReferences(card),
+      x,
+      y
+    };
+    const nodeId = createOptionNode(option, parentNodeId);
+    if (nodeId) createdIds.push(nodeId);
+  });
+
+  const extraLinks = Array.isArray(plan?.links) ? plan.links : [];
+  extraLinks.forEach((link) => {
+    const from = createdIds[Number(link?.from)];
+    const to = createdIds[Number(link?.to)];
+    if (from && to && from !== to) {
+      state.links.push({ from, to, kind: "deep-think", label: String(link?.label || "") });
+    }
+  });
+
+  applyCollapseState();
+  updateCounts();
+  drawLinks();
+  return createdIds;
+}
+
+function normalizeDeepThinkCardType(type) {
+  return ["direction", "web", "image", "file", "api", "note"].includes(type) ? type : "note";
+}
+
+function deepThinkTypeLabel(type) {
+  const zh = {
+    direction: "方向",
+    web: "网页",
+    image: "图片",
+    file: "文件",
+    api: "动作",
+    note: "笔记"
+  };
+  const en = {
+    direction: "direction",
+    web: "web",
+    image: "image",
+    file: "file",
+    api: "action",
+    note: "note"
+  };
+  return (currentLang === "en" ? en : zh)[type] || type;
+}
+
+function buildDeepThinkReferences(card) {
+  const references = [];
+  if (card?.url) {
+    references.push({
+      title: card.title || card.url,
+      url: card.url,
+      description: card.summary || "",
+      type: card.type === "image" ? "image" : "web"
+    });
+  }
+  if (card?.query) {
+    references.push({
+      title: currentLang === "en" ? "Search query" : "检索线索",
+      url: `https://www.google.com/search?q=${encodeURIComponent(card.query)}`,
+      description: card.query,
+      type: "web"
+    });
+  }
+  return references;
+}
+
+function safeNodeSlug(value) {
+  return String(value || "card")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\u4e00-\u9fa5]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "card";
+}
+
 async function toggleAsrDictation() {
   if (voiceState.asrRecorder) {
     stopAsrRecorder();
@@ -2321,8 +2522,8 @@ function createOptionNode(option, parentNodeId) {
   // Compute position offset from parent
   const offsetX = 380;
   const offsetY = 40;
-  const newX = (parentNode.x || 0) + offsetX;
-  const newY = (parentNode.y || 0) + offsetY;
+  const newX = Number.isFinite(option.x) ? option.x : (parentNode.x || 0) + offsetX;
+  const newY = Number.isFinite(option.y) ? option.y : (parentNode.y || 0) + offsetY;
 
   const id = `option-${option.id}`;
 
@@ -2338,6 +2539,8 @@ function createOptionNode(option, parentNodeId) {
 
   const fragment = optionTemplate.content.cloneNode(true);
   const element = fragment.querySelector(".option-node");
+  element.classList.toggle("deep-think-node", Boolean(option.deepThinkType));
+  if (option.deepThinkType) element.dataset.deepThinkType = option.deepThinkType;
   element.dataset.nodeId = id;
   element.style.left = `${newX}px`;
   element.style.top = `${newY}px`;
@@ -3270,6 +3473,23 @@ function svgElement(tag, attributes) {
   const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
   Object.entries(attributes).forEach(([key, value]) => element.setAttribute(key, value));
   return element;
+}
+
+function toggleChatActionMenu(event) {
+  event?.stopPropagation?.();
+  const open = chatActionMenu?.classList.contains("hidden");
+  setChatActionMenuOpen(Boolean(open));
+}
+
+function closeChatActionMenu() {
+  setChatActionMenuOpen(false);
+}
+
+function setChatActionMenuOpen(open) {
+  if (!chatActionMenu || !chatAttachButton) return;
+  chatActionMenu.classList.toggle("hidden", !open);
+  chatAttachButton.classList.toggle("is-open", open);
+  chatAttachButton.setAttribute("aria-expanded", String(open));
 }
 
 function handleAttachClick() {
