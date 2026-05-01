@@ -69,6 +69,15 @@
 
 ### Active
 
+**v1.3 — Material Library**
+
+- **LIB-01**: 导航栏新增素材库入口，跳转独立页面
+- **LIB-02**: 工作台上传的文件自动同步到素材库
+- **LIB-03**: 素材库文件数量上限 100 个
+- **LIB-04**: 瀑布流布局展示，非图片文件显示封面/缩略图
+- **LIB-05**: 按文件名搜索
+- **LIB-06**: 多种排序方式（修改日期、加入日期、文件名、文件大小）
+
 **Future / v2+**
 
 - **SRCH-01**: 按关键词搜索历史会话标题和内容
@@ -96,13 +105,21 @@
 - 画布支持一键整理、节点折叠/展开、深色模式、中英文切换
 - Demo 模式在缺少 API key 时静默启用
 
-## Current Milestone: TBD
+## Current Milestone: v1.3 Material Library
+
+**Goal:** 为用户提供素材库功能，集中管理文件，支持搜索和多种排序方式。
+
+**Target features:**
+- 导航栏新增素材库入口，跳转独立页面
+- 工作台上传的文件自动同步到素材库
+- 素材库文件数量上限 100 个
+- 瀑布流布局展示，非图片文件显示封面/缩略图
+- 按文件名搜索
+- 多种排序方式（修改日期、加入日期、文件名、文件大小）
 
 **Shipped:** v1.2 Interactive Canvas & Deep Analysis (2026-04-27)
 
 **Previous:** v1.1 Canvas Intelligence & Rich Input (2026-04-26)
-
-**Goal:** 待定义下一里程碑目标。
 
 ## Key Decisions
 
@@ -123,7 +140,25 @@
 - **Tech Stack**: Node.js >= 18，现有代码为纯 JavaScript ES modules；PostgreSQL + Prisma 持久化
 - **Compatibility**: 保持现有画布交互体验不变，新功能为增量添加
 - **Performance**: 大模型 API 调用成本高，需避免重复调用
+- **Storage**: 素材库文件数量上限 100 个
+
+## Evolution
+
+This document evolves at phase transitions and milestone boundaries.
+
+**After each phase transition** (via `/gsd-transition`):
+1. Requirements invalidated? → Move to Out of Scope with reason
+2. Requirements validated? → Move to Validated with phase reference
+3. New requirements emerged? → Add to Active
+4. Decisions to log? → Add to Key Decisions
+5. "What This Is" still accurate? → Update if drifted
+
+**After each milestone** (via `/gsd-complete-milestone`):
+1. Full review of all sections
+2. Core Value check — still the right priority?
+3. Audit Out of Scope — reasons still valid?
+4. Update Context with current state
 
 ---
 
-*Last updated: 2026-04-27 — v1.2 shipped*
+*Last updated: 2026-05-01 — v1.3 milestone started*
