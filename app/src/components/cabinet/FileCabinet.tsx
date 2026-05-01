@@ -44,22 +44,62 @@ interface SessionListProps {
   sessions: HistorySession[];
   activeSessionId: string | null;
   loading: boolean;
+  searchQuery: string;
+  searchInputId: string;
+  onSearchChange: (value: string) => void;
   onSelect: (id: string) => void;
 }
 
-function SessionList({ sessions, activeSessionId, loading, onSelect }: SessionListProps) {
+function SessionList({
+  sessions,
+  activeSessionId,
+  loading,
+  searchQuery,
+  searchInputId,
+  onSearchChange,
+  onSelect,
+}: SessionListProps) {
   const { t } = useI18n();
 
   return (
     <div className="flex h-full flex-col bg-cabinet-itemBg">
       <div className="flex h-[68px] items-center justify-between px-6 flex-shrink-0">
         <Menu size={19} className="text-cabinet-ink2" />
-        <Search size={18} className="text-cabinet-ink2" />
+        <button
+          type="button"
+          onClick={() => document.getElementById(searchInputId)?.focus()}
+          className="flex h-9 w-9 items-center justify-center rounded hover:bg-cabinet-paper"
+          aria-label={t("history.search")}
+          title={t("history.search")}
+        >
+          <Search size={18} className="text-cabinet-ink2" />
+        </button>
       </div>
 
-      <div className="px-6 pb-5 flex-shrink-0">
+      <div className="px-6 pb-4 flex-shrink-0">
         <div className="text-xl font-medium text-cabinet-ink tracking-[0]">{t("history.record")}</div>
         <div className="mt-1 text-[13px] text-cabinet-inkMuted">{t("history.folderHint")}</div>
+        <label className="mt-4 flex h-10 items-center gap-2 border border-cabinet-border bg-cabinet-paper px-3">
+          <Search size={16} className="text-cabinet-inkMuted flex-shrink-0" />
+          <input
+            id={searchInputId}
+            value={searchQuery}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder={t("history.searchPlaceholder")}
+            className="min-w-0 flex-1 bg-transparent text-sm text-cabinet-ink outline-none placeholder:text-cabinet-inkMuted"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => onSearchChange("")}
+              className="flex h-6 w-6 items-center justify-center text-cabinet-inkMuted hover:text-cabinet-ink"
+              aria-label={t("history.clearSearch")}
+              title={t("history.clearSearch")}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </label>
       </div>
 
       <div className="flex-1 overflow-y-auto cabinet-scrollbar pb-4">
@@ -70,7 +110,9 @@ function SessionList({ sessions, activeSessionId, loading, onSelect }: SessionLi
             ))}
           </div>
         ) : sessions.length === 0 ? (
-          <div className="px-6 py-4 text-sm text-cabinet-inkMuted">{t("history.noSessions")}</div>
+          <div className="px-6 py-4 text-sm text-cabinet-inkMuted">
+            {searchQuery ? t("history.noSearchResults") : t("history.noSessions")}
+          </div>
         ) : (
           sessions.map((session) => {
             const active = activeSessionId === session.id;
@@ -111,12 +153,26 @@ export default function FileCabinet() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeOutputKind, setActiveOutputKind] = useState<OutputKind>("image");
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme);
   const { lang, setLang, t } = useI18n();
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filteredSessions = normalizedSearch
+    ? sessions.filter((session) => {
+        const haystack = [
+          session.title,
+          new Date(session.createdAt).toLocaleString(),
+          new Date(session.updatedAt || session.createdAt).toLocaleString(),
+          `${session.nodeCount}`,
+          `${session.assetCount}`,
+        ].join(" ").toLowerCase();
+        return haystack.includes(normalizedSearch);
+      })
+    : sessions;
   const resolvedActiveSessionId =
-    activeSessionId && sessions.some((session) => session.id === activeSessionId)
+    activeSessionId && filteredSessions.some((session) => session.id === activeSessionId)
       ? activeSessionId
-      : sessions[0]?.id ?? null;
+      : filteredSessions[0]?.id ?? null;
 
   useEffect(() => {
     function onStorage(e: StorageEvent) {
@@ -163,9 +219,12 @@ export default function FileCabinet() {
               </button>
             </div>
             <SessionList
-              sessions={sessions}
+              sessions={filteredSessions}
               activeSessionId={resolvedActiveSessionId}
               loading={loading}
+              searchQuery={searchQuery}
+              searchInputId="history-search-input-mobile"
+              onSearchChange={setSearchQuery}
               onSelect={handleSessionSelect}
             />
           </div>
@@ -175,9 +234,12 @@ export default function FileCabinet() {
       <div className="mx-auto flex h-full max-w-[1760px] overflow-hidden rounded-[24px] border border-cabinet-border bg-cabinet-paper shadow-[0_22px_48px_rgba(0,0,0,0.08)]">
         <aside className="hidden lg:flex w-[320px] min-w-[320px] flex-col border-r border-cabinet-border bg-cabinet-itemBg">
           <SessionList
-            sessions={sessions}
+            sessions={filteredSessions}
             activeSessionId={resolvedActiveSessionId}
             loading={loading}
+            searchQuery={searchQuery}
+            searchInputId="history-search-input-desktop"
+            onSearchChange={setSearchQuery}
             onSelect={handleSessionSelect}
           />
           <div className="flex items-center gap-2 border-t border-cabinet-border p-4">
@@ -210,15 +272,15 @@ export default function FileCabinet() {
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col bg-cabinet-bg">
-          <div className="flex items-end gap-0 pl-3 md:pl-8 pr-3 md:pr-6 pt-4 md:pt-6 flex-shrink-0">
+          <div className="flex h-14 items-stretch gap-0 flex-shrink-0">
             <button
               onClick={() => setMobileSessionsOpen(true)}
-              className="lg:hidden mr-2 mb-0 w-11 h-[52px] flex items-center justify-center bg-cabinet-paper text-cabinet-ink border border-cabinet-border"
+              className="lg:hidden w-12 flex items-center justify-center bg-cabinet-paper text-cabinet-ink border-r border-cabinet-border"
               aria-label={t("cabinet.showHistory")}
             >
               <Menu size={19} />
             </button>
-            <div className="flex items-end overflow-x-auto cabinet-scrollbar">
+            <div className="flex items-stretch overflow-x-auto no-scrollbar">
               {OUTPUT_TABS.map((tab, index) => (
                 <FolderTab
                   key={tab.kind}
@@ -226,10 +288,10 @@ export default function FileCabinet() {
                   tabId={tab.kind}
                   active={activeOutputKind === tab.kind}
                   zIndex={OUTPUT_TABS.length - index}
-                  overlap={index > 0}
+                  overlap={false}
                   onClick={() => setActiveOutputKind(tab.kind)}
-                  inactiveColor={index === 0 ? "#ffffff" : index === 1 ? "#f5f7fa" : "#000000"}
-                  inactiveText={index === 2 ? "#ffffff" : "#000000"}
+                  inactiveColor="#ffffff"
+                  inactiveText="#000000"
                   icon={tab.icon}
                 />
               ))}
@@ -246,9 +308,9 @@ export default function FileCabinet() {
           <div className="min-h-0 flex-1 overflow-hidden bg-cabinet-paper">
             {loading && sessions.length === 0 ? (
               <Spinner />
-            ) : sessions.length === 0 && !loading ? (
+            ) : filteredSessions.length === 0 && !loading ? (
               <div className="flex items-center justify-center h-full text-cabinet-inkMuted text-base">
-                {t("history.noSessions")}
+                {searchQuery ? t("history.noSearchResults") : t("history.noSessions")}
               </div>
             ) : (
               <HistoryPage sessionId={resolvedActiveSessionId} outputKind={activeOutputKind} />

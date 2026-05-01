@@ -91,6 +91,13 @@
   .cabinet-scrollbar::-webkit-scrollbar-thumb:hover {
     background-color: #1eaedb;
   }
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @layer utilities {

@@ -8,6 +8,7 @@ storage/
 .playwright-mcp/
 .claude/
 .codex
+.agents/
 main-styled*.png
 history-styled*.png
 public/home-assets/*.jpg
