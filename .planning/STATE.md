@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Multi-Card Canvas Interaction
-status: phase_planned
-stopped_at: Phase 16 planned — 2 plans, 2 waves
-last_updated: "2026-05-02T01:20:00.000Z"
+status: phase_in_progress
+stopped_at: Phase 16 plan 01 complete — 1/2 plans done
+last_updated: "2026-05-02T12:00:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 2
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 50
 ---
 
 # ORYZAE Image Board — Project State
@@ -28,12 +28,12 @@ progress:
 |-------|-------|
 | Milestone | v2.0 — Multi-Card Canvas Interaction |
 | Phase | Phase 16: Menu Cleanup & New Card |
-| Plans | 2/2 planned |
-| Status | Ready to execute |
-| Progress | 0% |
+| Plans | 1/2 complete |
+| Status | In progress |
+| Progress | 50% |
 
 ```
-[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
+[████████████████████░░░░░░░░░░░░░░░░░░░░] 50%
 ```
 
 ---
@@ -48,7 +48,7 @@ progress:
 | v1.3 requirements shipped | 8/8 |
 | v2.0 requirements mapped | 16/16 |
 | Phases complete (v2.0) | 0 |
-| Plans complete (v2.0) | 0 |
+| Plans complete (v2.0) | 1 |
 | Blockers | 0 |
 
 ---
@@ -77,6 +77,8 @@ progress:
 | 16 | Hash-based dedup for material library | 2026-05-01 | Same file content won't create duplicate entries |
 | 17 | CSS grid for responsive layout | 2026-05-01 | No JS masonry library needed; 2-5 columns responsive |
 | 18 | parseDataUrl for general data URL parsing | 2026-05-01 | Existing parseImageDataUrl only handles images; needed for PDF/docx |
+| 19 | Keep translation keys for removed commands | 2026-05-02 | Keys may be used by sidebar nav labels; removing is out of scope |
+| 20 | Keep zoomBy/resetView functions after removing command entries | 2026-05-02 | Functions still used by zoom buttons, wheel zoom, and canvas actions |
 
 ### TODOs
 
@@ -98,5 +100,5 @@ progress:
 
 **Current session started:** 2026-05-02
 **Last session resumed:** 2026-05-02
-**Stopped at:** Phase 16 planned — 2 plans, 2 waves
-**Next expected action:** `/gsd-execute-phase 16`
+**Stopped at:** Phase 16 plan 01 complete — 1/2 plans done
+**Next expected action:** `/gsd-execute-phase 16` (plan 02 remaining)

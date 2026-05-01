@@ -21,10 +21,10 @@
 - [ ] **MC-10**: 蓝图弹窗内支持拖动卡片位置
 - [ ] **MC-11**: 蓝图弹窗内支持在卡片之间绘制连线，定义上下游或并列关系
 - [ ] **MC-12**: 蓝图弹窗内的连线关系可用于指导下一步的探索或成图
-- [ ] **MC-13**: `/` 功能区移除"放大"命令（zoom-in）
-- [ ] **MC-14**: `/` 功能区移除"缩小"命令（zoom-out）
-- [ ] **MC-15**: `/` 功能区移除"历史浏览器"命令（history）
-- [ ] **MC-16**: `/` 功能区移除"设置"命令（settings）
+- [x] **MC-13**: `/` 功能区移除"放大"命令（zoom-in）
+- [x] **MC-14**: `/` 功能区移除"缩小"命令（zoom-out）
+- [x] **MC-15**: `/` 功能区移除"历史浏览器"命令（history）
+- [x] **MC-16**: `/` 功能区移除"设置"命令（settings）
 
 ---
 
@@ -62,10 +62,10 @@
 | MC-10 | Phase 18 | Pending |
 | MC-11 | Phase 18 | Pending |
 | MC-12 | Phase 18 | Pending |
-| MC-13 | Phase 16 | Pending |
-| MC-14 | Phase 16 | Pending |
-| MC-15 | Phase 16 | Pending |
-| MC-16 | Phase 16 | Pending |
+| MC-13 | Phase 16 | Done |
+| MC-14 | Phase 16 | Done |
+| MC-15 | Phase 16 | Done |
+| MC-16 | Phase 16 | Done |
 
 ---
 

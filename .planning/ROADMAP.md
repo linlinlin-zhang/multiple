@@ -39,7 +39,7 @@
   5. The source card (id="source") still cannot be deleted
 **Plans:** 2 plans
 Plans:
-- [ ] 16-01-PLAN.md — Remove zoom-in, zoom-out, history, settings from `/` menu
+- [x] 16-01-PLAN.md — Remove zoom-in, zoom-out, history, settings from `/` menu
 - [ ] 16-02-PLAN.md — Add "New Card" command and card creation logic
 **UI hint**: yes
 
@@ -87,10 +87,10 @@ Plans:
 | MC-10 | Phase 18 | Pending |
 | MC-11 | Phase 18 | Pending |
 | MC-12 | Phase 18 | Pending |
-| MC-13 | Phase 16 | Pending |
-| MC-14 | Phase 16 | Pending |
-| MC-15 | Phase 16 | Pending |
-| MC-16 | Phase 16 | Pending |
+| MC-13 | Phase 16 | Done |
+| MC-14 | Phase 16 | Done |
+| MC-15 | Phase 16 | Done |
+| MC-16 | Phase 16 | Done |
 
 **Coverage: 16/16 requirements mapped (100%)**
 
@@ -100,7 +100,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 16. Menu Cleanup & New Card | 0/2 | Not started | - |
+| 16. Menu Cleanup & New Card | 1/2 | In progress | - |
 | 17. Connection Lines & Junction Nodes | 0/0 | Not started | - |
 | 18. Blueprint Modal | 0/0 | Not started | - |
 
