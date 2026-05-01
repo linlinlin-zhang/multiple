@@ -55,20 +55,20 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIB-01 | — | Pending |
-| LIB-02 | — | Pending |
-| LIB-03 | — | Pending |
-| LIB-04 | — | Pending |
-| LIB-05 | — | Pending |
-| LIB-06 | — | Pending |
-| LIB-07 | — | Pending |
-| LIB-08 | — | Pending |
+| LIB-01 | Phase 14 | Pending |
+| LIB-02 | Phase 15 | Pending |
+| LIB-03 | Phase 13 | Pending |
+| LIB-04 | Phase 14 | Pending |
+| LIB-05 | Phase 14 | Pending |
+| LIB-06 | Phase 14 | Pending |
+| LIB-07 | Phase 14 | Pending |
+| LIB-08 | Phase 15 | Pending |
 
 **Coverage:**
 - v1.3 requirements: 8 total
-- Mapped to phases: 0
-- Unmapped: 8 ⚠️
+- Mapped to phases: 8
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-01*
-*Last updated: 2026-05-01 after initial definition*
+*Last updated: 2026-05-01 — roadmap created, all 8 requirements mapped*

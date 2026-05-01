@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Material Library
-status: in_progress
-stopped_at: Defining requirements
+status: roadmap_created
+stopped_at: Roadmap created, awaiting plan-phase
 last_updated: "2026-05-01T00:00:00.000Z"
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -26,10 +26,10 @@ progress:
 
 | Field | Value |
 |-------|-------|
-| Milestone | v1.3 — In Progress |
-| Phase | Not started (defining requirements) |
+| Milestone | v1.3 — Roadmap Created |
+| Phase | 13 (not started) |
 | Plans | — |
-| Status | Defining requirements |
+| Status | Roadmap created, ready for `/gsd-plan-phase 13` |
 | Progress | 0% |
 
 ```
@@ -45,9 +45,10 @@ progress:
 | v1.0 requirements validated | 17/17 |
 | v1.1 requirements validated | 14/14 |
 | v1.2 requirements validated | 14/14 |
-| Phases complete (v1.3) | 0/0 |
+| v1.3 requirements mapped | 8/8 |
+| Phases complete (v1.3) | 0/3 |
 | Plans complete (v1.3) | 0/0 |
-| Blockers | 1 |
+| Blockers | 0 |
 
 ---
 
@@ -70,13 +71,14 @@ progress:
 | 11 | Card selection as dialog anchor | 2026-04-27 | All chat/generation context must be explicit; no implicit global context |
 | 12 | Explore mode gathers references via AI model | 2026-04-27 | Avoid server-side web scraping complexity; leverage model's search capability |
 | 13 | Share-image as standalone page | 2026-04-27 | Lightweight, no React dependency, easy to cache and share |
+| 14 | MaterialItem as independent Prisma model (not extending Asset) | 2026-05-01 | Material library is a separate concern from session assets; avoids coupling |
 
 ### TODOs
 
 - [x] v1.0 Persistence & History — shipped 2026-04-26
 - [x] v1.1 Canvas Intelligence & Rich Input — shipped 2026-04-26
 - [x] v1.2 Interactive Canvas & Deep Analysis — shipped 2026-04-27
-- [ ] v1.3 Material Library — started 2026-05-01
+- [ ] v1.3 Material Library — roadmap created 2026-05-01
 
 ### Blockers
 
@@ -90,5 +92,5 @@ progress:
 
 **Current session started:** 2026-05-01
 **Last session resumed:** 2026-05-01
-**Stopped at:** Milestone v1.3 started, defining requirements
-**Next expected action:** Research → Define requirements → Create roadmap
+**Stopped at:** Roadmap created for v1.3
+**Next expected action:** `/gsd-plan-phase 13`
