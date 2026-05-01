@@ -72,8 +72,8 @@ Plans:
   5. Relationship lines defined in the modal are usable as context for subsequent exploration or generation actions
 **Plans:** 3 plans
 Plans:
-- [ ] 18-01-PLAN.md — Junction persistence fix + Blueprint modal foundation (MC-08, MC-09)
-- [ ] 18-02-PLAN.md — Modal card drag + relationship line drawing (MC-10, MC-11)
+- [x] 18-01-PLAN.md — Junction persistence fix + Blueprint modal foundation (MC-08, MC-09)
+- [x] 18-02-PLAN.md — Modal card drag + relationship line drawing (MC-10, MC-11)
 - [ ] 18-03-PLAN.md — Blueprint persistence + AI context integration (MC-12)
 **UI hint**: yes
 
@@ -90,10 +90,10 @@ Plans:
 | MC-05 | Phase 17 | Done |
 | MC-06 | Phase 17 | Done |
 | MC-07 | Phase 17 | Done |
-| MC-08 | Phase 18 | Pending |
-| MC-09 | Phase 18 | Pending |
-| MC-10 | Phase 18 | Pending |
-| MC-11 | Phase 18 | Pending |
+| MC-08 | Phase 18 | Done |
+| MC-09 | Phase 18 | Done |
+| MC-10 | Phase 18 | Done |
+| MC-11 | Phase 18 | Done |
 | MC-12 | Phase 18 | Pending |
 | MC-13 | Phase 16 | Done |
 | MC-14 | Phase 16 | Done |
@@ -110,7 +110,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 16. Menu Cleanup & New Card | 2/2 | Done | 2026-05-02 |
 | 17. Connection Lines & Junction Nodes | 3/3 | Done | 2026-05-02 |
-| 18. Blueprint Modal | 0/3 | Not started | - |
+| 18. Blueprint Modal | 2/3 | In progress | - |
 
 ---
 
