@@ -17,7 +17,7 @@
 
 ## Phases
 
-- [ ] **Phase 13: Data Model & API** — Prisma model and REST endpoints for material library CRUD, search, sort, and file count enforcement
+- [x] **Phase 13: Data Model & API** — Prisma model and REST endpoints for material library CRUD, search, sort, and file count enforcement (completed 2026-05-01)
 - [ ] **Phase 14: Material Library Page** — Independent React page with masonry layout, navigation entry, search UI, sort controls, non-image thumbnails
 - [ ] **Phase 15: Workbench Sync & File Management** — Auto-sync uploaded files from workbench to material library, delete functionality
 
@@ -86,7 +86,7 @@ Plans:
 | 10. Dialog Refactor & Generation Control | v1.2 | 3/3 | Complete | 2026-04-27 |
 | 11. Research Mode & Deep Analysis | v1.2 | 3/3 | Complete | 2026-04-27 |
 | 12. Image Sharing | v1.2 | 2/2 | Complete | 2026-04-27 |
-| 13. Data Model & API | v1.3 | 0/2 | In progress | - |
+| 13. Data Model & API | v1.3 | 2/2 | Complete | 2026-05-01 |
 | 14. Material Library Page | v1.3 | 0/0 | Not started | - |
 | 15. Workbench Sync & File Management | v1.3 | 0/0 | Not started | - |
 
