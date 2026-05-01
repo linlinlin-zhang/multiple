@@ -20,7 +20,7 @@
 ## Phases
 
 - [x] **Phase 16: Menu Cleanup & New Card** — Remove zoom/history/settings from `/` menu; add "New Card" command that creates a deletable card on canvas
-- [ ] **Phase 17: Connection Lines & Junction Nodes** — Drag-to-connect cards with SVG lines; junction nodes at connection points (max 5 cards, distinct visual style)
+- [x] **Phase 17: Connection Lines & Junction Nodes** — Drag-to-connect cards with SVG lines; junction nodes at connection points (max 5 cards, distinct visual style)
 - [ ] **Phase 18: Blueprint Modal** — Double-click junction node opens modal showing connected cards; supports drag positioning and drawing relationship lines
 
 ---
@@ -55,9 +55,9 @@ Plans:
   5. Attempting to connect a 6th card to a junction node is rejected (max 5 cards per junction)
 **Plans:** 3 plans
 Plans:
-- [ ] 17-01-PLAN.md — Junction node data model and visual style (MC-05)
-- [ ] 17-02-PLAN.md — Drag-to-connect interaction (MC-03)
-- [ ] 17-03-PLAN.md — Junction node logic: auto-create, auto-join, max capacity (MC-04, MC-06, MC-07)
+- [x] 17-01-PLAN.md — Junction node data model and visual style (MC-05)
+- [x] 17-02-PLAN.md — Drag-to-connect interaction (MC-03)
+- [x] 17-03-PLAN.md — Junction node logic: auto-create, auto-join, max capacity (MC-04, MC-06, MC-07)
 **UI hint**: yes
 
 ### Phase 18: Blueprint Modal
@@ -81,11 +81,11 @@ Plans:
 |-------------|-------|--------|
 | MC-01 | Phase 16 | Done |
 | MC-02 | Phase 16 | Done |
-| MC-03 | Phase 17 | Pending |
-| MC-04 | Phase 17 | Pending |
-| MC-05 | Phase 17 | Pending |
-| MC-06 | Phase 17 | Pending |
-| MC-07 | Phase 17 | Pending |
+| MC-03 | Phase 17 | Done |
+| MC-04 | Phase 17 | Done |
+| MC-05 | Phase 17 | Done |
+| MC-06 | Phase 17 | Done |
+| MC-07 | Phase 17 | Done |
 | MC-08 | Phase 18 | Pending |
 | MC-09 | Phase 18 | Pending |
 | MC-10 | Phase 18 | Pending |
@@ -105,7 +105,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 16. Menu Cleanup & New Card | 2/2 | Done | 2026-05-02 |
-| 17. Connection Lines & Junction Nodes | 0/3 | Not started | - |
+| 17. Connection Lines & Junction Nodes | 3/3 | Done | 2026-05-02 |
 | 18. Blueprint Modal | 0/0 | Not started | - |
 
 ---

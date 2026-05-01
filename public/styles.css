@@ -510,6 +510,79 @@ body.nav-collapsed .nav-settings {
   min-height: 20px;
 }
 
+.junction-node {
+  background: linear-gradient(135deg, var(--ps-cyan), var(--ps-blue));
+  border: 2px solid var(--ps-blue);
+  border-radius: 50%;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 24px rgba(0, 112, 204, 0.3);
+  cursor: default;
+}
+
+.junction-node .junction-count {
+  font-size: 24px;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.junction-node .junction-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.8);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  position: absolute;
+  bottom: -20px;
+  white-space: nowrap;
+}
+
+.edge-handle {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  background: var(--ps-blue);
+  border: 3px solid var(--paper);
+  border-radius: 50%;
+  cursor: crosshair;
+  opacity: 0;
+  transition: opacity 150ms ease, transform 150ms ease;
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 112, 204, 0.3);
+}
+
+.edge-handle-right {
+  right: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.edge-handle-left {
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.node:hover .edge-handle {
+  opacity: 1;
+}
+
+.node:hover .edge-handle:hover {
+  transform: translateY(-50%) scale(1.2);
+  background: var(--ps-blue-hover);
+}
+
+.drag-line {
+  stroke: var(--ps-blue);
+  stroke-width: 2;
+  stroke-dasharray: 8 4;
+  fill: none;
+  pointer-events: none;
+}
+
 .node-title-input {
   font: inherit;
   font-size: inherit;
@@ -1658,6 +1731,11 @@ html[data-theme="dark"] .chat-agent-card {
   background: #181b20;
 }
 
+html[data-theme="dark"] .junction-node {
+  background: linear-gradient(135deg, var(--ps-cyan), var(--ps-blue));
+  box-shadow: 0 8px 24px rgba(74, 168, 255, 0.3);
+}
+
 html[data-theme="dark"] .chat-review-button {
   background: #353b45;
 }
@@ -2033,6 +2111,23 @@ html[data-theme="dark"] .chat-review-button {
   color: #8f8f8f;
   background: #e2e2e2;
   cursor: not-allowed;
+}
+
+.research-button.is-busy {
+  gap: 8px;
+  color: var(--paper);
+  background: var(--ps-blue);
+  opacity: 0.9;
+}
+
+.research-button.is-busy::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.44);
+  border-top-color: var(--paper);
+  border-radius: 50%;
+  animation: spin 800ms linear infinite;
 }
 
 .research-dropdown {

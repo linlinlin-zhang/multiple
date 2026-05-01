@@ -94,6 +94,7 @@ const state = {
   activeChatThreadId: null,
   nodes: new Map(),
   links: [],
+  junctions: new Map(),  // junctionId -> { connectedCardIds: string[], maxCapacity: 5 }
   collapsed: new Set(),        // full collapse (double-click)
   selectiveHidden: new Set(),  // selective hide (single-click / auto-collapse)
   generatedCount: 0,
@@ -181,6 +182,8 @@ const i18n = {
     "command.arrangeDesc": "自动整理当前画布节点",
     "command.newCard": "新建卡片",
     "command.newCardDesc": "在画布上创建一张空白卡片",
+    "junction.maxCapacity": "聚合节点最多连接 {max} 张卡片",
+    "junction.mergeExceedsCapacity": "合并后超过最大容量 {max}",
     "command.history": "历史浏览器",
     "command.historyDesc": "打开完整历史记录页面",
     "command.settings": "设置",
@@ -211,6 +214,8 @@ const i18n = {
     "research.cannotResearch": "该卡片无法进行研究",
     "research.exploring": "探索中...",
     "research.exploreComplete": "探索完成",
+    "research.fallbackComplete": "探索完成（已自动降级为快速模式）",
+    "research.timeout": "模型响应超时，请稍后重试",
     "source.urlPlaceholder": "https://...",
     "source.analyzeUrl": "分析链接",
     "chat.placeholder": "输入方向、约束，或 / 命令",
@@ -359,6 +364,8 @@ const i18n = {
     "command.arrangeDesc": "Automatically tidy current canvas nodes",
     "command.newCard": "New Card",
     "command.newCardDesc": "Create a blank card on the canvas",
+    "junction.maxCapacity": "Junction node can connect at most {max} cards",
+    "junction.mergeExceedsCapacity": "Merge would exceed maximum capacity of {max}",
     "command.history": "History browser",
     "command.historyDesc": "Open the full history page",
     "command.settings": "Settings",
@@ -389,6 +396,8 @@ const i18n = {
     "research.cannotResearch": "This card cannot be researched",
     "research.exploring": "Exploring...",
     "research.exploreComplete": "Explore complete",
+    "research.fallbackComplete": "Explore complete (fell back to fast mode)",
+    "research.timeout": "Model response timed out. Please try again.",
     "source.urlPlaceholder": "https://...",
     "source.analyzeUrl": "Analyze Link",
     "chat.placeholder": "Direction, constraint, or / command",
@@ -1875,6 +1884,13 @@ function canResearchNode(nodeId) {
   return false;
 }
 
+function setResearchButtonBusy(isBusy, label = t("research.button")) {
+  if (!researchButton) return;
+  researchButton.disabled = Boolean(isBusy);
+  researchButton.classList.toggle("is-busy", Boolean(isBusy));
+  researchButton.textContent = isBusy ? label : t("research.button");
+}
+
 function handleAnalyze(mode = "analyze") {
   // If a node is selected, validate it can be researched
   if (state.selectedNodeId && !canResearchNode(state.selectedNodeId)) {
@@ -1899,7 +1915,7 @@ async function exploreSource() {
   if (state.sourceType === "url" && !state.sourceUrl) return;
 
   setStatus(t("research.exploring"), "busy");
-  if (researchButton) researchButton.disabled = true;
+  setResearchButtonBusy(true, t("research.exploring"));
 
   try {
     let data;
@@ -1909,11 +1925,17 @@ async function exploreSource() {
         imageDataUrl: sourceImageDataUrl,
         fileName: state.fileName,
         thinkingMode: "thinking"
+      }, {
+        timeoutMs: 180000,
+        timeoutMessage: t("research.timeout")
       });
     } else if (state.sourceType === "url") {
       data = await postJson("/api/analyze-explore", {
         url: state.sourceUrl,
         thinkingMode: "thinking"
+      }, {
+        timeoutMs: 180000,
+        timeoutMessage: t("research.timeout")
       });
     } else {
       data = await postJson("/api/analyze-explore", {
@@ -1921,18 +1943,21 @@ async function exploreSource() {
         dataUrl: state.sourceDataUrl,
         fileName: state.fileName,
         thinkingMode: "thinking"
+      }, {
+        timeoutMs: 180000,
+        timeoutMessage: t("research.timeout")
       });
     }
 
     renderAnalysis(data);
     renderExploreOptions(data.options || [], data.references || []);
     state.latestAnalysis = data;
-    setStatus(t("research.exploreComplete"), "ready");
+    setStatus(data.warningCode === "explore_fallback" ? t("research.fallbackComplete") : t("research.exploreComplete"), "ready");
     autoSave();
   } catch (error) {
     setStatus(error.message || "Explore failed", "error");
   } finally {
-    if (researchButton) researchButton.disabled = false;
+    setResearchButtonBusy(false);
   }
 }
 
@@ -1942,7 +1967,7 @@ async function analyzeSource(mode = "analyze") {
   if (state.sourceType === "url" && !state.sourceUrl) return;
 
   setStatus(t("status.busy"), "busy");
-  if (researchButton) researchButton.disabled = true;
+  setResearchButtonBusy(true, t("status.busy"));
 
   try {
     let data;
@@ -1952,15 +1977,24 @@ async function analyzeSource(mode = "analyze") {
         imageDataUrl: sourceImageDataUrl,
         fileName: state.fileName,
         thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode
+      }, {
+        timeoutMs: 150000,
+        timeoutMessage: t("research.timeout")
       });
     } else if (state.sourceType === "url") {
-      data = await postJson("/api/analyze-url", { url: state.sourceUrl, thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode });
+      data = await postJson("/api/analyze-url", { url: state.sourceUrl, thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode }, {
+        timeoutMs: 150000,
+        timeoutMessage: t("research.timeout")
+      });
     } else {
       data = await postJson("/api/analyze-text", {
         text: state.sourceText,
         dataUrl: state.sourceDataUrl,
         fileName: state.fileName,
         thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode
+      }, {
+        timeoutMs: 150000,
+        timeoutMessage: t("research.timeout")
       });
     }
 
@@ -1972,7 +2006,7 @@ async function analyzeSource(mode = "analyze") {
   } catch (error) {
     setStatus(error.message || "Analysis failed", "error");
   } finally {
-    if (researchButton) researchButton.disabled = false;
+    setResearchButtonBusy(false);
   }
 }
 
@@ -3228,6 +3262,313 @@ function createNewCardNode() {
   return id;
 }
 
+function createJunctionNode(x, y) {
+  const id = `junction-${Date.now()}`;
+
+  const element = document.createElement("section");
+  element.className = "node junction-node";
+  element.dataset.nodeId = id;
+  element.style.left = `${x - 40}px`;  // Center the 80px circle
+  element.style.top = `${y - 40}px`;
+
+  const count = document.createElement("span");
+  count.className = "junction-count";
+  count.textContent = "0";
+
+  const label = document.createElement("span");
+  label.className = "junction-label";
+  label.textContent = "JUNCTION";
+
+  element.append(count, label);
+  board.appendChild(element);
+
+  registerNode(id, element, {
+    x: x - 40,
+    y: y - 40,
+    width: 80,
+    height: 80,
+    isJunction: true
+  });
+
+  state.junctions.set(id, {
+    connectedCardIds: [],
+    maxCapacity: 5
+  });
+
+  makeDraggable(element, id);
+  applyCollapseState();
+  updateCounts();
+  drawLinks();
+  autoSave();
+
+  return id;
+}
+
+function updateJunctionCount(junctionId) {
+  const junction = state.junctions.get(junctionId);
+  if (!junction) return;
+  const node = state.nodes.get(junctionId);
+  if (!node) return;
+  const countEl = node.element.querySelector(".junction-count");
+  if (countEl) {
+    countEl.textContent = String(junction.connectedCardIds.length);
+  }
+}
+
+function findJunctionForCard(cardId) {
+  for (const [junctionId, junction] of state.junctions) {
+    if (junction.connectedCardIds.includes(cardId)) {
+      return junctionId;
+    }
+  }
+  return null;
+}
+
+// --- Connection mode: edge drag handles ---
+
+let connectionState = null;
+
+function addEdgeHandles(element, nodeId) {
+  const rightHandle = document.createElement("div");
+  rightHandle.className = "edge-handle edge-handle-right";
+  rightHandle.dataset.side = "right";
+  rightHandle.dataset.nodeId = nodeId;
+
+  const leftHandle = document.createElement("div");
+  leftHandle.className = "edge-handle edge-handle-left";
+  leftHandle.dataset.side = "left";
+  leftHandle.dataset.nodeId = nodeId;
+
+  element.appendChild(rightHandle);
+  element.appendChild(leftHandle);
+
+  rightHandle.addEventListener("pointerdown", (event) => startConnection(event, nodeId, "right"));
+  leftHandle.addEventListener("pointerdown", (event) => startConnection(event, nodeId, "left"));
+}
+
+function startConnection(event, fromNodeId, side) {
+  event.stopPropagation();
+  event.preventDefault();
+
+  const fromNode = state.nodes.get(fromNodeId);
+  if (!fromNode) return;
+
+  const startPoint = anchor(fromNode, side);
+
+  // Create temporary drag line in SVG
+  const dragLine = svgElement("path", { class: "drag-line" });
+  linkLayer.appendChild(dragLine);
+
+  connectionState = {
+    fromNodeId,
+    side,
+    startPoint,
+    dragLine,
+    pointerId: event.pointerId
+  };
+
+  // Capture pointer for smooth tracking
+  event.target.setPointerCapture(event.pointerId);
+
+  const onPointerMove = (moveEvent) => {
+    if (!connectionState) return;
+
+    // Convert screen coordinates to board coordinates
+    const boardRect = board.getBoundingClientRect();
+    const endX = (moveEvent.clientX - boardRect.left) / state.view.scale;
+    const endY = (moveEvent.clientY - boardRect.top) / state.view.scale;
+
+    const endPoint = { x: endX, y: endY };
+    const path = curvePath(startPoint, endPoint);
+    dragLine.setAttribute("d", path);
+  };
+
+  const onPointerUp = (upEvent) => {
+    if (!connectionState) return;
+
+    // Find if we're over a node
+    const boardRect = board.getBoundingClientRect();
+    const dropX = (upEvent.clientX - boardRect.left) / state.view.scale;
+    const dropY = (upEvent.clientY - boardRect.top) / state.view.scale;
+
+    let targetNodeId = null;
+    for (const [id, node] of state.nodes) {
+      if (id === fromNodeId) continue;  // No self-connections
+      const nodeRight = node.x + (node.width || 300);
+      const nodeBottom = node.y + (node.height || 220);
+      if (dropX >= node.x && dropX <= nodeRight && dropY >= node.y && dropY <= nodeBottom) {
+        targetNodeId = id;
+        break;
+      }
+    }
+
+    // Clean up drag line
+    dragLine.remove();
+    connectionState = null;
+
+    // Create connection if valid target
+    if (targetNodeId) {
+      createConnection(fromNodeId, targetNodeId);
+    }
+
+    // Remove event listeners
+    document.removeEventListener("pointermove", onPointerMove);
+    document.removeEventListener("pointerup", onPointerUp);
+  };
+
+  document.addEventListener("pointermove", onPointerMove);
+  document.addEventListener("pointerup", onPointerUp);
+}
+
+function createConnection(fromId, toId) {
+  // Check if connection already exists
+  const exists = state.links.some(link =>
+    (link.from === fromId && link.to === toId) ||
+    (link.from === toId && link.to === fromId)
+  );
+  if (exists) return;
+
+  // Add the link
+  state.links.push({ from: fromId, to: toId, kind: "connection" });
+
+  // Trigger junction creation/update (implemented in Plan 03)
+  if (typeof handleNewConnection === "function") {
+    handleNewConnection(fromId, toId);
+  }
+
+  drawLinks();
+  autoSave();
+}
+
+// --- Junction node logic ---
+
+function handleNewConnection(fromId, toId) {
+  // Check if either card is already in a junction
+  const fromJunctionId = findJunctionForCard(fromId);
+  const toJunctionId = findJunctionForCard(toId);
+
+  if (fromJunctionId && toJunctionId) {
+    // Both cards are in junctions — merge if different junctions
+    if (fromJunctionId !== toJunctionId) {
+      mergeJunctions(fromJunctionId, toJunctionId);
+    }
+    // If same junction, nothing to do (already grouped)
+  } else if (fromJunctionId) {
+    // Only 'from' card is in a junction — add 'to' card to it
+    addCardToJunction(fromJunctionId, toId);
+  } else if (toJunctionId) {
+    // Only 'to' card is in a junction — add 'from' card to it
+    addCardToJunction(toJunctionId, fromId);
+  } else {
+    // Neither card is in a junction — create new junction at midpoint
+    createJunctionAtMidpoint(fromId, toId);
+  }
+}
+
+function createJunctionAtMidpoint(cardAId, cardBId) {
+  const cardA = state.nodes.get(cardAId);
+  const cardB = state.nodes.get(cardBId);
+  if (!cardA || !cardB) return;
+
+  // Calculate midpoint between the two cards
+  const midX = (cardA.x + (cardA.width || 300) / 2 + cardB.x + (cardB.width || 300) / 2) / 2;
+  const midY = (cardA.y + (cardA.height || 220) / 2 + cardB.y + (cardB.height || 220) / 2) / 2;
+
+  // Create junction node at midpoint
+  const junctionId = createJunctionNode(midX, midY);
+
+  // Add both cards to the junction
+  const junction = state.junctions.get(junctionId);
+  if (junction) {
+    junction.connectedCardIds.push(cardAId, cardBId);
+    updateJunctionCount(junctionId);
+  }
+
+  // Rewire links to go through junction
+  rewireLinksThroughJunction(junctionId);
+}
+
+function addCardToJunction(junctionId, cardId) {
+  const junction = state.junctions.get(junctionId);
+  if (!junction) return;
+
+  // Check capacity limit (MC-07: max 5 cards per junction)
+  if (junction.connectedCardIds.length >= junction.maxCapacity) {
+    showSelectionToast(t("junction.maxCapacity", { max: junction.maxCapacity }));
+    // Remove the link that was just created
+    state.links = state.links.filter(link => {
+      const isTarget = (link.from === cardId || link.to === cardId);
+      const connectsToJunctionCards = junction.connectedCardIds.some(jcId =>
+        (link.from === jcId || link.to === jcId)
+      );
+      return !(isTarget && connectsToJunctionCards);
+    });
+    drawLinks();
+    return;
+  }
+
+  // Add card to junction
+  if (!junction.connectedCardIds.includes(cardId)) {
+    junction.connectedCardIds.push(cardId);
+    updateJunctionCount(junctionId);
+  }
+
+  // Rewire links through junction
+  rewireLinksThroughJunction(junctionId);
+}
+
+function mergeJunctions(junctionAId, junctionBId) {
+  const junctionA = state.junctions.get(junctionAId);
+  const junctionB = state.junctions.get(junctionBId);
+  if (!junctionA || !junctionB) return;
+
+  // Check if merge would exceed capacity
+  const mergedCards = [...new Set([...junctionA.connectedCardIds, ...junctionB.connectedCardIds])];
+  if (mergedCards.length > junctionA.maxCapacity) {
+    showSelectionToast(t("junction.mergeExceedsCapacity", { max: junctionA.maxCapacity }));
+    return;
+  }
+
+  // Move all cards from B to A
+  junctionA.connectedCardIds = mergedCards;
+  updateJunctionCount(junctionAId);
+
+  // Delete junction B
+  deleteNode(junctionBId);
+
+  // Rewire links through merged junction
+  rewireLinksThroughJunction(junctionAId);
+}
+
+function rewireLinksThroughJunction(junctionId) {
+  const junction = state.junctions.get(junctionId);
+  if (!junction) return;
+
+  const cardIds = junction.connectedCardIds;
+
+  // Remove direct links between cards in this junction
+  state.links = state.links.filter(link => {
+    const fromInGroup = cardIds.includes(link.from);
+    const toInGroup = cardIds.includes(link.to);
+    // Keep links where at least one end is outside the junction
+    return !(fromInGroup && toInGroup);
+  });
+
+  // Add links from each card to the junction node
+  for (const cardId of cardIds) {
+    const exists = state.links.some(link =>
+      (link.from === cardId && link.to === junctionId) ||
+      (link.from === junctionId && link.to === cardId)
+    );
+    if (!exists) {
+      state.links.push({ from: cardId, to: junctionId, kind: "junction" });
+    }
+  }
+
+  drawLinks();
+  autoSave();
+}
+
 function appendChatMessage(role, content) {
   const thread = ensureActiveChatThread();
   thread.messages.push({
@@ -3985,6 +4326,12 @@ function showToast(message) {
 function registerNode(id, element, data) {
   state.nodes.set(id, { id, element, ...data });
   ensureCollapseControl(id, element);
+
+  // Add edge handles for connection mode (only for non-junction nodes)
+  if (!data.isJunction) {
+    addEdgeHandles(element, id);
+  }
+
   element.addEventListener("dblclick", (event) => {
     if (event.target.closest(".collapse-dot")) return;
     if (event.target.closest("button, input, textarea, a")) return;
@@ -4247,6 +4594,16 @@ function deleteNode(nodeId) {
   const node = state.nodes.get(nodeId);
   if (!node) return;
 
+  // Clean up junction state if this is a junction node
+  if (state.junctions.has(nodeId)) {
+    state.junctions.delete(nodeId);
+  }
+  // Remove this card from any junction's connectedCardIds
+  for (const [junctionId, junction] of state.junctions) {
+    junction.connectedCardIds = junction.connectedCardIds.filter(id => id !== nodeId);
+    updateJunctionCount(junctionId);
+  }
+
   // Deselect if this node was selected
   if (state.selectedNodeId === nodeId) {
     deselectNode();
@@ -4480,13 +4837,26 @@ async function getJson(url) {
   return parseApiResponse(response);
 }
 
-async function postJson(url, payload) {
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  return parseApiResponse(response);
+async function postJson(url, payload, options = {}) {
+  const timeoutMs = Number(options.timeoutMs || 0);
+  const controller = timeoutMs > 0 ? new AbortController() : null;
+  const timer = controller ? window.setTimeout(() => controller.abort(), timeoutMs) : null;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller?.signal
+    });
+    return parseApiResponse(response);
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(options.timeoutMessage || "Request timed out");
+    }
+    throw error;
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
 }
 
 async function putJson(url, payload) {

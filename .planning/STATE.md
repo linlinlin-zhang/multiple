@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Multi-Card Canvas Interaction
-status: phase_planned
-stopped_at: Phase 17 planned — 3 plans, 2 waves
-last_updated: "2026-05-02T02:00:00.000Z"
+status: phase_complete
+stopped_at: Phase 17 complete — 3/3 plans done
+last_updated: "2026-05-02T03:00:00.000Z"
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 2
-  percent: 33
+  completed_plans: 5
+  percent: 67
 ---
 
 # ORYZAE Image Board — Project State
@@ -27,13 +27,13 @@ progress:
 | Field | Value |
 |-------|-------|
 | Milestone | v2.0 — Multi-Card Canvas Interaction |
-| Phase | Phase 17: Connection Lines & Junction Nodes |
-| Plans | 3/3 planned |
-| Status | Ready to execute |
-| Progress | 0% |
+| Phase | Phase 18: Blueprint Modal |
+| Plans | 0 planned |
+| Status | Ready to plan |
+| Progress | 67% |
 
 ```
-[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
+[██████████████████████████░░░░░░░░░░░░░░░] 67%
 ```
 
 ---
@@ -47,8 +47,8 @@ progress:
 | v1.2 requirements validated | 14/14 |
 | v1.3 requirements shipped | 8/8 |
 | v2.0 requirements mapped | 16/16 |
-| Phases complete (v2.0) | 1 |
-| Plans complete (v2.0) | 2 |
+| Phases complete (v2.0) | 2 |
+| Plans complete (v2.0) | 5 |
 | Blockers | 0 |
 
 ---
@@ -79,6 +79,9 @@ progress:
 | 18 | parseDataUrl for general data URL parsing | 2026-05-01 | Existing parseImageDataUrl only handles images; needed for PDF/docx |
 | 19 | Keep translation keys for removed commands | 2026-05-02 | Keys may be used by sidebar nav labels; removing is out of scope |
 | 20 | Keep zoomBy/resetView functions after removing command entries | 2026-05-02 | Functions still used by zoom buttons, wheel zoom, and canvas actions |
+| 21 | Junction nodes as circular elements with gradient | 2026-05-02 | Visually distinct from rectangular cards per MC-05; cyan-to-blue gradient |
+| 22 | Edge handles on card sides for connection drag | 2026-05-02 | Left/right handles appear on hover; cursor: crosshair for drag affordance |
+| 23 | Rewire links through junction node | 2026-05-02 | Direct card-to-card links replaced with card-to-junction links for clarity |
 
 ### TODOs
 
@@ -86,7 +89,7 @@ progress:
 - [x] v1.1 Canvas Intelligence & Rich Input — shipped 2026-04-26
 - [x] v1.2 Interactive Canvas & Deep Analysis — shipped 2026-04-27
 - [x] v1.3 Material Library — shipped 2026-05-01
-- [ ] v2.0 Multi-Card Canvas Interaction — Phase 17 planned, ready to execute
+- [ ] v2.0 Multi-Card Canvas Interaction — Phase 17 complete, Phase 18 ready to plan
 
 ### Blockers
 
@@ -100,5 +103,5 @@ progress:
 
 **Current session started:** 2026-05-02
 **Last session resumed:** 2026-05-02
-**Stopped at:** Phase 17 planned — 3 plans, 2 waves
-**Next expected action:** `/gsd-execute-phase 17`
+**Stopped at:** Phase 17 complete — 3/3 plans done
+**Next expected action:** `/gsd-plan-phase 18`
