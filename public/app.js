@@ -4953,6 +4953,24 @@ function deleteNode(nodeId) {
     updateJunctionCount(junctionId);
   }
 
+  // Clean up blueprint data
+  if (state.blueprints.has(nodeId)) {
+    // This node is a junction — delete its entire blueprint
+    state.blueprints.delete(nodeId);
+  }
+  // Remove this card from any blueprint's relationships and positions
+  for (const [junctionId, blueprint] of state.blueprints) {
+    blueprint.relationships = blueprint.relationships.filter(r =>
+      r.from !== nodeId && r.to !== nodeId
+    );
+    delete blueprint.positions[nodeId];
+    // If no cards remain connected to this junction, remove the blueprint entirely
+    const junction = state.junctions.get(junctionId);
+    if (!junction || junction.connectedCardIds.length === 0) {
+      state.blueprints.delete(junctionId);
+    }
+  }
+
   // Deselect if this node was selected
   if (state.selectedNodeId === nodeId) {
     deselectNode();
