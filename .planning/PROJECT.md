@@ -67,16 +67,18 @@
 - ✓ **ISH-02**: 点击生成独立的单图分享网页 — v1.2
 - ✓ **ISH-03**: 分享网页包含图片、AI讲解、原图摘要、生成方向说明 — v1.2
 
-### Active
-
 **v1.3 — Material Library**
 
-- **LIB-01**: 导航栏新增素材库入口，跳转独立页面
-- **LIB-02**: 工作台上传的文件自动同步到素材库
-- **LIB-03**: 素材库文件数量上限 100 个
-- **LIB-04**: 瀑布流布局展示，非图片文件显示封面/缩略图
-- **LIB-05**: 按文件名搜索
-- **LIB-06**: 多种排序方式（修改日期、加入日期、文件名、文件大小）
+- ✓ **LIB-01**: 导航栏新增素材库入口，跳转独立页面 — v1.3
+- ✓ **LIB-02**: 工作台上传的文件自动同步到素材库 — v1.3
+- ✓ **LIB-03**: 素材库文件数量上限 100 个 — v1.3
+- ✓ **LIB-04**: 瀑布流布局展示，非图片文件显示封面/缩略图 — v1.3
+- ✓ **LIB-05**: 按文件名搜索 — v1.3
+- ✓ **LIB-06**: 多种排序方式（修改日期、加入日期、文件名、文件大小） — v1.3
+- ✓ **LIB-07**: 素材库直接上传文件 — v1.3
+- ✓ **LIB-08**: 支持删除素材库中的文件 — v1.3
+
+### Active
 
 **Future / v2+**
 
@@ -105,21 +107,14 @@
 - 画布支持一键整理、节点折叠/展开、深色模式、中英文切换
 - Demo 模式在缺少 API key 时静默启用
 
-## Current Milestone: v1.3 Material Library
+## Current Milestone: v1.3 Material Library — SHIPPED
 
 **Goal:** 为用户提供素材库功能，集中管理文件，支持搜索和多种排序方式。
 
-**Target features:**
-- 导航栏新增素材库入口，跳转独立页面
-- 工作台上传的文件自动同步到素材库
-- 素材库文件数量上限 100 个
-- 瀑布流布局展示，非图片文件显示封面/缩略图
-- 按文件名搜索
-- 多种排序方式（修改日期、加入日期、文件名、文件大小）
+**Shipped:** v1.3 Material Library (2026-05-02)
+**Previous:** v1.2 Interactive Canvas & Deep Analysis (2026-04-27)
 
-**Shipped:** v1.2 Interactive Canvas & Deep Analysis (2026-04-27)
-
-**Previous:** v1.1 Canvas Intelligence & Rich Input (2026-04-26)
+**Next milestone:** TBD — run `/gsd-new-milestone` to define
 
 ## Key Decisions
 
@@ -134,6 +129,11 @@
 | 卡片选中作为对话框锚点 | 所有对话/生成上下文必须显式指定，避免隐式全局上下文 | Validated v1.2 |
 | 探索模式通过 AI 模型搜集参考资料 | 避免服务端网页爬取复杂度，利用模型搜索能力 | Validated v1.2 |
 | 单图分享作为独立页面 | 轻量、无 React 依赖、易于缓存和分享 | Validated v1.2 |
+| MaterialItem 独立 Prisma 模型 | 素材库与会话资源解耦，避免耦合 | Validated v1.3 |
+| syncToMaterialLibrary 采用 fire-and-forget | 资源上传不因同步失败而中断 | Validated v1.3 |
+| 哈希去重防止重复素材 | 相同文件不会创建多条记录 | Validated v1.3 |
+| CSS grid 实现响应式布局 | 无需 JS 瀑布流库，简洁高效 | Validated v1.3 |
+| parseDataUrl 支持任意 data URL | 统一处理图片和文档的 data URL 解析 | Validated v1.3 |
 
 ## Constraints
 
@@ -161,4 +161,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-05-01 — v1.3 milestone started*
+*Last updated: 2026-05-02 — v1.3 milestone shipped*

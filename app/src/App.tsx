@@ -1,11 +1,18 @@
 import FileCabinet from "@/components/cabinet/FileCabinet";
 import SettingsPage from "@/components/settings/SettingsPage";
+import MaterialLibraryPage from "@/components/material/MaterialLibraryPage";
 
 function getCurrentView() {
   const params = new URLSearchParams(window.location.search);
-  return params.get("view") === "settings" ? "settings" : "history";
+  const view = params.get("view");
+  if (view === "settings") return "settings";
+  if (view === "library") return "library";
+  return "history";
 }
 
 export default function App() {
-  return getCurrentView() === "settings" ? <SettingsPage /> : <FileCabinet />;
+  const view = getCurrentView();
+  if (view === "settings") return <SettingsPage />;
+  if (view === "library") return <MaterialLibraryPage />;
+  return <FileCabinet />;
 }

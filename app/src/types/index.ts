@@ -70,3 +70,22 @@ export interface SidebarAssetItem {
   assetType: "image" | "link" | "file" | "chat";
   data: any;
 }
+
+export interface MaterialItem {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  hash: string;
+  filePath: string;
+  addedAt: string;
+  updatedAt: string;
+}
+
+export type MaterialSort = "date" | "added" | "name" | "size";
+
+export interface MaterialsResponse {
+  ok: boolean;
+  items: MaterialItem[];
+  total: number;
+}

@@ -148,7 +148,7 @@
 
         const img = document.getElementById("shareImage");
         if (data.imageHash) {
-          img.src = `/api/assets/${data.imageHash}?kind=generated`;
+          img.src = `/api/assets/${data.imageHash}?kind=${data.imageKind || "generated"}`;
         } else if (data.imageDataUrl) {
           img.src = data.imageDataUrl;
         } else {

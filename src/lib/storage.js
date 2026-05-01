@@ -151,6 +151,36 @@ export function parseImageDataUrl(dataUrl) {
   throw new Error("Invalid data URL format");
 }
 
+/**
+ * Parse any data URL (not just images). Returns { buffer, mimeType, ext }.
+ */
+export function parseDataUrl(value) {
+  if (typeof value !== "string") {
+    throw new Error("Invalid data URL format");
+  }
+  const match = /^data:([a-z0-9+/.-]+)(?:;[^,]*)?;base64,([a-zA-Z0-9+/=]+)$/i.exec(value);
+  if (match) {
+    const mimeType = match[1].toLowerCase();
+    const buffer = Buffer.from(match[2], "base64");
+    const ext = extFromMime(mimeType);
+    return { buffer, mimeType, ext };
+  }
+  throw new Error("Invalid data URL format");
+}
+
+function extFromMime(mimeType) {
+  const map = {
+    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+    "image/gif": "gif", "image/svg+xml": "svg",
+    "application/pdf": "pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "text/plain": "txt",
+    "video/mp4": "mp4", "video/webm": "webm"
+  };
+  return map[mimeType] || "bin";
+}
+
 function validateHash(hash) {
   if (!/^[a-f0-9]{64}$/i.test(hash)) {
     throw new Error("Invalid hash format");

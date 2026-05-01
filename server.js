@@ -8,7 +8,7 @@ import { handleStoreAsset, handleGetAsset } from "./src/api/assets.js";
 import { handleCreateShare, handleGetShare, handleCreateImageShare, handleGetImageShare } from "./src/api/share.js";
 import { handleImportSession } from "./src/api/import.js";
 import { handleGetSettings, handleUpdateSettings } from "./src/api/settings.js";
-import { handleListMaterials, handleCreateMaterial, handleDeleteMaterial } from "./src/api/materials.js";
+import { handleListMaterials, handleCreateMaterial, handleDeleteMaterial, handleGetMaterialFile } from "./src/api/materials.js";
 import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js";
 import { extractTextFromBuffer } from "./src/lib/textExtract.js";
 import { PrismaClient } from "@prisma/client";
@@ -215,6 +215,10 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "DELETE" && /^\/api\/materials\/[^/]+$/.test(url.pathname)) {
       const id = url.pathname.split("/")[3];
       return await handleDeleteMaterial(id, res);
+    }
+    if (req.method === "GET" && /^\/api\/materials\/[^/]+\/file$/.test(url.pathname)) {
+      const id = url.pathname.split("/")[3];
+      return await handleGetMaterialFile(id, res);
     }
 
     if (req.method === "GET") {
@@ -1259,34 +1263,7 @@ async function realtimeVoiceCompletion(config, context) {
   }
 
   const audio = audioInputFromDataUrl(context.audioDataUrl);
-  const lang = context.language === "en" ? "English" : "Chinese";
-  const recentMessages = context.messages
-    .map((item) => `${item.role}: ${item.content}`)
-    .join("\n") || "None";
-  const selected = context.selectedContext
-    ? JSON.stringify(context.selectedContext).slice(0, 1200)
-    : "None";
-  const canvas = JSON.stringify(context.canvas || {}).slice(0, 1800);
-
-  const instruction = [
-    `You are the realtime voice controller for a canvas-based image exploration app. Understand the user's spoken command in ${lang}.`,
-    "Return strict JSON only. Do not wrap it in Markdown.",
-    "Schema:",
-    '{"transcript":"recognized user speech","reply":"short spoken response","actions":[{"type":"zoom_in|zoom_out|reset_view|arrange_canvas|deselect|select_source|select_analysis|select_node|create_direction","nodeId":"optional","parentNodeId":"optional","title":"optional","description":"optional","prompt":"optional"}]}',
-    "Use actions only when the user clearly asks the app to do something. Keep reply concise and suitable for speech.",
-    "",
-    "Current selected card:",
-    selected,
-    "",
-    "Current analysis:",
-    JSON.stringify(context.analysis || {}).slice(0, 1600),
-    "",
-    "Canvas state:",
-    canvas,
-    "",
-    "Recent dialogue:",
-    recentMessages
-  ].join("\n");
+  const instruction = buildRealtimeInstruction(context);
 
   const response = await chatCompletions(config, {
     temperature: typeof config.temperature === "number" ? config.temperature : 0.7,
@@ -1330,14 +1307,19 @@ function buildRealtimeInstruction(context) {
   const selected = context.selectedContext
     ? JSON.stringify(context.selectedContext).slice(0, 1200)
     : "None";
-  const canvas = JSON.stringify(context.canvas || {}).slice(0, 1800);
+  const canvas = JSON.stringify(context.canvas || {}).slice(0, 3600);
 
   return [
-    `You are the realtime voice controller for a canvas-based image exploration app. Understand the user's spoken command in ${lang}.`,
+    `You are the realtime voice action planner for ORYZAE, a canvas-based image exploration app. Understand the user's spoken command in ${lang}.`,
     "Return strict JSON only. Do not wrap it in Markdown.",
+    "You may return a short spoken reply plus at most 3 app actions. Use actions only when the user clearly asks the app to do something.",
+    "Prefer exact nodeId values copied from Canvas state. If the user names a card but the id is uncertain, provide nodeName/query instead; never invent node IDs.",
+    "For destructive actions such as delete_node, only act when the spoken command explicitly asks to delete/remove a card.",
+    "Position vocabulary: left, right, above, below, center, upper-left, upper-right, lower-left, lower-right, canvas-center, screen-center.",
+    "Reusable action types:",
+    "zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, generate_image, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
     "Schema:",
-    '{"transcript":"recognized user speech","reply":"short spoken response","actions":[{"type":"zoom_in|zoom_out|reset_view|arrange_canvas|deselect|select_source|select_analysis|select_node|create_direction","nodeId":"optional","parentNodeId":"optional","title":"optional","description":"optional","prompt":"optional"}]}',
-    "Use actions only when the user clearly asks the app to do something. Keep reply concise and suitable for speech.",
+    '{"transcript":"recognized user speech","reply":"short spoken response","actions":[{"type":"action_type","nodeId":"exact optional id","nodeName":"optional spoken card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url"}]}',
     "",
     "Current selected card:",
     selected,
@@ -1530,33 +1512,90 @@ function audioFormatFromMimeType(mimeType) {
   }[normalized] || "webm";
 }
 
+const VOICE_ACTION_TYPES = new Set([
+  "zoom_in",
+  "zoom_out",
+  "set_zoom",
+  "reset_view",
+  "pan_view",
+  "focus_node",
+  "arrange_canvas",
+  "deselect",
+  "select_source",
+  "select_analysis",
+  "select_node",
+  "move_node",
+  "create_direction",
+  "generate_image",
+  "analyze_source",
+  "explore_source",
+  "research_source",
+  "research_node",
+  "open_references",
+  "save_session",
+  "new_chat",
+  "open_chat_history",
+  "close_chat",
+  "open_chat",
+  "open_history",
+  "open_settings",
+  "set_thinking_mode",
+  "set_deep_think_mode",
+  "open_upload",
+  "delete_node"
+]);
+
+function normalizedActionString(value, maxLength = 160) {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed.slice(0, maxLength) : undefined;
+}
+
+function normalizedActionNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
 function normalizeVoiceActions(value) {
   const raw = Array.isArray(value) ? value : (value ? [value] : []);
-  const allowed = new Set([
-    "zoom_in",
-    "zoom_out",
-    "reset_view",
-    "arrange_canvas",
-    "deselect",
-    "select_source",
-    "select_analysis",
-    "select_node",
-    "create_direction"
-  ]);
   return raw
     .map((action) => {
       if (typeof action === "string") return { type: action };
       if (!action || typeof action !== "object") return null;
-      return {
-        type: String(action.type || action.name || ""),
-        nodeId: typeof action.nodeId === "string" ? action.nodeId.slice(0, 80) : undefined,
-        parentNodeId: typeof action.parentNodeId === "string" ? action.parentNodeId.slice(0, 80) : undefined,
-        title: typeof action.title === "string" ? action.title.slice(0, 80) : undefined,
-        description: typeof action.description === "string" ? action.description.slice(0, 500) : undefined,
-        prompt: typeof action.prompt === "string" ? action.prompt.slice(0, 1200) : undefined
+      const normalized = {
+        type: String(action.type || action.name || "").trim(),
+        nodeId: normalizedActionString(action.nodeId, 120),
+        parentNodeId: normalizedActionString(action.parentNodeId, 120),
+        anchorNodeId: normalizedActionString(action.anchorNodeId, 120),
+        nodeName: normalizedActionString(action.nodeName || action.nameText, 160),
+        parentNodeName: normalizedActionString(action.parentNodeName, 160),
+        anchorNodeName: normalizedActionString(action.anchorNodeName, 160),
+        target: normalizedActionString(action.target, 160),
+        title: normalizedActionString(action.title, 120),
+        description: normalizedActionString(action.description, 700),
+        prompt: normalizedActionString(action.prompt, 1600),
+        query: normalizedActionString(action.query, 360),
+        url: normalizedActionString(action.url, 512),
+        position: normalizedActionString(action.position, 60),
+        direction: normalizedActionString(action.direction, 60),
+        mode: normalizedActionString(action.mode, 80),
+        x: normalizedActionNumber(action.x),
+        y: normalizedActionNumber(action.y),
+        dx: normalizedActionNumber(action.dx),
+        dy: normalizedActionNumber(action.dy),
+        scale: normalizedActionNumber(action.scale),
+        amount: normalizedActionNumber(action.amount)
       };
+      Object.keys(normalized).forEach((key) => {
+        if (normalized[key] === undefined) delete normalized[key];
+      });
+      return normalized;
     })
-    .filter((action) => action && allowed.has(action.type));
+    .filter((action) => action && VOICE_ACTION_TYPES.has(action.type));
+}
+
+function normalizeDeepThinkActions(value) {
+  return normalizeVoiceActions(value).slice(0, 6);
 }
 
 function extractVoiceAudioDataUrl(response) {
@@ -1858,7 +1897,8 @@ function buildDeepThinkSystemPrompt(lang) {
     '      "url": "optional external URL when already known"',
     "    }",
     "  ],",
-    '  "links": [{"from": 0, "to": 1, "label": "optional relationship"}]',
+    '  "links": [{"from": 0, "to": 1, "label": "optional relationship"}],',
+    '  "actions": [{"type": "optional reusable canvas action", "nodeId": "optional exact node id", "nodeName": "optional card name", "position": "optional target position", "prompt": "optional prompt"}]',
     "}"
   ].join("\n");
 
@@ -1869,6 +1909,7 @@ function buildDeepThinkSystemPrompt(lang) {
       "Do not expose private chain-of-thought. Instead, create visible workspace traces: web cards, image-reference cards, file cards, API/action cards, notes, and generation directions.",
       "If you have not actually browsed or called a tool, describe the card as a search/action plan using query and prompt fields rather than claiming it is already collected.",
       "The frontend will turn every card into a canvas node. Make cards concrete, divergent, and useful for image exploration.",
+      "You may optionally include reusable canvas actions, using the same action types as realtime voice, when they help arrange, focus, or generate from the created work.",
       "Provide 4-8 cards and 2-6 links.",
       "Schema:",
       schema
@@ -1947,7 +1988,8 @@ function normalizeDeepThinkPlan(value, prompt, lang) {
       from: Number.isInteger(link?.from) ? link.from : 0,
       to: Number.isInteger(link?.to) ? link.to : 0,
       label: stringOr(link?.label, "").slice(0, 40)
-    })).filter((link) => link.from !== link.to)
+    })).filter((link) => link.from !== link.to),
+    actions: normalizeDeepThinkActions(value?.actions || value?.action)
   };
 }
 

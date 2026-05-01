@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js",
+    "build:app": "cd app && npx vite build && cp -r dist/* ../public/history/",
     "start": "node server.js",
     "test": "node scripts/test-integration.js",
     "test:db": "node scripts/test-db.js",

@@ -2,20 +2,20 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Material Library
-status: phase_complete
-stopped_at: Phase 13 complete — Data Model & API
+status: milestone_shipped
+stopped_at: Milestone v1.3 shipped
 last_updated: "2026-05-01T00:00:00.000Z"
 progress:
   total_phases: 3
-  completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
-  percent: 33
+  completed_phases: 3
+  total_plans: 6
+  completed_plans: 6
+  percent: 100
 ---
 
 # ORYZAE Image Board — Project State
 
-**Milestone:** Material Library v1.3
+**Milestone:** Material Library v1.3 — SHIPPED
 **Core Value:** 为用户提供素材库功能，集中管理文件，支持搜索和多种排序方式。
 **Project Reference:** [PROJECT.md](./PROJECT.md)
 **Last Updated:** 2026-05-01
@@ -27,13 +27,13 @@ progress:
 | Field | Value |
 |-------|-------|
 | Milestone | v1.3 — Material Library |
-| Phase | 13 complete, 14 next |
-| Plans | 2/2 complete |
-| Status | Phase 13 verified, ready for Phase 14 |
-| Progress | 33% |
+| Phase | All 3 phases complete |
+| Plans | 6/6 complete |
+| Status | Milestone shipped |
+| Progress | 100% |
 
 ```
-[█████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░] 33%
+[████████████████████████████████████████] 100%
 ```
 
 ---
@@ -45,9 +45,9 @@ progress:
 | v1.0 requirements validated | 17/17 |
 | v1.1 requirements validated | 14/14 |
 | v1.2 requirements validated | 14/14 |
-| v1.3 requirements mapped | 8/8 |
-| Phases complete (v1.3) | 1/3 |
-| Plans complete (v1.3) | 2/2 |
+| v1.3 requirements shipped | 8/8 |
+| Phases complete (v1.3) | 3/3 |
+| Plans complete (v1.3) | 6/6 |
 | Blockers | 0 |
 
 ---
@@ -72,13 +72,18 @@ progress:
 | 12 | Explore mode gathers references via AI model | 2026-04-27 | Avoid server-side web scraping complexity; leverage model's search capability |
 | 13 | Share-image as standalone page | 2026-04-27 | Lightweight, no React dependency, easy to cache and share |
 | 14 | MaterialItem as independent Prisma model (not extending Asset) | 2026-05-01 | Material library is a separate concern from session assets; avoids coupling |
+| 15 | syncToMaterialLibrary is fire-and-forget | 2026-05-01 | Asset upload never fails due to material sync errors |
+| 16 | Hash-based dedup for material library | 2026-05-01 | Same file content won't create duplicate entries |
+| 17 | CSS grid for responsive layout | 2026-05-01 | No JS masonry library needed; 2-5 columns responsive |
+| 18 | parseDataUrl for general data URL parsing | 2026-05-01 | Existing parseImageDataUrl only handles images; needed for PDF/docx |
 
 ### TODOs
 
 - [x] v1.0 Persistence & History — shipped 2026-04-26
 - [x] v1.1 Canvas Intelligence & Rich Input — shipped 2026-04-26
 - [x] v1.2 Interactive Canvas & Deep Analysis — shipped 2026-04-27
-- [ ] v1.3 Material Library — roadmap created 2026-05-01
+- [x] v1.3 Material Library — shipped 2026-05-01
+- [ ] Next milestone TBD — run `/gsd-new-milestone`
 
 ### Blockers
 
@@ -92,5 +97,5 @@ progress:
 
 **Current session started:** 2026-05-01
 **Last session resumed:** 2026-05-01
-**Stopped at:** Phase 13 complete — Data Model & API verified
-**Next expected action:** `/gsd-discuss-phase 14` or `/gsd-plan-phase 14`
+**Stopped at:** v1.3 milestone shipped
+**Next expected action:** `/gsd-new-milestone` to define v1.4 or v2.0

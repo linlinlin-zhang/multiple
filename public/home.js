@@ -32,7 +32,7 @@ const rowCount = 11;
 const columnsPerLayer = 8;
 const stepCount = rowCount * columnsPerLayer;
 const endPaddingLayers = 0.05;
-const scrollLimit = (stepCount - 1) / (columnsPerLayer * 2) + endPaddingLayers;
+const scrollLimit = 6;
 const defaultScrollTarget = -0.15;
 const cards = [];
 const state = {
@@ -133,16 +133,13 @@ function project(point, model, travelY = 0) {
 }
 
 function cardPoint(card, model, scrollProgress, spin) {
-  const scrollSteps = scrollProgress * columnsPerLayer;
-  const pathStep = card.step - scrollSteps;
-  const centeredStep = pathStep - (stepCount - 1) / 2;
-  const angle = pathStep * (Math.PI * 2 / columnsPerLayer) + spin;
+  const centeredStep = card.step - (stepCount - 1) / 2;
+  const angle = card.step * (Math.PI * 2 / columnsPerLayer) + spin;
   const sin = Math.sin(angle);
   const cos = Math.cos(angle);
-  const radiusPulse = 1;
 
   return {
-    x: sin * model.radiusX * radiusPulse,
+    x: sin * model.radiusX,
     y: centeredStep * model.stepGap,
     z: cos * model.radiusZ,
     angle,
@@ -225,7 +222,7 @@ function render(now) {
   const scrollProgress = clamp(state.current + state.velocity, -scrollLimit, scrollLimit);
   const spin = state.auto;
   const model = viewportModel();
-  const travelY = (defaultScrollTarget - scrollProgress) * model.travelGap;
+  const travelY = -scrollProgress * model.height;
   const projected = [];
 
   for (const card of cards) {

@@ -138,7 +138,7 @@ export async function handleDeleteMaterial(materialId, res) {
  * Bypasses storage.js which only supports image extensions.
  * Returns the absolute file path.
  */
-async function storeMaterialFile(buffer, hash, ext) {
+export async function storeMaterialFile(buffer, hash, ext) {
   const dir = path.join(MATERIAL_DIR, hash.slice(0, 2), hash.slice(2, 4));
   await fs.mkdir(dir, { recursive: true });
   const filePath = path.join(dir, `${hash.slice(4)}.${ext}`);
@@ -150,6 +150,40 @@ async function storeMaterialFile(buffer, hash, ext) {
   }
 
   return filePath;
+}
+
+/**
+ * GET /api/materials/:id/file
+ * Streams the material file from disk.
+ */
+export async function handleGetMaterialFile(materialId, res) {
+  try {
+    if (!materialId || typeof materialId !== "string") {
+      return sendJson(res, 400, { error: "materialId is required" });
+    }
+
+    const item = await prisma.materialItem.findUnique({ where: { id: materialId } });
+    if (!item) {
+      return sendJson(res, 404, { error: "Material not found" });
+    }
+
+    try {
+      await fs.access(item.filePath);
+    } catch {
+      return sendJson(res, 404, { error: "File not found on disk" });
+    }
+
+    const fileBuffer = await fs.readFile(item.filePath);
+    res.writeHead(200, {
+      "Content-Type": item.mimeType || "application/octet-stream",
+      "Cache-Control": "public, max-age=86400",
+      "Content-Length": fileBuffer.length
+    });
+    res.end(fileBuffer);
+  } catch (error) {
+    console.error("[handleGetMaterialFile]", error);
+    return sendJson(res, 500, { error: error.message || "Failed to serve file" });
+  }
 }
 
 function extFromMimeType(mimeType) {
@@ -167,4 +201,52 @@ function extFromMimeType(mimeType) {
     "video/webm": "webm"
   };
   return map[mimeType] || "";
+}
+
+const SUPPORTED_MATERIAL_MIMES = new Set([
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "video/mp4",
+  "video/webm"
+]);
+
+function isSupportedMaterialMime(mimeType) {
+  if (mimeType.startsWith("image/")) return true;
+  return SUPPORTED_MATERIAL_MIMES.has(mimeType);
+}
+
+/**
+ * Sync an uploaded asset to the material library.
+ * Best-effort: returns null on failure without throwing.
+ */
+export async function syncToMaterialLibrary({ hash, fileName, mimeType, fileSize, filePath }) {
+  try {
+    if (!isSupportedMaterialMime(mimeType)) {
+      return null;
+    }
+
+    // Dedup: if MaterialItem with same hash exists, skip
+    const existing = await prisma.materialItem.findFirst({ where: { hash } });
+    if (existing) {
+      return existing;
+    }
+
+    // 100-item limit check
+    const count = await prisma.materialItem.count();
+    if (count >= MATERIAL_FILE_LIMIT) {
+      console.warn("[syncToMaterialLibrary] Material library full (100 items), skipping sync for", fileName);
+      return null;
+    }
+
+    const item = await prisma.materialItem.create({
+      data: { fileName, mimeType, fileSize, hash, filePath }
+    });
+
+    return item;
+  } catch (error) {
+    console.error("[syncToMaterialLibrary]", error);
+    return null;
+  }
 }

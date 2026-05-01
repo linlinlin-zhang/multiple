@@ -1,9 +1,9 @@
 :root {
-  --tube-bg: #a9bac8;
+  --tube-bg: #ffffff;
   --tube-ink: #1c1d1f;
   --tube-muted: rgba(28, 29, 31, 0.62);
-  --tube-line: rgba(0, 0, 0, 0.5);
-  --tube-hairline: rgba(0, 0, 0, 0.18);
+  --tube-line: rgba(0, 0, 0, 0.15);
+  --tube-hairline: rgba(0, 0, 0, 0.1);
 }
 
 * {
@@ -109,25 +109,25 @@ button {
   align-items: center;
   justify-content: center;
   padding: 0 16px;
-  border: 1px solid rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 999px;
   color: var(--tube-ink);
   text-decoration: none;
   font-size: 13px;
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.04);
   backdrop-filter: blur(8px);
   transition: background 160ms ease, transform 160ms ease;
 }
 
 .tube-actions a:hover {
-  background: rgba(255, 255, 255, 0.34);
+  background: rgba(0, 0, 0, 0.08);
   transform: translateY(-1px);
 }
 
 .hint,
 .version {
   margin: 0;
-  color: rgba(28, 29, 31, 0.56);
+  color: rgba(28, 29, 31, 0.45);
   font-family: "Courier New", ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: clamp(14px, 1vw, 18px);
   letter-spacing: 0.02em;
@@ -179,11 +179,11 @@ button {
 }
 
 .tube-lines .tube-line-spiral {
-  stroke: rgba(0, 0, 0, 0.34);
+  stroke: rgba(0, 0, 0, 0.12);
 }
 
 .tube-lines .tube-line-vertical {
-  stroke: rgba(0, 0, 0, 0.5);
+  stroke: rgba(0, 0, 0, 0.18);
 }
 
 .axis-line {
@@ -193,7 +193,7 @@ button {
   left: 52.6vw;
   width: 2px;
   z-index: 3;
-  background: rgba(0, 0, 0, 0.32);
+  background: rgba(0, 0, 0, 0.12);
   transform: translateX(-50%);
   pointer-events: none;
 }

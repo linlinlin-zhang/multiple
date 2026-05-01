@@ -140,31 +140,40 @@ export async function handleCreateImageShare(body, res) {
 
     const session = await prisma.session.findUnique({
       where: { id: sessionId },
-      include: { nodes: true }
+      include: { nodes: true, assets: true }
     });
 
     if (!session) {
       return sendJson(res, 404, { error: "Session not found" });
     }
 
+    const analysisNode = session.nodes.find((n) => n.nodeId === "analysis");
+    const analysisData = analysisNode?.data || {};
     const node = session.nodes.find((n) => n.nodeId === nodeId);
-    if (!node || node.type !== "generated") {
+    const sourceAsset = session.assets.find((a) => a.kind === "upload" && /^image\//i.test(a.mimeType || ""));
+
+    if (nodeId !== "source" && (!node || node.type !== "generated")) {
       return sendJson(res, 404, { error: "Generated node not found" });
     }
 
-    const analysisNode = session.nodes.find((n) => n.nodeId === "analysis");
-    const analysisData = analysisNode?.data || {};
+    if (nodeId === "source" && !sourceAsset) {
+      return sendJson(res, 404, { error: "Source image not found" });
+    }
 
-    const nodeData = node.data || {};
+    const nodeData = node?.data || {};
+    const isSource = nodeId === "source";
     const snapshotData = {
       type: "image",
       nodeId,
       sessionId,
-      imageHash: nodeData.imageHash || null,
-      imageDataUrl: nodeData.imageDataUrl || null,
-      explanation: nodeData.explanation || null,
-      option: nodeData.option || null,
-      title: session.title || "Shared Image",
+      imageKind: isSource ? "upload" : "generated",
+      imageHash: isSource ? sourceAsset.hash : (nodeData.imageHash || null),
+      imageDataUrl: isSource ? null : (nodeData.imageDataUrl || null),
+      explanation: isSource ? (analysisData.summary || null) : (nodeData.explanation || null),
+      option: isSource
+        ? { title: sourceAsset.fileName || session.title || "Source image" }
+        : (nodeData.option || null),
+      title: isSource ? (sourceAsset.fileName || session.title || "Source image") : (session.title || "Shared Image"),
       createdAt: session.createdAt,
       analysis: {
         title: analysisData.title || null,
@@ -232,6 +241,7 @@ export async function handleGetImageShare(token, res) {
       createdAt: shareToken.createdAt,
       expiresAt: shareToken.expiresAt,
       imageHash: snapshot.imageHash,
+      imageKind: snapshot.imageKind || "generated",
       imageDataUrl: snapshot.imageDataUrl,
       explanation: snapshot.explanation,
       option: snapshot.option,

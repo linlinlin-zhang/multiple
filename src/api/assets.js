@@ -1,4 +1,5 @@
-import { storeDataUrl, readFile } from "../lib/storage.js";
+import { storeDataUrl, readFile, parseDataUrl, hashBuffer } from "../lib/storage.js";
+import { syncToMaterialLibrary, storeMaterialFile } from "./materials.js";
 
 function sendJson(res, status, data) {
   res.writeHead(status, {
@@ -16,12 +17,39 @@ export async function handleStoreAsset(body, res) {
   try {
     const dataUrl = typeof body?.dataUrl === "string" ? body.dataUrl : "";
     const kind = body?.kind === "generated" ? "generated" : "upload";
-    const result = await storeDataUrl(dataUrl, { kind });
+    const fileName = typeof body?.fileName === "string" ? body.fileName : "";
+
+    let result;
+    let mimeType;
+
+    // Try image-specific storage first (existing behavior)
+    try {
+      result = await storeDataUrl(dataUrl, { kind });
+      mimeType = result.mimeType;
+    } catch (imageError) {
+      // If storeDataUrl fails, try general data URL parsing (for PDF, docx, etc.)
+      const parsed = parseDataUrl(dataUrl);
+      const hash = hashBuffer(parsed.buffer);
+      const filePath = await storeMaterialFile(parsed.buffer, hash, parsed.ext);
+      result = { hash, filePath, size: parsed.buffer.length };
+      mimeType = parsed.mimeType;
+    }
+
+    // Sync to material library for upload kind only
+    if (kind === "upload") {
+      syncToMaterialLibrary({
+        hash: result.hash,
+        fileName: fileName || `upload-${result.hash.slice(0, 8)}`,
+        mimeType,
+        fileSize: result.size,
+        filePath: result.filePath
+      }).catch(err => console.error("[handleStoreAsset] material sync failed:", err));
+    }
 
     return sendJson(res, 200, {
       ok: true,
       hash: result.hash,
-      mimeType: result.mimeType,
+      mimeType,
       size: result.size
     });
   } catch (error) {
