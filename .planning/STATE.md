@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Multi-Card Canvas Interaction
 status: complete
-stopped_at: Phase 18 Plan 03 complete — all 3 plans done
+stopped_at: Phase 18 complete — v2.0 milestone done
 last_updated: "2026-05-02T02:37:45Z"
 progress:
   total_phases: 3
@@ -93,7 +93,7 @@ progress:
 - [x] v1.1 Canvas Intelligence & Rich Input — shipped 2026-04-26
 - [x] v1.2 Interactive Canvas & Deep Analysis — shipped 2026-04-27
 - [x] v1.3 Material Library — shipped 2026-05-01
-- [x] v2.0 Multi-Card Canvas Interaction — Phase 17 complete, Phase 18 complete
+- [x] v2.0 Multi-Card Canvas Interaction — shipped 2026-05-02
 
 ### Blockers
 
