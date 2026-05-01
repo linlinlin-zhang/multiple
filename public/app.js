@@ -18,6 +18,7 @@ const optionTemplate = document.querySelector("#optionTemplate");
 const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
 const chatMessages = document.querySelector("#chatMessages");
+const commandMenu = document.querySelector("#commandMenu");
 const chatSendButton = document.querySelector("#chatSendButton");
 const chatGenerateButton = document.querySelector("#chatGenerateButton");
 const chatVoiceActions = document.querySelector(".chat-voice-actions");
@@ -108,6 +109,8 @@ let currentSessionId = null;
 let autoSaveTimer = null;
 let lastSavedStateHash = "";
 let currentViewerNodeId = null;
+let activeCommandIndex = 0;
+let currentHealthMode = "checking";
 
 const optionPositions = [
   { x: 850, y: 112, tilt: -1.5 },
@@ -125,6 +128,28 @@ const i18n = {
     "nav.home": "主页",
     "nav.sessions": "历史会话",
     "nav.settings": "设置",
+    "command.menu": "工作台命令",
+    "command.hint": "输入 / 选择工作台工具",
+    "command.save": "保存会话",
+    "command.saveDesc": "把当前画布保存到历史记录",
+    "command.export": "导出会话",
+    "command.exportDesc": "下载当前会话 JSON",
+    "command.import": "导入会话",
+    "command.importDesc": "从 JSON 文件恢复会话",
+    "command.sessions": "历史会话",
+    "command.sessionsDesc": "打开工作台内的会话列表",
+    "command.fit": "重置视图",
+    "command.fitDesc": "让画布回到初始视角",
+    "command.zoomIn": "放大",
+    "command.zoomInDesc": "放大当前画布",
+    "command.zoomOut": "缩小",
+    "command.zoomOutDesc": "缩小当前画布",
+    "command.arrange": "一键整理",
+    "command.arrangeDesc": "自动整理当前画布节点",
+    "command.history": "历史浏览器",
+    "command.historyDesc": "打开完整历史记录页面",
+    "command.settings": "设置",
+    "command.settingsDesc": "打开全局设置和 API 设置",
     "settings.title": "API 设置",
     "settings.analysis": "分析",
     "settings.chat": "对话",
@@ -257,6 +282,28 @@ const i18n = {
     "nav.home": "Home",
     "nav.sessions": "Sessions",
     "nav.settings": "Settings",
+    "command.menu": "Workbench commands",
+    "command.hint": "Type / to choose a workbench tool",
+    "command.save": "Save session",
+    "command.saveDesc": "Save this canvas to history",
+    "command.export": "Export session",
+    "command.exportDesc": "Download the current session JSON",
+    "command.import": "Import session",
+    "command.importDesc": "Restore a session from JSON",
+    "command.sessions": "Sessions",
+    "command.sessionsDesc": "Open the in-workbench session list",
+    "command.fit": "Reset view",
+    "command.fitDesc": "Return the canvas to the default view",
+    "command.zoomIn": "Zoom in",
+    "command.zoomInDesc": "Zoom into the canvas",
+    "command.zoomOut": "Zoom out",
+    "command.zoomOutDesc": "Zoom out of the canvas",
+    "command.arrange": "Arrange canvas",
+    "command.arrangeDesc": "Automatically tidy current canvas nodes",
+    "command.history": "History browser",
+    "command.historyDesc": "Open the full history page",
+    "command.settings": "Settings",
+    "command.settingsDesc": "Open global and API settings",
     "settings.title": "API Settings",
     "settings.analysis": "Analysis",
     "settings.chat": "Chat",
@@ -434,8 +481,7 @@ function renderAllText() {
     "nav.workbench": ".nav-link[href='/'] .nav-label",
     "nav.history": ".nav-link[href='/history/'] .nav-label",
     "nav.home": ".nav-link[href='/home.html'] .nav-label",
-    "nav.sessions": "#historyToggle .nav-label",
-    "nav.settings": ".nav-settings-label"
+    "nav.settings": ".nav-link[href='/history/?view=settings'] .nav-label"
   };
   for (const [key, selector] of Object.entries(navLabels)) {
     const el = document.querySelector(selector);
@@ -526,6 +572,7 @@ function renderAllText() {
   if (darkModeLabel) darkModeLabel.textContent = t("settings.darkMode");
   const langLabel = document.querySelector(".settings-language-row span");
   if (langLabel) langLabel.textContent = t("settings.language");
+  renderCommandMenu();
 
   const sessionPanelHeader = document.querySelector(".session-panel-header span");
   if (sessionPanelHeader) sessionPanelHeader.textContent = t("session.panelTitle");
@@ -628,6 +675,169 @@ async function init() {
   }
 }
 
+function getWorkbenchCommands() {
+  return [
+    { id: "save", icon: "S", label: t("command.save"), description: t("command.saveDesc") },
+    { id: "export", icon: "E", label: t("command.export"), description: t("command.exportDesc") },
+    { id: "import", icon: "I", label: t("command.import"), description: t("command.importDesc") },
+    { id: "sessions", icon: "L", label: t("command.sessions"), description: t("command.sessionsDesc") },
+    { id: "fit", icon: "F", label: t("command.fit"), description: t("command.fitDesc") },
+    { id: "zoom-in", icon: "+", label: t("command.zoomIn"), description: t("command.zoomInDesc") },
+    { id: "zoom-out", icon: "-", label: t("command.zoomOut"), description: t("command.zoomOutDesc") },
+    { id: "arrange", icon: "A", label: t("command.arrange"), description: t("command.arrangeDesc") },
+    { id: "history", icon: "H", label: t("command.history"), description: t("command.historyDesc") },
+    { id: "settings", icon: "C", label: t("command.settings"), description: t("command.settingsDesc") }
+  ];
+}
+
+function getFilteredCommands() {
+  const query = (chatInput?.value || "").trim().replace(/^\//, "").toLowerCase();
+  const commands = getWorkbenchCommands();
+  if (!query) return commands;
+  return commands.filter((command) => `${command.label} ${command.description} ${command.id}`.toLowerCase().includes(query));
+}
+
+function renderCommandMenu() {
+  if (!commandMenu) return;
+  const commands = getFilteredCommands();
+  commandMenu.innerHTML = "";
+  if (!commands.length) {
+    const empty = document.createElement("div");
+    empty.className = "command-empty";
+    empty.textContent = t("command.hint");
+    commandMenu.appendChild(empty);
+    return;
+  }
+
+  activeCommandIndex = Math.min(activeCommandIndex, commands.length - 1);
+  commands.forEach((command, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `command-item${index === activeCommandIndex ? " is-active" : ""}`;
+    button.setAttribute("role", "option");
+    button.setAttribute("aria-selected", String(index === activeCommandIndex));
+
+    const icon = document.createElement("span");
+    icon.className = "command-icon";
+    icon.textContent = command.icon;
+    const copy = document.createElement("span");
+    copy.className = "command-copy";
+    const title = document.createElement("span");
+    title.className = "command-title";
+    title.textContent = command.label;
+    const description = document.createElement("span");
+    description.className = "command-description";
+    description.textContent = command.description;
+    copy.append(title, description);
+    button.append(icon, copy);
+
+    button.addEventListener("mouseenter", () => {
+      activeCommandIndex = index;
+      renderCommandMenu();
+    });
+    button.addEventListener("click", () => executeWorkbenchCommand(command.id));
+    commandMenu.appendChild(button);
+  });
+}
+
+function openCommandMenu() {
+  if (!commandMenu) return;
+  activeCommandIndex = 0;
+  commandMenu.classList.remove("hidden");
+  renderCommandMenu();
+}
+
+function closeCommandMenu() {
+  commandMenu?.classList.add("hidden");
+}
+
+function syncCommandMenu() {
+  if (!chatInput || !commandMenu) return;
+  if (chatInput.value.trim().startsWith("/")) {
+    commandMenu.classList.remove("hidden");
+    renderCommandMenu();
+  } else {
+    closeCommandMenu();
+  }
+}
+
+function openSessionPanel() {
+  const panel = document.querySelector("#sessionPanel");
+  if (!panel) return;
+  panel.classList.remove("hidden");
+  renderSessionList();
+}
+
+async function exportCurrentSession() {
+  if (!currentSessionId) {
+    alert(t("save.alertFirst"));
+    return;
+  }
+  try {
+    const res = await fetch(`/api/sessions/${currentSessionId}/export`);
+    if (!res.ok) throw new Error(await res.text());
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = /filename="([^"]+)"/.exec(disposition);
+    a.download = match ? match[1] : `session_${currentSessionId.slice(0, 8)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert(t("save.exportFailed") + (err instanceof Error ? err.message : String(err)));
+  }
+}
+
+function importSessionFile() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json,application/json";
+  input.onchange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const payload = JSON.parse(text);
+      const res = await fetch("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Import failed");
+      window.location.href = `/?session=${data.sessionId}`;
+    } catch (err) {
+      alert(t("save.importFailed") + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+  input.click();
+}
+
+async function executeWorkbenchCommand(commandId) {
+  closeCommandMenu();
+  if (chatInput) chatInput.value = "";
+
+  if (commandId === "save") return saveSession();
+  if (commandId === "export") return exportCurrentSession();
+  if (commandId === "import") return importSessionFile();
+  if (commandId === "sessions") return openSessionPanel();
+  if (commandId === "fit") return resetView();
+  if (commandId === "zoom-in") return zoomBy(0.08);
+  if (commandId === "zoom-out") return zoomBy(-0.08);
+  if (commandId === "arrange") return arrangeCanvasLayout();
+  if (commandId === "history") {
+    window.location.href = "/history/";
+    return;
+  }
+  if (commandId === "settings") {
+    window.location.href = "/history/?view=settings";
+  }
+}
+
 function wireControls() {
   fileInput.addEventListener("change", handleFile);
   // Research dropdown wiring
@@ -654,17 +864,47 @@ function wireControls() {
   });
   chatForm.addEventListener("submit", handleChatSubmit);
   chatInput?.addEventListener("keydown", (event) => {
+    const commandMenuOpen = commandMenu && !commandMenu.classList.contains("hidden");
+    if (commandMenuOpen) {
+      const commands = getFilteredCommands();
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        activeCommandIndex = (activeCommandIndex + 1) % Math.max(commands.length, 1);
+        renderCommandMenu();
+        return;
+      }
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        activeCommandIndex = (activeCommandIndex - 1 + Math.max(commands.length, 1)) % Math.max(commands.length, 1);
+        renderCommandMenu();
+        return;
+      }
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        const command = commands[activeCommandIndex];
+        if (command) executeWorkbenchCommand(command.id);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeCommandMenu();
+        return;
+      }
+    }
     if (chatInput.disabled && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
       showSelectionToast();
     }
   });
+  chatInput?.addEventListener("input", syncCommandMenu);
   chatInput?.addEventListener("focus", () => {
     if (chatInput.disabled) {
       showSelectionToast();
+    } else if (chatInput.value.trim().startsWith("/")) {
+      openCommandMenu();
     }
   });
-  navToggle.addEventListener("click", toggleNav);
+  navToggle?.addEventListener("click", toggleNav);
 
   // Source tabs (file / url)
   document.querySelectorAll(".source-tab").forEach(tab => {
@@ -682,9 +922,9 @@ function wireControls() {
   });
   urlAnalyzeButton?.addEventListener("click", analyzeUrl);
 
-  document.querySelector("#zoomInButton").addEventListener("click", () => zoomBy(0.08));
-  document.querySelector("#zoomOutButton").addEventListener("click", () => zoomBy(-0.08));
-  document.querySelector("#fitButton").addEventListener("click", resetView);
+  document.querySelector("#zoomInButton")?.addEventListener("click", () => zoomBy(0.08));
+  document.querySelector("#zoomOutButton")?.addEventListener("click", () => zoomBy(-0.08));
+  document.querySelector("#fitButton")?.addEventListener("click", resetView);
   document.querySelector("#saveButton")?.addEventListener("click", () => saveSession());
   document.querySelector("#arrangeButton")?.addEventListener("click", arrangeCanvasLayout);
 
@@ -705,54 +945,8 @@ function wireControls() {
     });
   });
 
-  document.querySelector("#exportBtn")?.addEventListener("click", async () => {
-    if (!currentSessionId) {
-      alert(t("save.alertFirst"));
-      return;
-    }
-    try {
-      const res = await fetch(`/api/sessions/${currentSessionId}/export`);
-      if (!res.ok) throw new Error(await res.text());
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const disposition = res.headers.get("Content-Disposition") || "";
-      const match = /filename="([^"]+)"/.exec(disposition);
-      a.download = match ? match[1] : `session_${currentSessionId.slice(0, 8)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      alert(t("save.exportFailed") + (err instanceof Error ? err.message : String(err)));
-    }
-  });
-
-  document.querySelector("#importBtn")?.addEventListener("click", () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".json,application/json";
-    input.onchange = async (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const payload = JSON.parse(text);
-        const res = await fetch("/api/import", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (!res.ok || !data.ok) throw new Error(data.error || "Import failed");
-        window.location.href = `/?session=${data.sessionId}`;
-      } catch (err) {
-        alert(t("save.importFailed") + (err instanceof Error ? err.message : String(err)));
-      }
-    };
-    input.click();
-  });
+  document.querySelector("#exportBtn")?.addEventListener("click", exportCurrentSession);
+  document.querySelector("#importBtn")?.addEventListener("click", importSessionFile);
 
   document.querySelector("#historyToggle")?.addEventListener("click", () => {
     const panel = document.querySelector("#sessionPanel");
@@ -906,6 +1100,9 @@ function wireControls() {
     if (!settingsPanel?.classList.contains("hidden") && event.target === viewport) {
       settingsPanel.classList.add("hidden");
     }
+    if (commandMenu && !commandMenu.contains(event.target) && !chatForm.contains(event.target)) {
+      closeCommandMenu();
+    }
   });
 
   viewport.addEventListener("wheel", (event) => {
@@ -1003,10 +1200,14 @@ function updateThinkingToggleUI() {
 async function checkHealth() {
   try {
     const health = await getJson("/api/health");
-    modeBadge.textContent = health.mode;
-    modeBadge.title = health.mode === "demo" ? "No model API key configured, using demo fallback" : "Connected to configured model API";
+    currentHealthMode = health.mode || "unknown";
+    if (modeBadge) {
+      modeBadge.textContent = health.mode;
+      modeBadge.title = health.mode === "demo" ? "No model API key configured, using demo fallback" : "Connected to configured model API";
+    }
   } catch {
-    modeBadge.textContent = "offline";
+    currentHealthMode = "offline";
+    if (modeBadge) modeBadge.textContent = "offline";
   }
 }
 
@@ -1368,6 +1569,13 @@ async function handleChatSubmit(event) {
   event.preventDefault();
   const message = chatInput.value.trim();
   if (!message) return;
+  if (message.startsWith("/")) {
+    const command = getFilteredCommands()[activeCommandIndex];
+    if (command) {
+      await executeWorkbenchCommand(command.id);
+    }
+    return;
+  }
 
   chatInput.value = "";
   appendChatMessage("user", message);
@@ -2996,7 +3204,7 @@ async function saveSession({ isAuto = false } = {}) {
     const body = {
       state: payloadState,
       title: aiTitle || (state.fileName ? `${state.fileName}${t("session.exploration")}` : t("session.unnamed")),
-      isDemo: document.querySelector("#modeBadge")?.textContent === "demo"
+      isDemo: currentHealthMode === "demo"
     };
 
     let result;
