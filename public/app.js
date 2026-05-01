@@ -95,8 +95,8 @@ const settingsCache = {
   analysis: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
   chat: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
   image: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
-  asr: { endpoint: "", model: "", apiKey: "", temperature: 0 },
-  realtime: { endpoint: "", model: "", apiKey: "", temperature: 0.7 }
+  asr: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3-livetranslate-flash-2025-12-01", apiKey: "", temperature: 0 },
+  realtime: { endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime", model: "qwen3.5-omni-plus-realtime", apiKey: "", temperature: 0.7 }
 };
 
 const voiceState = {
@@ -109,6 +109,11 @@ const voiceState = {
   realtimeSessionId: 0,
   realtimeRecorder: null,
   realtimeStream: null,
+  realtimeAudioContext: null,
+  realtimeSource: null,
+  realtimeProcessor: null,
+  realtimeFlushTimer: null,
+  realtimePcmChunks: [],
   realtimeBusy: false
 };
 
@@ -1945,7 +1950,7 @@ async function toggleAsrDictation() {
 }
 
 async function startAsrDictation() {
-  if (!canRecordAudio()) return;
+  if (!canRecordAudio({ mediaRecorder: true })) return;
 
   const sessionId = voiceState.asrSessionId + 1;
   voiceState.asrSessionId = sessionId;
@@ -2065,7 +2070,7 @@ function setAsrReviewMode(active) {
 }
 
 async function toggleRealtimeVoice() {
-  if (voiceState.realtimeRecorder) {
+  if (voiceState.realtimeStream) {
     stopRealtimeVoice();
     return;
   }
@@ -2083,31 +2088,34 @@ async function startRealtimeVoice() {
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
-    const mimeType = pickAudioMimeType();
-    const options = mimeType ? { mimeType } : undefined;
-    const recorder = new MediaRecorder(stream, options);
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) {
+      stopMediaStream(stream);
+      setStatus(t("voice.unsupported"), "error");
+      return;
+    }
+    const audioContext = new AudioContextCtor();
+    const source = audioContext.createMediaStreamSource(stream);
+    const processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+    processor.onaudioprocess = (event) => {
+      const input = event.inputBuffer.getChannelData(0);
+      voiceState.realtimePcmChunks.push(floatToPcm16(input, audioContext.sampleRate, 16000));
+    };
+    source.connect(processor);
+    processor.connect(audioContext.destination);
 
     voiceState.realtimeStream = stream;
-    voiceState.realtimeRecorder = recorder;
+    voiceState.realtimeAudioContext = audioContext;
+    voiceState.realtimeSource = source;
+    voiceState.realtimeProcessor = processor;
+    voiceState.realtimePcmChunks = [];
+    voiceState.realtimeFlushTimer = window.setInterval(() => {
+      flushRealtimePcmChunk(sessionId);
+    }, 3200);
     chatRealtimeButton?.classList.add("is-listening");
     renderAllText();
     setStatus(t("voice.realtimeListening"), "busy");
-
-    recorder.addEventListener("dataavailable", (event) => {
-      if (event.data?.size) {
-        handleRealtimeVoiceChunk(event.data, sessionId);
-      }
-    });
-    recorder.addEventListener("stop", () => {
-      stopMediaStream(voiceState.realtimeStream);
-      voiceState.realtimeStream = null;
-      voiceState.realtimeRecorder = null;
-      voiceState.realtimeBusy = false;
-      chatRealtimeButton?.classList.remove("is-listening");
-      renderAllText();
-      setStatus(t("status.ready"), "ready");
-    });
-    recorder.start(3200);
   } catch (error) {
     stopRealtimeVoice();
     setStatus(t("voice.permissionDenied"), "error");
@@ -2117,28 +2125,41 @@ async function startRealtimeVoice() {
 
 function stopRealtimeVoice() {
   voiceState.realtimeSessionId += 1;
-  if (voiceState.realtimeRecorder && voiceState.realtimeRecorder.state !== "inactive") {
-    voiceState.realtimeRecorder.stop();
-  } else {
-    stopMediaStream(voiceState.realtimeStream);
-    voiceState.realtimeStream = null;
-    voiceState.realtimeRecorder = null;
-    voiceState.realtimeBusy = false;
-    chatRealtimeButton?.classList.remove("is-listening");
-    renderAllText();
-    setStatus(t("status.ready"), "ready");
+  if (voiceState.realtimeFlushTimer) {
+    window.clearInterval(voiceState.realtimeFlushTimer);
+    voiceState.realtimeFlushTimer = null;
   }
+  voiceState.realtimeProcessor?.disconnect();
+  voiceState.realtimeSource?.disconnect();
+  voiceState.realtimeAudioContext?.close?.().catch(() => {});
+  stopMediaStream(voiceState.realtimeStream);
+  voiceState.realtimeStream = null;
+  voiceState.realtimeRecorder = null;
+  voiceState.realtimeAudioContext = null;
+  voiceState.realtimeSource = null;
+  voiceState.realtimeProcessor = null;
+  voiceState.realtimePcmChunks = [];
+  voiceState.realtimeBusy = false;
+  chatRealtimeButton?.classList.remove("is-listening");
+  renderAllText();
+  setStatus(t("status.ready"), "ready");
 }
 
-async function handleRealtimeVoiceChunk(blob, sessionId) {
+function flushRealtimePcmChunk(sessionId) {
+  if (!voiceState.realtimePcmChunks.length || voiceState.realtimeBusy || sessionId !== voiceState.realtimeSessionId) return;
+  const pcmBase64 = pcmChunksToBase64(voiceState.realtimePcmChunks);
+  voiceState.realtimePcmChunks = [];
+  handleRealtimeVoiceChunk(pcmBase64, sessionId);
+}
+
+async function handleRealtimeVoiceChunk(pcmBase64, sessionId) {
   if (voiceState.realtimeBusy || sessionId !== voiceState.realtimeSessionId) return;
   voiceState.realtimeBusy = true;
 
   try {
-    const audioDataUrl = await blobToDataUrl(blob);
     const data = await postJson("/api/realtime-voice", {
-      audioDataUrl,
-      mimeType: blob.type || "audio/webm",
+      pcmBase64,
+      sampleRate: 16000,
       language: currentLang,
       selectedContext: buildSelectedNodeContext(),
       analysis: state.latestAnalysis,
@@ -2231,8 +2252,8 @@ function speakText(text) {
   window.speechSynthesis.speak(utterance);
 }
 
-function canRecordAudio() {
-  if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+function canRecordAudio({ mediaRecorder = false } = {}) {
+  if (!navigator.mediaDevices?.getUserMedia || (mediaRecorder && typeof MediaRecorder === "undefined")) {
     showToast(t("voice.unsupported"));
     setStatus(t("voice.unsupported"), "error");
     return false;
@@ -2262,6 +2283,35 @@ function blobToDataUrl(blob) {
     reader.onerror = () => reject(reader.error || new Error("Failed to read audio."));
     reader.readAsDataURL(blob);
   });
+}
+
+function floatToPcm16(floatSamples, sourceSampleRate, targetSampleRate) {
+  const ratio = sourceSampleRate / targetSampleRate;
+  const outputLength = Math.max(1, Math.floor(floatSamples.length / ratio));
+  const output = new Int16Array(outputLength);
+  for (let i = 0; i < outputLength; i += 1) {
+    const sourceIndex = Math.min(floatSamples.length - 1, Math.floor(i * ratio));
+    const sample = Math.max(-1, Math.min(1, floatSamples[sourceIndex] || 0));
+    output[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+  }
+  return output;
+}
+
+function pcmChunksToBase64(chunks) {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Int16Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  const bytes = new Uint8Array(merged.buffer);
+  let binary = "";
+  const blockSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += blockSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + blockSize));
+  }
+  return btoa(binary);
 }
 
 function createOptionNode(option, parentNodeId) {

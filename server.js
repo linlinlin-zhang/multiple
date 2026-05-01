@@ -11,6 +11,7 @@ import { handleGetSettings, handleUpdateSettings } from "./src/api/settings.js";
 import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js";
 import { extractTextFromBuffer } from "./src/lib/textExtract.js";
 import { PrismaClient } from "@prisma/client";
+import WebSocket from "ws";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -43,16 +44,16 @@ let runtimeConfigs = {
     apiKeyEnv: ["TENCENT_TOKENHUB_API_KEY", "TOKENHUB_API_KEY"]
   }),
   asr: buildModelConfig("ASR", {
-    provider: "openai-audio-transcriptions",
-    model: "whisper-1",
-    baseUrl: "https://api.openai.com/v1",
-    apiKeyEnv: ["ASR_API_KEY", "OPENAI_API_KEY"]
+    provider: "dashscope-livetranslate",
+    model: "qwen3-livetranslate-flash-2025-12-01",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    apiKeyEnv: ["DASHSCOPE_API_KEY", "ASR_API_KEY"]
   }),
   realtime: buildModelConfig("REALTIME", {
-    provider: "openai-audio-chat",
-    model: "gpt-4o-audio-preview",
-    baseUrl: "https://api.openai.com/v1",
-    apiKeyEnv: ["REALTIME_API_KEY", "OPENAI_API_KEY"]
+    provider: "dashscope-realtime",
+    model: "qwen3.5-omni-plus-realtime",
+    baseUrl: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
+    apiKeyEnv: ["DASHSCOPE_API_KEY", "REALTIME_API_KEY"]
   })
 };
 
@@ -256,17 +257,17 @@ async function refreshConfigs() {
     }, dbMap.image);
 
     runtimeConfigs.asr = buildModelConfig("ASR", {
-      provider: "openai-audio-transcriptions",
-      model: "whisper-1",
-      baseUrl: "https://api.openai.com/v1",
-      apiKeyEnv: ["ASR_API_KEY", "OPENAI_API_KEY"]
+      provider: "dashscope-livetranslate",
+      model: "qwen3-livetranslate-flash-2025-12-01",
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      apiKeyEnv: ["DASHSCOPE_API_KEY", "ASR_API_KEY"]
     }, dbMap.asr);
 
     runtimeConfigs.realtime = buildModelConfig("REALTIME", {
-      provider: "openai-audio-chat",
-      model: "gpt-4o-audio-preview",
-      baseUrl: "https://api.openai.com/v1",
-      apiKeyEnv: ["REALTIME_API_KEY", "OPENAI_API_KEY"]
+      provider: "dashscope-realtime",
+      model: "qwen3.5-omni-plus-realtime",
+      baseUrl: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
+      apiKeyEnv: ["DASHSCOPE_API_KEY", "REALTIME_API_KEY"]
     }, dbMap.realtime);
   } catch (err) {
     console.warn("[refreshConfigs] Database unavailable, using env defaults:", err.message);
@@ -274,27 +275,43 @@ async function refreshConfigs() {
 }
 
 function buildModelConfig(role, defaults, dbSettings = null) {
-  const roleProvider = (dbSettings?.provider) || process.env[`${role}_PROVIDER`] || defaults.provider;
+  const effectiveDbSettings = isLegacyVoiceDefault(role, dbSettings) ? null : dbSettings;
+  const roleProvider = (effectiveDbSettings?.provider) || process.env[`${role}_PROVIDER`] || defaults.provider;
   const apiKey =
-    (dbSettings?.apiKey ?? "") ||
+    (effectiveDbSettings?.apiKey ?? "") ||
     firstEnv(defaults.apiKeyEnv || []) ||
     process.env[`${role}_API_KEY`] ||
     "";
   const baseUrl = (
-    (dbSettings?.endpoint || "").replace(/\/+$/, "") ||
+    (effectiveDbSettings?.endpoint || "").replace(/\/+$/, "") ||
     process.env[`${role}_API_BASE_URL`] ||
     defaults.baseUrl
   ).replace(/\/+$/, "");
   const model =
-    (dbSettings?.model) ||
+    (effectiveDbSettings?.model) ||
     process.env[`${role}_MODEL`] ||
     defaults.model;
   const temperature =
-    typeof dbSettings?.temperature === "number"
-      ? dbSettings.temperature
+    typeof effectiveDbSettings?.temperature === "number"
+      ? effectiveDbSettings.temperature
       : (parseFloat(process.env[`${role}_TEMPERATURE`]) || defaults.temperature || 0.7);
 
   return { role: role.toLowerCase(), provider: roleProvider, apiKey, baseUrl, model, temperature };
+}
+
+function isLegacyVoiceDefault(role, dbSettings) {
+  if (!dbSettings || dbSettings.apiKey) return false;
+  const endpoint = String(dbSettings.endpoint || "").replace(/\/+$/, "");
+  const model = String(dbSettings.model || "");
+  return (
+    role === "ASR" &&
+    endpoint === "https://api.openai.com/v1" &&
+    model === "whisper-1"
+  ) || (
+    role === "REALTIME" &&
+    endpoint === "https://api.openai.com/v1" &&
+    model === "gpt-4o-audio-preview"
+  );
 }
 
 function firstEnv(keys) {
@@ -349,8 +366,9 @@ async function handleAsr(body, res) {
 
 async function handleRealtimeVoice(body, res) {
   const audioDataUrl = typeof body?.audioDataUrl === "string" ? body.audioDataUrl : "";
-  if (!isAudioDataUrl(audioDataUrl)) {
-    return sendJson(res, 400, { error: "audioDataUrl is required" });
+  const pcmBase64 = typeof body?.pcmBase64 === "string" ? body.pcmBase64 : "";
+  if (!isAudioDataUrl(audioDataUrl) && !isBase64Payload(pcmBase64)) {
+    return sendJson(res, 400, { error: "audioDataUrl or pcmBase64 is required" });
   }
 
   if (isDemoRole(runtimeConfigs.realtime)) {
@@ -365,6 +383,8 @@ async function handleRealtimeVoice(body, res) {
 
   const result = await realtimeVoiceCompletion(runtimeConfigs.realtime, {
     audioDataUrl,
+    pcmBase64,
+    sampleRate: Number(body?.sampleRate) || 16000,
     language: body?.language === "en" ? "en" : "zh",
     selectedContext: body?.selectedContext || null,
     analysis: normalizeChatAnalysis(body?.analysis),
@@ -1059,6 +1079,10 @@ async function handleExplain(body, res) {
 }
 
 async function transcribeAudio(config, audioDataUrl, language) {
+  if (isDashScopeLiveTranslateConfig(config)) {
+    return dashScopeLiveTranslateTranscription(config, audioDataUrl, language);
+  }
+
   const parsed = parseDataUrl(audioDataUrl);
   const ext = extensionFromMimeType(parsed.mimeType) || "webm";
   const form = new FormData();
@@ -1095,7 +1119,53 @@ async function transcribeAudio(config, audioDataUrl, language) {
   return String(json?.text || json?.transcript || json?.data?.text || "").trim();
 }
 
+function isDashScopeLiveTranslateConfig(config) {
+  return config.provider === "dashscope-livetranslate" || /^qwen3-livetranslate/i.test(config.model || "");
+}
+
+async function dashScopeLiveTranslateTranscription(config, audioDataUrl, language) {
+  const audio = audioInputFromDataUrl(audioDataUrl);
+  const targetLang = language === "en" ? "en" : "zh";
+  const response = await fetch(`${config.baseUrl}/chat/completions`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_audio",
+              input_audio: audio
+            }
+          ]
+        }
+      ],
+      modalities: ["text"],
+      stream: true,
+      stream_options: { include_usage: false },
+      translation_options: { target_lang: targetLang }
+    })
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`${config.role} API ${response.status}: ${detail || response.statusText}`);
+  }
+
+  const text = await collectStreamingChatText(response);
+  return text.trim();
+}
+
 async function realtimeVoiceCompletion(config, context) {
+  if (isDashScopeRealtimeConfig(config)) {
+    return dashScopeRealtimeVoiceCompletion(config, context);
+  }
+
   const audio = audioInputFromDataUrl(context.audioDataUrl);
   const lang = context.language === "en" ? "English" : "Chinese";
   const recentMessages = context.messages
@@ -1156,6 +1226,179 @@ async function realtimeVoiceCompletion(config, context) {
   };
 }
 
+function isDashScopeRealtimeConfig(config) {
+  return config.provider === "dashscope-realtime" || /^wss:\/\//i.test(config.baseUrl || "") || /omni.*realtime|realtime/i.test(config.model || "");
+}
+
+function buildRealtimeInstruction(context) {
+  const lang = context.language === "en" ? "English" : "Chinese";
+  const recentMessages = context.messages
+    .map((item) => `${item.role}: ${item.content}`)
+    .join("\n") || "None";
+  const selected = context.selectedContext
+    ? JSON.stringify(context.selectedContext).slice(0, 1200)
+    : "None";
+  const canvas = JSON.stringify(context.canvas || {}).slice(0, 1800);
+
+  return [
+    `You are the realtime voice controller for a canvas-based image exploration app. Understand the user's spoken command in ${lang}.`,
+    "Return strict JSON only. Do not wrap it in Markdown.",
+    "Schema:",
+    '{"transcript":"recognized user speech","reply":"short spoken response","actions":[{"type":"zoom_in|zoom_out|reset_view|arrange_canvas|deselect|select_source|select_analysis|select_node|create_direction","nodeId":"optional","parentNodeId":"optional","title":"optional","description":"optional","prompt":"optional"}]}',
+    "Use actions only when the user clearly asks the app to do something. Keep reply concise and suitable for speech.",
+    "",
+    "Current selected card:",
+    selected,
+    "",
+    "Current analysis:",
+    JSON.stringify(context.analysis || {}).slice(0, 1600),
+    "",
+    "Canvas state:",
+    canvas,
+    "",
+    "Recent dialogue:",
+    recentMessages
+  ].join("\n");
+}
+
+async function dashScopeRealtimeVoiceCompletion(config, context) {
+  const pcmBase64 = context.pcmBase64 || pcmBase64FromAudioDataUrl(context.audioDataUrl);
+  const instruction = buildRealtimeInstruction(context);
+  const events = await runDashScopeRealtimeTurn(config, pcmBase64, instruction);
+  const transcript = events.inputTranscript.trim();
+  const responseText = (events.text || events.audioTranscript).trim();
+  let parsed;
+  try {
+    parsed = parseJsonFromText(responseText);
+  } catch {
+    parsed = { transcript, reply: responseText, actions: [] };
+  }
+
+  return {
+    transcript: stringOr(parsed?.transcript, transcript),
+    reply: stringOr(parsed?.reply, responseText),
+    actions: normalizeVoiceActions(parsed?.actions || parsed?.action),
+    audioDataUrl: ""
+  };
+}
+
+function runDashScopeRealtimeTurn(config, pcmBase64, instruction) {
+  return new Promise((resolve, reject) => {
+    const url = `${config.baseUrl.replace(/\/+$/, "")}?model=${encodeURIComponent(config.model)}`;
+    const ws = new WebSocket(url, {
+      headers: { Authorization: `Bearer ${config.apiKey}` }
+    });
+    const chunks = splitBuffer(Buffer.from(pcmBase64, "base64"), 3200);
+    const result = { inputTranscript: "", text: "", audioTranscript: "" };
+    let settled = false;
+    let audioSent = false;
+
+    const timer = setTimeout(() => {
+      finish(new Error(`${config.role} API timeout waiting for realtime response.`));
+    }, 45000);
+
+    function finish(error) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try {
+        ws.close();
+      } catch {
+        // Ignore close errors.
+      }
+      if (error) reject(error);
+      else resolve(result);
+    }
+
+    function send(event) {
+      ws.send(JSON.stringify({
+        event_id: `event_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        ...event
+      }));
+    }
+
+    function sendAudioTurn() {
+      if (audioSent) return;
+      audioSent = true;
+      for (const chunk of chunks) {
+        send({ type: "input_audio_buffer.append", audio: chunk.toString("base64") });
+      }
+      send({ type: "input_audio_buffer.commit" });
+      send({ type: "response.create" });
+    }
+
+    ws.on("open", () => {
+      send({
+        type: "session.update",
+        session: {
+          modalities: ["text"],
+          instructions: instruction,
+          input_audio_format: "pcm",
+          output_audio_format: "pcm",
+          input_audio_transcription: { model: "qwen3-asr-flash-realtime" },
+          turn_detection: null
+        }
+      });
+    });
+
+    ws.on("message", (data) => {
+      let event;
+      try {
+        event = JSON.parse(data.toString());
+      } catch {
+        return;
+      }
+
+      switch (event.type) {
+        case "error":
+          finish(new Error(event.error?.message || JSON.stringify(event.error || event)));
+          break;
+        case "session.updated":
+          sendAudioTurn();
+          break;
+        case "conversation.item.input_audio_transcription.completed":
+          result.inputTranscript = event.transcript || result.inputTranscript;
+          break;
+        case "response.text.delta":
+          result.text += event.delta || "";
+          break;
+        case "response.audio_transcript.delta":
+          result.audioTranscript += event.delta || "";
+          break;
+        case "response.audio_transcript.done":
+          if (event.transcript && !result.audioTranscript) result.audioTranscript = event.transcript;
+          break;
+        case "response.done":
+          finish();
+          break;
+        default:
+          break;
+      }
+    });
+
+    ws.on("error", (error) => finish(error));
+    ws.on("close", () => {
+      if (!settled && audioSent) finish();
+    });
+  });
+}
+
+function splitBuffer(buffer, size) {
+  const chunks = [];
+  for (let i = 0; i < buffer.length; i += size) {
+    chunks.push(buffer.subarray(i, i + size));
+  }
+  return chunks;
+}
+
+function pcmBase64FromAudioDataUrl(audioDataUrl) {
+  const parsed = parseDataUrl(audioDataUrl);
+  if (audioFormatFromMimeType(parsed.mimeType) !== "pcm") {
+    throw new Error("DashScope realtime requires 16kHz 16-bit mono PCM audio.");
+  }
+  return parsed.buffer.toString("base64");
+}
+
 function audioInputFromDataUrl(audioDataUrl) {
   const match = /^data:([^;,]+)(?:;[^,]*)?;base64,([a-zA-Z0-9+/=]+)$/i.exec(audioDataUrl);
   if (!match) {
@@ -1178,7 +1421,9 @@ function audioFormatFromMimeType(mimeType) {
     "audio/mp4": "mp4",
     "audio/m4a": "m4a",
     "audio/webm": "webm",
-    "audio/ogg": "ogg"
+    "audio/ogg": "ogg",
+    "audio/pcm": "pcm",
+    "audio/l16": "pcm"
   }[normalized] || "webm";
 }
 
@@ -1260,6 +1505,62 @@ async function chatCompletions(config, payload) {
   }
 
   return json;
+}
+
+async function collectStreamingChatText(response) {
+  if (!response.body) return "";
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: !done });
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) continue;
+      const data = trimmed.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      try {
+        const chunk = JSON.parse(data);
+        text += extractStreamingTextDelta(chunk);
+      } catch {
+        // Ignore keepalive or non-JSON stream fragments.
+      }
+    }
+
+    if (done) break;
+  }
+
+  if (buffer.trim().startsWith("data:")) {
+    const data = buffer.trim().slice(5).trim();
+    if (data && data !== "[DONE]") {
+      try {
+        text += extractStreamingTextDelta(JSON.parse(data));
+      } catch {
+        // Ignore trailing non-JSON stream fragments.
+      }
+    }
+  }
+
+  return text;
+}
+
+function extractStreamingTextDelta(chunk) {
+  const delta = chunk?.choices?.[0]?.delta;
+  if (!delta) return "";
+  if (typeof delta.content === "string") return delta.content;
+  if (Array.isArray(delta.content)) {
+    return delta.content.map((part) => part?.text || part?.content || "").join("");
+  }
+  if (typeof delta.audio?.transcript === "string") return delta.audio.transcript;
+  if (typeof delta.transcript === "string") return delta.transcript;
+  return "";
 }
 
 function collectChatContent(response) {
@@ -1718,6 +2019,10 @@ function isAudioDataUrl(value) {
   return typeof value === "string" && /^data:audio\/[a-z0-9.+-]+(?:;[^,]*)?;base64,/i.test(value);
 }
 
+function isBase64Payload(value) {
+  return typeof value === "string" && value.length > 0 && /^[a-zA-Z0-9+/=]+$/.test(value);
+}
+
 function parseDataUrl(value) {
   if (typeof value !== "string") {
     throw new Error("Invalid data URL format");
@@ -1762,7 +2067,9 @@ function extensionFromMimeType(mimeType) {
     "audio/mp3": "mp3",
     "audio/wav": "wav",
     "audio/wave": "wav",
-    "audio/x-wav": "wav"
+    "audio/x-wav": "wav",
+    "audio/pcm": "pcm",
+    "audio/l16": "pcm"
   };
   return map[mimeType] || "";
 }
