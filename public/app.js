@@ -95,6 +95,7 @@ const state = {
   nodes: new Map(),
   links: [],
   junctions: new Map(),  // junctionId -> { connectedCardIds: string[], maxCapacity: 5 }
+  blueprints: new Map(),  // junctionId -> { positions: { cardId: { x, y } }, relationships: [{ from, to, type }] }
   collapsed: new Set(),        // full collapse (double-click)
   selectiveHidden: new Set(),  // selective hide (single-click / auto-collapse)
   generatedCount: 0,
@@ -1915,7 +1916,7 @@ async function exploreSource() {
   if (state.sourceType === "url" && !state.sourceUrl) return;
 
   setStatus(t("research.exploring"), "busy");
-  setResearchButtonBusy(true, t("research.exploring"));
+  setResearchButtonBusy(true, t("research.button"));
 
   try {
     let data;
@@ -1967,7 +1968,7 @@ async function analyzeSource(mode = "analyze") {
   if (state.sourceType === "url" && !state.sourceUrl) return;
 
   setStatus(t("status.busy"), "busy");
-  setResearchButtonBusy(true, t("status.busy"));
+  setResearchButtonBusy(true, t("research.analyze"));
 
   try {
     let data;
@@ -3253,6 +3254,7 @@ function createNewCardNode() {
     height: element.offsetHeight
   });
 
+  makeTitleEditable(id, title);
   makeDraggable(element, id);
   applyCollapseState();
   updateCounts();
@@ -4335,6 +4337,7 @@ function registerNode(id, element, data) {
   element.addEventListener("dblclick", (event) => {
     if (event.target.closest(".collapse-dot")) return;
     if (event.target.closest("button, input, textarea, a")) return;
+    if (event.target.closest(".option-title, .generated-node h3, .analysis-node h2, #sourceName, .node-title-input")) return;
     const node = state.nodes.get(id);
     if (node?.option?.references && node.option.references.length > 0) {
       openReferenceModal(id);
@@ -4491,12 +4494,17 @@ function canDeleteNode(nodeId) {
 
 function makeTitleEditable(nodeId, titleElement) {
   if (!titleElement) return;
+  if (titleElement.dataset.titleEditable === "true") return;
+  titleElement.dataset.titleEditable = "true";
+  titleElement.title = titleElement.title || "Double-click to rename";
 
   titleElement.addEventListener("dblclick", (event) => {
     event.stopPropagation();
+    event.preventDefault();
     if (titleElement.querySelector(".node-title-input")) return; // already editing
 
-    const originalText = titleElement.textContent;
+    const node = state.nodes.get(nodeId);
+    const originalText = (node?.option?.title || titleElement.textContent || "").trim();
     const input = document.createElement("input");
     input.type = "text";
     input.className = "node-title-input";
@@ -4508,23 +4516,34 @@ function makeTitleEditable(nodeId, titleElement) {
     input.focus();
     input.select();
 
+    let finished = false;
+
+    function finish(callback) {
+      if (finished) return;
+      finished = true;
+      callback();
+    }
+
     function save() {
-      const newText = input.value.trim();
-      if (newText && newText !== originalText) {
-        titleElement.textContent = newText;
-        // Update node data
-        const node = state.nodes.get(nodeId);
-        if (node) {
-          if (node.option) node.option.title = newText;
+      finish(() => {
+        const newText = input.value.trim();
+        if (newText && newText !== originalText) {
+          titleElement.textContent = newText;
+          const latestNode = state.nodes.get(nodeId);
+          if (latestNode?.option) {
+            latestNode.option.title = newText;
+          }
           autoSave();
+        } else {
+          titleElement.textContent = originalText;
         }
-      } else {
-        titleElement.textContent = originalText;
-      }
+      });
     }
 
     function cancel() {
-      titleElement.textContent = originalText;
+      finish(() => {
+        titleElement.textContent = originalText;
+      });
     }
 
     input.addEventListener("keydown", (e) => {
@@ -4549,6 +4568,7 @@ function makeSourceNameEditable() {
   sourceName.title = "双击重命名";
   sourceName.addEventListener("dblclick", (event) => {
     event.stopPropagation();
+    event.preventDefault();
     if (sourceName.querySelector(".node-title-input")) return;
     const originalFileName = state.fileName || sourceName.textContent || "Source image";
     const input = document.createElement("input");
@@ -4560,16 +4580,28 @@ function makeSourceNameEditable() {
     input.focus();
     input.select();
 
+    let finished = false;
+
+    function finish(callback) {
+      if (finished) return;
+      finished = true;
+      callback();
+    }
+
     function save() {
-      const next = sanitizeFileName(input.value || originalFileName);
-      state.fileName = next;
-      sourceName.textContent = trimMiddle(next, 28);
-      updateSourceBadge();
-      autoSave();
+      finish(() => {
+        const next = sanitizeFileName(input.value || originalFileName);
+        state.fileName = next;
+        sourceName.textContent = trimMiddle(next, 28);
+        updateSourceBadge();
+        autoSave();
+      });
     }
 
     function cancel() {
-      sourceName.textContent = trimMiddle(originalFileName, 28);
+      finish(() => {
+        sourceName.textContent = trimMiddle(originalFileName, 28);
+      });
     }
 
     input.addEventListener("keydown", (e) => {
@@ -4697,24 +4729,86 @@ function makeDraggable(element, id) {
 
 function drawLinks() {
   const fragments = document.createDocumentFragment();
-
-  state.links.forEach((link) => {
+  const visibleLinks = state.links.map((link) => {
     const from = state.nodes.get(link.from);
     const to = state.nodes.get(link.to);
-    if (!isNodeVisible(from) || !isNodeVisible(to)) return;
+    if (!isNodeVisible(from) || !isNodeVisible(to)) return null;
+    return { link, from, to, sides: chooseLinkSides(from, to) };
+  }).filter(Boolean);
 
-    const start = anchor(from, "right");
-    const end = anchor(to, "left");
+  const fromGroups = groupLinkDescriptors(visibleLinks, (descriptor) => `${descriptor.link.from}:${descriptor.sides.fromSide}`);
+  const toGroups = groupLinkDescriptors(visibleLinks, (descriptor) => `${descriptor.link.to}:${descriptor.sides.toSide}`);
+
+  visibleLinks.forEach((descriptor) => {
+    const { link, from, to, sides } = descriptor;
+    const start = anchor(
+      from,
+      sides.fromSide,
+      linkSpreadOffset(fromGroups.get(`${link.from}:${sides.fromSide}`), descriptor)
+    );
+    const end = anchor(
+      to,
+      sides.toSide,
+      linkSpreadOffset(toGroups.get(`${link.to}:${sides.toSide}`), descriptor)
+    );
     const path = curvePath(start, end);
     const shadow = svgElement("path", { d: path, class: "link-shadow" });
     const line = svgElement("path", { d: path, class: "link" });
-    const pinA = svgElement("circle", { cx: start.x, cy: start.y, r: 9, class: "link-pin" });
-    const pinB = svgElement("circle", { cx: end.x, cy: end.y, r: 9, class: "link-pin" });
+    const pinA = svgElement("circle", { cx: start.x, cy: start.y, r: 7, class: "link-pin" });
+    const pinB = svgElement("circle", { cx: end.x, cy: end.y, r: 7, class: "link-pin" });
 
     fragments.append(shadow, line, pinA, pinB);
   });
 
   linkLayer.replaceChildren(fragments);
+}
+
+function groupLinkDescriptors(items, keyFn) {
+  const groups = new Map();
+  items.forEach((item) => {
+    const key = keyFn(item);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  });
+  return groups;
+}
+
+function linkSpreadOffset(group, descriptor) {
+  if (!group || group.length <= 1) return 0;
+  const index = group.indexOf(descriptor);
+  const step = group.length > 6 ? 10 : 14;
+  return (index - (group.length - 1) / 2) * step;
+}
+
+function chooseLinkSides(from, to) {
+  const fromCenter = nodeCenter(from);
+  const toCenter = nodeCenter(to);
+  const dx = toCenter.x - fromCenter.x;
+  const dy = toCenter.y - fromCenter.y;
+
+  if (Math.abs(dx) >= Math.abs(dy) * 0.78) {
+    return {
+      fromSide: dx >= 0 ? "right" : "left",
+      toSide: dx >= 0 ? "left" : "right"
+    };
+  }
+
+  return {
+    fromSide: dy >= 0 ? "bottom" : "top",
+    toSide: dy >= 0 ? "top" : "bottom"
+  };
+}
+
+function nodeCenter(node) {
+  const element = node.element;
+  const width = element.offsetWidth || node.width || 300;
+  const height = element.offsetHeight || node.height || 220;
+  return {
+    x: node.x + width / 2,
+    y: node.y + height / 2,
+    width,
+    height
+  };
 }
 
 function isNodeVisible(node) {
@@ -4724,22 +4818,54 @@ function isNodeVisible(node) {
     && !node.element.classList.contains("selective-hidden");
 }
 
-function anchor(node, side) {
+function anchor(node, side = "right", offset = 0) {
   const element = node.element;
   const width = element.offsetWidth || node.width || 300;
   const height = element.offsetHeight || node.height || 220;
-  const x = node.x + (side === "right" ? width - 18 : 18);
-  const y = node.y + Math.min(height * 0.48, height - 32);
-  return { x, y };
+  const sidePadding = 18;
+  const edgePadding = 30;
+
+  if (side === "top" || side === "bottom") {
+    return {
+      x: node.x + clamp(width / 2 + offset, edgePadding, width - edgePadding),
+      y: node.y + (side === "bottom" ? height - sidePadding : sidePadding),
+      side
+    };
+  }
+
+  return {
+    x: node.x + (side === "right" ? width - sidePadding : sidePadding),
+    y: node.y + clamp(height * 0.48 + offset, edgePadding, height - edgePadding),
+    side
+  };
 }
 
 function curvePath(start, end) {
-  const distance = Math.max(120, Math.abs(end.x - start.x) * 0.42);
-  const c1x = start.x + distance;
-  const c2x = end.x - distance;
-  const c1y = start.y + (end.y - start.y) * 0.08;
-  const c2y = end.y - (end.y - start.y) * 0.08;
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  const bend = clamp(length * 0.36, 72, 260);
+  const startTangent = tangentForSide(start.side);
+  const endTangent = tangentForSide(end.side);
+  const c1x = start.x + startTangent.x * bend;
+  const c1y = start.y + startTangent.y * bend;
+  const c2x = end.x + endTangent.x * bend;
+  const c2y = end.y + endTangent.y * bend;
   return `M ${start.x} ${start.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${end.x} ${end.y}`;
+}
+
+function tangentForSide(side) {
+  switch (side) {
+    case "left":
+      return { x: -1, y: 0 };
+    case "top":
+      return { x: 0, y: -1 };
+    case "bottom":
+      return { x: 0, y: 1 };
+    case "right":
+    default:
+      return { x: 1, y: 0 };
+  }
 }
 
 function svgElement(tag, attributes) {
@@ -4935,7 +5061,8 @@ function computeStateHash() {
     selectedNodeId: state.selectedNodeId,
     view: state.view,
     sourceImage: state.sourceImage ? state.sourceImage.slice(0, 200) : null,
-    latestAnalysis: state.latestAnalysis
+    latestAnalysis: state.latestAnalysis,
+    blueprints: Object.fromEntries(state.blueprints)
   });
 }
 
@@ -4960,7 +5087,8 @@ async function prepareStateForSave() {
       ...state.view,
       chatThreads: serializeChatThreads(),
       activeChatThreadId: state.activeChatThreadId
-    }
+    },
+    blueprints: Object.fromEntries(state.blueprints)
   };
 
   for (const [id, node] of state.nodes.entries()) {
@@ -5297,6 +5425,36 @@ async function loadSession(sessionId) {
     state.links = data.links.map(l => ({ from: l.fromNodeId, to: l.toNodeId, kind: l.kind }));
     if (analysisNodeData && !state.links.find(l => l.from === "source" && l.to === "analysis")) {
       state.links.unshift({ from: "source", to: "analysis", kind: "analysis" });
+    }
+
+    // Reconstruct junction state from links with kind: "junction"
+    state.junctions.clear();
+    for (const link of state.links) {
+      if (link.kind !== "junction") continue;
+      // junction links go: card -> junction node
+      const junctionId = link.to;
+      const cardId = link.from;
+      if (!state.junctions.has(junctionId)) {
+        state.junctions.set(junctionId, { connectedCardIds: [], maxCapacity: 5 });
+      }
+      const junction = state.junctions.get(junctionId);
+      if (!junction.connectedCardIds.includes(cardId)) {
+        junction.connectedCardIds.push(cardId);
+      }
+    }
+
+    // Restore junction counts in DOM
+    for (const [junctionId, junction] of state.junctions) {
+      const node = state.nodes.get(junctionId);
+      if (node?.element) {
+        const countEl = node.element.querySelector(".junction-count");
+        if (countEl) countEl.textContent = String(junction.connectedCardIds.length);
+      }
+    }
+
+    // Restore blueprint data if present in persisted state
+    if (data.state?.blueprints) {
+      state.blueprints = new Map(Object.entries(data.state.blueprints));
     }
 
     for (const n of data.nodes) {
