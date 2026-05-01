@@ -3057,13 +3057,14 @@ function updateBoardTransform() {
 }
 
 function updateCounts() {
+  if (!counts) return;
   const optionCount = Array.from(state.nodes.keys()).filter((id) => id.startsWith("option-")).length;
   counts.textContent = t("counts.label", { options: optionCount, generated: state.generatedCount });
 }
 
 function setStatus(text, tone = "ready") {
-  statusText.textContent = text;
-  statusDot.className = `status-dot ${tone}`;
+  if (statusText) statusText.textContent = text;
+  if (statusDot) statusDot.className = `status-dot ${tone}`;
 }
 
 function downloadImage(dataUrl, fileName) {

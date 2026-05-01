@@ -99,7 +99,6 @@ label:focus-visible {
   grid-template-areas: "rail main";
   height: 100%;
   background: var(--paper);
-  transition: grid-template-columns 180ms ease;
   position: relative;
 }
 
