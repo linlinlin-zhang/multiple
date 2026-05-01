@@ -179,6 +179,8 @@ const i18n = {
     "command.zoomOutDesc": "缩小当前画布",
     "command.arrange": "一键整理",
     "command.arrangeDesc": "自动整理当前画布节点",
+    "command.newCard": "新建卡片",
+    "command.newCardDesc": "在画布上创建一张空白卡片",
     "command.history": "历史浏览器",
     "command.historyDesc": "打开完整历史记录页面",
     "command.settings": "设置",
@@ -355,6 +357,8 @@ const i18n = {
     "command.zoomOutDesc": "Zoom out of the canvas",
     "command.arrange": "Arrange canvas",
     "command.arrangeDesc": "Automatically tidy current canvas nodes",
+    "command.newCard": "New Card",
+    "command.newCardDesc": "Create a blank card on the canvas",
     "command.history": "History browser",
     "command.historyDesc": "Open the full history page",
     "command.settings": "Settings",
@@ -805,7 +809,8 @@ function getWorkbenchCommands() {
     { id: "import", icon: "I", label: t("command.import"), description: t("command.importDesc") },
     { id: "sessions", icon: "L", label: t("command.sessions"), description: t("command.sessionsDesc") },
     { id: "fit", icon: "F", label: t("command.fit"), description: t("command.fitDesc") },
-    { id: "arrange", icon: "A", label: t("command.arrange"), description: t("command.arrangeDesc") }
+    { id: "arrange", icon: "A", label: t("command.arrange"), description: t("command.arrangeDesc") },
+    { id: "new-card", icon: "N", label: t("command.newCard"), description: t("command.newCardDesc") }
   ];
 }
 
@@ -946,6 +951,7 @@ async function executeWorkbenchCommand(commandId) {
   if (commandId === "sessions") return openSessionPanel();
   if (commandId === "fit") return resetView();
   if (commandId === "arrange") return arrangeCanvasLayout();
+  if (commandId === "new-card") return createNewCardNode();
 }
 
 function wireControls() {
