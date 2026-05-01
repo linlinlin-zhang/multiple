@@ -110,68 +110,99 @@
       <footer class="statusbar" aria-label="对话侧栏">
         <form id="chatForm" class="chatbar">
           <div class="chat-panel-header">
-            <div>
-              <span class="chat-panel-kicker">ORYZAE</span>
-              <strong class="chat-panel-title">对话</strong>
+            <span class="chat-panel-logo">ORYZAE</span>
+            <div class="chat-panel-actions" aria-label="对话操作">
+              <button id="chatNewButton" class="chat-panel-button" type="button" aria-label="新建对话" title="新建对话">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14"/>
+                </svg>
+              </button>
+              <button id="chatHistoryButton" class="chat-panel-button" type="button" aria-label="历史对话" title="历史对话">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M3 12a9 9 0 1 0 3-6.7"/>
+                  <path d="M3 4v5h5"/>
+                  <path d="M12 7v5l3 2"/>
+                </svg>
+              </button>
+              <span class="chat-panel-divider" aria-hidden="true"></span>
+              <button id="chatCloseButton" class="chat-panel-button" type="button" aria-label="关闭对话区域" title="关闭对话区域">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6 6 18"/>
+                </svg>
+              </button>
             </div>
-            <div class="chat-progress">
-              <div class="status-readout"><span class="status-dot"></span><span id="statusText">Ready</span></div>
-              <div id="counts">方向 0 / 成图 0</div>
-            </div>
+          </div>
+          <div id="chatConversationPanel" class="chat-conversation-panel hidden" aria-label="历史对话列表">
+            <div id="chatConversationList" class="chat-conversation-list"></div>
           </div>
           <div class="chat-context-indicator hidden"></div>
           <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
           <div class="chat-compose">
             <div id="commandMenu" class="command-menu hidden" role="listbox" aria-label="工作台命令"></div>
-            <div class="chat-input-row">
-              <button id="chatAttachButton" class="chat-attach-button" type="button" title="上传图片或文本文件">+</button>
-              <input id="chatInput" class="chat-input" type="text" autocomplete="off" placeholder="输入想继续探索的方向、风格或约束" />
-              <div class="thinking-toggle-wrapper">
-                <button id="thinkingToggle" class="thinking-toggle" type="button">
-                  <span class="thinking-label">思考</span>
-                  <span class="thinking-arrow">∨</span>
-                </button>
-                <div class="thinking-dropdown">
-                  <button class="thinking-option" data-mode="thinking">思考</button>
-                  <button class="thinking-option" data-mode="no-thinking">快速</button>
+            <div class="chat-agent-card">
+              <div class="chat-input-row">
+                <textarea id="chatInput" class="chat-input" rows="3" autocomplete="off" placeholder="输入方向、约束，或 / 命令"></textarea>
+                <div class="chat-input-actions">
+                  <button id="chatAttachButton" class="chat-attach-button" type="button" title="上传图片或文本文件" aria-label="上传图片或文本文件">+</button>
+                  <div class="chat-input-spacer"></div>
+                  <div class="thinking-toggle-wrapper">
+                    <button id="thinkingToggle" class="thinking-toggle" type="button">
+                      <span class="thinking-label">思考</span>
+                      <span class="thinking-arrow">⌃</span>
+                    </button>
+                    <div class="thinking-dropdown">
+                      <button class="thinking-option" data-mode="thinking">思考</button>
+                      <button class="thinking-option" data-mode="no-thinking">快速</button>
+                    </div>
+                  </div>
+                  <div class="chat-voice-actions" aria-label="Voice controls">
+                    <button id="chatAsrButton" class="chat-asr-button" type="button" title="语音转文字" aria-label="语音转文字">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/>
+                        <path d="M5 11a7 7 0 0 0 14 0"/>
+                        <path d="M12 18v3"/>
+                        <path d="M8 21h8"/>
+                      </svg>
+                    </button>
+                    <button id="chatRealtimeButton" class="chat-realtime-button" type="button" title="实时语音控制" aria-label="实时语音控制">
+                      <svg class="chat-primary-voice-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M5 10v4"/>
+                        <path d="M9 7v10"/>
+                        <path d="M13 5v14"/>
+                        <path d="M17 8v8"/>
+                        <path d="M21 11v2"/>
+                      </svg>
+                      <svg class="chat-primary-send-icon" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M12 19V5"/>
+                        <path d="m5 12 7-7 7 7"/>
+                      </svg>
+                    </button>
+                  </div>
+                  <div id="chatAsrReview" class="chat-asr-review hidden" aria-label="确认转写">
+                    <button id="chatAsrRejectButton" class="chat-review-button" type="button" title="删除转写" aria-label="删除转写">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M18 6 6 18"/>
+                        <path d="m6 6 12 12"/>
+                      </svg>
+                    </button>
+                    <button id="chatAsrAcceptButton" class="chat-review-button" type="button" title="保留转写" aria-label="保留转写">
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="m20 6-11 11-5-5"/>
+                      </svg>
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div class="chat-voice-actions" aria-label="Voice controls">
-                <button id="chatAsrButton" class="chat-asr-button" type="button" title="语音转文字" aria-label="语音转文字">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/>
-                    <path d="M5 11a7 7 0 0 0 14 0"/>
-                    <path d="M12 18v3"/>
-                    <path d="M8 21h8"/>
-                  </svg>
-                </button>
-                <button id="chatRealtimeButton" class="chat-realtime-button" type="button" title="实时语音控制" aria-label="实时语音控制">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M5 10v4"/>
-                    <path d="M9 7v10"/>
-                    <path d="M13 5v14"/>
-                    <path d="M17 8v8"/>
-                    <path d="M21 11v2"/>
-                  </svg>
-                </button>
-              </div>
-              <div id="chatAsrReview" class="chat-asr-review hidden" aria-label="确认转写">
-                <button id="chatAsrRejectButton" class="chat-review-button" type="button" title="删除转写" aria-label="删除转写">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                  </svg>
-                </button>
-                <button id="chatAsrAcceptButton" class="chat-review-button" type="button" title="保留转写" aria-label="保留转写">
-                  <svg viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="m20 6-11 11-5-5"/>
-                  </svg>
-                </button>
               </div>
             </div>
           </div>
         </form>
       </footer>
+      <button id="chatSidebarToggle" class="chat-sidebar-toggle hidden" type="button" aria-label="打开对话区域" title="打开对话区域" aria-expanded="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 5.5A3.5 3.5 0 0 1 7.5 2h9A3.5 3.5 0 0 1 20 5.5v7A3.5 3.5 0 0 1 16.5 16H10l-5 4v-4.5A3.5 3.5 0 0 1 4 12.5Z"/>
+          <path d="M8 8h8M8 12h5"/>
+        </svg>
+      </button>
     </div>
 
     <template id="optionTemplate">

@@ -19,7 +19,12 @@ const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
 const chatMessages = document.querySelector("#chatMessages");
 const commandMenu = document.querySelector("#commandMenu");
-const chatSendButton = document.querySelector("#chatSendButton");
+const chatNewButton = document.querySelector("#chatNewButton");
+const chatHistoryButton = document.querySelector("#chatHistoryButton");
+const chatCloseButton = document.querySelector("#chatCloseButton");
+const chatSidebarToggle = document.querySelector("#chatSidebarToggle");
+const chatConversationPanel = document.querySelector("#chatConversationPanel");
+const chatConversationList = document.querySelector("#chatConversationList");
 const chatGenerateButton = document.querySelector("#chatGenerateButton");
 const chatVoiceActions = document.querySelector(".chat-voice-actions");
 const chatAsrButton = document.querySelector("#chatAsrButton");
@@ -69,6 +74,8 @@ const state = {
   fileName: "",
   latestAnalysis: null,
   chatMessages: [],
+  chatThreads: [],
+  activeChatThreadId: null,
   nodes: new Map(),
   links: [],
   collapsed: new Set(),        // full collapse (double-click)
@@ -179,6 +186,13 @@ const i18n = {
     "source.analyzeUrl": "分析链接",
     "chat.placeholder": "输入方向、约束，或 / 命令",
     "chat.panelTitle": "对话",
+    "chat.newConversation": "新建对话",
+    "chat.historyConversations": "历史对话",
+    "chat.conversationListEmpty": "暂无历史对话",
+    "chat.conversationUntitled": "新对话 {index}",
+    "chat.conversationMessages": "{count} 条消息",
+    "chat.closePanel": "关闭对话区域",
+    "chat.openPanel": "打开对话区域",
     "chat.placeholderWithSelection": "对 {title} 继续探索…",
     "chat.placeholderWithCard": "与 '{title}' 对话...",
     "chat.contextIndicator": "对话上下文：{title}",
@@ -337,6 +351,13 @@ const i18n = {
     "source.analyzeUrl": "Analyze Link",
     "chat.placeholder": "Direction, constraint, or / command",
     "chat.panelTitle": "Chat",
+    "chat.newConversation": "New chat",
+    "chat.historyConversations": "Chat history",
+    "chat.conversationListEmpty": "No chat history",
+    "chat.conversationUntitled": "New chat {index}",
+    "chat.conversationMessages": "{count} messages",
+    "chat.closePanel": "Close chat panel",
+    "chat.openPanel": "Open chat panel",
     "chat.placeholderWithSelection": "Explore {title}…",
     "chat.placeholderWithCard": "Chat with '{title}'...",
     "chat.contextIndicator": "Context: {title}",
@@ -528,14 +549,29 @@ function renderAllText() {
       chatIn.placeholder = t("chat.placeholder");
     }
   }
-  const chatPanelTitle = document.querySelector(".chat-panel-title");
-  if (chatPanelTitle) chatPanelTitle.textContent = t("chat.panelTitle");
-  const chatSend = document.querySelector("#chatSendButton");
-  if (chatSend) chatSend.textContent = t("chat.send");
+  if (chatNewButton) {
+    chatNewButton.title = t("chat.newConversation");
+    chatNewButton.setAttribute("aria-label", t("chat.newConversation"));
+  }
+  if (chatHistoryButton) {
+    chatHistoryButton.title = t("chat.historyConversations");
+    chatHistoryButton.setAttribute("aria-label", t("chat.historyConversations"));
+  }
+  if (chatCloseButton) {
+    chatCloseButton.title = t("chat.closePanel");
+    chatCloseButton.setAttribute("aria-label", t("chat.closePanel"));
+  }
+  if (chatSidebarToggle) {
+    chatSidebarToggle.title = t("chat.openPanel");
+    chatSidebarToggle.setAttribute("aria-label", t("chat.openPanel"));
+  }
   const chatGenerate = document.querySelector("#chatGenerateButton");
   if (chatGenerate) chatGenerate.textContent = t("chat.generate");
   const chatAttach = document.querySelector("#chatAttachButton");
-  if (chatAttach) chatAttach.title = t("chat.attach");
+  if (chatAttach) {
+    chatAttach.title = t("chat.attach");
+    chatAttach.setAttribute("aria-label", t("chat.attach"));
+  }
   const asrBtn = document.querySelector("#chatAsrButton");
   if (asrBtn) {
     asrBtn.title = t("voice.asr");
@@ -543,9 +579,7 @@ function renderAllText() {
   }
   const realtimeBtn = document.querySelector("#chatRealtimeButton");
   if (realtimeBtn) {
-    const active = Boolean(voiceState.realtimeRecorder);
-    realtimeBtn.title = active ? t("voice.realtimeStop") : t("voice.realtime");
-    realtimeBtn.setAttribute("aria-label", active ? t("voice.realtimeStop") : t("voice.realtime"));
+    updateChatPrimaryButtonMode();
   }
   const asrRejectBtn = document.querySelector("#chatAsrRejectButton");
   if (asrRejectBtn) {
@@ -636,6 +670,7 @@ function renderAllText() {
   updateThinkingToggleUI();
   renderChatContextIndicator();
   renderChatMessages();
+  renderChatConversationList();
 }
 
 function updateStatusText() {
@@ -660,6 +695,7 @@ init().catch(console.error);
 
 async function init() {
   restoreNavState();
+  restoreChatSidebarState();
   registerNode("source", sourceNode, { x: 96, y: 88, width: 318, height: 326 });
   registerNode("analysis", analysisNode, { x: 452, y: 96, width: 318, height: 220 });
 
@@ -673,6 +709,8 @@ async function init() {
   await loadTheme();
   await loadLanguage();
   loadThinkingMode();
+  hydrateChatThreads();
+  updateChatPrimaryButtonMode();
 
   const urlParams = new URLSearchParams(window.location.search);
   const resumeSessionId = urlParams.get("session");
@@ -903,12 +941,20 @@ function wireControls() {
         return;
       }
     }
+    if (event.key === "Enter" && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      event.preventDefault();
+      chatForm?.requestSubmit();
+      return;
+    }
     if (chatInput.disabled && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
       event.preventDefault();
       showSelectionToast();
     }
   });
-  chatInput?.addEventListener("input", syncCommandMenu);
+  chatInput?.addEventListener("input", () => {
+    syncCommandMenu();
+    updateChatPrimaryButtonMode();
+  });
   chatInput?.addEventListener("focus", () => {
     if (chatInput.disabled) {
       showSelectionToast();
@@ -917,6 +963,13 @@ function wireControls() {
     }
   });
   navToggle?.addEventListener("click", toggleNav);
+  chatNewButton?.addEventListener("click", startNewChat);
+  chatHistoryButton?.addEventListener("click", toggleChatConversationPanel);
+  chatCloseButton?.addEventListener("click", () => setChatSidebarOpen(false));
+  chatSidebarToggle?.addEventListener("click", () => {
+    setChatSidebarOpen(true);
+    chatInput?.focus();
+  });
 
   // Source tabs (file / url)
   document.querySelectorAll(".source-tab").forEach(tab => {
@@ -944,7 +997,7 @@ function wireControls() {
   chatAsrButton?.addEventListener("click", toggleAsrDictation);
   chatAsrRejectButton?.addEventListener("click", rejectAsrTranscript);
   chatAsrAcceptButton?.addEventListener("click", acceptAsrTranscript);
-  chatRealtimeButton?.addEventListener("click", toggleRealtimeVoice);
+  chatRealtimeButton?.addEventListener("click", handleChatPrimaryAction);
   document.querySelector("#chatGenerateButton")?.addEventListener("click", (event) => {
     event.preventDefault();
     generateDirectionFromDialog();
@@ -1176,6 +1229,208 @@ function toggleNav() {
   navToggle.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
 }
 
+function setChatSidebarOpen(open) {
+  document.body.classList.toggle("chat-sidebar-closed", !open);
+  chatSidebarToggle?.classList.toggle("hidden", open);
+  chatSidebarToggle?.setAttribute("aria-expanded", String(open));
+  localStorage.setItem("oryzae.chatSidebarOpen", String(open));
+  if (!open) {
+    closeCommandMenu();
+    chatConversationPanel?.classList.add("hidden");
+    chatInput?.blur();
+  }
+}
+
+function restoreChatSidebarState() {
+  const saved = localStorage.getItem("oryzae.chatSidebarOpen");
+  setChatSidebarOpen(saved !== "false");
+}
+
+function createChatThread(messages = [], title = "") {
+  return {
+    id: `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    title,
+    createdAt: new Date().toISOString(),
+    messages: messages.map(normalizeChatThreadMessage)
+  };
+}
+
+function normalizeChatThreadMessage(message) {
+  return {
+    role: message?.role === "assistant" ? "assistant" : "user",
+    content: typeof message?.content === "string" ? message.content : "",
+    branchNodeId: message?.branchNodeId ?? null,
+    createdAt: message?.createdAt || new Date().toISOString()
+  };
+}
+
+function normalizeChatThread(thread, index = 0) {
+  const fallback = createChatThread([], t("chat.conversationUntitled", { index: index + 1 }));
+  if (!thread || typeof thread !== "object") return fallback;
+  const messages = Array.isArray(thread.messages) ? thread.messages.map(normalizeChatThreadMessage).filter((m) => m.content) : [];
+  return {
+    id: typeof thread.id === "string" && thread.id ? thread.id : fallback.id,
+    title: typeof thread.title === "string" ? thread.title : "",
+    createdAt: thread.createdAt || fallback.createdAt,
+    messages
+  };
+}
+
+function hydrateChatThreads({ threads, activeId, fallbackMessages = [] } = {}) {
+  const normalizedThreads = Array.isArray(threads)
+    ? threads.map(normalizeChatThread).filter((thread) => thread.messages.length || thread.id)
+    : [];
+  state.chatThreads = normalizedThreads.length
+    ? normalizedThreads
+    : [createChatThread(fallbackMessages)];
+  state.activeChatThreadId = state.chatThreads.some((thread) => thread.id === activeId)
+    ? activeId
+    : state.chatThreads[0].id;
+  syncActiveChatMessages();
+  renderChatConversationList();
+}
+
+function ensureActiveChatThread() {
+  if (!state.chatThreads.length) {
+    state.chatThreads = [createChatThread(state.chatMessages)];
+  }
+  let thread = state.chatThreads.find((item) => item.id === state.activeChatThreadId);
+  if (!thread) {
+    thread = state.chatThreads[0];
+    state.activeChatThreadId = thread.id;
+  }
+  state.chatMessages = thread.messages;
+  return thread;
+}
+
+function syncActiveChatMessages() {
+  const thread = ensureActiveChatThread();
+  state.chatMessages = thread.messages;
+}
+
+function resetChatThreads(messages = []) {
+  const thread = createChatThread(messages);
+  state.chatThreads = [thread];
+  state.activeChatThreadId = thread.id;
+  state.chatMessages = thread.messages;
+  renderChatConversationList();
+}
+
+function updateActiveChatThreadTitle(message) {
+  const thread = ensureActiveChatThread();
+  if (thread.title || !message) return;
+  thread.title = message.length > 26 ? `${message.slice(0, 26)}...` : message;
+}
+
+function serializeChatThreads() {
+  ensureActiveChatThread();
+  return state.chatThreads.map((thread) => ({
+    id: thread.id,
+    title: thread.title || "",
+    createdAt: thread.createdAt || new Date().toISOString(),
+    messages: thread.messages.map((message) => ({
+      role: message.role,
+      content: message.content,
+      branchNodeId: message.branchNodeId ?? null,
+      createdAt: message.createdAt || null
+    }))
+  }));
+}
+
+function getChatThreadTitle(thread, index) {
+  const firstUserMessage = thread.messages.find((message) => message.role === "user" && message.content);
+  const title = thread.title || firstUserMessage?.content || t("chat.conversationUntitled", { index: index + 1 });
+  return title.length > 28 ? `${title.slice(0, 28)}...` : title;
+}
+
+function renderChatConversationList() {
+  if (!chatConversationList) return;
+  ensureActiveChatThread();
+  chatConversationList.replaceChildren();
+  if (!state.chatThreads.length) {
+    const empty = document.createElement("div");
+    empty.className = "chat-conversation-empty";
+    empty.textContent = t("chat.conversationListEmpty");
+    chatConversationList.appendChild(empty);
+    return;
+  }
+
+  state.chatThreads.forEach((thread, index) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "chat-conversation-item";
+    item.classList.toggle("active", thread.id === state.activeChatThreadId);
+
+    const title = document.createElement("span");
+    title.className = "chat-conversation-title";
+    title.textContent = getChatThreadTitle(thread, index);
+
+    const meta = document.createElement("span");
+    meta.className = "chat-conversation-meta";
+    meta.textContent = t("chat.conversationMessages", { count: thread.messages.length });
+
+    item.append(title, meta);
+    item.addEventListener("click", () => {
+      state.activeChatThreadId = thread.id;
+      syncActiveChatMessages();
+      chatConversationPanel?.classList.add("hidden");
+      renderChatMessages();
+      renderChatConversationList();
+      autoSave();
+      chatInput?.focus();
+    });
+
+    chatConversationList.appendChild(item);
+  });
+}
+
+function toggleChatConversationPanel() {
+  if (!chatConversationPanel) return;
+  const open = chatConversationPanel.classList.contains("hidden");
+  if (open) renderChatConversationList();
+  chatConversationPanel.classList.toggle("hidden", !open);
+}
+
+function updateChatPrimaryButtonMode() {
+  if (!chatRealtimeButton) return;
+  const hasText = Boolean(chatInput?.value.trim());
+  const active = Boolean(voiceState.realtimeRecorder);
+  chatRealtimeButton.classList.toggle("has-text", hasText);
+  const label = hasText ? t("chat.send") : active ? t("voice.realtimeStop") : t("voice.realtime");
+  chatRealtimeButton.title = label;
+  chatRealtimeButton.setAttribute("aria-label", label);
+}
+
+function handleChatPrimaryAction() {
+  if (chatInput?.value.trim()) {
+    chatForm?.requestSubmit();
+    return;
+  }
+  toggleRealtimeVoice();
+}
+
+function startNewChat() {
+  const currentThread = ensureActiveChatThread();
+  if (currentThread.messages.length) {
+    const thread = createChatThread();
+    state.chatThreads.unshift(thread);
+    state.activeChatThreadId = thread.id;
+    syncActiveChatMessages();
+  } else {
+    currentThread.title = "";
+    currentThread.messages = [];
+    syncActiveChatMessages();
+  }
+  if (chatInput) chatInput.value = "";
+  closeCommandMenu();
+  chatConversationPanel?.classList.add("hidden");
+  updateChatPrimaryButtonMode();
+  renderChatConversationList();
+  renderChatMessages();
+  autoSave();
+  chatInput?.focus();
+}
+
 function setThinkingMode(mode) {
   if (mode !== "thinking" && mode !== "no-thinking") return;
   state.thinkingMode = mode;
@@ -1326,7 +1581,7 @@ async function handleFile(event) {
 
       clearOptions();
       state.latestAnalysis = null;
-      state.chatMessages = [];
+      resetChatThreads();
       renderChatMessages();
       state.collapsed.clear();
       analysisNode.classList.add("hidden");
@@ -1379,7 +1634,7 @@ async function handleFile(event) {
 
       clearOptions();
       state.latestAnalysis = null;
-      state.chatMessages = [];
+      resetChatThreads();
       renderChatMessages();
       state.collapsed.clear();
       analysisNode.classList.add("hidden");
@@ -1590,9 +1845,11 @@ async function handleChatSubmit(event) {
   }
 
   chatInput.value = "";
+  updateChatPrimaryButtonMode();
+  updateActiveChatThreadTitle(message);
   appendChatMessage("user", message);
   setStatus(t("status.busy"), "busy");
-  if (chatSendButton) chatSendButton.disabled = true;
+  if (chatRealtimeButton) chatRealtimeButton.disabled = true;
 
   try {
     const sourceImageDataUrl = await getSourceImageDataUrl();
@@ -1626,7 +1883,8 @@ async function handleChatSubmit(event) {
     appendChatMessage("assistant", error.message || "对话请求失败。");
     setStatus(t("status.error"), "error");
   } finally {
-    if (chatSendButton) chatSendButton.disabled = false;
+    if (chatRealtimeButton) chatRealtimeButton.disabled = false;
+    updateChatPrimaryButtonMode();
     chatInput.focus();
   }
 }
@@ -1753,6 +2011,7 @@ async function transcribeAsrChunk(blob, sessionId) {
       voiceState.asrTranscript = [voiceState.asrTranscript, text].filter(Boolean).join(" ");
       const pieces = [voiceState.asrBaseText, voiceState.asrTranscript].filter((part) => part && part.trim());
       chatInput.value = pieces.join(voiceState.asrBaseText.trim() ? " " : "");
+      updateChatPrimaryButtonMode();
     }
     setStatus(t("voice.asrListening"), "busy");
   } catch (error) {
@@ -1796,6 +2055,7 @@ function cleanupAsrDraft({ restore }) {
   chatInput?.classList.remove("has-asr-draft");
   chatAsrButton?.classList.remove("is-recording");
   setAsrReviewMode(false);
+  updateChatPrimaryButtonMode();
   setStatus(t("status.ready"), "ready");
 }
 
@@ -2062,16 +2322,21 @@ function createOptionNode(option, parentNodeId) {
 }
 
 function appendChatMessage(role, content) {
-  state.chatMessages.push({ role, content, branchNodeId: state.selectedNodeId });
+  const thread = ensureActiveChatThread();
+  thread.messages.push({
+    role: role === "assistant" ? "assistant" : "user",
+    content,
+    branchNodeId: state.selectedNodeId,
+    createdAt: new Date().toISOString()
+  });
+  state.chatMessages = thread.messages;
   renderChatMessages();
+  renderChatConversationList();
 }
 
 function getBranchMessages() {
-  const selectedId = state.selectedNodeId;
-  if (!selectedId) return state.chatMessages.filter(m => !m.branchNodeId);
-  // Show messages that were sent while this node (or any ancestor) was selected
-  // For now, filter by exact selectedNodeId match for clear scoping
-  return state.chatMessages.filter(m => m.branchNodeId === selectedId);
+  syncActiveChatMessages();
+  return state.chatMessages;
 }
 
 function renderChatMessages() {
@@ -2554,9 +2819,6 @@ function updateDialogState() {
     } else {
       chatInput.placeholder = t("chat.placeholder");
     }
-  }
-  if (chatSendButton) {
-    chatSendButton.disabled = !hasSelection;
   }
   if (chatGenerateButton) {
     chatGenerateButton.disabled = !hasSelection;
@@ -3112,6 +3374,8 @@ function computeStateHash() {
     collapsed: Array.from(state.collapsed),
     selectiveHidden: Array.from(state.selectiveHidden),
     chatMessages: state.chatMessages,
+    chatThreads: serializeChatThreads(),
+    activeChatThreadId: state.activeChatThreadId,
     selectedNodeId: state.selectedNodeId,
     view: state.view,
     sourceImage: state.sourceImage ? state.sourceImage.slice(0, 200) : null,
@@ -3136,7 +3400,11 @@ async function prepareStateForSave() {
     selectiveHidden: Array.from(state.selectiveHidden),
     generatedCount: state.generatedCount,
     selectedNodeId: state.selectedNodeId,
-    view: state.view
+    view: {
+      ...state.view,
+      chatThreads: serializeChatThreads(),
+      activeChatThreadId: state.activeChatThreadId
+    }
   };
 
   for (const [id, node] of state.nodes.entries()) {
@@ -3267,7 +3535,7 @@ async function loadSession(sessionId) {
     const data = await getJson(`/api/sessions/${sessionId}`);
 
     clearOptions();
-    state.chatMessages = [];
+    resetChatThreads();
     state.links = [];
     state.collapsed.clear();
     state.selectiveHidden.clear();
@@ -3279,7 +3547,12 @@ async function loadSession(sessionId) {
     state.latestAnalysis = null;
 
     if (data.viewState) {
-      state.view = { ...state.view, ...data.viewState };
+      state.view = {
+        ...state.view,
+        x: Number.isFinite(data.viewState.x) ? data.viewState.x : state.view.x,
+        y: Number.isFinite(data.viewState.y) ? data.viewState.y : state.view.y,
+        scale: Number.isFinite(data.viewState.scale) ? data.viewState.scale : state.view.scale
+      };
       updateBoardTransform();
     }
 
@@ -3440,7 +3713,11 @@ async function loadSession(sessionId) {
       for (const id of data.selectiveHidden) state.selectiveHidden.add(id);
     }
 
-    state.chatMessages = data.chatMessages.map(m => ({ role: m.role, content: m.content }));
+    hydrateChatThreads({
+      threads: data.viewState?.chatThreads,
+      activeId: data.viewState?.activeChatThreadId,
+      fallbackMessages: data.chatMessages.map(m => ({ role: m.role, content: m.content }))
+    });
     renderChatMessages();
 
     applyCollapseState();
