@@ -3358,15 +3358,6 @@ function updateJunctionCount(junctionId) {
   }
 }
 
-function findJunctionForCard(cardId) {
-  for (const [junctionId, junction] of state.junctions) {
-    if (junction.connectedCardIds.includes(cardId)) {
-      return junctionId;
-    }
-  }
-  return null;
-}
-
 // --- Connection mode: edge drag handles ---
 
 let connectionState = null;
