@@ -70,7 +70,11 @@ Plans:
   3. User can drag cards to reposition them within the modal
   4. User can draw lines between cards inside the modal to define upstream/downstream or parallel relationships
   5. Relationship lines defined in the modal are usable as context for subsequent exploration or generation actions
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 18-01-PLAN.md — Junction persistence fix + Blueprint modal foundation (MC-08, MC-09)
+- [ ] 18-02-PLAN.md — Modal card drag + relationship line drawing (MC-10, MC-11)
+- [ ] 18-03-PLAN.md — Blueprint persistence + AI context integration (MC-12)
 **UI hint**: yes
 
 ---
@@ -106,7 +110,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 16. Menu Cleanup & New Card | 2/2 | Done | 2026-05-02 |
 | 17. Connection Lines & Junction Nodes | 3/3 | Done | 2026-05-02 |
-| 18. Blueprint Modal | 0/0 | Not started | - |
+| 18. Blueprint Modal | 0/3 | Not started | - |
 
 ---
 
