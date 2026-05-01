@@ -53,7 +53,11 @@ Plans:
   3. Junction nodes are visually distinct from regular cards (different color and shadow)
   4. When a third card connects to either card in an existing pair, it automatically joins that junction node's group
   5. Attempting to connect a 6th card to a junction node is rejected (max 5 cards per junction)
-**Plans**: TBD
+**Plans:** 3 plans
+Plans:
+- [ ] 17-01-PLAN.md — Junction node data model and visual style (MC-05)
+- [ ] 17-02-PLAN.md — Drag-to-connect interaction (MC-03)
+- [ ] 17-03-PLAN.md — Junction node logic: auto-create, auto-join, max capacity (MC-04, MC-06, MC-07)
 **UI hint**: yes
 
 ### Phase 18: Blueprint Modal
@@ -101,7 +105,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 16. Menu Cleanup & New Card | 2/2 | Done | 2026-05-02 |
-| 17. Connection Lines & Junction Nodes | 0/0 | Not started | - |
+| 17. Connection Lines & Junction Nodes | 0/3 | Not started | - |
 | 18. Blueprint Modal | 0/0 | Not started | - |
 
 ---
