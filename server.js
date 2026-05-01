@@ -527,14 +527,28 @@ async function handleChat(body, res) {
   }
 
   if (isDemoRole(runtimeConfigs.chat)) {
+    const demoLang = body?.language === "en" ? "en" : "zh";
+    const actions = inferDemoChatActions(message);
     return sendJson(res, 200, {
       provider: "demo",
       model: runtimeConfigs.chat.model,
-      reply: buildDemoChatReply(message, analysis)
+      reply: buildDemoChatReply(message, analysis),
+      actions,
+      thinkingTrace: thinkingMode === "thinking"
+        ? normalizeChatThinkingTrace([
+            demoLang === "en" ? "Read the current canvas summary." : "读取当前画布摘要。",
+            actions.length
+              ? (demoLang === "en" ? "Matched the request to a reusable canvas action." : "将请求匹配到可复用画布动作。")
+              : (demoLang === "en" ? "No app action was required; answered conversationally." : "没有需要执行的应用动作，直接进行对话回答。")
+          ])
+        : []
     });
   }
 
   const lang = body?.language === "en" ? "en" : "zh";
+  const selectedContext = body?.selectedContext && typeof body.selectedContext === "object" ? body.selectedContext : null;
+  const canvas = body?.canvas && typeof body.canvas === "object" ? body.canvas : {};
+  const systemContext = typeof body?.systemContext === "string" ? body.systemContext.slice(0, 4000) : "";
   const context = lang === "en"
     ? [
         "You are the creative dialogue assistant in this canvas-based image generation app. Your task is to help users understand the current image, compare branch directions, propose new generation ideas, or organize user thoughts into executable visual directions. Answer in English, keep it concise, usually 1-3 sentences. Do not pretend to have generated a new image; if the user wants to generate, suggest clicking a direction node or explain how you would modify the prompt.",
@@ -558,6 +572,18 @@ async function handleChat(body, res) {
   const content = [
     { type: "text", text: `${context}\n\n用户最新消息：${message}` }
   ];
+  if (content[0]) {
+    content[0].text = buildChatUserPrompt({
+      message,
+      analysis,
+      selectedContext,
+      canvas,
+      messages,
+      systemContext,
+      thinkingMode,
+      lang
+    });
+  }
   if (imageDataUrl) {
     content.push({ type: "image_url", image_url: { url: imageDataUrl } });
   }
@@ -576,6 +602,7 @@ async function handleChat(body, res) {
       }
     ]
   };
+  chatPayload.messages[0].content = buildChatActionSystemPrompt(lang, thinkingMode);
 
   // Apply thinking mode parameter based on provider
   if (runtimeConfigs.chat.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.chat.model)) {
@@ -586,11 +613,24 @@ async function handleChat(body, res) {
 
   const response = await chatCompletions(runtimeConfigs.chat, chatPayload);
 
-  const reply = collectChatContent(response);
+  const rawReply = collectChatContent(response).trim();
+  let parsed = null;
+  try {
+    parsed = parseJsonFromText(rawReply);
+  } catch {
+    parsed = null;
+  }
+  const reply = stringOr(parsed?.reply, rawReply);
+  const actions = normalizeVoiceActions(parsed?.actions || parsed?.action);
+  const thinkingTrace = thinkingMode === "thinking"
+    ? normalizeChatThinkingTrace(parsed?.thinkingTrace || parsed?.trace || parsed?.steps)
+    : [];
   return sendJson(res, 200, {
     provider: "api",
     model: runtimeConfigs.chat.model,
-    reply: reply || "我读到了，我们可以继续把这个方向压成一个更明确的生成分支。"
+    reply: reply || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。"),
+    actions,
+    thinkingTrace
   });
 }
 
@@ -1369,6 +1409,98 @@ function buildRealtimeInstruction(context) {
     "Recent dialogue:",
     recentMessages
   ].join("\n");
+}
+
+function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thinking") {
+  const actionSchema = '{"reply":"short user-facing answer","thinkingTrace":["visible progress summary only, not private chain-of-thought"],"actions":[{"type":"action_type","nodeId":"optional exact node id","nodeName":"optional card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url"}]}';
+  const common = [
+    "Return strict JSON only. Do not wrap it in Markdown.",
+    "You are ORYZAE's canvas dialogue and action assistant. The user may chat freely, ask for analysis, or ask the app to manipulate the canvas.",
+    "Use actions only when the user clearly asks the app to do something. If the user is just chatting, return an empty actions array.",
+    "Prefer exact nodeId values copied from Canvas state. If a card is named but the exact id is uncertain, provide nodeName/query instead; never invent node IDs.",
+    "For destructive actions such as delete_node, only act when the user explicitly asks to delete/remove a card.",
+    "Reusable action types: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, generate_image, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
+    "Position vocabulary: left, right, above, below, center, upper-left, upper-right, lower-left, lower-right, canvas-center, screen-center.",
+    thinkingMode === "thinking"
+      ? "Because thinking mode is enabled, include 2-5 concise visible progress items in thinkingTrace. Do not reveal private chain-of-thought; summarize observable checks and planned actions only."
+      : "Because normal mode is enabled, keep thinkingTrace empty.",
+    "Schema:",
+    actionSchema
+  ];
+
+  if (lang === "en") {
+    return common.join("\n");
+  }
+  return [
+    "请用中文回答用户。",
+    ...common,
+    "reply 字段要自然、简洁、有帮助；不要声称已经完成没有实际 action 的操作。"
+  ].join("\n");
+}
+
+function buildChatUserPrompt({ message, analysis, selectedContext, canvas, messages, systemContext, thinkingMode, lang }) {
+  const recentMessages = messages.map((item) => `${item.role}: ${item.content}`).join("\n") || (lang === "en" ? "None" : "暂无");
+  return [
+    lang === "en" ? "User message:" : "用户消息：",
+    message,
+    "",
+    lang === "en" ? "App-level context:" : "应用上下文：",
+    systemContext || (lang === "en" ? "None" : "暂无"),
+    "",
+    lang === "en" ? "Current selected card:" : "当前选中卡片：",
+    JSON.stringify(selectedContext || null, null, 2),
+    "",
+    lang === "en" ? "Current image analysis:" : "当前图像分析：",
+    JSON.stringify(analysis || {}, null, 2).slice(0, 2200),
+    "",
+    lang === "en" ? "Canvas state and reusable capabilities:" : "画布状态与可复用能力：",
+    JSON.stringify(canvas || {}, null, 2).slice(0, 4200),
+    "",
+    lang === "en" ? "Recent dialogue:" : "最近对话：",
+    recentMessages,
+    "",
+    lang === "en" ? "Current mode:" : "当前模式：",
+    thinkingMode
+  ].join("\n");
+}
+
+function normalizeChatThinkingTrace(value) {
+  const raw = Array.isArray(value) ? value : (typeof value === "string" ? value.split(/\n+/) : []);
+  return raw
+    .map((item) => String(item || "").replace(/^[-*\d.\s]+/, "").trim())
+    .filter(Boolean)
+    .slice(0, 6)
+    .map((item) => item.slice(0, 220));
+}
+
+function inferDemoChatActions(message) {
+  const text = String(message || "").toLowerCase();
+  const actions = [];
+  if (/一键整理|整理画布|自动整理|arrange|layout/.test(text)) {
+    actions.push({ type: "arrange_canvas" });
+  }
+  if (/保存|save/.test(text)) {
+    actions.push({ type: "save_session" });
+  }
+  if (/新建对话|新的对话|new chat/.test(text)) {
+    actions.push({ type: "new_chat" });
+  }
+  if (/历史对话|chat history/.test(text)) {
+    actions.push({ type: "open_chat_history" });
+  }
+  if (/关闭对话|收起对话|close chat/.test(text)) {
+    actions.push({ type: "close_chat" });
+  }
+  if (/打开对话|展开对话|open chat/.test(text)) {
+    actions.push({ type: "open_chat" });
+  }
+  if (/深度思考|deep think|deep research/.test(text)) {
+    actions.push({ type: "set_deep_think_mode", mode: "on" });
+  }
+  if (/上传|添加文件|open upload/.test(text)) {
+    actions.push({ type: "open_upload" });
+  }
+  return normalizeVoiceActions(actions).slice(0, 3);
 }
 
 async function dashScopeRealtimeVoiceCompletion(config, context) {

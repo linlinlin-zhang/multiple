@@ -239,6 +239,9 @@ const i18n = {
     "chat.selectCardFirst": "请先双击选中一张卡片",
     "chat.send": "发送",
     "chat.generate": "生成",
+    "chat.thinkingPending": "正在思考...",
+    "chat.thinkingDetails": "思考过程",
+    "chat.actionsApplied": "已执行 {count} 个画布操作",
     "voice.asr": "语音转文字",
     "voice.asrListening": "正在听写...",
     "voice.asrTranscribing": "正在转写...",
@@ -421,6 +424,9 @@ const i18n = {
     "chat.selectCardFirst": "Please double-click a card to select it first",
     "chat.send": "Send",
     "chat.generate": "Generate",
+    "chat.thinkingPending": "Thinking...",
+    "chat.thinkingDetails": "Thinking process",
+    "chat.actionsApplied": "{count} canvas actions applied",
     "voice.asr": "Speech to text",
     "voice.asrListening": "Listening...",
     "voice.asrTranscribing": "Transcribing...",
@@ -1058,19 +1064,13 @@ function wireControls() {
       chatForm?.requestSubmit();
       return;
     }
-    if (chatInput.disabled && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
-      event.preventDefault();
-      showSelectionToast();
-    }
   });
   chatInput?.addEventListener("input", () => {
     syncCommandMenu();
     updateChatPrimaryButtonMode();
   });
   chatInput?.addEventListener("focus", () => {
-    if (chatInput.disabled) {
-      showSelectionToast();
-    } else if (chatInput.value.trim().startsWith("/")) {
+    if (chatInput.value.trim().startsWith("/")) {
       openCommandMenu();
     }
   });
@@ -1475,8 +1475,28 @@ function normalizeChatThreadMessage(message) {
     role: message?.role === "assistant" ? "assistant" : "user",
     content: typeof message?.content === "string" ? message.content : "",
     branchNodeId: message?.branchNodeId ?? null,
+    thinkingTrace: normalizeChatThinkingTrace(message?.thinkingTrace || message?.trace),
+    actions: normalizeChatMessageActions(message?.actions),
     createdAt: message?.createdAt || new Date().toISOString()
   };
+}
+
+function normalizeChatThinkingTrace(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : (typeof value === "string" ? value.split(/\n+/) : []);
+  return raw
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function normalizeChatMessageActions(value) {
+  const raw = Array.isArray(value) ? value : (value ? [value] : []);
+  return raw
+    .filter((action) => action && typeof action === "object" && action.type)
+    .slice(0, 8)
+    .map((action) => ({ ...action, type: String(action.type) }));
 }
 
 function normalizeChatThread(thread, index = 0) {
@@ -1547,6 +1567,8 @@ function serializeChatThreads() {
       role: message.role,
       content: message.content,
       branchNodeId: message.branchNodeId ?? null,
+      thinkingTrace: normalizeChatThinkingTrace(message.thinkingTrace),
+      actions: normalizeChatMessageActions(message.actions),
       createdAt: message.createdAt || null
     }))
   }));
@@ -2137,6 +2159,19 @@ async function handleChatSubmit(event) {
   updateChatPrimaryButtonMode();
   updateActiveChatThreadTitle(message);
   appendChatMessage("user", message);
+  const pendingAssistant = state.thinkingMode === "thinking"
+    ? appendChatMessage("assistant", t("chat.thinkingPending"), {
+        pending: true,
+        thinkingTrace: [
+          currentLang === "en"
+            ? "Reading the current canvas, visible cards, and recent dialogue."
+            : "读取当前画布、可见卡片和最近对话。",
+          currentLang === "en"
+            ? "Checking whether the message should trigger a reusable canvas action."
+            : "判断这条消息是否需要触发可复用的画布动作。"
+        ]
+      })
+    : null;
   setStatus(t("status.busy"), "busy");
   if (chatRealtimeButton) chatRealtimeButton.disabled = true;
 
@@ -2174,14 +2209,38 @@ async function handleChatSubmit(event) {
       analysis: state.latestAnalysis,
       messages: state.chatMessages.slice(-8),
       systemContext,
+      selectedContext,
+      canvas: buildVoiceCanvasContext(),
+      language: currentLang,
       selectedNodeId: state.selectedNodeId,
       thinkingMode: state.thinkingMode
     });
-    appendChatMessage("assistant", data.reply || t("chat.systemContext"));
+    const assistantMeta = {
+      pending: false,
+      thinkingTrace: data.thinkingTrace || data.trace,
+      actions: data.actions || data.action
+    };
+    if (pendingAssistant) {
+      updateChatMessage(pendingAssistant, {
+        content: data.reply || t("chat.systemContext"),
+        ...assistantMeta
+      });
+    } else {
+      appendChatMessage("assistant", data.reply || t("chat.systemContext"), assistantMeta);
+    }
+    const returnedActions = data?.actions || data?.action;
+    if (returnedActions) {
+      await applyVoiceActions(returnedActions);
+    }
     setStatus(t("status.ready"), "ready");
     autoSave();
   } catch (error) {
-    appendChatMessage("assistant", error.message || "对话请求失败。");
+    const errorText = error.message || (currentLang === "en" ? "Chat request failed." : "对话请求失败。");
+    if (pendingAssistant) {
+      updateChatMessage(pendingAssistant, { content: errorText, pending: false });
+    } else {
+      appendChatMessage("assistant", errorText);
+    }
     setStatus(t("status.error"), "error");
   } finally {
     if (chatRealtimeButton) chatRealtimeButton.disabled = false;
@@ -2668,6 +2727,10 @@ function buildVoiceCanvasContext() {
       "focus_node",
       "select_node",
       "move_node",
+      "arrange_canvas",
+      "deselect",
+      "select_source",
+      "select_analysis",
       "create_direction",
       "generate_image",
       "analyze_source",
@@ -2675,6 +2738,13 @@ function buildVoiceCanvasContext() {
       "research_node",
       "open_references",
       "save_session",
+      "new_chat",
+      "open_chat_history",
+      "close_chat",
+      "open_chat",
+      "open_history",
+      "open_settings",
+      "set_thinking_mode",
       "set_deep_think_mode"
     ],
     visibleNodes
@@ -3603,15 +3673,34 @@ function rewireLinksThroughJunction(junctionId) {
   autoSave();
 }
 
-function appendChatMessage(role, content) {
+function appendChatMessage(role, content, metadata = {}) {
   const thread = ensureActiveChatThread();
-  thread.messages.push({
+  const message = {
     role: role === "assistant" ? "assistant" : "user",
     content,
     branchNodeId: state.selectedNodeId,
+    thinkingTrace: normalizeChatThinkingTrace(metadata.thinkingTrace || metadata.trace),
+    actions: normalizeChatMessageActions(metadata.actions),
+    pending: Boolean(metadata.pending),
     createdAt: new Date().toISOString()
-  });
+  };
+  thread.messages.push(message);
   state.chatMessages = thread.messages;
+  renderChatMessages();
+  renderChatConversationList();
+  return message;
+}
+
+function updateChatMessage(message, updates = {}) {
+  if (!message) return;
+  if (typeof updates.content === "string") message.content = updates.content;
+  if ("thinkingTrace" in updates || "trace" in updates) {
+    message.thinkingTrace = normalizeChatThinkingTrace(updates.thinkingTrace || updates.trace);
+  }
+  if ("actions" in updates) {
+    message.actions = normalizeChatMessageActions(updates.actions);
+  }
+  if ("pending" in updates) message.pending = Boolean(updates.pending);
   renderChatMessages();
   renderChatConversationList();
 }
@@ -3636,6 +3725,7 @@ function renderChatMessages() {
   for (const message of branchMessages) {
     const line = document.createElement("div");
     line.className = `chat-line ${message.role}`;
+    line.classList.toggle("pending", Boolean(message.pending));
 
     const role = document.createElement("span");
     role.className = "chat-role";
@@ -3646,6 +3736,28 @@ function renderChatMessages() {
     text.textContent = message.content;
 
     line.append(role, text);
+    if (message.role === "assistant" && message.thinkingTrace?.length) {
+      const details = document.createElement("details");
+      details.className = "chat-thinking";
+      details.open = Boolean(message.pending);
+      const summary = document.createElement("summary");
+      summary.textContent = t("chat.thinkingDetails");
+      const list = document.createElement("ol");
+      list.className = "chat-thinking-list";
+      message.thinkingTrace.forEach((item) => {
+        const li = document.createElement("li");
+        li.textContent = item;
+        list.appendChild(li);
+      });
+      details.append(summary, list);
+      line.appendChild(details);
+    }
+    if (message.role === "assistant" && message.actions?.length) {
+      const actions = document.createElement("div");
+      actions.className = "chat-action-summary";
+      actions.textContent = t("chat.actionsApplied", { count: message.actions.length });
+      line.appendChild(actions);
+    }
     chatMessages.appendChild(line);
   }
   chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -4583,9 +4695,8 @@ function updateDialogState() {
   const hasSelection = state.selectedNodeId !== null;
   const node = hasSelection ? state.nodes.get(state.selectedNodeId) : null;
 
-  // Enable/disable chat input
   if (chatInput) {
-    chatInput.disabled = !hasSelection;
+    chatInput.disabled = false;
     if (hasSelection && node) {
       const title = node.option?.title || node.id;
       chatInput.placeholder = t("chat.placeholderWithCard", { title: title.slice(0, 20) });
@@ -5873,89 +5984,130 @@ async function renderSessionList() {
 }
 
 function arrangeCanvasLayout() {
-  // 1. Collapse un-generated option nodes
-  let hiddenAny = false;
-  for (const [id, node] of state.nodes.entries()) {
-    if (id.startsWith("option-") && !node.generated) {
-      state.selectiveHidden.add(id);
-      hiddenAny = true;
-    }
-  }
-  if (hiddenAny) {
-    applyCollapseState();
-    updateCollapseControls();
-  }
+  const visibleNodeIds = Array.from(state.nodes.entries())
+    .filter(([, node]) => isNodeVisible(node))
+    .map(([id]) => id);
+  if (!visibleNodeIds.length) return;
 
-  // 2. Build visible tree structure and compute depths
-  const visibleNodeIds = [];
-  for (const [id, node] of state.nodes.entries()) {
-    if (isNodeVisible(node)) visibleNodeIds.push(id);
+  const visibleSet = new Set(visibleNodeIds);
+  const outgoing = new Map();
+  const incoming = new Map();
+  visibleNodeIds.forEach((id) => {
+    outgoing.set(id, []);
+    incoming.set(id, []);
+  });
+
+  for (const link of state.links) {
+    if (!visibleSet.has(link.from) || !visibleSet.has(link.to)) continue;
+    outgoing.get(link.from)?.push(link.to);
+    incoming.get(link.to)?.push(link.from);
   }
 
   const depthMap = new Map();
-  for (const id of visibleNodeIds) {
-    if (id === "source") {
-      depthMap.set(id, 0);
-    } else if (id === "analysis") {
-      depthMap.set(id, 1);
-    } else {
-      const parentLink = state.links.find(l => l.to === id);
-      if (parentLink) {
-        const parentDepth = depthMap.get(parentLink.from);
-        if (typeof parentDepth === "number") {
-          depthMap.set(id, parentDepth + 1);
-        } else {
-          depthMap.set(id, 2);
-        }
-      } else {
-        depthMap.set(id, id.startsWith("option-") ? 2 : 0);
+  const queue = [];
+  const seedDepth = (id, depth) => {
+    if (!visibleSet.has(id)) return;
+    const existing = depthMap.get(id);
+    if (typeof existing === "number" && existing <= depth) return;
+    depthMap.set(id, depth);
+    queue.push(id);
+  };
+
+  seedDepth("source", 0);
+  seedDepth("analysis", 1);
+  visibleNodeIds
+    .filter((id) => (incoming.get(id)?.length || 0) === 0 && id !== "source" && id !== "analysis")
+    .sort((a, b) => getNodeTitle(state.nodes.get(a)).localeCompare(getNodeTitle(state.nodes.get(b)), currentLang === "zh" ? "zh-Hans-CN" : "en"))
+    .forEach((id) => seedDepth(id, id.startsWith("option-") ? 2 : 0));
+
+  while (queue.length) {
+    const id = queue.shift();
+    const depth = depthMap.get(id) || 0;
+    for (const childId of outgoing.get(id) || []) {
+      const nextDepth = depth + 1;
+      if ((depthMap.get(childId) ?? -1) < nextDepth) {
+        depthMap.set(childId, nextDepth);
+        if (nextDepth < 12) queue.push(childId);
       }
     }
   }
 
-  // Group by depth
+  for (const id of visibleNodeIds) {
+    if (!depthMap.has(id)) {
+      depthMap.set(id, id.startsWith("option-") ? 2 : 0);
+    }
+  }
+
+  const parentAverageY = (id) => {
+    const parents = incoming.get(id) || [];
+    if (!parents.length) return state.nodes.get(id)?.y || 0;
+    const total = parents.reduce((sum, parentId) => sum + (state.nodes.get(parentId)?.y || 0), 0);
+    return total / parents.length;
+  };
+
   const depthGroups = new Map();
   for (const [id, depth] of depthMap.entries()) {
     if (!depthGroups.has(depth)) depthGroups.set(depth, []);
     depthGroups.get(depth).push(id);
   }
+  for (const group of depthGroups.values()) {
+    group.sort((a, b) => {
+      const parentDelta = parentAverageY(a) - parentAverageY(b);
+      if (Math.abs(parentDelta) > 4) return parentDelta;
+      return getNodeTitle(state.nodes.get(a)).localeCompare(getNodeTitle(state.nodes.get(b)), currentLang === "zh" ? "zh-Hans-CN" : "en");
+    });
+  }
 
-  // 3. Compute tree layout positions
-  const COLUMN_GAP = 420;
-  const ROW_GAP = 40;
+  const COLUMN_GAP = 390;
+  const ROW_GAP = 54;
   const START_X = 96;
-  const START_Y = 120;
-  const BOARD_WIDTH = 2400;
-  const BOARD_HEIGHT = 1500;
-
+  const MIN_Y = 88;
+  const BOARD_WIDTH = Math.max(2400, board.scrollWidth || 2400);
+  const BOARD_HEIGHT = Math.max(1500, board.scrollHeight || 1500);
   const targetPositions = new Map();
   const depths = Array.from(depthGroups.keys()).sort((a, b) => a - b);
 
   for (const depth of depths) {
+    const nodesAtDepth = depthGroups.get(depth).filter((id) => !id.startsWith("junction-"));
+    if (!nodesAtDepth.length) continue;
     const x = START_X + depth * COLUMN_GAP;
-    const nodesAtDepth = depthGroups.get(depth);
     const totalHeight = nodesAtDepth.reduce((sum, id) => {
       const node = state.nodes.get(id);
-      return sum + (node?.height || 220) + ROW_GAP;
-    }, 0) - ROW_GAP;
-
-    let y = START_Y;
-    if (totalHeight < BOARD_HEIGHT - START_Y * 2) {
-      y = (BOARD_HEIGHT - totalHeight) / 2;
-    }
+      return sum + (node?.height || 220);
+    }, 0) + Math.max(0, nodesAtDepth.length - 1) * ROW_GAP;
+    let y = Math.max(MIN_Y, (BOARD_HEIGHT - totalHeight) / 2);
 
     for (const nodeId of nodesAtDepth) {
       const node = state.nodes.get(nodeId);
       if (!node) continue;
-      const clampedX = clamp(x, 0, BOARD_WIDTH - (node.width || 318));
-      const clampedY = clamp(y, 0, BOARD_HEIGHT - (node.height || 220));
-      targetPositions.set(nodeId, { x: clampedX, y: clampedY });
-      y += (node.height || 220) + ROW_GAP;
+      const width = node.width || node.element?.offsetWidth || 318;
+      const height = node.height || node.element?.offsetHeight || 220;
+      targetPositions.set(nodeId, {
+        x: clamp(x, 0, BOARD_WIDTH - width),
+        y: clamp(y, 0, BOARD_HEIGHT - height)
+      });
+      y += height + ROW_GAP;
     }
   }
 
-  // 4. Animate to new positions
-  animateNodesToPositions(targetPositions, 400);
+  for (const [junctionId, junction] of state.junctions) {
+    const junctionNode = state.nodes.get(junctionId);
+    if (!junctionNode || !visibleSet.has(junctionId)) continue;
+    const connected = junction.connectedCardIds
+      .map((id) => targetPositions.get(id) || state.nodes.get(id))
+      .filter(Boolean);
+    if (!connected.length) continue;
+    const avgX = connected.reduce((sum, node) => sum + (node.x || 0), 0) / connected.length;
+    const avgY = connected.reduce((sum, node) => sum + (node.y || 0), 0) / connected.length;
+    const outgoingTargets = outgoing.get(junctionId) || [];
+    const firstTarget = outgoingTargets.map((id) => targetPositions.get(id) || state.nodes.get(id)).find(Boolean);
+    targetPositions.set(junctionId, {
+      x: clamp(firstTarget ? avgX + 230 : avgX + 180, 0, BOARD_WIDTH - 64),
+      y: clamp(firstTarget ? (avgY + (firstTarget.y || avgY)) / 2 : avgY + 48, 0, BOARD_HEIGHT - 64)
+    });
+  }
+
+  animateNodesToPositions(targetPositions, 520);
 }
 
 function animateNodesToPositions(targetPositions, duration = 400) {

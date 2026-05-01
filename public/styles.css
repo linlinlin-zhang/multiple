@@ -1374,8 +1374,53 @@ body.chat-sidebar-closed .statusbar > * {
   align-self: flex-start;
 }
 
+.chat-line.pending .chat-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-line.pending .chat-text::after {
+  content: "";
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  border: 2px solid rgba(0, 112, 204, 0.18);
+  border-top-color: var(--ps-blue);
+  animation: spin 0.8s linear infinite;
+}
+
 .chat-text {
   min-width: 0;
+}
+
+.chat-thinking {
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 112, 204, 0.12);
+}
+
+.chat-thinking summary {
+  cursor: pointer;
+  color: var(--ps-blue);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.chat-thinking-list {
+  margin: 7px 0 0;
+  padding-left: 18px;
+  color: var(--inkMuted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.chat-action-summary {
+  margin-top: 2px;
+  color: var(--ps-blue);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .chat-compose {
