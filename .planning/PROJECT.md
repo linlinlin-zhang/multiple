@@ -80,6 +80,14 @@
 
 ### Active
 
+**v2.0 — Multi-Card Canvas Interaction**
+
+- **MC-01**: 新建卡片 — `/` 功能区新增"新建卡片"命令，创建可删除的额外卡片
+- **MC-02**: 连接线条 — 从卡片拉出线条连接其他卡片，连接处生成聚合节点
+- **MC-03**: 聚合节点 — 3+ 张卡片连接时自动归入同一节点，最多连接 5 张
+- **MC-04**: 蓝图弹窗 — 双击聚合节点打开蓝图编辑器
+- **MC-05**: 精简 `/` 功能区 — 移除冗余入口
+
 **Future / v2+**
 
 - **SRCH-01**: 按关键词搜索历史会话标题和内容
@@ -107,14 +115,17 @@
 - 画布支持一键整理、节点折叠/展开、深色模式、中英文切换
 - Demo 模式在缺少 API key 时静默启用
 
-## Current Milestone: v1.3 Material Library — SHIPPED
+## Current Milestone: v2.0 Multi-Card Canvas Interaction
 
-**Goal:** 为用户提供素材库功能，集中管理文件，支持搜索和多种排序方式。
+**Goal:** 让用户能在画布上创建多张卡片并通过连接线构建卡片关系网络，实现蓝图式的深层探索。
 
-**Shipped:** v1.3 Material Library (2026-05-02)
-**Previous:** v1.2 Interactive Canvas & Deep Analysis (2026-04-27)
+**Target features:**
+- 新建卡片：`/` 功能区新增"新建卡片"命令，创建可删除的额外卡片
+- 连接线条：从卡片拉出线条连接其他卡片，连接处生成聚合节点（最多 5 张卡片）
+- 蓝图弹窗：双击聚合节点打开蓝图弹窗，支持拖动和连线编排卡片关系
+- 精简 `/` 功能区：移除"放大""缩小""历史浏览器""设置"
 
-**Next milestone:** TBD — run `/gsd-new-milestone` to define
+**Previous:** v1.3 Material Library (2026-05-02)
 
 ## Key Decisions
 
@@ -161,4 +172,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-05-02 — v1.3 milestone shipped*
+*Last updated: 2026-05-02 — v2.0 milestone started*

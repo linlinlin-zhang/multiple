@@ -1,24 +1,24 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: Material Library
-status: milestone_shipped
-stopped_at: Milestone v1.3 shipped
-last_updated: "2026-05-01T00:00:00.000Z"
+milestone: v2.0
+milestone_name: Multi-Card Canvas Interaction
+status: defining_requirements
+stopped_at: Milestone v2.0 started — defining requirements
+last_updated: "2026-05-02T00:00:00.000Z"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # ORYZAE Image Board — Project State
 
-**Milestone:** Material Library v1.3 — SHIPPED
-**Core Value:** 为用户提供素材库功能，集中管理文件，支持搜索和多种排序方式。
+**Milestone:** Multi-Card Canvas Interaction v2.0
+**Core Value:** 让用户能在画布上创建多张卡片并通过连接线构建卡片关系网络，实现蓝图式的深层探索。
 **Project Reference:** [PROJECT.md](./PROJECT.md)
-**Last Updated:** 2026-05-01
+**Last Updated:** 2026-05-02
 
 ---
 
@@ -26,14 +26,14 @@ progress:
 
 | Field | Value |
 |-------|-------|
-| Milestone | v1.3 — Material Library |
-| Phase | All 3 phases complete |
-| Plans | 6/6 complete |
-| Status | Milestone shipped |
-| Progress | 100% |
+| Milestone | v2.0 — Multi-Card Canvas Interaction |
+| Phase | Not started (defining requirements) |
+| Plans | — |
+| Status | Defining requirements |
+| Progress | 0% |
 
 ```
-[████████████████████████████████████████] 100%
+[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 ```
 
 ---
@@ -46,8 +46,9 @@ progress:
 | v1.1 requirements validated | 14/14 |
 | v1.2 requirements validated | 14/14 |
 | v1.3 requirements shipped | 8/8 |
-| Phases complete (v1.3) | 3/3 |
-| Plans complete (v1.3) | 6/6 |
+| v2.0 requirements mapped | TBD |
+| Phases complete (v2.0) | 0 |
+| Plans complete (v2.0) | 0 |
 | Blockers | 0 |
 
 ---
@@ -83,7 +84,7 @@ progress:
 - [x] v1.1 Canvas Intelligence & Rich Input — shipped 2026-04-26
 - [x] v1.2 Interactive Canvas & Deep Analysis — shipped 2026-04-27
 - [x] v1.3 Material Library — shipped 2026-05-01
-- [ ] Next milestone TBD — run `/gsd-new-milestone`
+- [ ] v2.0 Multi-Card Canvas Interaction — defining requirements
 
 ### Blockers
 
@@ -95,7 +96,7 @@ progress:
 
 ## Session Continuity
 
-**Current session started:** 2026-05-01
-**Last session resumed:** 2026-05-01
-**Stopped at:** v1.3 milestone shipped
-**Next expected action:** `/gsd-new-milestone` to define v1.4 or v2.0
+**Current session started:** 2026-05-02
+**Last session resumed:** 2026-05-02
+**Stopped at:** Milestone v2.0 started — defining requirements
+**Next expected action:** Define requirements, then `/gsd-plan-phase 16`
