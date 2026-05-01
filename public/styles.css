@@ -3374,6 +3374,11 @@ html[data-theme="dark"] .ref-type-badge {
   cursor: pointer;
 }
 
+.blueprint-link:hover {
+  stroke-width: 4;
+  filter: drop-shadow(0 0 4px rgba(0, 112, 204, 0.4));
+}
+
 .blueprint-link.downstream {
   stroke: var(--ps-cyan);
 }

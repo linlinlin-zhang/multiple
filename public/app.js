@@ -4388,6 +4388,9 @@ function drawBlueprintLinks(canvas, relationships) {
       d: path,
       class: `blueprint-link ${rel.type}`
     });
+    line.addEventListener("click", () => {
+      removeBlueprintRelationship(rel.from, rel.to, canvas);
+    });
     fragments.appendChild(line);
   }
 
@@ -4479,6 +4482,20 @@ function addBlueprintRelationship(fromCardId, toCardId, type, canvas) {
   if (exists) return;
 
   blueprint.relationships.push({ from: fromCardId, to: toCardId, type });
+  drawBlueprintLinks(canvas, blueprint.relationships);
+  autoSave();
+}
+
+function removeBlueprintRelationship(fromCardId, toCardId, canvas) {
+  const junctionId = blueprintModal.dataset.junctionId;
+  if (!junctionId) return;
+  const blueprint = state.blueprints.get(junctionId);
+  if (!blueprint) return;
+
+  blueprint.relationships = blueprint.relationships.filter(r =>
+    !(r.from === fromCardId && r.to === toCardId) &&
+    !(r.from === toCardId && r.to === fromCardId)
+  );
   drawBlueprintLinks(canvas, blueprint.relationships);
   autoSave();
 }
