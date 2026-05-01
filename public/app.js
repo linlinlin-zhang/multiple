@@ -79,6 +79,8 @@ const shareDownloadButton = document.querySelector("#shareDownloadButton");
 
 const referenceModal = document.querySelector("#referenceModal");
 const referenceList = document.querySelector(".reference-list");
+const blueprintModal = document.querySelector("#blueprintModal");
+const blueprintCanvas = document.querySelector(".blueprint-canvas");
 
 const state = {
   sourceImage: null,
@@ -4234,6 +4236,260 @@ function closeReferenceModal() {
   if (referenceList) referenceList.replaceChildren();
 }
 
+function openBlueprintModal(junctionId) {
+  const junction = state.junctions.get(junctionId);
+  if (!junction || junction.connectedCardIds.length === 0) return;
+
+  const canvas = blueprintCanvas;
+  if (!canvas) return;
+  canvas.replaceChildren();
+
+  // Create SVG overlay for relationship lines
+  const svg = svgElement("svg", { class: "blueprint-svg" });
+  canvas.appendChild(svg);
+
+  // Render each connected card as a simplified mini-card
+  const blueprint = state.blueprints.get(junctionId);
+  const positions = blueprint?.positions || {};
+  let index = 0;
+  for (const cardId of junction.connectedCardIds) {
+    const node = state.nodes.get(cardId);
+    if (!node) continue;
+
+    const pos = positions[cardId] || {
+      x: 24 + (index % 3) * 220,
+      y: 24 + Math.floor(index / 3) * 180
+    };
+
+    const card = document.createElement("div");
+    card.className = "blueprint-card";
+    card.dataset.cardId = cardId;
+    card.style.left = `${pos.x}px`;
+    card.style.top = `${pos.y}px`;
+
+    const title = document.createElement("div");
+    title.className = "blueprint-card-title";
+    title.textContent = node.option?.title || cardId;
+
+    card.appendChild(title);
+
+    // Add thumbnail if node has a generated image
+    if (node.generated && node.imageHash) {
+      const img = document.createElement("img");
+      img.className = "blueprint-card-thumb";
+      img.src = node.imageHash.startsWith("data:") ? node.imageHash : `/api/assets/${node.imageHash}?kind=generated`;
+      img.alt = "";
+      card.appendChild(img);
+    }
+
+    // Add edge handles for drawing relationship lines
+    const rightHandle = document.createElement("div");
+    rightHandle.className = "edge-handle edge-handle-right";
+    rightHandle.addEventListener("pointerdown", (event) => startBlueprintConnection(event, cardId, canvas));
+
+    const leftHandle = document.createElement("div");
+    leftHandle.className = "edge-handle edge-handle-left";
+    leftHandle.addEventListener("pointerdown", (event) => startBlueprintConnection(event, cardId, canvas));
+
+    card.append(rightHandle, leftHandle);
+    canvas.appendChild(card);
+
+    makeModalDraggable(card, cardId, canvas);
+    index++;
+  }
+
+  // Draw saved relationship lines
+  if (blueprint?.relationships?.length > 0) {
+    drawBlueprintLinks(canvas, blueprint.relationships);
+  }
+
+  blueprintModal.style.display = "";
+  blueprintModal.dataset.junctionId = junctionId;
+  document.body.style.overflow = "hidden";
+}
+
+function closeBlueprintModal() {
+  if (blueprintModal) {
+    blueprintModal.style.display = "none";
+    document.body.style.overflow = "";
+    delete blueprintModal.dataset.junctionId;
+  }
+}
+
+function makeModalDraggable(element, cardId, canvas) {
+  let start = null;
+
+  element.addEventListener("pointerdown", (event) => {
+    if (event.target.closest(".edge-handle")) return;
+    start = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      elX: parseFloat(element.style.left) || 0,
+      elY: parseFloat(element.style.top) || 0
+    };
+    element.classList.add("dragging");
+    element.setPointerCapture(event.pointerId);
+  });
+
+  element.addEventListener("pointermove", (event) => {
+    if (!start) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    element.style.left = `${start.elX + dx}px`;
+    element.style.top = `${start.elY + dy}px`;
+
+    // Redraw relationship lines during drag
+    const junctionId = blueprintModal.dataset.junctionId;
+    const blueprint = state.blueprints.get(junctionId);
+    if (blueprint?.relationships?.length > 0) {
+      drawBlueprintLinks(canvas, blueprint.relationships);
+    }
+  });
+
+  element.addEventListener("pointerup", () => {
+    if (!start) return;
+    start = null;
+    element.classList.remove("dragging");
+
+    // Persist position to state.blueprints
+    const junctionId = blueprintModal.dataset.junctionId;
+    if (!junctionId) return;
+    if (!state.blueprints.has(junctionId)) {
+      state.blueprints.set(junctionId, { positions: {}, relationships: [] });
+    }
+    const blueprint = state.blueprints.get(junctionId);
+    blueprint.positions[cardId] = {
+      x: parseFloat(element.style.left) || 0,
+      y: parseFloat(element.style.top) || 0
+    };
+    autoSave();
+  });
+}
+
+function drawBlueprintLinks(canvas, relationships) {
+  const svg = canvas.querySelector(".blueprint-svg");
+  if (!svg) return;
+  const fragments = document.createDocumentFragment();
+
+  for (const rel of relationships) {
+    const fromCard = canvas.querySelector(`[data-card-id="${rel.from}"]`);
+    const toCard = canvas.querySelector(`[data-card-id="${rel.to}"]`);
+    if (!fromCard || !toCard) continue;
+
+    const fromRect = { x: parseFloat(fromCard.style.left), y: parseFloat(fromCard.style.top), width: fromCard.offsetWidth || 200, height: fromCard.offsetHeight || 140 };
+    const toRect = { x: parseFloat(toCard.style.left), y: parseFloat(toCard.style.top), width: toCard.offsetWidth || 200, height: toCard.offsetHeight || 140 };
+
+    const start = { x: fromRect.x + fromRect.width, y: fromRect.y + fromRect.height * 0.4 };
+    const end = { x: toRect.x, y: toRect.y + toRect.height * 0.4 };
+    const path = curvePath(start, end);
+
+    const line = svgElement("path", {
+      d: path,
+      class: `blueprint-link ${rel.type}`
+    });
+    fragments.appendChild(line);
+  }
+
+  svg.replaceChildren(fragments);
+}
+
+function startBlueprintConnection(event, fromCardId, canvas) {
+  event.stopPropagation();
+  event.preventDefault();
+
+  const svg = canvas.querySelector(".blueprint-svg");
+  const dragLine = svgElement("path", { class: "blueprint-drag-line" });
+  svg.appendChild(dragLine);
+
+  const fromCard = canvas.querySelector(`[data-card-id="${fromCardId}"]`);
+  const fromRect = { x: parseFloat(fromCard.style.left), y: parseFloat(fromCard.style.top), width: fromCard.offsetWidth || 200, height: fromCard.offsetHeight || 140 };
+  const startPoint = { x: fromRect.x + fromRect.width, y: fromRect.y + fromRect.height * 0.4 };
+
+  const onPointerMove = (moveEvent) => {
+    const canvasRect = canvas.getBoundingClientRect();
+    const endX = moveEvent.clientX - canvasRect.left + canvas.scrollLeft;
+    const endY = moveEvent.clientY - canvasRect.top + canvas.scrollTop;
+    dragLine.setAttribute("d", curvePath(startPoint, { x: endX, y: endY }));
+  };
+
+  const onPointerUp = (upEvent) => {
+    dragLine.remove();
+    const targetEl = document.elementFromPoint(upEvent.clientX, upEvent.clientY)
+      ?.closest("[data-card-id]");
+    const targetId = targetEl?.dataset.cardId;
+    if (targetId && targetId !== fromCardId) {
+      showRelationshipTypePicker(fromCardId, targetId, canvas, upEvent.clientX, upEvent.clientY);
+    }
+    document.removeEventListener("pointermove", onPointerMove);
+    document.removeEventListener("pointerup", onPointerUp);
+  };
+
+  document.addEventListener("pointermove", onPointerMove);
+  document.addEventListener("pointerup", onPointerUp);
+}
+
+function showRelationshipTypePicker(fromCardId, toCardId, canvas, clientX, clientY) {
+  // Remove any existing picker
+  canvas.querySelector(".blueprint-relationship-picker")?.remove();
+
+  const picker = document.createElement("div");
+  picker.className = "blueprint-relationship-picker";
+
+  const canvasRect = canvas.getBoundingClientRect();
+  picker.style.left = `${clientX - canvasRect.left + canvas.scrollLeft}px`;
+  picker.style.top = `${clientY - canvasRect.top + canvas.scrollTop}px`;
+
+  const types = [
+    { key: "upstream", label: "上游" },
+    { key: "downstream", label: "下游" },
+    { key: "parallel", label: "并列" }
+  ];
+
+  for (const t of types) {
+    const btn = document.createElement("button");
+    btn.textContent = t.label;
+    btn.addEventListener("click", () => {
+      addBlueprintRelationship(fromCardId, toCardId, t.key, canvas);
+      picker.remove();
+    });
+    picker.appendChild(btn);
+  }
+
+  canvas.appendChild(picker);
+
+  // Auto-dismiss after 5 seconds
+  setTimeout(() => picker.remove(), 5000);
+}
+
+function addBlueprintRelationship(fromCardId, toCardId, type, canvas) {
+  const junctionId = blueprintModal.dataset.junctionId;
+  if (!junctionId) return;
+
+  if (!state.blueprints.has(junctionId)) {
+    state.blueprints.set(junctionId, { positions: {}, relationships: [] });
+  }
+  const blueprint = state.blueprints.get(junctionId);
+
+  // Check for duplicate
+  const exists = blueprint.relationships.some(r =>
+    (r.from === fromCardId && r.to === toCardId) ||
+    (r.from === toCardId && r.to === fromCardId)
+  );
+  if (exists) return;
+
+  blueprint.relationships.push({ from: fromCardId, to: toCardId, type });
+  drawBlueprintLinks(canvas, blueprint.relationships);
+  autoSave();
+}
+
+// Blueprint modal close handlers
+blueprintModal?.addEventListener("click", (event) => {
+  if (event.target.hasAttribute("data-close-blueprint")) {
+    closeBlueprintModal();
+  }
+});
+
 function clearOptions() {
   deselectNode();
   for (const [id, node] of Array.from(state.nodes.entries())) {
@@ -4339,6 +4595,11 @@ function registerNode(id, element, data) {
     if (event.target.closest("button, input, textarea, a")) return;
     if (event.target.closest(".option-title, .generated-node h3, .analysis-node h2, #sourceName, .node-title-input")) return;
     const node = state.nodes.get(id);
+    // Open blueprint modal for junction nodes
+    if (node?.isJunction) {
+      openBlueprintModal(id);
+      return;
+    }
     if (node?.option?.references && node.option.references.length > 0) {
       openReferenceModal(id);
       return;
@@ -4690,7 +4951,7 @@ function makeDraggable(element, id) {
   let start = null;
 
   element.addEventListener("pointerdown", (event) => {
-    const interactive = event.target.closest("button, input, label");
+    const interactive = event.target.closest("button, input, label, .option-title, .generated-node h3, .analysis-node h2, #sourceName, .node-title-input");
     if (interactive && event.target.tagName !== "SECTION") return;
     const node = state.nodes.get(id);
     if (!node) return;
