@@ -37,7 +37,10 @@
   3. Selecting "New Card" creates a new card node on the canvas (distinct from the source card)
   4. The new card has a delete button visible on hover; clicking it removes the card from the canvas
   5. The source card (id="source") still cannot be deleted
-**Plans**: TBD
+**Plans:** 2 plans
+Plans:
+- [ ] 16-01-PLAN.md — Remove zoom-in, zoom-out, history, settings from `/` menu
+- [ ] 16-02-PLAN.md — Add "New Card" command and card creation logic
 **UI hint**: yes
 
 ### Phase 17: Connection Lines & Junction Nodes
@@ -97,7 +100,7 @@
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 16. Menu Cleanup & New Card | 0/0 | Not started | - |
+| 16. Menu Cleanup & New Card | 0/2 | Not started | - |
 | 17. Connection Lines & Junction Nodes | 0/0 | Not started | - |
 | 18. Blueprint Modal | 0/0 | Not started | - |
 
