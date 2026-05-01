@@ -8,6 +8,7 @@ import { handleStoreAsset, handleGetAsset } from "./src/api/assets.js";
 import { handleCreateShare, handleGetShare, handleCreateImageShare, handleGetImageShare } from "./src/api/share.js";
 import { handleImportSession } from "./src/api/import.js";
 import { handleGetSettings, handleUpdateSettings } from "./src/api/settings.js";
+import { handleListMaterials, handleCreateMaterial, handleDeleteMaterial } from "./src/api/materials.js";
 import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js";
 import { extractTextFromBuffer } from "./src/lib/textExtract.js";
 import { PrismaClient } from "@prisma/client";
@@ -189,6 +190,19 @@ const server = http.createServer(async (req, res) => {
     // History route
     if (req.method === "GET" && url.pathname === "/api/history") {
       return await handleListHistory(Object.fromEntries(url.searchParams), res);
+    }
+
+    // Material library routes
+    if (req.method === "GET" && url.pathname === "/api/materials") {
+      return await handleListMaterials(Object.fromEntries(url.searchParams), res);
+    }
+    if (req.method === "POST" && url.pathname === "/api/materials") {
+      const body = await readJson(req);
+      return await handleCreateMaterial(body, res);
+    }
+    if (req.method === "DELETE" && /^\/api\/materials\/[^/]+$/.test(url.pathname)) {
+      const id = url.pathname.split("/")[3];
+      return await handleDeleteMaterial(id, res);
     }
 
     if (req.method === "GET") {
