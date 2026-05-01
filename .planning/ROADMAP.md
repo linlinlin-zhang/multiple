@@ -36,7 +36,11 @@
   4. `GET /api/materials?sort=date|added|name|size` returns correctly ordered results
   5. `POST /api/materials` creates a new material item; returns 409 when count reaches 100
   6. `DELETE /api/materials/:id` removes the material item and its file from disk
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 13-01-PLAN.md — MaterialItem Prisma model and migration
+- [ ] 13-02-PLAN.md — Materials REST API handler and server.js wiring
 
 ### Phase 14: Material Library Page
 **Goal**: Users can browse their material library on a dedicated page with search and sort
@@ -82,7 +86,7 @@
 | 10. Dialog Refactor & Generation Control | v1.2 | 3/3 | Complete | 2026-04-27 |
 | 11. Research Mode & Deep Analysis | v1.2 | 3/3 | Complete | 2026-04-27 |
 | 12. Image Sharing | v1.2 | 2/2 | Complete | 2026-04-27 |
-| 13. Data Model & API | v1.3 | 0/0 | Not started | - |
+| 13. Data Model & API | v1.3 | 0/2 | In progress | - |
 | 14. Material Library Page | v1.3 | 0/0 | Not started | - |
 | 15. Workbench Sync & File Management | v1.3 | 0/0 | Not started | - |
 
