@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Multi-Card Canvas Interaction
-status: phase_complete
-stopped_at: Phase 16 complete — 2/2 plans done
-last_updated: "2026-05-01T17:35:00.000Z"
+status: phase_planned
+stopped_at: Phase 17 planned — 3 plans, 2 waves
+last_updated: "2026-05-02T02:00:00.000Z"
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 2
+  total_plans: 5
   completed_plans: 2
-  percent: 100
+  percent: 33
 ---
 
 # ORYZAE Image Board — Project State
@@ -27,13 +27,13 @@ progress:
 | Field | Value |
 |-------|-------|
 | Milestone | v2.0 — Multi-Card Canvas Interaction |
-| Phase | Phase 16: Menu Cleanup & New Card |
-| Plans | 2/2 complete |
-| Status | Phase complete |
-| Progress | 100% |
+| Phase | Phase 17: Connection Lines & Junction Nodes |
+| Plans | 3/3 planned |
+| Status | Ready to execute |
+| Progress | 0% |
 
 ```
-[████████████████████████████████████████] 100%
+[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 ```
 
 ---
@@ -86,7 +86,7 @@ progress:
 - [x] v1.1 Canvas Intelligence & Rich Input — shipped 2026-04-26
 - [x] v1.2 Interactive Canvas & Deep Analysis — shipped 2026-04-27
 - [x] v1.3 Material Library — shipped 2026-05-01
-- [ ] v2.0 Multi-Card Canvas Interaction — Phase 16 planned, ready to execute
+- [ ] v2.0 Multi-Card Canvas Interaction — Phase 17 planned, ready to execute
 
 ### Blockers
 
@@ -100,5 +100,5 @@ progress:
 
 **Current session started:** 2026-05-02
 **Last session resumed:** 2026-05-02
-**Stopped at:** Phase 16 complete — 2/2 plans done
-**Next expected action:** `/gsd-plan-phase 17`
+**Stopped at:** Phase 17 planned — 3 plans, 2 waves
+**Next expected action:** `/gsd-execute-phase 17`
