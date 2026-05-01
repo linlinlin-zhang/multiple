@@ -107,54 +107,67 @@
         <div id="sessionList" class="session-list"></div>
       </aside>
 
-      <footer class="statusbar">
+      <footer class="statusbar" aria-label="对话侧栏">
         <form id="chatForm" class="chatbar">
+          <div class="chat-panel-header">
+            <div>
+              <span class="chat-panel-kicker">ORYZAE</span>
+              <strong class="chat-panel-title">对话</strong>
+            </div>
+            <div class="chat-progress">
+              <div class="status-readout"><span class="status-dot"></span><span id="statusText">Ready</span></div>
+              <div id="counts">方向 0 / 成图 0</div>
+            </div>
+          </div>
+          <div class="chat-context-indicator hidden"></div>
           <div id="chatMessages" class="chat-messages" aria-live="polite"></div>
-          <div id="commandMenu" class="command-menu hidden" role="listbox" aria-label="工作台命令"></div>
-          <div class="chat-input-row">
-            <button id="chatAttachButton" class="chat-attach-button" type="button" title="上传图片或文本文件">+</button>
-            <input id="chatInput" class="chat-input" type="text" autocomplete="off" placeholder="输入想继续探索的方向、风格或约束" />
-            <div class="thinking-toggle-wrapper">
-              <button id="thinkingToggle" class="thinking-toggle" type="button">
-                <span class="thinking-label">思考</span>
-                <span class="thinking-arrow">∨</span>
-              </button>
-              <div class="thinking-dropdown">
-                <button class="thinking-option" data-mode="thinking">思考</button>
-                <button class="thinking-option" data-mode="no-thinking">快速</button>
+          <div class="chat-compose">
+            <div id="commandMenu" class="command-menu hidden" role="listbox" aria-label="工作台命令"></div>
+            <div class="chat-input-row">
+              <button id="chatAttachButton" class="chat-attach-button" type="button" title="上传图片或文本文件">+</button>
+              <input id="chatInput" class="chat-input" type="text" autocomplete="off" placeholder="输入想继续探索的方向、风格或约束" />
+              <div class="thinking-toggle-wrapper">
+                <button id="thinkingToggle" class="thinking-toggle" type="button">
+                  <span class="thinking-label">思考</span>
+                  <span class="thinking-arrow">∨</span>
+                </button>
+                <div class="thinking-dropdown">
+                  <button class="thinking-option" data-mode="thinking">思考</button>
+                  <button class="thinking-option" data-mode="no-thinking">快速</button>
+                </div>
               </div>
-            </div>
-            <div class="chat-voice-actions" aria-label="Voice controls">
-              <button id="chatAsrButton" class="chat-asr-button" type="button" title="语音转文字" aria-label="语音转文字">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/>
-                  <path d="M5 11a7 7 0 0 0 14 0"/>
-                  <path d="M12 18v3"/>
-                  <path d="M8 21h8"/>
-                </svg>
-              </button>
-              <button id="chatRealtimeButton" class="chat-realtime-button" type="button" title="实时语音控制" aria-label="实时语音控制">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M5 10v4"/>
-                  <path d="M9 7v10"/>
-                  <path d="M13 5v14"/>
-                  <path d="M17 8v8"/>
-                  <path d="M21 11v2"/>
-                </svg>
-              </button>
-            </div>
-            <div id="chatAsrReview" class="chat-asr-review hidden" aria-label="确认转写">
-              <button id="chatAsrRejectButton" class="chat-review-button" type="button" title="删除转写" aria-label="删除转写">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M18 6 6 18"/>
-                  <path d="m6 6 12 12"/>
-                </svg>
-              </button>
-              <button id="chatAsrAcceptButton" class="chat-review-button" type="button" title="保留转写" aria-label="保留转写">
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="m20 6-11 11-5-5"/>
-                </svg>
-              </button>
+              <div class="chat-voice-actions" aria-label="Voice controls">
+                <button id="chatAsrButton" class="chat-asr-button" type="button" title="语音转文字" aria-label="语音转文字">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"/>
+                    <path d="M5 11a7 7 0 0 0 14 0"/>
+                    <path d="M12 18v3"/>
+                    <path d="M8 21h8"/>
+                  </svg>
+                </button>
+                <button id="chatRealtimeButton" class="chat-realtime-button" type="button" title="实时语音控制" aria-label="实时语音控制">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 10v4"/>
+                    <path d="M9 7v10"/>
+                    <path d="M13 5v14"/>
+                    <path d="M17 8v8"/>
+                    <path d="M21 11v2"/>
+                  </svg>
+                </button>
+              </div>
+              <div id="chatAsrReview" class="chat-asr-review hidden" aria-label="确认转写">
+                <button id="chatAsrRejectButton" class="chat-review-button" type="button" title="删除转写" aria-label="删除转写">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                  </svg>
+                </button>
+                <button id="chatAsrAcceptButton" class="chat-review-button" type="button" title="保留转写" aria-label="保留转写">
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="m20 6-11 11-5-5"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </form>

@@ -177,10 +177,14 @@ const i18n = {
     "research.exploreComplete": "探索完成",
     "source.urlPlaceholder": "https://...",
     "source.analyzeUrl": "分析链接",
-    "chat.placeholder": "输入想继续探索的方向、风格或约束",
+    "chat.placeholder": "输入方向、约束，或 / 命令",
+    "chat.panelTitle": "对话",
     "chat.placeholderWithSelection": "对 {title} 继续探索…",
     "chat.placeholderWithCard": "与 '{title}' 对话...",
     "chat.contextIndicator": "对话上下文：{title}",
+    "chat.noMessages": "还没有对话。输入方向、约束，或按 / 选择工作台命令。",
+    "chat.roleUser": "You",
+    "chat.roleAssistant": "AI",
     "chat.selectCardFirst": "请先双击选中一张卡片",
     "chat.send": "发送",
     "chat.generate": "生成",
@@ -331,10 +335,14 @@ const i18n = {
     "research.exploreComplete": "Explore complete",
     "source.urlPlaceholder": "https://...",
     "source.analyzeUrl": "Analyze Link",
-    "chat.placeholder": "Enter direction, style or constraint to explore",
+    "chat.placeholder": "Direction, constraint, or / command",
+    "chat.panelTitle": "Chat",
     "chat.placeholderWithSelection": "Explore {title}…",
     "chat.placeholderWithCard": "Chat with '{title}'...",
     "chat.contextIndicator": "Context: {title}",
+    "chat.noMessages": "No messages yet. Enter a direction, constraint, or press / for workbench commands.",
+    "chat.roleUser": "You",
+    "chat.roleAssistant": "AI",
     "chat.selectCardFirst": "Please double-click a card to select it first",
     "chat.send": "Send",
     "chat.generate": "Generate",
@@ -520,6 +528,8 @@ function renderAllText() {
       chatIn.placeholder = t("chat.placeholder");
     }
   }
+  const chatPanelTitle = document.querySelector(".chat-panel-title");
+  if (chatPanelTitle) chatPanelTitle.textContent = t("chat.panelTitle");
   const chatSend = document.querySelector("#chatSendButton");
   if (chatSend) chatSend.textContent = t("chat.send");
   const chatGenerate = document.querySelector("#chatGenerateButton");
@@ -624,6 +634,8 @@ function renderAllText() {
   updateCounts();
   updateCollapseControls();
   updateThinkingToggleUI();
+  renderChatContextIndicator();
+  renderChatMessages();
 }
 
 function updateStatusText() {
@@ -2067,23 +2079,29 @@ function renderChatMessages() {
 
   const branchMessages = getBranchMessages();
   if (!branchMessages.length) {
+    const placeholder = document.createElement("div");
+    placeholder.className = "chat-placeholder";
+    placeholder.textContent = t("chat.noMessages");
+    chatMessages.appendChild(placeholder);
     return;
   }
 
-  for (const message of branchMessages.slice(-3)) {
-    const line = document.createElement("span");
+  for (const message of branchMessages) {
+    const line = document.createElement("div");
     line.className = `chat-line ${message.role}`;
 
     const role = document.createElement("span");
     role.className = "chat-role";
-    role.textContent = message.role === "user" ? "You" : "AI";
+    role.textContent = message.role === "user" ? t("chat.roleUser") : t("chat.roleAssistant");
 
     const text = document.createElement("span");
-    text.textContent = ` ${message.content}`;
+    text.className = "chat-text";
+    text.textContent = message.content;
 
     line.append(role, text);
     chatMessages.appendChild(line);
   }
+  chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function renderChatContextIndicator() {
