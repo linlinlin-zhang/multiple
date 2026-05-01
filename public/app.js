@@ -3165,6 +3165,69 @@ function createOptionNode(option, parentNodeId) {
   return id;
 }
 
+function createNewCardNode() {
+  const id = `new-card-${Date.now()}`;
+
+  // Compute position: offset from source node, with jitter to avoid stacking
+  const source = state.nodes.get("source");
+  const baseX = (source?.x || 96) + 380;
+  const baseY = (source?.y || 88) + 40;
+  // Find a position that doesn't overlap existing nodes
+  let newX = baseX;
+  let newY = baseY;
+  const jitter = 60;
+  let attempts = 0;
+  while (attempts < 10) {
+    const collision = [...state.nodes.values()].some(n =>
+      Math.abs(n.x - newX) < 300 && Math.abs(n.y - newY) < 200
+    );
+    if (!collision) break;
+    newX += jitter * (attempts % 2 === 0 ? 1 : -1);
+    newY += jitter * (Math.floor(attempts / 2) % 2 === 0 ? 1 : -1);
+    attempts++;
+  }
+
+  // Create the element
+  const element = document.createElement("section");
+  element.className = "node new-card-node";
+  element.dataset.nodeId = id;
+  element.style.left = `${newX}px`;
+  element.style.top = `${newY}px`;
+  element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
+
+  // Build inner structure
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = "NEW CARD";
+
+  const title = document.createElement("h3");
+  title.className = "option-title";
+  title.textContent = t("command.newCard");
+
+  const description = document.createElement("p");
+  description.className = "option-description";
+  description.textContent = "";
+
+  element.append(eyebrow, title, description);
+
+  board.appendChild(element);
+
+  registerNode(id, element, {
+    x: newX,
+    y: newY,
+    width: 318,
+    height: element.offsetHeight
+  });
+
+  makeDraggable(element, id);
+  applyCollapseState();
+  updateCounts();
+  drawLinks();
+  autoSave();
+
+  return id;
+}
+
 function appendChatMessage(role, content) {
   const thread = ensureActiveChatThread();
   thread.messages.push({
