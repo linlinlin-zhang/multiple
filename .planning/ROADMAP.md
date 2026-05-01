@@ -19,7 +19,7 @@
 
 ## Phases
 
-- [ ] **Phase 16: Menu Cleanup & New Card** — Remove zoom/history/settings from `/` menu; add "New Card" command that creates a deletable card on canvas
+- [x] **Phase 16: Menu Cleanup & New Card** — Remove zoom/history/settings from `/` menu; add "New Card" command that creates a deletable card on canvas
 - [ ] **Phase 17: Connection Lines & Junction Nodes** — Drag-to-connect cards with SVG lines; junction nodes at connection points (max 5 cards, distinct visual style)
 - [ ] **Phase 18: Blueprint Modal** — Double-click junction node opens modal showing connected cards; supports drag positioning and drawing relationship lines
 
@@ -40,7 +40,7 @@
 **Plans:** 2 plans
 Plans:
 - [x] 16-01-PLAN.md — Remove zoom-in, zoom-out, history, settings from `/` menu
-- [ ] 16-02-PLAN.md — Add "New Card" command and card creation logic
+- [x] 16-02-PLAN.md — Add "New Card" command and card creation logic
 **UI hint**: yes
 
 ### Phase 17: Connection Lines & Junction Nodes
@@ -75,8 +75,8 @@ Plans:
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| MC-01 | Phase 16 | Pending |
-| MC-02 | Phase 16 | Pending |
+| MC-01 | Phase 16 | Done |
+| MC-02 | Phase 16 | Done |
 | MC-03 | Phase 17 | Pending |
 | MC-04 | Phase 17 | Pending |
 | MC-05 | Phase 17 | Pending |
@@ -100,7 +100,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 16. Menu Cleanup & New Card | 1/2 | In progress | - |
+| 16. Menu Cleanup & New Card | 2/2 | Done | 2026-05-01 |
 | 17. Connection Lines & Junction Nodes | 0/0 | Not started | - |
 | 18. Blueprint Modal | 0/0 | Not started | - |
 
