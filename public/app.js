@@ -2061,6 +2061,15 @@ function renderUrlSource(url, title) {
   updateSourceBadge();
 }
 
+function findJunctionForCard(cardId) {
+  for (const [junctionId, junction] of state.junctions) {
+    if (junction.connectedCardIds.includes(cardId)) {
+      return junctionId;
+    }
+  }
+  return null;
+}
+
 function buildSelectedNodeContext() {
   const nodeId = state.selectedNodeId;
   if (!nodeId) return null;
@@ -2077,7 +2086,7 @@ function buildSelectedNodeContext() {
   const summary = node.explanation || node.option?.description || state.latestAnalysis?.summary || "";
   const prompt = node.option?.prompt || "";
 
-  return {
+  const context = {
     id: nodeId,
     type,
     title,
@@ -2088,6 +2097,24 @@ function buildSelectedNodeContext() {
     generated: Boolean(node.generated),
     hasReferences: Boolean(node.option?.references?.length)
   };
+
+  // Include blueprint relationships if this card belongs to a junction
+  const junctionId = findJunctionForCard(nodeId);
+  if (junctionId) {
+    const blueprint = state.blueprints.get(junctionId);
+    if (blueprint?.relationships?.length > 0) {
+      context.blueprint = {
+        junctionId,
+        relationships: blueprint.relationships.map(r => ({
+          from: r.from,
+          to: r.to,
+          type: r.type
+        }))
+      };
+    }
+  }
+
+  return context;
 }
 
 async function handleChatSubmit(event) {
@@ -2126,6 +2153,18 @@ async function handleChatSubmit(event) {
       });
       if (selectedContext.prompt) {
         systemContext += "\n" + t("chat.selectedCardPrompt", { prompt: selectedContext.prompt.slice(0, 300) });
+      }
+      if (selectedContext.blueprint?.relationships?.length > 0) {
+        const relDescriptions = selectedContext.blueprint.relationships.map(r => {
+          const fromNode = state.nodes.get(r.from);
+          const toNode = state.nodes.get(r.to);
+          const fromTitle = fromNode?.option?.title || r.from;
+          const toTitle = toNode?.option?.title || r.to;
+          const typeLabel = r.type === "upstream" ? "上游依赖" : r.type === "downstream" ? "下游影响" : "并列关系";
+          return `${fromTitle} -> ${toTitle} (${typeLabel})`;
+        });
+        const blueprintContextText = `蓝图关系: ${relDescriptions.join("; ")}`;
+        systemContext += "\n\n" + blueprintContextText;
       }
     }
 
@@ -5122,7 +5161,13 @@ function curvePath(start, end) {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const length = Math.hypot(dx, dy);
-  const bend = clamp(length * 0.36, 72, 260);
+  let bend = clamp(length * 0.36, 56, 260);
+  if ((start.side === "right" && end.side === "left") || (start.side === "left" && end.side === "right")) {
+    bend = Math.min(bend, Math.max(30, Math.abs(dx) * 0.48));
+  }
+  if ((start.side === "bottom" && end.side === "top") || (start.side === "top" && end.side === "bottom")) {
+    bend = Math.min(bend, Math.max(30, Math.abs(dy) * 0.48));
+  }
   const startTangent = tangentForSide(start.side);
   const endTangent = tangentForSide(end.side);
   const c1x = start.x + startTangent.x * bend;
