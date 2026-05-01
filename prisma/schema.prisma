@@ -101,3 +101,18 @@ model Settings {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+model MaterialItem {
+  id        String   @id @default(uuid())
+  fileName  String
+  mimeType  String
+  fileSize  Int
+  hash      String   // SHA-256 content hash
+  filePath  String   // relative path in storage/material/
+  addedAt   DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([hash])
+  @@index([fileName])
+  @@index([addedAt])
+}
