@@ -805,11 +805,7 @@ function getWorkbenchCommands() {
     { id: "import", icon: "I", label: t("command.import"), description: t("command.importDesc") },
     { id: "sessions", icon: "L", label: t("command.sessions"), description: t("command.sessionsDesc") },
     { id: "fit", icon: "F", label: t("command.fit"), description: t("command.fitDesc") },
-    { id: "zoom-in", icon: "+", label: t("command.zoomIn"), description: t("command.zoomInDesc") },
-    { id: "zoom-out", icon: "-", label: t("command.zoomOut"), description: t("command.zoomOutDesc") },
-    { id: "arrange", icon: "A", label: t("command.arrange"), description: t("command.arrangeDesc") },
-    { id: "history", icon: "H", label: t("command.history"), description: t("command.historyDesc") },
-    { id: "settings", icon: "C", label: t("command.settings"), description: t("command.settingsDesc") }
+    { id: "arrange", icon: "A", label: t("command.arrange"), description: t("command.arrangeDesc") }
   ];
 }
 
@@ -949,16 +945,7 @@ async function executeWorkbenchCommand(commandId) {
   if (commandId === "import") return importSessionFile();
   if (commandId === "sessions") return openSessionPanel();
   if (commandId === "fit") return resetView();
-  if (commandId === "zoom-in") return zoomBy(0.08);
-  if (commandId === "zoom-out") return zoomBy(-0.08);
   if (commandId === "arrange") return arrangeCanvasLayout();
-  if (commandId === "history") {
-    window.location.href = "/history/";
-    return;
-  }
-  if (commandId === "settings") {
-    window.location.href = "/history/?view=settings";
-  }
 }
 
 function wireControls() {
@@ -966,23 +953,57 @@ function wireControls() {
   // Research dropdown wiring
   const researchDropdownWrapper = document.querySelector(".research-dropdown-wrapper");
   if (researchDropdownWrapper) {
-    researchDropdownWrapper.addEventListener("mouseenter", () => {
+    let researchCloseTimer = null;
+    const openResearchMenu = () => {
+      window.clearTimeout(researchCloseTimer);
       researchDropdownWrapper.classList.add("is-open");
-    });
-    researchDropdownWrapper.addEventListener("mouseleave", () => {
+    };
+    const closeResearchMenu = () => {
       researchDropdownWrapper.classList.remove("is-open");
+    };
+    const scheduleResearchMenuClose = () => {
+      window.clearTimeout(researchCloseTimer);
+      researchCloseTimer = window.setTimeout(closeResearchMenu, 160);
+    };
+
+    researchDropdownWrapper.addEventListener("mouseenter", openResearchMenu);
+    researchDropdownWrapper.addEventListener("mouseleave", scheduleResearchMenuClose);
+    researchButton?.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openResearchMenu();
+    });
+    document.addEventListener("click", (event) => {
+      if (!researchDropdownWrapper.contains(event.target)) {
+        closeResearchMenu();
+      }
     });
   }
 
+  let lastResearchOptionRun = 0;
+  const runResearchOption = (option) => {
+    const now = Date.now();
+    if (now - lastResearchOptionRun < 250) return;
+    lastResearchOptionRun = now;
+    const mode = option.dataset.mode;
+    if (mode === "analyze") {
+      handleAnalyze("analyze");
+    } else if (mode === "explore") {
+      handleExplore();
+    }
+    researchDropdownWrapper?.classList.remove("is-open");
+  };
+
   document.querySelectorAll(".research-option").forEach((option) => {
-    option.addEventListener("click", () => {
-      const mode = option.dataset.mode;
-      if (mode === "analyze") {
-        handleAnalyze("analyze");
-      } else if (mode === "explore") {
-        handleExplore();
-      }
-      researchDropdownWrapper?.classList.remove("is-open");
+    option.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      runResearchOption(option);
+    });
+    option.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      runResearchOption(option);
     });
   });
   chatForm.addEventListener("submit", handleChatSubmit);
