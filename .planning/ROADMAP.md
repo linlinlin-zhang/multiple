@@ -100,7 +100,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 16. Menu Cleanup & New Card | 2/2 | Done | 2026-05-01 |
+| 16. Menu Cleanup & New Card | 2/2 | Done | 2026-05-02 |
 | 17. Connection Lines & Junction Nodes | 0/0 | Not started | - |
 | 18. Blueprint Modal | 0/0 | Not started | - |
 
