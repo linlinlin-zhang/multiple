@@ -1,42 +1,16 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import FolderTab from "./FolderTab";
 import { useHistory } from "../../hooks/useHistory";
 import HistoryPage from "./HistoryPage";
 import { useI18n } from "@/lib/i18n";
-import { Menu, X, Clock, Sun, Moon } from "lucide-react";
+import { Clock, FileText, Globe2, Image, Menu, Moon, Search, Sun, X } from "lucide-react";
+import type { HistorySession, OutputKind } from "@/types";
 
-const INACTIVE_COLORS = [
-  { bg: "#ffffff", text: "#000000" },
-  { bg: "#f5f7fa", text: "#000000" },
-  { bg: "#000000", text: "#ffffff" },
+const OUTPUT_TABS: { kind: OutputKind; labelKey: string; icon: ReactNode }[] = [
+  { kind: "image", labelKey: "history.tabImages", icon: <Image size={16} /> },
+  { kind: "web", labelKey: "history.tabWeb", icon: <Globe2 size={16} /> },
+  { kind: "document", labelKey: "history.tabDocuments", icon: <FileText size={16} /> },
 ];
-
-const MAX_VISIBLE_TABS = 5;
-
-function SkeletonTabs() {
-  return (
-    <div className="flex items-end pl-4 md:pl-6 overflow-x-auto">
-      {[1, 2, 3].map((i) => (
-        <div
-          key={i}
-          className="relative text-[14px] font-medium tracking-[0] flex items-center justify-center select-none animate-pulse flex-shrink-0"
-          style={{
-            zIndex: i,
-            backgroundColor: "#f5f7fa",
-            clipPath: "none",
-            borderRadius: "999px",
-            marginLeft: i > 1 ? "8px" : "0",
-            paddingLeft: "24px",
-            paddingRight: "24px",
-            height: "40px",
-            width: "120px",
-            transform: "translateY(3px)",
-          }}
-        />
-      ))}
-    </div>
-  );
-}
 
 function Spinner() {
   return (
@@ -66,27 +40,91 @@ async function persistTheme(theme: "light" | "dark") {
   }
 }
 
+interface SessionListProps {
+  sessions: HistorySession[];
+  activeSessionId: string | null;
+  loading: boolean;
+  onSelect: (id: string) => void;
+}
+
+function SessionList({ sessions, activeSessionId, loading, onSelect }: SessionListProps) {
+  const { t } = useI18n();
+
+  return (
+    <div className="flex h-full flex-col bg-cabinet-itemBg">
+      <div className="flex h-[68px] items-center justify-between px-6 flex-shrink-0">
+        <Menu size={19} className="text-cabinet-ink2" />
+        <Search size={18} className="text-cabinet-ink2" />
+      </div>
+
+      <div className="px-6 pb-5 flex-shrink-0">
+        <div className="text-xl font-medium text-cabinet-ink tracking-[0]">{t("history.record")}</div>
+        <div className="mt-1 text-[13px] text-cabinet-inkMuted">{t("history.folderHint")}</div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto cabinet-scrollbar pb-4">
+        {loading && sessions.length === 0 ? (
+          <div className="space-y-3 px-4">
+            {[1, 2, 3].map((item) => (
+              <div key={item} className="h-[74px] rounded bg-cabinet-paper/70 animate-pulse" />
+            ))}
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="px-6 py-4 text-sm text-cabinet-inkMuted">{t("history.noSessions")}</div>
+        ) : (
+          sessions.map((session) => {
+            const active = activeSessionId === session.id;
+            return (
+              <button
+                key={session.id}
+                onClick={() => onSelect(session.id)}
+                className={`relative w-full text-left px-6 py-4 transition-colors ${
+                  active ? "bg-cabinet-paper" : "hover:bg-cabinet-paper/70"
+                }`}
+              >
+                {active && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-cabinet-ink" />}
+                <div className="flex items-start gap-3">
+                  <Clock size={17} className="mt-[2px] text-cabinet-inkMuted flex-shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-[15px] font-medium text-cabinet-ink truncate">
+                      {session.title || t("session.unnamed")}
+                    </div>
+                    <div className="mt-1 text-[13px] text-cabinet-inkMuted truncate">
+                      {new Date(session.updatedAt || session.createdAt).toLocaleString()}
+                    </div>
+                    <div className="mt-1 text-[12px] text-cabinet-inkMuted truncate">
+                      {session.nodeCount} {t("history.nodeCount")} · {session.assetCount} {t("history.assetCount")}
+                    </div>
+                  </div>
+                </div>
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function FileCabinet() {
-  const { sessions, loading, error } = useHistory(20, 0, false);
+  const { sessions, loading, error } = useHistory(50, 0, false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
-  const [showMoreSidebar, setShowMoreSidebar] = useState(false);
+  const [activeOutputKind, setActiveOutputKind] = useState<OutputKind>("image");
+  const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme);
   const { lang, setLang, t } = useI18n();
+  const resolvedActiveSessionId =
+    activeSessionId && sessions.some((session) => session.id === activeSessionId)
+      ? activeSessionId
+      : sessions[0]?.id ?? null;
 
-  useEffect(() => {
-    if (activeSessionId === null && sessions.length > 0) {
-      setActiveSessionId(sessions[0].id);
-    }
-  }, [sessions, activeSessionId]);
-
-  // Cross-tab theme sync via storage events
   useEffect(() => {
     function onStorage(e: StorageEvent) {
       if (e.key === "oryzae-theme") {
-        const t = e.newValue;
-        if (t === "light" || t === "dark") {
-          document.documentElement.setAttribute("data-theme", t);
-          setTheme(t);
+        const next = e.newValue;
+        if (next === "light" || next === "dark") {
+          document.documentElement.setAttribute("data-theme", next);
+          setTheme(next);
         }
       }
     }
@@ -100,138 +138,52 @@ export default function FileCabinet() {
     persistTheme(next);
   };
 
-  const visibleSessions = sessions.slice(0, MAX_VISIBLE_TABS);
-  const hasMore = sessions.length > MAX_VISIBLE_TABS;
-
   const handleSessionSelect = (id: string) => {
     setActiveSessionId(id);
-    setShowMoreSidebar(false);
-  };
-
-  const toggleMoreSidebar = () => {
-    setShowMoreSidebar((prev) => !prev);
+    setMobileSessionsOpen(false);
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-cabinet-bg flex justify-center pt-4 md:pt-8 px-4">
-      {/* Mobile overlay for more sidebar */}
-      {showMoreSidebar && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
+    <div className="h-screen overflow-hidden bg-cabinet-bg p-3 md:p-7">
+      {mobileSessionsOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex">
           <div
             className="fixed inset-0 bg-black/20"
-            onClick={() => setShowMoreSidebar(false)}
+            onClick={() => setMobileSessionsOpen(false)}
           />
-          <div className="relative w-[280px] bg-cabinet-paper h-full shadow-lg flex flex-col">
+          <div className="relative w-[320px] max-w-[84vw] bg-cabinet-itemBg h-full shadow-lg flex flex-col">
             <div className="flex items-center justify-between px-4 py-3 border-b border-cabinet-border">
               <span className="text-sm font-medium text-cabinet-ink">{t("history.record")}</span>
               <button
-                onClick={() => setShowMoreSidebar(false)}
-                className="w-8 h-8 flex items-center justify-center rounded hover:bg-cabinet-itemBg"
+                onClick={() => setMobileSessionsOpen(false)}
+                className="w-8 h-8 flex items-center justify-center rounded hover:bg-cabinet-paper"
                 aria-label={t("cabinet.closeSidebar")}
               >
                 <X size={18} className="text-cabinet-ink" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto cabinet-scrollbar">
-              {sessions.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-cabinet-inkMuted text-center">
-                  {t("history.noSessions")}
-                </div>
-              ) : (
-                sessions.map((session) => (
-                  <button
-                    key={session.id}
-                    onClick={() => handleSessionSelect(session.id)}
-                    className={`w-full text-left px-4 py-3 relative transition-colors ${
-                      activeSessionId === session.id
-                        ? "bg-cabinet-itemBg"
-                        : "hover:bg-cabinet-itemBg"
-                    }`}
-                  >
-                    {activeSessionId === session.id && (
-                      <div className="absolute left-0 top-2 bottom-2 w-[3px] bg-cabinet-blue rounded-r-full" />
-                    )}
-                    <div className="flex items-center gap-2">
-                      <Clock size={14} className="text-cabinet-inkMuted flex-shrink-0" />
-                      <div className="text-sm font-medium text-cabinet-ink truncate leading-tight">
-                        {session.title || t("session.unnamed")}
-                      </div>
-                    </div>
-                    <div className="text-xs text-cabinet-ink2 truncate mt-1 leading-tight">
-                      {new Date(session.createdAt).toLocaleString()} · {session.nodeCount} {t("history.nodeCount")}
-                    </div>
-                  </button>
-                ))
-              )}
-            </div>
+            <SessionList
+              sessions={sessions}
+              activeSessionId={resolvedActiveSessionId}
+              loading={loading}
+              onSelect={handleSessionSelect}
+            />
           </div>
         </div>
       )}
 
-      <div className="flex flex-col w-full max-w-full md:max-w-[1100px]">
-        {/* Tab bar with toggle */}
-        {loading && sessions.length === 0 ? (
-          <SkeletonTabs />
-        ) : (
-          <div className="flex items-end gap-2">
-            <button
-              onClick={toggleMoreSidebar}
-              className={`w-10 h-10 flex items-center justify-center rounded-lg border flex-shrink-0 transition-colors mb-[3px] ${
-                showMoreSidebar
-                  ? "bg-cabinet-blue text-cabinet-paper border-cabinet-blue"
-                  : "bg-cabinet-paper text-cabinet-ink border-cabinet-border hover:bg-cabinet-itemBg"
-              }`}
-              title={showMoreSidebar ? t("cabinet.hideHistory") : t("cabinet.showHistory")}
-              aria-label={showMoreSidebar ? t("cabinet.hideHistory") : t("cabinet.showHistory")}
-            >
-              <Menu size={18} />
-            </button>
-            <div className="flex items-end overflow-x-auto flex-1">
-              {sessions.length === 0 ? (
-                <FolderTab
-                  label={t("cabinet.noSessions")}
-                  tabId="none"
-                  active={false}
-                  zIndex={1}
-                  overlap={false}
-                  onClick={() => {}}
-                />
-              ) : (
-                <>
-                  {visibleSessions.map((session, index) => {
-                    const palette = INACTIVE_COLORS[index % 3];
-                    return (
-                      <FolderTab
-                        key={session.id}
-                        label={session.title || t("session.unnamed")}
-                        tabId={session.id}
-                        active={activeSessionId === session.id}
-                        zIndex={index + 1}
-                        overlap={index > 0}
-                        onClick={() => handleSessionSelect(session.id)}
-                        inactiveColor={palette.bg}
-                        inactiveText={palette.text}
-                      />
-                    );
-                  })}
-                  {hasMore && (
-                    <FolderTab
-                      label={`${t("history.more")} (${sessions.length - MAX_VISIBLE_TABS})`}
-                      tabId="more"
-                      active={showMoreSidebar}
-                      zIndex={MAX_VISIBLE_TABS + 1}
-                      overlap={true}
-                      onClick={toggleMoreSidebar}
-                      inactiveColor="#ffffff"
-                      inactiveText="#000000"
-                    />
-                  )}
-                </>
-              )}
-            </div>
+      <div className="mx-auto flex h-full max-w-[1760px] overflow-hidden rounded-[24px] border border-cabinet-border bg-cabinet-paper shadow-[0_22px_48px_rgba(0,0,0,0.08)]">
+        <aside className="hidden lg:flex w-[320px] min-w-[320px] flex-col border-r border-cabinet-border bg-cabinet-itemBg">
+          <SessionList
+            sessions={sessions}
+            activeSessionId={resolvedActiveSessionId}
+            loading={loading}
+            onSelect={handleSessionSelect}
+          />
+          <div className="flex items-center gap-2 border-t border-cabinet-border p-4">
             <button
               onClick={handleToggleTheme}
-              className="w-10 h-10 flex items-center justify-center rounded-lg border flex-shrink-0 transition-colors mb-[3px] bg-cabinet-paper text-cabinet-ink border-cabinet-border hover:bg-cabinet-itemBg"
+              className="w-10 h-10 flex items-center justify-center rounded border bg-cabinet-paper text-cabinet-ink border-cabinet-border hover:bg-cabinet-itemBg"
               title={theme === "dark" ? t("settings.lightMode") : t("settings.darkMode")}
               aria-label={theme === "dark" ? t("settings.lightMode") : t("settings.darkMode")}
             >
@@ -248,76 +200,50 @@ export default function FileCabinet() {
                   body: JSON.stringify({ language: next })
                 }).catch(console.error);
               }}
-              className="h-10 px-2 rounded-lg border flex-shrink-0 mb-[3px] bg-cabinet-paper text-cabinet-ink border-cabinet-border hover:bg-cabinet-itemBg text-sm"
+              className="h-10 min-w-0 flex-1 rounded border bg-cabinet-paper px-3 text-sm text-cabinet-ink border-cabinet-border hover:bg-cabinet-itemBg"
               aria-label={t("settings.language")}
             >
               <option value="zh">{t("lang.zh")}</option>
               <option value="en">{t("lang.en")}</option>
             </select>
           </div>
-        )}
+        </aside>
 
-        {/* Error message */}
-        {error && (
-          <div className="px-6 py-2 text-sm text-[#d53b00] bg-cabinet-paper border border-cabinet-border rounded-3xl mt-1">
-            Error loading sessions: {error}
+        <section className="flex min-w-0 flex-1 flex-col bg-cabinet-bg">
+          <div className="flex items-end gap-0 pl-3 md:pl-8 pr-3 md:pr-6 pt-4 md:pt-6 flex-shrink-0">
+            <button
+              onClick={() => setMobileSessionsOpen(true)}
+              className="lg:hidden mr-2 mb-0 w-11 h-[52px] flex items-center justify-center bg-cabinet-paper text-cabinet-ink border border-cabinet-border"
+              aria-label={t("cabinet.showHistory")}
+            >
+              <Menu size={19} />
+            </button>
+            <div className="flex items-end overflow-x-auto cabinet-scrollbar">
+              {OUTPUT_TABS.map((tab, index) => (
+                <FolderTab
+                  key={tab.kind}
+                  label={t(tab.labelKey)}
+                  tabId={tab.kind}
+                  active={activeOutputKind === tab.kind}
+                  zIndex={OUTPUT_TABS.length - index}
+                  overlap={index > 0}
+                  onClick={() => setActiveOutputKind(tab.kind)}
+                  inactiveColor={index === 0 ? "#ffffff" : index === 1 ? "#f5f7fa" : "#000000"}
+                  inactiveText={index === 2 ? "#ffffff" : "#000000"}
+                  icon={tab.icon}
+                />
+              ))}
+            </div>
+            <div className="flex-1" />
           </div>
-        )}
 
-        {/* Content */}
-        <div
-          className="flex relative shadow-[0_18px_42px_rgba(0,0,0,0.08)] overflow-hidden"
-          style={{ height: "calc(100vh - 104px)", borderRadius: "24px", zIndex: 5 }}
-        >
-          {/* Desktop more sidebar */}
-          {showMoreSidebar && (
-            <div className="hidden md:flex w-[260px] min-w-[260px] flex-col bg-cabinet-paper border border-cabinet-border border-r-0">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-cabinet-border">
-                <span className="text-sm font-medium text-cabinet-ink">{t("history.record")}</span>
-                <button
-                  onClick={() => setShowMoreSidebar(false)}
-                  className="w-8 h-8 flex items-center justify-center rounded hover:bg-cabinet-itemBg"
-                  aria-label={t("cabinet.closeSidebar")}
-                >
-                  <X size={18} className="text-cabinet-ink" />
-                </button>
-              </div>
-              <div className="flex-1 overflow-y-auto cabinet-scrollbar">
-                {sessions.length === 0 ? (
-                  <div className="px-4 py-6 text-sm text-cabinet-inkMuted text-center">
-                    {t("history.noSessions")}
-                  </div>
-                ) : (
-                  sessions.map((session) => (
-                    <button
-                      key={session.id}
-                      onClick={() => handleSessionSelect(session.id)}
-                      className={`w-full text-left px-4 py-3 relative transition-colors ${
-                        activeSessionId === session.id
-                          ? "bg-cabinet-itemBg"
-                          : "hover:bg-cabinet-itemBg"
-                      }`}
-                    >
-                      {activeSessionId === session.id && (
-                        <div className="absolute left-0 top-2 bottom-2 w-[3px] bg-cabinet-blue rounded-r-full" />
-                      )}
-                      <div className="flex items-center gap-2">
-                        <Clock size={14} className="text-cabinet-inkMuted flex-shrink-0" />
-                        <div className="text-sm font-medium text-cabinet-ink truncate leading-tight">
-                          {session.title || t("session.unnamed")}
-                        </div>
-                      </div>
-                      <div className="text-xs text-cabinet-ink2 truncate mt-1 leading-tight">
-                        {new Date(session.createdAt).toLocaleString()} · {session.nodeCount} {t("history.nodeCount")}
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
+          {error && (
+            <div className="mx-3 md:mx-8 mb-2 px-5 py-2 text-sm text-[#d53b00] bg-cabinet-paper border border-cabinet-border">
+              {t("history.error")}: {error}
             </div>
           )}
 
-          <div className="flex-1 bg-cabinet-paper relative overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-hidden bg-cabinet-paper">
             {loading && sessions.length === 0 ? (
               <Spinner />
             ) : sessions.length === 0 && !loading ? (
@@ -325,10 +251,10 @@ export default function FileCabinet() {
                 {t("history.noSessions")}
               </div>
             ) : (
-              <HistoryPage sessionId={activeSessionId} />
+              <HistoryPage sessionId={resolvedActiveSessionId} outputKind={activeOutputKind} />
             )}
           </div>
-        </div>
+        </section>
       </div>
     </div>
   );

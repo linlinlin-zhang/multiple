@@ -8,6 +8,8 @@ export interface HistorySession {
   assetCount: number;
 }
 
+export type OutputKind = "image" | "web" | "document";
+
 export interface Node {
   id: string;
   sessionId: string;

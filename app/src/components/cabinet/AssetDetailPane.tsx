@@ -7,6 +7,7 @@ import type { SessionDetail, Asset, Node, ChatMessage } from "@/types";
 interface AssetDetailPaneProps {
   session: SessionDetail | null;
   selectedAssetId: string | null;
+  emptyMessage?: string;
 }
 
 function formatBytes(bytes: number): string {
@@ -156,6 +157,30 @@ function LinkAssetDetail({ node }: { node: Node }) {
   );
 }
 
+function TextNodeDetail({ node }: { node: Node }) {
+  const { t } = useI18n();
+  const title = (node.data?.fileName as string | undefined) || t("asset.document");
+  const sourceText = String(node.data?.sourceText || "");
+  return (
+    <div className="flex flex-col h-full overflow-y-auto cabinet-scrollbar px-8 pb-12">
+      <div className="flex flex-col items-center justify-center py-10">
+        <File size={64} className="text-cabinet-inkMuted" />
+        <div className="text-[15px] text-cabinet-ink mt-4 font-medium text-center">
+          {title}
+        </div>
+      </div>
+      {sourceText && (
+        <div className="mt-2">
+          <div className="text-[13px] text-cabinet-inkMuted mb-1">{t("detail.preview")}</div>
+          <pre className="text-[14px] text-cabinet-ink bg-cabinet-bg rounded-2xl border border-cabinet-border p-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words">
+            {sourceText.slice(0, 6000)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ChatAssetDetail({ msg }: { msg: ChatMessage }) {
   const { t } = useI18n();
   return (
@@ -181,13 +206,13 @@ function ChatAssetDetail({ msg }: { msg: ChatMessage }) {
   );
 }
 
-export default function AssetDetailPane({ session, selectedAssetId }: AssetDetailPaneProps) {
+export default function AssetDetailPane({ session, selectedAssetId, emptyMessage }: AssetDetailPaneProps) {
   const { t } = useI18n();
   if (!selectedAssetId) {
     return (
       <div className="flex-1 bg-cabinet-paper flex flex-col h-full overflow-hidden items-center justify-center">
         <span className="text-sm text-cabinet-inkMuted">
-          {t("detail.selectAsset")}
+          {emptyMessage || t("detail.selectAsset")}
         </span>
       </div>
     );
@@ -223,7 +248,7 @@ export default function AssetDetailPane({ session, selectedAssetId }: AssetDetai
   if (node) {
     return (
       <div className="flex-1 bg-cabinet-paper flex flex-col h-full overflow-hidden">
-        <LinkAssetDetail node={node} />
+        {node.data?.sourceUrl ? <LinkAssetDetail node={node} /> : <TextNodeDetail node={node} />}
       </div>
     );
   }

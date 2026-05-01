@@ -1,79 +1,91 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useSession } from "../../hooks/useHistory";
 import AssetSidebar from "./AssetSidebar";
 import AssetDetailPane from "./AssetDetailPane";
 import NodeGraphThumbnail from "./NodeGraphThumbnail";
 import { useI18n } from "@/lib/i18n";
 import { Menu, X } from "lucide-react";
+import type { Asset, OutputKind, SessionDetail } from "@/types";
 
 interface HistoryPageProps {
   sessionId: string | null;
+  outputKind: OutputKind;
 }
 
 function SkeletonHistoryPage() {
   return (
-    <div className="flex h-full flex-col md:flex-row">
-      {/* Sidebar skeleton */}
-      <div className="w-full md:w-[280px] min-w-0 bg-cabinet-paper border-r border-cabinet-border flex flex-col h-full animate-pulse">
-        <div className="px-4 py-3">
+    <div className="flex h-full">
+      <div className="hidden md:flex w-[300px] min-w-[300px] bg-cabinet-paper border-r border-cabinet-border flex-col h-full animate-pulse">
+        <div className="px-5 py-5">
           <div className="h-4 w-24 bg-cabinet-itemBg rounded" />
         </div>
         <div className="border-b border-cabinet-border" />
         <div className="flex-1 px-4 py-4 space-y-4">
           <div className="h-3 w-16 bg-cabinet-itemBg rounded" />
-          <div className="h-10 bg-cabinet-itemBg rounded" />
-          <div className="h-10 bg-cabinet-itemBg rounded" />
-          <div className="h-3 w-16 bg-cabinet-itemBg rounded mt-4" />
-          <div className="h-10 bg-cabinet-itemBg rounded" />
+          <div className="h-12 bg-cabinet-itemBg rounded" />
+          <div className="h-12 bg-cabinet-itemBg rounded" />
         </div>
       </div>
-
-      {/* Detail pane skeleton */}
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-cabinet-paper animate-pulse">
-        <div className="px-4 md:px-8 pt-6 pb-2 flex-shrink-0 space-y-3">
+        <div className="px-5 md:px-9 pt-7 pb-4 flex-shrink-0 space-y-3">
           <div className="h-4 w-48 bg-cabinet-itemBg rounded" />
-          <div className="h-6 w-72 bg-cabinet-itemBg rounded" />
+          <div className="h-8 w-80 max-w-full bg-cabinet-itemBg rounded" />
         </div>
-        <div className="flex-1 px-4 md:px-8 py-4">
-          <div className="w-full h-[180px] md:h-[240px] bg-cabinet-itemBg rounded" />
+        <div className="px-5 md:px-9 py-4">
+          <div className="w-full h-[180px] md:h-[240px] bg-cabinet-itemBg rounded-[24px]" />
         </div>
       </div>
     </div>
   );
 }
 
-export default function HistoryPage({ sessionId }: HistoryPageProps) {
+function isImageAsset(asset: Asset) {
+  return asset.kind === "generated" || asset.mimeType.startsWith("image/");
+}
+
+function getFirstOutputId(session: SessionDetail | null, outputKind: OutputKind) {
+  if (!session) return null;
+  if (outputKind === "image") {
+    return session.assets.find(isImageAsset)?.id ?? null;
+  }
+  if (outputKind === "web") {
+    return session.nodes.find((node) => typeof node.data?.sourceUrl === "string" && node.data.sourceUrl)?.id ?? null;
+  }
+  return (
+    session.assets.find((asset) => asset.kind === "upload" && !isImageAsset(asset))?.id ??
+    session.nodes.find((node) => node.type === "source" && node.data?.sourceType === "text")?.id ??
+    session.chatMessages[0]?.id ??
+    null
+  );
+}
+
+function isOutputIdForKind(session: SessionDetail | null, outputKind: OutputKind, id: string | null) {
+  if (!session || !id) return false;
+  if (outputKind === "image") {
+    return session.assets.some((asset) => asset.id === id && isImageAsset(asset));
+  }
+  if (outputKind === "web") {
+    return session.nodes.some((node) => node.id === id && typeof node.data?.sourceUrl === "string" && node.data.sourceUrl);
+  }
+  return (
+    session.assets.some((asset) => asset.id === id && asset.kind === "upload" && !isImageAsset(asset)) ||
+    session.nodes.some((node) => node.id === id && node.type === "source" && node.data?.sourceType === "text") ||
+    session.chatMessages.some((message) => message.id === id)
+  );
+}
+
+export default function HistoryPage({ sessionId, outputKind }: HistoryPageProps) {
   const { session, loading, error, refetch } = useSession(sessionId);
-  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
+  const [selectedAssetIdIntent, setSelectedAssetIdIntent] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { t } = useI18n();
   const nodeCount = session?.nodeCount ?? session?.nodes.length ?? 0;
   const assetCount = session?.assetCount ?? session?.assets.length ?? 0;
 
-  // Auto-select first asset when session loads
-  useEffect(() => {
-    if (session && selectedAssetId === null) {
-      const firstImage = session.assets.find((a) => a.kind === "generated");
-      if (firstImage) {
-        setSelectedAssetId(firstImage.id);
-        return;
-      }
-      const firstFile = session.assets.find((a) => a.kind === "upload");
-      if (firstFile) {
-        setSelectedAssetId(firstFile.id);
-        return;
-      }
-      const firstNode = session.nodes[0];
-      if (firstNode) {
-        setSelectedAssetId(firstNode.id);
-        return;
-      }
-      const firstMsg = session.chatMessages[0];
-      if (firstMsg) {
-        setSelectedAssetId(firstMsg.id);
-      }
-    }
-  }, [session, selectedAssetId]);
+  const firstOutputId = useMemo(() => getFirstOutputId(session, outputKind), [session, outputKind]);
+  const selectedAssetId = isOutputIdForKind(session, outputKind, selectedAssetIdIntent)
+    ? selectedAssetIdIntent
+    : firstOutputId;
 
   if (loading && !session) {
     return <SkeletonHistoryPage />;
@@ -81,38 +93,37 @@ export default function HistoryPage({ sessionId }: HistoryPageProps) {
 
   return (
     <div className="flex h-full flex-col md:flex-row relative">
-      {/* Mobile sidebar toggle */}
       <button
         onClick={() => setSidebarOpen(true)}
-        className="md:hidden absolute top-3 left-3 z-30 w-10 h-10 flex items-center justify-center rounded-full bg-cabinet-paper border border-cabinet-border shadow-[0_8px_16px_rgba(0,0,0,0.08)]"
-        aria-label="Open sidebar"
+        className="md:hidden absolute top-4 left-4 z-30 w-10 h-10 flex items-center justify-center rounded-full bg-cabinet-paper border border-cabinet-border shadow-[0_8px_16px_rgba(0,0,0,0.08)]"
+        aria-label={t("history.openOutputs")}
       >
         <Menu size={18} className="text-cabinet-ink" />
       </button>
 
-      {/* Mobile sidebar overlay */}
       {sidebarOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
           <div
             className="fixed inset-0 bg-black/20"
             onClick={() => setSidebarOpen(false)}
           />
-          <div className="relative w-[280px] bg-cabinet-paper h-full shadow-lg">
+          <div className="relative w-[300px] bg-cabinet-paper h-full shadow-lg">
             <div className="flex items-center justify-between px-4 py-3 border-b border-cabinet-border">
-              <span className="text-sm font-medium text-cabinet-ink">{t("sidebar.assets")}</span>
+              <span className="text-sm font-medium text-cabinet-ink">{t("history.outputContents")}</span>
               <button
                 onClick={() => setSidebarOpen(false)}
                 className="w-8 h-8 flex items-center justify-center rounded hover:bg-cabinet-itemBg"
-                aria-label="Close sidebar"
+                aria-label={t("cabinet.closeSidebar")}
               >
                 <X size={18} className="text-cabinet-ink" />
               </button>
             </div>
             <AssetSidebar
               session={session}
+              outputKind={outputKind}
               selectedAssetId={selectedAssetId}
               onSelectAsset={(id) => {
-                setSelectedAssetId(id);
+                setSelectedAssetIdIntent(id);
                 setSidebarOpen(false);
               }}
             />
@@ -120,39 +131,39 @@ export default function HistoryPage({ sessionId }: HistoryPageProps) {
         </div>
       )}
 
-      {/* Left sidebar - desktop */}
-      <div className="hidden md:block w-[280px] min-w-[280px] bg-cabinet-paper border-r border-cabinet-border flex flex-col h-full">
+      <div className="hidden md:flex w-[300px] min-w-[300px] bg-cabinet-paper border-r border-cabinet-border flex-col h-full">
         <AssetSidebar
           session={session}
+          outputKind={outputKind}
           selectedAssetId={selectedAssetId}
-          onSelectAsset={setSelectedAssetId}
+          onSelectAsset={setSelectedAssetIdIntent}
         />
       </div>
 
-      {/* Right pane */}
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-cabinet-paper">
-        {/* Error banner */}
         {error && (
-          <div className="px-4 md:px-6 py-3 bg-cabinet-paper border-b border-cabinet-border flex items-center justify-between flex-shrink-0">
+          <div className="px-5 md:px-9 py-3 bg-cabinet-paper border-b border-cabinet-border flex items-center justify-between flex-shrink-0">
             <span className="text-sm text-[#d53b00]">{error}</span>
             <button
               onClick={refetch}
               className="text-sm text-cabinet-blue font-medium hover:underline"
             >
-              Retry
+              {t("history.retry")}
             </button>
           </div>
         )}
 
-        {/* Session header */}
         {session && (
-          <div className="px-4 md:px-8 pt-6 pb-2 flex-shrink-0">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h1 className="text-xl md:text-2xl font-medium text-cabinet-ink leading-tight">
-                  {session.title || "Untitled Session"}
+          <div className="px-5 md:px-9 pt-7 pb-3 flex-shrink-0">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className="text-[13px] text-cabinet-inkMuted mb-3">
+                  {t("history.lastEdited")} {new Date(session.updatedAt || session.createdAt).toLocaleString()}
+                </div>
+                <h1 className="text-2xl md:text-[34px] font-medium text-cabinet-ink leading-tight tracking-[0] truncate">
+                  {session.title || t("session.unnamed")}
                 </h1>
-                <div className="flex items-center gap-3 mt-2 text-[13px] text-cabinet-inkMuted flex-wrap">
+                <div className="flex items-center gap-3 mt-3 text-[13px] md:text-[14px] text-cabinet-inkMuted flex-wrap">
                   <span>{new Date(session.createdAt).toLocaleString()}</span>
                   <span>·</span>
                   <span>{nodeCount} {t("history.nodeCount")}</span>
@@ -162,7 +173,7 @@ export default function HistoryPage({ sessionId }: HistoryPageProps) {
               </div>
               <a
                 href={`/?session=${session.id}`}
-                className="inline-flex items-center px-5 py-2 bg-cabinet-blue text-cabinet-paper text-sm font-medium rounded-full hover:bg-cabinet-cyan transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cabinet-blue focus-visible:ring-offset-2 flex-shrink-0"
+                className="inline-flex items-center px-5 py-2 bg-cabinet-blue text-cabinet-paper text-sm font-medium rounded-full hover:bg-cabinet-cyan transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cabinet-blue focus-visible:ring-offset-2 flex-shrink-0"
               >
                 {t("cabinet.openInCanvas")}
               </a>
@@ -170,18 +181,20 @@ export default function HistoryPage({ sessionId }: HistoryPageProps) {
           </div>
         )}
 
-        {/* Node graph thumbnail */}
         {session && (
-          <div className="px-4 md:px-8 py-4 flex-shrink-0">
-            <div className="h-[180px] md:h-[240px]">
+          <div className="px-5 md:px-9 py-4 flex-shrink-0">
+            <div className="h-[180px] md:h-[245px] rounded-[24px] overflow-hidden bg-cabinet-bg">
               <NodeGraphThumbnail nodes={session.nodes} links={session.links} />
             </div>
           </div>
         )}
 
-        {/* Asset detail pane */}
         <div className="flex-1 min-h-0">
-          <AssetDetailPane session={session} selectedAssetId={selectedAssetId} />
+          <AssetDetailPane
+            session={session}
+            selectedAssetId={selectedAssetId}
+            emptyMessage={t("history.noOutputsInFolder")}
+          />
         </div>
       </div>
     </div>

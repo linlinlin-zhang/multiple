@@ -1,124 +1,131 @@
-import { Image, FileText, ExternalLink, MessageSquare } from "lucide-react";
+import { FileText, Globe2, Image } from "lucide-react";
+import type { ReactNode } from "react";
 import Sidebar from "./Sidebar";
 import { useI18n } from "@/lib/i18n";
-import type { SessionDetail, Asset, Node } from "@/types";
+import type { SessionDetail, Asset, Node, ChatMessage, OutputKind } from "@/types";
 
 interface AssetSidebarProps {
   session: SessionDetail | null;
+  outputKind: OutputKind;
   selectedAssetId: string | null;
   onSelectAsset: (id: string) => void;
 }
 
+interface OutputSidebarItem {
+  id: string;
+  title: string;
+  summary: string;
+  groupLabel?: string;
+  icon?: ReactNode;
+}
+
 function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
+  if (!bytes) return "0 B";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-function getAssetIcon(assetType: "image" | "file" | "link" | "chat"): React.ReactNode {
-  switch (assetType) {
-    case "image":
-      return <Image size={16} className="text-cabinet-blue" />;
-    case "file":
-      return <FileText size={16} className="text-cabinet-blue" />;
-    case "link":
-      return <ExternalLink size={16} className="text-cabinet-blue" />;
-    case "chat":
-      return <MessageSquare size={16} className="text-cabinet-blue" />;
-    default:
-      return null;
+function isImageAsset(asset: Asset) {
+  return asset.kind === "generated" || asset.mimeType.startsWith("image/");
+}
+
+function isDocumentAsset(asset: Asset) {
+  return asset.kind === "upload" && !isImageAsset(asset);
+}
+
+function titleFromUrl(url: string, fallback: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return fallback;
   }
 }
 
-interface SidebarItemData {
-  id: string;
-  title: string;
-  summary: string;
-  groupLabel?: string;
-  icon?: React.ReactNode;
+function summarizeText(value: string, max = 82) {
+  const clean = value.replace(/\s+/g, " ").trim();
+  return clean.length > max ? `${clean.slice(0, max)}...` : clean;
 }
 
-function transformSessionToItems(session: SessionDetail, t: (key: string) => string): SidebarItemData[] {
-  const items: SidebarItemData[] = [];
+function imageItems(session: SessionDetail, t: (key: string) => string): OutputSidebarItem[] {
+  return session.assets.filter(isImageAsset).map((asset) => ({
+    id: asset.id,
+    title: asset.fileName || (asset.kind === "generated" ? t("asset.generatedImage") : t("asset.uploadedFile")),
+    summary: `${asset.mimeType} · ${formatBytes(asset.fileSize)}`,
+    groupLabel: t("history.tabImages"),
+    icon: <Image size={16} className="text-cabinet-blue" />,
+  }));
+}
 
-  // Images group (generated assets)
-  const images = session.assets.filter((a: Asset) => a.kind === "generated");
-  for (const asset of images) {
-    items.push({
-      id: asset.id,
-      title: asset.fileName || t("asset.generatedImage"),
-      summary: `${asset.mimeType} · ${formatBytes(asset.fileSize)}`,
-      groupLabel: t("asset.images"),
-      icon: getAssetIcon("image"),
+function webItems(session: SessionDetail, t: (key: string) => string): OutputSidebarItem[] {
+  return session.nodes
+    .filter((node: Node) => typeof node.data?.sourceUrl === "string" && node.data.sourceUrl)
+    .map((node) => {
+      const url = String(node.data.sourceUrl);
+      return {
+        id: node.id,
+        title: titleFromUrl(url, t("asset.webLink")),
+        summary: url.length > 76 ? `${url.slice(0, 76)}...` : url,
+        groupLabel: t("history.tabWeb"),
+        icon: <Globe2 size={16} className="text-cabinet-blue" />,
+      };
     });
-  }
+}
 
-  // Files group (uploaded assets)
-  const files = session.assets.filter((a: Asset) => a.kind === "upload");
-  for (const asset of files) {
-    const isText =
-      asset.mimeType.startsWith("text/") ||
-      asset.mimeType === "application/pdf" ||
-      asset.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-      asset.mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-    items.push({
-      id: asset.id,
-      title: isText ? asset.fileName || t("asset.document") : asset.fileName || t("asset.uploadedFile"),
-      summary: `${asset.mimeType} · ${formatBytes(asset.fileSize)}`,
-      groupLabel: t("asset.files"),
-      icon: getAssetIcon("file"),
-    });
-  }
+function documentItems(session: SessionDetail, t: (key: string) => string): OutputSidebarItem[] {
+  const files = session.assets.filter(isDocumentAsset).map((asset) => ({
+    id: asset.id,
+    title: asset.fileName || t("asset.document"),
+    summary: `${asset.mimeType} · ${formatBytes(asset.fileSize)}`,
+    groupLabel: t("asset.files"),
+    icon: <FileText size={16} className="text-cabinet-blue" />,
+  }));
 
-  // Links group (source nodes with sourceUrl)
-  const linkNodes = session.nodes.filter(
-    (n: Node) => n.type === "source" && n.data?.sourceUrl && typeof n.data.sourceUrl === "string"
-  );
-  for (const node of linkNodes) {
-    const url = node.data.sourceUrl as string;
-    let domain = t("asset.webLink");
-    try {
-      domain = new URL(url).hostname;
-    } catch {
-      // fallback
-    }
-    items.push({
+  const textSources = session.nodes
+    .filter((node: Node) => node.type === "source" && node.data?.sourceType === "text")
+    .map((node) => ({
       id: node.id,
-      title: domain,
-      summary: url.length > 60 ? url.slice(0, 60) + "..." : url,
-      groupLabel: t("asset.links"),
-      icon: getAssetIcon("link"),
-    });
-  }
+      title: (node.data?.fileName as string | undefined) || t("asset.document"),
+      summary: summarizeText(String(node.data?.sourceText || t("asset.document"))),
+      groupLabel: t("history.textSources"),
+      icon: <FileText size={16} className="text-cabinet-blue" />,
+    }));
 
-  // Chat group (up to 20 messages)
-  const messages = session.chatMessages.slice(0, 20);
-  for (const msg of messages) {
-    const content = msg.content;
-    items.push({
-      id: msg.id,
-      title: msg.role === "user" ? t("detail.you") : t("detail.ai"),
-      summary: content.length > 80 ? content.slice(0, 80) + "..." : content,
-      groupLabel: t("asset.chat"),
-      icon: getAssetIcon("chat"),
-    });
-  }
+  const messages = session.chatMessages.slice(0, 20).map((msg: ChatMessage) => ({
+    id: msg.id,
+    title: msg.role === "user" ? t("detail.you") : t("detail.ai"),
+    summary: summarizeText(msg.content),
+    groupLabel: t("share.chatRecord"),
+    icon: <FileText size={16} className="text-cabinet-blue" />,
+  }));
 
-  return items;
+  return [...files, ...textSources, ...messages];
 }
 
-export default function AssetSidebar({ session, selectedAssetId, onSelectAsset }: AssetSidebarProps) {
+function buildOutputItems(
+  session: SessionDetail | null,
+  outputKind: OutputKind,
+  t: (key: string) => string
+): OutputSidebarItem[] {
+  if (!session) return [];
+  if (outputKind === "image") return imageItems(session, t);
+  if (outputKind === "web") return webItems(session, t);
+  return documentItems(session, t);
+}
+
+export default function AssetSidebar({ session, outputKind, selectedAssetId, onSelectAsset }: AssetSidebarProps) {
   const { t } = useI18n();
-  const items = session ? transformSessionToItems(session, t) : [];
+  const items = buildOutputItems(session, outputKind, t);
 
   return (
     <Sidebar
-      title={t("sidebar.assets")}
+      title={t("history.outputContents")}
       items={items}
       selectedId={selectedAssetId}
       onSelect={onSelectAsset}
+      emptyMessage={t("history.noOutputsInFolder")}
+      className="w-full min-w-0"
     />
   );
 }

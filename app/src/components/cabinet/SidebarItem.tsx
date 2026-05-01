@@ -1,9 +1,11 @@
+import type { ReactNode } from "react";
+
 interface SidebarItemProps {
   title: string;
   summary: string;
   selected: boolean;
   onClick: () => void;
-  icon?: React.ReactNode;
+  icon?: ReactNode;
 }
 
 export default function SidebarItem({ title, summary, selected, onClick, icon }: SidebarItemProps) {
