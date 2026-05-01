@@ -68,6 +68,9 @@ const IMAGE_POLL_INTERVAL_MS = Number(process.env.IMAGE_POLL_INTERVAL_MS || 2000
 const IMAGE_POLL_ATTEMPTS = Number(process.env.IMAGE_POLL_ATTEMPTS || 30);
 const IMAGE_INCLUDE_DATA_URL = process.env.IMAGE_INCLUDE_DATA_URL === "true";
 const MAX_BODY_BYTES = 22 * 1024 * 1024;
+const CHAT_COMPLETION_TIMEOUT_MS = Number(process.env.CHAT_COMPLETION_TIMEOUT_MS || 120000);
+const EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.EXPLORE_THINKING_TIMEOUT_MS || 45000);
+const EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.EXPLORE_FALLBACK_TIMEOUT_MS || 60000);
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -369,6 +372,23 @@ function roleHealth(config) {
 
 function isDemoRole(config) {
   return DEMO_MODE || !config.apiKey;
+}
+
+function applyReasoningMode(payload, config, thinkingMode) {
+  if (config.provider === "kimi" && /^kimi-k2\./.test(config.model)) {
+    payload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
+  } else if (config.provider === "openrouter") {
+    payload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
+  }
+  return payload;
+}
+
+function isTimeoutError(error) {
+  return error?.name === "AbortError" || /timeout|aborted/i.test(String(error?.message || ""));
+}
+
+function shouldRetryExploreWithoutThinking(error) {
+  return isTimeoutError(error) || /json|empty text|returned empty|parse/i.test(String(error?.message || ""));
 }
 
 function appMode() {
@@ -810,14 +830,12 @@ async function handleAnalyzeExplore(body, res) {
     messages: [{ role: "user", content }]
   };
 
-  if (runtimeConfigs.analysis.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.analysis.model)) {
-    analysisPayload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
-  } else if (runtimeConfigs.analysis.provider === "openrouter") {
-    analysisPayload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
-  }
+  applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
 
   try {
-    const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
+    const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload, {
+      timeoutMs: thinkingMode === "thinking" ? EXPLORE_THINKING_TIMEOUT_MS : CHAT_COMPLETION_TIMEOUT_MS
+    });
     const text = collectChatContent(response);
     const parsed = parseJsonFromText(text);
     const normalized = normalizeExplore(parsed, fileName);
@@ -825,6 +843,24 @@ async function handleAnalyzeExplore(body, res) {
     normalized.model = response?.model || runtimeConfigs.analysis.model;
     return sendJson(res, 200, normalized);
   } catch (error) {
+    if (thinkingMode === "thinking" && shouldRetryExploreWithoutThinking(error)) {
+      console.info("[handleAnalyzeExplore] thinking path failed, retrying without thinking:", error.message);
+      try {
+        const fallbackPayload = applyReasoningMode({ messages: analysisPayload.messages }, runtimeConfigs.analysis, "no-thinking");
+        const response = await chatCompletions(runtimeConfigs.analysis, fallbackPayload, {
+          timeoutMs: EXPLORE_FALLBACK_TIMEOUT_MS
+        });
+        const text = collectChatContent(response);
+        const parsed = parseJsonFromText(text);
+        const normalized = normalizeExplore(parsed, fileName);
+        normalized.provider = "api";
+        normalized.model = response?.model || runtimeConfigs.analysis.model;
+        normalized.warningCode = "explore_fallback";
+        return sendJson(res, 200, normalized);
+      } catch (fallbackError) {
+        console.error("[handleAnalyzeExplore] fallback error:", fallbackError);
+      }
+    }
     console.error("[handleAnalyzeExplore] error:", error);
     return sendJson(res, 500, { error: "Explore analysis failed", message: error.message });
   }
@@ -1618,22 +1654,39 @@ function extractVoiceAudioDataUrl(response) {
   return `data:${mime};base64,${data}`;
 }
 
-async function chatCompletions(config, payload) {
+async function chatCompletions(config, payload, options = {}) {
   const requestPayload = {
     model: config.model,
     ...payload
   };
+  const timeoutMs = Number(options.timeoutMs || CHAT_COMPLETION_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
 
-  const response = await fetch(`${config.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(requestPayload)
-  });
+  let response;
+  let text;
+  try {
+    response = await fetch(`${config.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(requestPayload),
+      signal: controller.signal
+    });
+    text = await response.text();
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`${config.role} API timeout after ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 
-  const text = await response.text();
   let json;
   try {
     json = JSON.parse(text);
