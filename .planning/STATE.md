@@ -1,22 +1,22 @@
 ---
 gsd_state_version: 1.0
-milestone: v2.0
-milestone_name: Multi-Card Canvas Interaction
-status: complete
-stopped_at: Phase 18 complete — v2.0 milestone done
-last_updated: "2026-05-02T02:37:45Z"
+milestone: v2.1
+milestone_name: Multi-Scenario Intelligence
+status: planning
+stopped_at: Defining requirements
+last_updated: "2026-05-02"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 8
-  completed_plans: 8
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # ORYZAE Image Board — Project State
 
-**Milestone:** Multi-Card Canvas Interaction v2.0
-**Core Value:** 让用户能在画布上创建多张卡片并通过连接线构建卡片关系网络，实现蓝图式的深层探索。
+**Milestone:** Multi-Scenario Intelligence v2.1
+**Core Value:** 提升应用的多场景实用性——根据输入内容类型智能选择分析策略，支持更多文件格式，扩展方向卡片数量，优化 prompt 管理和上下文维护。
 **Project Reference:** [PROJECT.md](./PROJECT.md)
 **Last Updated:** 2026-05-02
 
@@ -26,14 +26,14 @@ progress:
 
 | Field | Value |
 |-------|-------|
-| Milestone | v2.0 — Multi-Card Canvas Interaction |
-| Phase | Phase 18: Blueprint Modal |
-| Plans | 3/3 complete |
-| Status | Phase 18 complete |
-| Progress | 100% |
+| Milestone | v2.1 — Multi-Scenario Intelligence |
+| Phase | Not started (defining requirements) |
+| Plans | — |
+| Status | Defining requirements |
+| Progress | 0% |
 
 ```
-[████████████████████████████████████████] 100%
+[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 ```
 
 ---
@@ -46,9 +46,9 @@ progress:
 | v1.1 requirements validated | 14/14 |
 | v1.2 requirements validated | 14/14 |
 | v1.3 requirements shipped | 8/8 |
-| v2.0 requirements mapped | 16/16 |
-| Phases complete (v2.0) | 3 |
-| Plans complete (v2.0) | 8 |
+| v2.0 requirements shipped | 16/16 |
+| v2.1 requirements mapped | 0 |
+| Phases complete (v2.1) | 0 |
 | Blockers | 0 |
 
 ---
@@ -94,14 +94,7 @@ progress:
 - [x] v1.2 Interactive Canvas & Deep Analysis — shipped 2026-04-27
 - [x] v1.3 Material Library — shipped 2026-05-01
 - [x] v2.0 Multi-Card Canvas Interaction — shipped 2026-05-02
-
-## Deferred Items
-
-Items acknowledged and deferred at milestone close on 2026-05-02:
-
-| Category | Item | Status |
-|----------|------|--------|
-| verification | Phase 18 blueprint modal browser smoke tests | human_needed (code-level 5/5 passed) |
+- [ ] v2.1 Multi-Scenario Intelligence — defining requirements
 
 ### Blockers
 
@@ -115,5 +108,5 @@ Items acknowledged and deferred at milestone close on 2026-05-02:
 
 **Current session started:** 2026-05-02
 **Last session resumed:** 2026-05-02
-**Stopped at:** v2.0 milestone complete — archived and tagged
-**Next expected action:** `/gsd-new-milestone` to plan next milestone
+**Stopped at:** v2.1 milestone — defining requirements
+**Next expected action:** Complete requirements definition and roadmap creation

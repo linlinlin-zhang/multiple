@@ -126,20 +126,24 @@
 - 画布支持一键整理、节点折叠/展开、深色模式、中英文切换
 - Demo 模式在缺少 API key 时静默启用
 
+## Current Milestone: v2.1 Multi-Scenario Intelligence
+
+**Goal:** 提升应用的多场景实用性——根据输入内容类型智能选择分析策略，支持更多文件格式，扩展方向卡片数量，优化 prompt 管理和上下文维护。
+
+**Target features:**
+- 文件渲染修复 — PDF/PPT 文件正确上传和预览显示
+- 智能任务路由 — 大模型根据文件内容自动判断任务类型（成图方向/内容调研/资料收集/任务规划/网页分析等）
+- 动态方向数量 — 源卡片生成方向卡片从固定 5 张改为 5-8 张，由大模型根据复杂度决定
+- 上下文管理 — 引入 RAG 或上下文空间维护工具，支持并行 API 调用
+- Prompt 策略优化 — 不同任务类型使用不同 prompt，研究合理的调用和组织方式
+
+**Previous:** v2.0 Multi-Card Canvas Interaction (2026-05-02)
+
 ## Current State
 
 **Shipped:** v2.0 Multi-Card Canvas Interaction (2026-05-02)
 
 画布现在支持多卡片交互：用户可创建额外卡片、通过连接线构建卡片关系网络、在蓝图弹窗中编排关系图。蓝图关系可注入 AI 上下文指导探索。
-
-**Previous:** v1.3 Material Library (2026-05-01)
-
-## Next Milestone Goals
-
-待规划。可选方向：
-- 搜索和筛选历史会话 (SRCH-01, SRCH-02, SRCH-03)
-- 分享功能增强 (SHAR-04, SHAR-05)
-- 多卡片协作或更复杂的蓝图功能
 
 ## Key Decisions
 
@@ -193,4 +197,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-05-02 — v2.0 milestone shipped*
+*Last updated: 2026-05-02 — v2.1 milestone started*
