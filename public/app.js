@@ -18,6 +18,7 @@ const optionTemplate = document.querySelector("#optionTemplate");
 const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
 const chatMessages = document.querySelector("#chatMessages");
+const chatScrollBottom = document.querySelector("#chatScrollBottom");
 const commandMenu = document.querySelector("#commandMenu");
 const chatAttachButton = document.querySelector("#chatAttachButton");
 const chatActionMenu = document.querySelector("#chatActionMenu");
@@ -241,7 +242,11 @@ const i18n = {
     "chat.generate": "生成",
     "chat.thinkingPending": "正在思考...",
     "chat.thinkingDetails": "思考过程",
+    "chat.thinkingRunning": "正在思考中",
+    "chat.thinkingComplete": "思考已完成",
+    "chat.thinkingUnavailable": "模型本次没有返回可展开的思考过程。",
     "chat.actionsApplied": "已执行 {count} 个画布操作",
+    "chat.scrollBottom": "回到底部",
     "voice.asr": "语音转文字",
     "voice.asrListening": "正在听写...",
     "voice.asrTranscribing": "正在转写...",
@@ -426,7 +431,11 @@ const i18n = {
     "chat.generate": "Generate",
     "chat.thinkingPending": "Thinking...",
     "chat.thinkingDetails": "Thinking process",
+    "chat.thinkingRunning": "Thinking",
+    "chat.thinkingComplete": "Thinking complete",
+    "chat.thinkingUnavailable": "The model did not return an expandable thinking process for this turn.",
     "chat.actionsApplied": "{count} canvas actions applied",
+    "chat.scrollBottom": "Scroll to bottom",
     "voice.asr": "Speech to text",
     "voice.asrListening": "Listening...",
     "voice.asrTranscribing": "Transcribing...",
@@ -634,6 +643,10 @@ function renderAllText() {
   if (chatSidebarToggle) {
     chatSidebarToggle.title = t("chat.openPanel");
     chatSidebarToggle.setAttribute("aria-label", t("chat.openPanel"));
+  }
+  if (chatScrollBottom) {
+    chatScrollBottom.title = t("chat.scrollBottom");
+    chatScrollBottom.setAttribute("aria-label", t("chat.scrollBottom"));
   }
   const chatGenerate = document.querySelector("#chatGenerateButton");
   if (chatGenerate) chatGenerate.textContent = t("chat.generate");
@@ -962,6 +975,7 @@ function importSessionFile() {
 async function executeWorkbenchCommand(commandId) {
   closeCommandMenu();
   if (chatInput) chatInput.value = "";
+  updateChatPrimaryButtonMode();
 
   if (commandId === "save") return saveSession();
   if (commandId === "export") return exportCurrentSession();
@@ -1074,6 +1088,8 @@ function wireControls() {
       openCommandMenu();
     }
   });
+  chatMessages?.addEventListener("scroll", updateChatScrollButton);
+  chatScrollBottom?.addEventListener("click", () => scrollChatToBottom());
   navToggle?.addEventListener("click", toggleNav);
   chatNewButton?.addEventListener("click", startNewChat);
   chatHistoryButton?.addEventListener("click", toggleChatConversationPanel);
@@ -1476,7 +1492,10 @@ function normalizeChatThreadMessage(message) {
     content: typeof message?.content === "string" ? message.content : "",
     branchNodeId: message?.branchNodeId ?? null,
     thinkingTrace: normalizeChatThinkingTrace(message?.thinkingTrace || message?.trace),
+    thinkingContent: normalizeChatThinkingContent(message?.thinkingContent || message?.reasoningContent || message?.reasoning),
+    thinkingRequested: Boolean(message?.thinkingRequested || message?.thinkingContent || message?.reasoningContent),
     actions: normalizeChatMessageActions(message?.actions),
+    pending: Boolean(message?.pending),
     createdAt: message?.createdAt || new Date().toISOString()
   };
 }
@@ -1499,10 +1518,26 @@ function normalizeChatMessageActions(value) {
     .map((action) => ({ ...action, type: String(action.type) }));
 }
 
+function normalizeChatThinkingContent(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean).join("\n");
+  }
+  if (value && typeof value === "object") {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return "";
+    }
+  }
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function normalizeChatThread(thread, index = 0) {
   const fallback = createChatThread([], t("chat.conversationUntitled", { index: index + 1 }));
   if (!thread || typeof thread !== "object") return fallback;
-  const messages = Array.isArray(thread.messages) ? thread.messages.map(normalizeChatThreadMessage).filter((m) => m.content) : [];
+  const messages = Array.isArray(thread.messages)
+    ? thread.messages.map(normalizeChatThreadMessage).filter((m) => m.content || m.thinkingContent || m.pending || m.actions?.length)
+    : [];
   return {
     id: typeof thread.id === "string" && thread.id ? thread.id : fallback.id,
     title: typeof thread.title === "string" ? thread.title : "",
@@ -1568,7 +1603,10 @@ function serializeChatThreads() {
       content: message.content,
       branchNodeId: message.branchNodeId ?? null,
       thinkingTrace: normalizeChatThinkingTrace(message.thinkingTrace),
+      thinkingContent: normalizeChatThinkingContent(message.thinkingContent),
+      thinkingRequested: Boolean(message.thinkingRequested),
       actions: normalizeChatMessageActions(message.actions),
+      pending: Boolean(message.pending),
       createdAt: message.createdAt || null
     }))
   }));
@@ -2160,16 +2198,9 @@ async function handleChatSubmit(event) {
   updateActiveChatThreadTitle(message);
   appendChatMessage("user", message);
   const pendingAssistant = state.thinkingMode === "thinking"
-    ? appendChatMessage("assistant", t("chat.thinkingPending"), {
+    ? appendChatMessage("assistant", "", {
         pending: true,
-        thinkingTrace: [
-          currentLang === "en"
-            ? "Reading the current canvas, visible cards, and recent dialogue."
-            : "读取当前画布、可见卡片和最近对话。",
-          currentLang === "en"
-            ? "Checking whether the message should trigger a reusable canvas action."
-            : "判断这条消息是否需要触发可复用的画布动作。"
-        ]
+        thinkingRequested: true
       })
     : null;
   setStatus(t("status.busy"), "busy");
@@ -2218,6 +2249,8 @@ async function handleChatSubmit(event) {
     const assistantMeta = {
       pending: false,
       thinkingTrace: data.thinkingTrace || data.trace,
+      thinkingContent: data.thinkingContent || data.reasoningContent || data.reasoning,
+      thinkingRequested: state.thinkingMode === "thinking",
       actions: data.actions || data.action
     };
     if (pendingAssistant) {
@@ -3313,11 +3346,22 @@ function createOptionNode(option, parentNodeId) {
 
 function createNewCardNode() {
   const id = `new-card-${Date.now()}`;
+  const option = {
+    id,
+    title: t("command.newCard"),
+    description: "",
+    prompt: currentLang === "en" ? "Describe the new visual direction here." : "在这里描述新的视觉方向。",
+    tone: "manual",
+    layoutHint: "card"
+  };
 
   // Compute position: offset from source node, with jitter to avoid stacking
-  const source = state.nodes.get("source");
-  const baseX = (source?.x || 96) + 380;
-  const baseY = (source?.y || 88) + 40;
+  const parentId = state.selectedNodeId && state.nodes.has(state.selectedNodeId)
+    ? state.selectedNodeId
+    : (state.nodes.has("analysis") && isNodeVisible(state.nodes.get("analysis")) ? "analysis" : "source");
+  const parent = state.nodes.get(parentId) || state.nodes.get("source");
+  const baseX = (parent?.x || 96) + (parent?.width || 318) + 80;
+  const baseY = (parent?.y || 88) + 40;
   // Find a position that doesn't overlap existing nodes
   let newX = baseX;
   let newY = baseY;
@@ -3333,28 +3377,23 @@ function createNewCardNode() {
     attempts++;
   }
 
-  // Create the element
-  const element = document.createElement("section");
-  element.className = "node new-card-node";
+  // Create a full option-style card so it can be saved, renamed, connected, and generated.
+  const fragment = optionTemplate.content.cloneNode(true);
+  const element = fragment.querySelector(".option-node");
+  element.classList.add("new-card-node");
   element.dataset.nodeId = id;
   element.style.left = `${newX}px`;
   element.style.top = `${newY}px`;
   element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
 
-  // Build inner structure
-  const eyebrow = document.createElement("p");
-  eyebrow.className = "eyebrow";
-  eyebrow.textContent = "NEW CARD";
-
-  const title = document.createElement("h3");
-  title.className = "option-title";
-  title.textContent = t("command.newCard");
-
-  const description = document.createElement("p");
-  description.className = "option-description";
-  description.textContent = "";
-
-  element.append(eyebrow, title, description);
+  const eyebrow = element.querySelector(".option-tone");
+  const title = element.querySelector(".option-title");
+  const description = element.querySelector(".option-description");
+  const button = element.querySelector(".generate-button");
+  if (eyebrow) eyebrow.textContent = "manual / card";
+  if (title) title.textContent = option.title;
+  if (description) description.textContent = option.description;
+  if (button) button.addEventListener("click", () => generateOption(id, option));
 
   board.appendChild(element);
 
@@ -3362,15 +3401,21 @@ function createNewCardNode() {
     x: newX,
     y: newY,
     width: 318,
-    height: element.offsetHeight
+    height: element.offsetHeight,
+    option,
+    generated: false
   });
 
   makeTitleEditable(id, title);
   makeDraggable(element, id);
+  if (parentId && parentId !== id && state.nodes.has(parentId)) {
+    state.links.push({ from: parentId, to: id, kind: "option" });
+  }
   applyCollapseState();
   updateCounts();
   drawLinks();
   autoSave();
+  forceSelectNode(id);
 
   return id;
 }
@@ -3680,13 +3725,15 @@ function appendChatMessage(role, content, metadata = {}) {
     content,
     branchNodeId: state.selectedNodeId,
     thinkingTrace: normalizeChatThinkingTrace(metadata.thinkingTrace || metadata.trace),
+    thinkingContent: normalizeChatThinkingContent(metadata.thinkingContent || metadata.reasoningContent || metadata.reasoning),
+    thinkingRequested: Boolean(metadata.thinkingRequested || metadata.pending),
     actions: normalizeChatMessageActions(metadata.actions),
     pending: Boolean(metadata.pending),
     createdAt: new Date().toISOString()
   };
   thread.messages.push(message);
   state.chatMessages = thread.messages;
-  renderChatMessages();
+  renderChatMessages({ scrollToBottom: true });
   renderChatConversationList();
   return message;
 }
@@ -3697,11 +3744,15 @@ function updateChatMessage(message, updates = {}) {
   if ("thinkingTrace" in updates || "trace" in updates) {
     message.thinkingTrace = normalizeChatThinkingTrace(updates.thinkingTrace || updates.trace);
   }
+  if ("thinkingContent" in updates || "reasoningContent" in updates || "reasoning" in updates) {
+    message.thinkingContent = normalizeChatThinkingContent(updates.thinkingContent || updates.reasoningContent || updates.reasoning);
+  }
+  if ("thinkingRequested" in updates) message.thinkingRequested = Boolean(updates.thinkingRequested);
   if ("actions" in updates) {
     message.actions = normalizeChatMessageActions(updates.actions);
   }
   if ("pending" in updates) message.pending = Boolean(updates.pending);
-  renderChatMessages();
+  renderChatMessages({ scrollToBottom: true });
   renderChatConversationList();
 }
 
@@ -3710,7 +3761,25 @@ function getBranchMessages() {
   return state.chatMessages;
 }
 
-function renderChatMessages() {
+function isChatNearBottom() {
+  if (!chatMessages) return true;
+  return chatMessages.scrollHeight - chatMessages.scrollTop - chatMessages.clientHeight < 80;
+}
+
+function scrollChatToBottom() {
+  if (!chatMessages) return;
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+  updateChatScrollButton();
+}
+
+function updateChatScrollButton() {
+  if (!chatScrollBottom || !chatMessages) return;
+  const canScroll = chatMessages.scrollHeight > chatMessages.clientHeight + 8;
+  chatScrollBottom.classList.toggle("hidden", !canScroll || isChatNearBottom());
+}
+
+function renderChatMessages({ scrollToBottom = false } = {}) {
+  const shouldStickToBottom = scrollToBottom || isChatNearBottom();
   chatMessages.replaceChildren();
 
   const branchMessages = getBranchMessages();
@@ -3719,6 +3788,7 @@ function renderChatMessages() {
     placeholder.className = "chat-placeholder";
     placeholder.textContent = t("chat.noMessages");
     chatMessages.appendChild(placeholder);
+    updateChatScrollButton();
     return;
   }
 
@@ -3727,29 +3797,50 @@ function renderChatMessages() {
     line.className = `chat-line ${message.role}`;
     line.classList.toggle("pending", Boolean(message.pending));
 
-    const role = document.createElement("span");
-    role.className = "chat-role";
-    role.textContent = message.role === "user" ? t("chat.roleUser") : t("chat.roleAssistant");
+    if (message.content) {
+      const text = document.createElement("span");
+      text.className = "chat-text";
+      text.textContent = message.content;
+      line.appendChild(text);
+    }
 
-    const text = document.createElement("span");
-    text.className = "chat-text";
-    text.textContent = message.content;
-
-    line.append(role, text);
-    if (message.role === "assistant" && message.thinkingTrace?.length) {
+    if (message.role === "assistant" && (message.pending || message.thinkingRequested || message.thinkingContent || message.thinkingTrace?.length)) {
       const details = document.createElement("details");
       details.className = "chat-thinking";
-      details.open = Boolean(message.pending);
+      details.classList.toggle("is-running", Boolean(message.pending));
       const summary = document.createElement("summary");
-      summary.textContent = t("chat.thinkingDetails");
-      const list = document.createElement("ol");
-      list.className = "chat-thinking-list";
-      message.thinkingTrace.forEach((item) => {
-        const li = document.createElement("li");
-        li.textContent = item;
-        list.appendChild(li);
-      });
-      details.append(summary, list);
+      summary.className = "chat-thinking-bar";
+      const label = message.pending
+        ? t("chat.thinkingRunning")
+        : (message.thinkingContent ? t("chat.thinkingComplete") : t("chat.thinkingDetails"));
+      const icon = document.createElement("span");
+      icon.className = "chat-thinking-icon";
+      icon.setAttribute("aria-hidden", "true");
+      const labelNode = document.createElement("span");
+      labelNode.className = "chat-thinking-label";
+      labelNode.textContent = label;
+      const chevron = document.createElement("span");
+      chevron.className = "chat-thinking-chevron";
+      chevron.setAttribute("aria-hidden", "true");
+      chevron.textContent = "›";
+      summary.append(icon, labelNode, chevron);
+      const panel = document.createElement("div");
+      panel.className = "chat-thinking-panel";
+      if (message.thinkingContent) {
+        const pre = document.createElement("pre");
+        pre.textContent = message.thinkingContent;
+        panel.appendChild(pre);
+      } else if (!message.pending && message.thinkingTrace?.length) {
+        const pre = document.createElement("pre");
+        pre.textContent = message.thinkingTrace.join("\n");
+        panel.appendChild(pre);
+      } else if (!message.pending) {
+        panel.textContent = t("chat.thinkingUnavailable");
+      }
+      details.appendChild(summary);
+      if (!message.pending || panel.childNodes.length) {
+        details.appendChild(panel);
+      }
       line.appendChild(details);
     }
     if (message.role === "assistant" && message.actions?.length) {
@@ -3760,7 +3851,11 @@ function renderChatMessages() {
     }
     chatMessages.appendChild(line);
   }
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  if (shouldStickToBottom) {
+    scrollChatToBottom();
+  } else {
+    updateChatScrollButton();
+  }
 }
 
 function renderChatContextIndicator() {

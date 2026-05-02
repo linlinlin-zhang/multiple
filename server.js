@@ -527,21 +527,14 @@ async function handleChat(body, res) {
   }
 
   if (isDemoRole(runtimeConfigs.chat)) {
-    const demoLang = body?.language === "en" ? "en" : "zh";
     const actions = inferDemoChatActions(message);
     return sendJson(res, 200, {
       provider: "demo",
       model: runtimeConfigs.chat.model,
       reply: buildDemoChatReply(message, analysis),
       actions,
-      thinkingTrace: thinkingMode === "thinking"
-        ? normalizeChatThinkingTrace([
-            demoLang === "en" ? "Read the current canvas summary." : "读取当前画布摘要。",
-            actions.length
-              ? (demoLang === "en" ? "Matched the request to a reusable canvas action." : "将请求匹配到可复用画布动作。")
-              : (demoLang === "en" ? "No app action was required; answered conversationally." : "没有需要执行的应用动作，直接进行对话回答。")
-          ])
-        : []
+      thinkingContent: "",
+      thinkingTrace: []
     });
   }
 
@@ -622,15 +615,14 @@ async function handleChat(body, res) {
   }
   const reply = stringOr(parsed?.reply, rawReply);
   const actions = normalizeVoiceActions(parsed?.actions || parsed?.action);
-  const thinkingTrace = thinkingMode === "thinking"
-    ? normalizeChatThinkingTrace(parsed?.thinkingTrace || parsed?.trace || parsed?.steps)
-    : [];
+  const thinkingContent = thinkingMode === "thinking" ? collectReasoningContent(response) : "";
   return sendJson(res, 200, {
     provider: "api",
     model: runtimeConfigs.chat.model,
     reply: reply || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。"),
     actions,
-    thinkingTrace
+    thinkingContent,
+    thinkingTrace: []
   });
 }
 
@@ -1412,7 +1404,7 @@ function buildRealtimeInstruction(context) {
 }
 
 function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thinking") {
-  const actionSchema = '{"reply":"short user-facing answer","thinkingTrace":["visible progress summary only, not private chain-of-thought"],"actions":[{"type":"action_type","nodeId":"optional exact node id","nodeName":"optional card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url"}]}';
+  const actionSchema = '{"reply":"short user-facing answer","actions":[{"type":"action_type","nodeId":"optional exact node id","nodeName":"optional card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url"}]}';
   const common = [
     "Return strict JSON only. Do not wrap it in Markdown.",
     "You are ORYZAE's canvas dialogue and action assistant. The user may chat freely, ask for analysis, or ask the app to manipulate the canvas.",
@@ -1422,8 +1414,8 @@ function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thinking") 
     "Reusable action types: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, generate_image, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
     "Position vocabulary: left, right, above, below, center, upper-left, upper-right, lower-left, lower-right, canvas-center, screen-center.",
     thinkingMode === "thinking"
-      ? "Because thinking mode is enabled, include 2-5 concise visible progress items in thinkingTrace. Do not reveal private chain-of-thought; summarize observable checks and planned actions only."
-      : "Because normal mode is enabled, keep thinkingTrace empty.",
+      ? "Reasoning mode may be enabled by the API provider. Do not include a thinkingTrace field in your JSON; any provider-side reasoning will be read from the API response metadata."
+      : "Do not include thinkingTrace, reasoning, or hidden analysis fields in your JSON.",
     "Schema:",
     actionSchema
   ];
@@ -1900,6 +1892,46 @@ function collectChatContent(response) {
       .join("\n");
   }
   return "";
+}
+
+function collectReasoningContent(response) {
+  const message = response?.choices?.[0]?.message || {};
+  const candidates = [
+    message.reasoning_content,
+    message.reasoningContent,
+    message.reasoning,
+    message.thinking,
+    message.thinking_content,
+    message.thoughts,
+    response?.reasoning_content,
+    response?.reasoning
+  ];
+
+  const normalizePart = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") return value.trim();
+    if (Array.isArray(value)) {
+      return value
+        .map((part) => normalizePart(part?.text || part?.content || part?.reasoning || part))
+        .filter(Boolean)
+        .join("\n");
+    }
+    if (typeof value === "object") {
+      const text = value.text || value.content || value.reasoning || value.reasoning_content || value.summary;
+      if (typeof text === "string") return text.trim();
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch {
+        return "";
+      }
+    }
+    return "";
+  };
+
+  return candidates
+    .map(normalizePart)
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 async function generateTokenHubImage(prompt, imageUrl, imageDataUrl) {
