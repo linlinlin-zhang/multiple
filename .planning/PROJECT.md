@@ -78,15 +78,26 @@
 - ✓ **LIB-07**: 素材库直接上传文件 — v1.3
 - ✓ **LIB-08**: 支持删除素材库中的文件 — v1.3
 
-### Active
-
 **v2.0 — Multi-Card Canvas Interaction**
 
-- **MC-01**: 新建卡片 — `/` 功能区新增"新建卡片"命令，创建可删除的额外卡片
-- **MC-02**: 连接线条 — 从卡片拉出线条连接其他卡片，连接处生成聚合节点
-- **MC-03**: 聚合节点 — 3+ 张卡片连接时自动归入同一节点，最多连接 5 张
-- **MC-04**: 蓝图弹窗 — 双击聚合节点打开蓝图编辑器
-- **MC-05**: 精简 `/` 功能区 — 移除冗余入口
+- ✓ **MC-01**: 新建卡片 — `/` 功能区新增"新建卡片"命令，创建可删除的额外卡片 — v2.0
+- ✓ **MC-02**: 可删除卡片 — 新建卡片与初始卡片不同，可被用户删除 — v2.0
+- ✓ **MC-03**: 连接线条 — 从卡片拖出线条连接其他卡片，Bezier 曲线渲染 — v2.0
+- ✓ **MC-04**: 聚合节点 — 连接处自动生成，自动归入/合并，最多 5 张卡片 — v2.0
+- ✓ **MC-05**: 聚合节点视觉 — 圆形渐变（cyan→blue），与普通卡片区分 — v2.0
+- ✓ **MC-06**: 自动归入 — 第三张卡片连接到已有 pair 时自动加入聚合节点 — v2.0
+- ✓ **MC-07**: 容量限制 — 单个聚合节点最多连接 5 张卡片 — v2.0
+- ✓ **MC-08**: 蓝图弹窗 — 双击聚合节点打开模态窗口 — v2.0
+- ✓ **MC-09**: 蓝图卡片展示 — 弹窗内展示关联卡片，支持缩略图 — v2.0
+- ✓ **MC-10**: 蓝图拖拽 — 弹窗内支持拖动卡片位置，实时重绘连线 — v2.0
+- ✓ **MC-11**: 蓝图关系线 — 支持上游/下游/并列三种关系类型 — v2.0
+- ✓ **MC-12**: AI 上下文集成 — 蓝图关系注入 AI 对话上下文 — v2.0
+- ✓ **MC-13**: 精简菜单 — 移除 zoom-in 命令 — v2.0
+- ✓ **MC-14**: 精简菜单 — 移除 zoom-out 命令 — v2.0
+- ✓ **MC-15**: 精简菜单 — 移除 history 命令 — v2.0
+- ✓ **MC-16**: 精简菜单 — 移除 settings 命令 — v2.0
+
+### Active
 
 **Future / v2+**
 
@@ -115,17 +126,20 @@
 - 画布支持一键整理、节点折叠/展开、深色模式、中英文切换
 - Demo 模式在缺少 API key 时静默启用
 
-## Current Milestone: v2.0 Multi-Card Canvas Interaction
+## Current State
 
-**Goal:** 让用户能在画布上创建多张卡片并通过连接线构建卡片关系网络，实现蓝图式的深层探索。
+**Shipped:** v2.0 Multi-Card Canvas Interaction (2026-05-02)
 
-**Target features:**
-- 新建卡片：`/` 功能区新增"新建卡片"命令，创建可删除的额外卡片
-- 连接线条：从卡片拉出线条连接其他卡片，连接处生成聚合节点（最多 5 张卡片）
-- 蓝图弹窗：双击聚合节点打开蓝图弹窗，支持拖动和连线编排卡片关系
-- 精简 `/` 功能区：移除"放大""缩小""历史浏览器""设置"
+画布现在支持多卡片交互：用户可创建额外卡片、通过连接线构建卡片关系网络、在蓝图弹窗中编排关系图。蓝图关系可注入 AI 上下文指导探索。
 
-**Previous:** v1.3 Material Library (2026-05-02)
+**Previous:** v1.3 Material Library (2026-05-01)
+
+## Next Milestone Goals
+
+待规划。可选方向：
+- 搜索和筛选历史会话 (SRCH-01, SRCH-02, SRCH-03)
+- 分享功能增强 (SHAR-04, SHAR-05)
+- 多卡片协作或更复杂的蓝图功能
 
 ## Key Decisions
 
@@ -145,6 +159,13 @@
 | 哈希去重防止重复素材 | 相同文件不会创建多条记录 | Validated v1.3 |
 | CSS grid 实现响应式布局 | 无需 JS 瀑布流库，简洁高效 | Validated v1.3 |
 | parseDataUrl 支持任意 data URL | 统一处理图片和文档的 data URL 解析 | Validated v1.3 |
+| 聚合节点采用圆形渐变样式 | 与矩形卡片视觉区分，cyan→blue 渐变 | Validated v2.0 |
+| 卡片边缘拖拽创建连接 | 左右 handle 悬停显示，crosshair 光标 | Validated v2.0 |
+| 连接线通过聚合节点重连 | 直接卡片间链接替换为卡片到聚合节点链接 | Validated v2.0 |
+| 蓝图弹窗使用 1:1 坐标 | 模态内不除以 state.view.scale | Validated v2.0 |
+| 蓝图关系点击删除 | 直接在 SVG path 上绑定 click 事件 | Validated v2.0 |
+| 蓝图上下文硬编码中文 | 无 locale key，直接使用中文字符串 | Validated v2.0 |
+| deleteNode 清理顺序 | 聚合状态更新后、取消选中/DOM 移除前 | Validated v2.0 |
 
 ## Constraints
 
@@ -172,4 +193,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-05-02 — v2.0 milestone started*
+*Last updated: 2026-05-02 — v2.0 milestone shipped*

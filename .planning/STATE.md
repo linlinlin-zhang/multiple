@@ -95,6 +95,14 @@ progress:
 - [x] v1.3 Material Library — shipped 2026-05-01
 - [x] v2.0 Multi-Card Canvas Interaction — shipped 2026-05-02
 
+## Deferred Items
+
+Items acknowledged and deferred at milestone close on 2026-05-02:
+
+| Category | Item | Status |
+|----------|------|--------|
+| verification | Phase 18 blueprint modal browser smoke tests | human_needed (code-level 5/5 passed) |
+
 ### Blockers
 
 | # | Blocker | Impact | Resolution |

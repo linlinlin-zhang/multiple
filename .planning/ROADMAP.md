@@ -1,9 +1,7 @@
 # ORYZAE Image Board — Roadmap
 
-**Current Milestone:** v2.0 Multi-Card Canvas Interaction
+**Current Milestone:** Planning next milestone
 **Granularity:** Standard
-**Phases:** 3 (Phases 16–18)
-**Defined:** 2026-05-02
 
 ---
 
@@ -13,105 +11,86 @@
 - ✅ **v1.1 Canvas Intelligence & Rich Input** — Phases 5-8 (shipped 2026-04-26) · [Details](./milestones/v1.1-ROADMAP.md)
 - ✅ **v1.2 Interactive Canvas & Deep Analysis** — Phases 9-12 (shipped 2026-04-27) · [Details](./milestones/v1.2-ROADMAP.md)
 - ✅ **v1.3 Material Library** — Phases 13-15 (shipped 2026-05-01) · [Details](./milestones/v1.3-ROADMAP.md)
-- 🚧 **v2.0 Multi-Card Canvas Interaction** — Phases 16-18 (current)
+- ✅ **v2.0 Multi-Card Canvas Interaction** — Phases 16-18 (shipped 2026-05-02) · [Details](./milestones/v2.0-ROADMAP.md)
 
 ---
 
 ## Phases
 
-- [x] **Phase 16: Menu Cleanup & New Card** — Remove zoom/history/settings from `/` menu; add "New Card" command that creates a deletable card on canvas
-- [x] **Phase 17: Connection Lines & Junction Nodes** — Drag-to-connect cards with SVG lines; junction nodes at connection points (max 5 cards, distinct visual style)
-- [x] **Phase 18: Blueprint Modal** — Double-click junction node opens modal showing connected cards; supports drag positioning and drawing relationship lines
+<details>
+<summary>✅ v1.0 Persistence & History (Phases 1-4) — SHIPPED 2026-04-26</summary>
 
----
+- [x] Phase 1: Database Schema & Migration (2/2 plans)
+- [x] Phase 2: Session Persistence & Auto-Save (2/2 plans)
+- [x] Phase 3: History Browser UI (2/2 plans)
+- [x] Phase 4: Share & Export (2/2 plans)
 
-## Phase Details
+</details>
 
-### Phase 16: Menu Cleanup & New Card
-**Goal**: The `/` command menu is streamlined and users can create additional deletable cards on the canvas
-**Depends on**: Nothing
-**Requirements**: MC-01, MC-02, MC-13, MC-14, MC-15, MC-16
-**Success Criteria** (what must be TRUE):
-  1. Typing `/` no longer shows "zoom-in", "zoom-out", "history browser", or "settings" commands
-  2. Typing `/` shows a "New Card" command in the command menu
-  3. Selecting "New Card" creates a new card node on the canvas (distinct from the source card)
-  4. The new card has a delete button visible on hover; clicking it removes the card from the canvas
-  5. The source card (id="source") still cannot be deleted
-**Plans:** 2 plans
-Plans:
-- [x] 16-01-PLAN.md — Remove zoom-in, zoom-out, history, settings from `/` menu
-- [x] 16-02-PLAN.md — Add "New Card" command and card creation logic
-**UI hint**: yes
+<details>
+<summary>✅ v1.1 Canvas Intelligence & Rich Input (Phases 5-8) — SHIPPED 2026-04-26</summary>
 
-### Phase 17: Connection Lines & Junction Nodes
-**Goal**: Users can draw connection lines between cards, and junction nodes appear where lines meet to represent card groupings
-**Depends on**: Phase 16
-**Requirements**: MC-03, MC-04, MC-05, MC-06, MC-07
-**Success Criteria** (what must be TRUE):
-  1. User can drag from a card's edge to another card to create a visible connection line (Bezier curve in SVG `#linkLayer`)
-  2. When two cards are connected, a junction node appears at the connection point between them
-  3. Junction nodes are visually distinct from regular cards (different color and shadow)
-  4. When a third card connects to either card in an existing pair, it automatically joins that junction node's group
-  5. Attempting to connect a 6th card to a junction node is rejected (max 5 cards per junction)
-**Plans:** 3 plans
-Plans:
-- [x] 17-01-PLAN.md — Junction node data model and visual style (MC-05)
-- [x] 17-02-PLAN.md — Drag-to-connect interaction (MC-03)
-- [x] 17-03-PLAN.md — Junction node logic: auto-create, auto-join, max capacity (MC-04, MC-06, MC-07)
-**UI hint**: yes
+- [x] Phase 5: Canvas Polish (2/2 plans)
+- [x] Phase 6: Rich Input — Text Files (2/2 plans)
+- [x] Phase 7: Rich Input — Web Links (2/2 plans)
+- [x] Phase 8: Settings Panel (2/2 plans)
 
-### Phase 18: Blueprint Modal
-**Goal**: Users can double-click a junction node to open a blueprint modal where they arrange cards and define relationships
-**Depends on**: Phase 17
-**Requirements**: MC-08, MC-09, MC-10, MC-11, MC-12
-**Success Criteria** (what must be TRUE):
-  1. Double-clicking a junction node opens a blueprint modal overlay
-  2. The modal displays all cards connected to that junction node
-  3. User can drag cards to reposition them within the modal
-  4. User can draw lines between cards inside the modal to define upstream/downstream or parallel relationships
-  5. Relationship lines defined in the modal are usable as context for subsequent exploration or generation actions
-**Plans:** 3 plans
-Plans:
-- [x] 18-01-PLAN.md — Junction persistence fix + Blueprint modal foundation (MC-08, MC-09)
-- [x] 18-02-PLAN.md — Modal card drag + relationship line drawing (MC-10, MC-11)
-- [x] 18-03-PLAN.md — Blueprint persistence + AI context integration (MC-12)
-**UI hint**: yes
+</details>
 
----
+<details>
+<summary>✅ v1.2 Interactive Canvas & Deep Analysis (Phases 9-12) — SHIPPED 2026-04-27</summary>
 
-## Coverage
+- [x] Phase 9: Card Selection & Context Binding (2/2 plans)
+- [x] Phase 10: Directed Generation (2/2 plans)
+- [x] Phase 11: Research Mode (3/3 plans)
+- [x] Phase 12: Single-Image Share (2/2 plans)
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| MC-01 | Phase 16 | Done |
-| MC-02 | Phase 16 | Done |
-| MC-03 | Phase 17 | Done |
-| MC-04 | Phase 17 | Done |
-| MC-05 | Phase 17 | Done |
-| MC-06 | Phase 17 | Done |
-| MC-07 | Phase 17 | Done |
-| MC-08 | Phase 18 | Done |
-| MC-09 | Phase 18 | Done |
-| MC-10 | Phase 18 | Done |
-| MC-11 | Phase 18 | Done |
-| MC-12 | Phase 18 | Done |
-| MC-13 | Phase 16 | Done |
-| MC-14 | Phase 16 | Done |
-| MC-15 | Phase 16 | Done |
-| MC-16 | Phase 16 | Done |
+</details>
 
-**Coverage: 16/16 requirements mapped (100%)**
+<details>
+<summary>✅ v1.3 Material Library (Phases 13-15) — SHIPPED 2026-05-01</summary>
+
+- [x] Phase 13: Material API & Data Model (2/2 plans)
+- [x] Phase 14: Material Library UI (2/2 plans)
+- [x] Phase 15: Material Sync & Upload (2/2 plans)
+
+</details>
+
+<details>
+<summary>✅ v2.0 Multi-Card Canvas Interaction (Phases 16-18) — SHIPPED 2026-05-02</summary>
+
+- [x] Phase 16: Menu Cleanup & New Card (2/2 plans)
+- [x] Phase 17: Connection Lines & Junction Nodes (3/3 plans)
+- [x] Phase 18: Blueprint Modal (3/3 plans)
+
+</details>
 
 ---
 
 ## Progress
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 16. Menu Cleanup & New Card | 2/2 | Done | 2026-05-02 |
-| 17. Connection Lines & Junction Nodes | 3/3 | Done | 2026-05-02 |
-| 18. Blueprint Modal | 3/3 | Done | 2026-05-02 |
+| Phase | Milestone | Plans Complete | Status | Completed |
+|-------|-----------|----------------|--------|-----------|
+| 1. Database Schema & Migration | v1.0 | 2/2 | Done | 2026-04-26 |
+| 2. Session Persistence & Auto-Save | v1.0 | 2/2 | Done | 2026-04-26 |
+| 3. History Browser UI | v1.0 | 2/2 | Done | 2026-04-26 |
+| 4. Share & Export | v1.0 | 2/2 | Done | 2026-04-26 |
+| 5. Canvas Polish | v1.1 | 2/2 | Done | 2026-04-26 |
+| 6. Rich Input — Text Files | v1.1 | 2/2 | Done | 2026-04-26 |
+| 7. Rich Input — Web Links | v1.1 | 2/2 | Done | 2026-04-26 |
+| 8. Settings Panel | v1.1 | 2/2 | Done | 2026-04-26 |
+| 9. Card Selection & Context | v1.2 | 2/2 | Done | 2026-04-27 |
+| 10. Directed Generation | v1.2 | 2/2 | Done | 2026-04-27 |
+| 11. Research Mode | v1.2 | 3/3 | Done | 2026-04-27 |
+| 12. Single-Image Share | v1.2 | 2/2 | Done | 2026-04-27 |
+| 13. Material API & Data Model | v1.3 | 2/2 | Done | 2026-05-01 |
+| 14. Material Library UI | v1.3 | 2/2 | Done | 2026-05-01 |
+| 15. Material Sync & Upload | v1.3 | 2/2 | Done | 2026-05-01 |
+| 16. Menu Cleanup & New Card | v2.0 | 2/2 | Done | 2026-05-02 |
+| 17. Connection Lines & Junction Nodes | v2.0 | 3/3 | Done | 2026-05-02 |
+| 18. Blueprint Modal | v2.0 | 3/3 | Done | 2026-05-02 |
 
 ---
 
-*Created: 2026-05-02*
+*Created: 2026-04-25*
+*Last updated: 2026-05-02 — v2.0 shipped*
