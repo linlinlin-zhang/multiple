@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>tube / ORYZAE</title>
+    <meta name="description" content="ORYZAE 旋转照片柱体主页" />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000000'/%3E%3Ccircle cx='32' cy='32' r='18' fill='%230070cc'/%3E%3Cpath d='M22 32h20M32 22v20' stroke='%23ffffff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/legacy-home.css?v=25" />
+  </head>
+  <body>
+    <main class="tube-home" aria-label="ORYZAE homepage">
+      <section class="tube-panel" aria-label="tube parameters">
+        <h1>柱体</h1>
+        <dl class="readout">
+          <div><dt>旋涡形状</dt><dd id="vortexValue">0.0</dd></div>
+          <div><dt>显示参数叠加层</dt><dd>1.0</dd></div>
+          <div><dt>照片分辨率</dt><dd>1000.0</dd></div>
+          <div><dt>动画刚度</dt><dd>0.03</dd></div>
+        </dl>
+
+        <p class="section-label">柱体参数</p>
+        <dl class="readout compact">
+          <div><dt>半径</dt><dd>4.5</dd></div>
+          <div><dt>行数</dt><dd>11.0</dd></div>
+          <div><dt>列数</dt><dd>8.0</dd></div>
+          <div><dt>高度</dt><dd id="heightValue">18.06</dd></div>
+        </dl>
+
+        <p class="section-label">超级方阵参数</p>
+        <dl class="readout compact">
+          <div><dt>XY 指数</dt><dd>0.84</dd></div>
+          <div><dt>Z 指数</dt><dd>0.69</dd></div>
+        </dl>
+
+        <div class="tube-actions">
+          <a href="/home.html" aria-label="主页" class="active">主页</a>
+          <a href="/" aria-label="工作台">工作台</a>
+          <a href="/history/?view=library" aria-label="素材库">素材库</a>
+          <a href="/history/" aria-label="历史记录">历史记录</a>
+          <a href="/history/?view=settings" aria-label="设置">设置</a>
+        </div>
+
+        <p class="hint">滚动旋转 // 点击展开</p>
+        <p class="version">多模态作品集_v1.0</p>
+      </section>
+
+      <section class="tube-stage" aria-label="rotating photo tube">
+        <svg id="tubeLines" class="tube-lines" aria-hidden="true"></svg>
+        <div class="axis-line" aria-hidden="true"></div>
+        <div id="tubeWorld" class="tube-world"></div>
+      </section>
+
+      <aside id="focusOverlay" class="focus-overlay" aria-hidden="true">
+        <button id="focusClose" type="button" aria-label="关闭展开的照片">x</button>
+        <img id="focusImage" alt="" />
+      </aside>
+    </main>
+
+    <script type="module" src="/legacy-home.js?v=25"></script>
+  </body>
+</html>

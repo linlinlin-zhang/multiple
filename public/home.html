@@ -3,58 +3,208 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>tube / ORYZAE</title>
-    <meta name="description" content="ORYZAE 旋转照片柱体主页" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000000'/%3E%3Ccircle cx='32' cy='32' r='18' fill='%230070cc'/%3E%3Cpath d='M22 32h20M32 22v20' stroke='%23ffffff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="/home.css?v=25" />
+    <title>ORYZAE / AI Canvas</title>
+    <meta
+      name="description"
+      content="ORYZAE 是一个把图像、网页、文档和语音对话组织成可推演画布的 AI 创作平台。"
+    />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000712'/%3E%3Cpath d='M14 42L31 13h19L33 51H14z' fill='%230078d7'/%3E%3Cpath d='M21 42L38 13' stroke='%23fff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="/home.css?v=30" />
   </head>
   <body>
-    <main class="tube-home" aria-label="ORYZAE homepage">
-      <section class="tube-panel" aria-label="tube parameters">
-        <h1>柱体</h1>
-        <dl class="readout">
-          <div><dt>旋涡形状</dt><dd id="vortexValue">0.0</dd></div>
-          <div><dt>显示参数叠加层</dt><dd>1.0</dd></div>
-          <div><dt>照片分辨率</dt><dd>1000.0</dd></div>
-          <div><dt>动画刚度</dt><dd>0.03</dd></div>
-        </dl>
+    <header class="home-nav" aria-label="ORYZAE navigation">
+      <a class="home-brand" href="/home.html" aria-label="ORYZAE 首页">
+        <span class="brand-mark">O</span>
+        <span>ORYZAE</span>
+      </a>
+      <nav class="home-links" aria-label="页面导航">
+        <a href="/home.html" class="active">主页</a>
+        <a href="/">工作台</a>
+        <a href="/history/?view=library">素材库</a>
+        <a href="/history/">历史记录</a>
+        <a href="/history/?view=settings">设置</a>
+      </nav>
+      <a class="home-cta" href="/">进入画布</a>
+    </header>
 
-        <p class="section-label">柱体参数</p>
-        <dl class="readout compact">
-          <div><dt>半径</dt><dd>4.5</dd></div>
-          <div><dt>行数</dt><dd>11.0</dd></div>
-          <div><dt>列数</dt><dd>8.0</dd></div>
-          <div><dt>高度</dt><dd id="heightValue">18.06</dd></div>
-        </dl>
-
-        <p class="section-label">超级方阵参数</p>
-        <dl class="readout compact">
-          <div><dt>XY 指数</dt><dd>0.84</dd></div>
-          <div><dt>Z 指数</dt><dd>0.69</dd></div>
-        </dl>
-
-        <div class="tube-actions">
-          <a href="/" aria-label="打开实时工作区">工作台</a>
-          <a href="/history/" aria-label="打开历史浏览器">历史记录</a>
-          <a href="/history/?view=library" aria-label="打开素材库">素材库</a>
+    <main>
+      <section class="hero-section dot-canvas" aria-labelledby="heroTitle">
+        <div class="hero-copy">
+          <p class="eyebrow">AI image board for research, ideation and generation</p>
+          <h1 id="heroTitle">把图像、语音和网页资料，变成可推演的创作画布</h1>
+          <p class="hero-text">
+            ORYZAE 让每一张图片、每段语音、每个网页链接都成为画布上的可操作节点。
+            你可以边说边移动卡片，边研究边生成方向，并把思考过程留在同一张图里。
+          </p>
+          <div class="hero-actions" aria-label="主要操作">
+            <a class="primary-action" href="/">开始创作</a>
+            <a class="secondary-action" href="/history/">查看历史</a>
+          </div>
         </div>
 
-        <p class="hint">滚动旋转 // 点击展开</p>
-        <p class="version">多模态作品集_v1.0</p>
+        <div class="hero-board" aria-label="ORYZAE 工作流预览">
+          <article class="floating-card hero-source">
+            <span class="card-kicker">SOURCE</span>
+            <img src="/home-assets/ref-gradient.jpg" alt="建筑天窗参考图" />
+            <strong>Source image</strong>
+          </article>
+          <article class="floating-card hero-analysis">
+            <span class="card-kicker">IMAGE READ</span>
+            <strong>空间、光线、构图</strong>
+            <p>AI 读取图像结构，并生成可继续发散的方向卡片。</p>
+          </article>
+          <article class="floating-card hero-agent">
+            <span class="card-kicker">AGENT</span>
+            <strong>研究材料</strong>
+            <p>网页、文档和图片被整理成可追溯的画布节点。</p>
+          </article>
+          <svg class="hero-lines" viewBox="0 0 700 460" aria-hidden="true">
+            <path d="M148 226 C 258 140, 316 138, 432 206" />
+            <path d="M444 242 C 512 306, 526 326, 612 272" />
+            <circle cx="148" cy="226" r="7" />
+            <circle cx="432" cy="206" r="7" />
+            <circle cx="612" cy="272" r="7" />
+          </svg>
+          <span class="assistant-chip">ORYZAE AI</span>
+        </div>
       </section>
 
-      <section class="tube-stage" aria-label="rotating photo tube">
-        <svg id="tubeLines" class="tube-lines" aria-hidden="true"></svg>
-        <div class="axis-line" aria-hidden="true"></div>
-        <div id="tubeWorld" class="tube-world"></div>
+      <section class="intro-section" aria-label="产品定位">
+        <p>
+          这不是一个孤立的图片生成入口，而是一张能被 AI 理解、整理、检索和行动的工作图。
+        </p>
       </section>
 
-      <aside id="focusOverlay" class="focus-overlay" aria-hidden="true">
-        <button id="focusClose" type="button" aria-label="关闭展开的照片">x</button>
-        <img id="focusImage" alt="" />
-      </aside>
+      <section class="journey-section dot-canvas" data-journey aria-label="滚动浏览应用流程">
+        <div class="journey-sticky">
+          <div class="journey-heading">
+            <p class="eyebrow">Scroll the canvas</p>
+            <h2>从一张图开始，滑过完整创作流程</h2>
+          </div>
+          <div class="journey-progress" aria-hidden="true">
+            <span data-progress-bar></span>
+          </div>
+
+          <div class="journey-window">
+            <div class="journey-track" data-journey-track>
+              <svg class="journey-lines" viewBox="0 0 3160 720" aria-hidden="true">
+                <path d="M280 348 C 430 290, 510 260, 680 328 S 950 456, 1120 346" />
+                <path d="M1150 346 C 1340 228, 1508 258, 1660 360 S 1980 526, 2160 402" />
+                <path d="M2160 402 C 2340 284, 2560 268, 2760 342 S 2960 444, 3090 314" />
+                <circle cx="280" cy="348" r="10" />
+                <circle cx="680" cy="328" r="10" />
+                <circle cx="1120" cy="346" r="10" />
+                <circle cx="1660" cy="360" r="10" />
+                <circle cx="2160" cy="402" r="10" />
+                <circle cx="2760" cy="342" r="10" />
+              </svg>
+
+              <article class="journey-card source-flow" style="--x: 120px; --y: 320px">
+                <span class="card-kicker">01 / INPUT</span>
+                <h3>上传图片或文档</h3>
+                <img src="/home-assets/ref-dog.jpg" alt="上传素材示意图" />
+                <p>初始素材成为可重命名、可研究、可复用的源卡片。</p>
+              </article>
+
+              <article class="journey-card read-flow" style="--x: 560px; --y: 286px">
+                <span class="card-kicker">02 / READ</span>
+                <h3>图像理解</h3>
+                <p>AI 把画面拆成空间、色彩、物体、风格和隐含方向。</p>
+                <div class="tag-row">
+                  <span>构图</span>
+                  <span>光线</span>
+                  <span>材料</span>
+                </div>
+              </article>
+
+              <article class="journey-card voice-flow" style="--x: 940px; --y: 474px">
+                <span class="card-kicker">03 / VOICE</span>
+                <h3>实时语音控制画布</h3>
+                <div class="wave-row" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span><span></span><span></span>
+                </div>
+                <p>说出“把参考图放到右上角”或“继续研究这个方向”，模型直接调用系统接口。</p>
+              </article>
+
+              <article class="journey-card search-flow" style="--x: 1340px; --y: 296px">
+                <span class="card-kicker">04 / RESEARCH</span>
+                <h3>联网检索与资料卡片</h3>
+                <div class="mini-browser">
+                  <span>site search</span>
+                  <strong>建筑天窗的超现实空间案例</strong>
+                </div>
+                <p>网页、图片、文档和引用被放回画布，成为下一轮生成的上下文。</p>
+              </article>
+
+              <article class="journey-card agent-flow" style="--x: 1780px; --y: 500px">
+                <span class="card-kicker">05 / AGENTS</span>
+                <h3>按任务拆分 subagents</h3>
+                <div class="agent-grid">
+                  <span>研究员</span>
+                  <span>构图师</span>
+                  <span>整理器</span>
+                </div>
+                <p>复杂任务可以拆成多个 no-thinking agent，快速完成资料、构图和画布操作。</p>
+              </article>
+
+              <article class="journey-card generate-flow" style="--x: 2200px; --y: 268px">
+                <span class="card-kicker">06 / GENERATE</span>
+                <h3>从方向卡片生成图片</h3>
+                <img src="/home-assets/ref-kitchen.jpg" alt="生成图片示意图" />
+                <p>每次生成都保留来源、提示词、分支关系和可继续编辑的上下文。</p>
+              </article>
+
+              <article class="journey-card outcome-flow" style="--x: 2640px; --y: 468px">
+                <span class="card-kicker">07 / OUTPUT</span>
+                <h3>一键整理成可讲述的图</h3>
+                <div class="outcome-stack" aria-hidden="true">
+                  <span></span>
+                  <span></span>
+                  <span></span>
+                </div>
+                <p>从灵感、证据、推理到图片结果，最终都沉淀为可回放的历史记录。</p>
+              </article>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="detail-section" aria-labelledby="detailTitle">
+        <div class="detail-copy">
+          <p class="eyebrow">Why ORYZAE</p>
+          <h2 id="detailTitle">面向多模态创作过程，而不只是最后一张图</h2>
+          <p>
+            对创作者和研究者来说，最有价值的往往不是一次生成，而是生成之前的观察、
+            搜集、讨论、筛选和重组。ORYZAE 把这些中间过程都变成画布上的对象，让 AI
+            能够看见上下文，也让人可以检查每一步。
+          </p>
+        </div>
+
+        <div class="detail-grid">
+          <article>
+            <span>01</span>
+            <h3>上下文可视化</h3>
+            <p>图片、网页、文档和对话不是散落的输入，而是能互相连接的画布节点。</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>语音直接行动</h3>
+            <p>实时语音可以选择卡片、移动视图、生成图片、研究资料和整理画布。</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>深度思考可展开</h3>
+            <p>长时间推理不再藏在黑箱里，检索到的材料和推理过程会实时出现在对话区与画布上。</p>
+          </article>
+        </div>
+
+        <div class="closing-band">
+          <h2>让 AI 的思考过程，成为你能编辑的工作空间。</h2>
+          <a class="primary-action" href="/">打开工作台</a>
+        </div>
+      </section>
     </main>
 
-    <script type="module" src="/home.js?v=25"></script>
+    <script type="module" src="/home.js?v=30"></script>
   </body>
 </html>
