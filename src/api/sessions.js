@@ -20,15 +20,22 @@ function serializeState(state) {
         ? "source"
         : n.id === "analysis"
           ? "analysis"
-          : n.generated
-            ? "generated"
-            : "option",
+          : n.sourceCard
+            ? "source-card"
+            : n.generated
+              ? "generated"
+              : "option",
     x: Number.isFinite(n.x) ? n.x : 0,
     y: Number.isFinite(n.y) ? n.y : 0,
     width: n.width || 318,
     height: n.height || 220,
     data:
-      n.option
+      n.sourceCard
+        ? {
+            sourceCard: n.sourceCard,
+            imageHash: n.sourceCard?.imageHash || n.imageHash || null
+          }
+        : n.option
         ? {
             option: n.option,
             imageHash: n.imageHash || null,
@@ -113,6 +120,14 @@ async function collectSourceAsset(state, assetRecords) {
 
 async function collectGeneratedAssets(nodes, assetRecords) {
   for (const node of nodes) {
+    if (node.type === "source-card" && node.data?.imageHash) {
+      const record = await assetRecordFromStoredHash(node.data.imageHash, {
+        kind: "upload",
+        fileName: node.data.sourceCard?.fileName || node.data.sourceCard?.title || null
+      });
+      addAssetRecord(assetRecords, record);
+      continue;
+    }
     if (node.type !== "generated") continue;
 
     if (typeof node.data?.imageDataUrl === "string" && node.data.imageDataUrl.startsWith("data:")) {

@@ -435,6 +435,11 @@ function isDashScopeQwenConfig(config) {
 function applyWebSearchMode(payload, config, enabled = true) {
   if (enabled && isDashScopeQwenConfig(config)) {
     payload.enable_search = true;
+    payload.search_options = {
+      ...(payload.search_options || {}),
+      enable_source: true,
+      search_strategy: "turbo"
+    };
   }
   return payload;
 }
@@ -582,6 +587,7 @@ async function handleDeepThink(body, res) {
   return sendJson(res, 200, {
     provider: "api",
     model: response?.model || runtimeConfigs.deepthink.model,
+    thinkingContent: collectReasoningContent(response),
     ...plan
   });
 }
@@ -614,7 +620,8 @@ async function handleChat(body, res) {
   const canvas = body?.canvas && typeof body.canvas === "object" ? body.canvas : {};
   const systemContext = typeof body?.systemContext === "string" ? body.systemContext.slice(0, 4000) : "";
   const webSearchEnabled = shouldUseWebSearch(message, canvas, selectedContext);
-  const agentMode = shouldUseAgentMode(message);
+  const subagentsEnabled = body?.subagentsEnabled === true;
+  const agentMode = subagentsEnabled && (body?.agentMode === true || shouldUseAgentMode(message));
   const context = lang === "en"
     ? [
         "You are the creative dialogue assistant in this canvas-based image generation app. Your task is to help users understand the current image, compare branch directions, propose new generation ideas, or organize user thoughts into executable visual directions. Answer in English, keep it concise, usually 1-3 sentences. Do not pretend to have generated a new image; if the user wants to generate, suggest clicking a direction node or explain how you would modify the prompt.",
@@ -685,17 +692,21 @@ async function handleChat(body, res) {
     parsed = null;
   }
   const reply = stringOr(parsed?.reply, rawReply);
-  const actions = ensureChatFallbackActions(
+  let actions = ensureChatFallbackActions(
     message,
     normalizeVoiceActions(parsed?.actions || parsed?.action),
     reply
   );
+  if (!agentMode) {
+    actions = actions.filter((action) => action.type !== "create_agent");
+  }
   const thinkingContent = thinkingMode === "thinking" ? collectReasoningContent(response) : "";
   return sendJson(res, 200, {
     provider: "api",
     model: runtimeConfigs.chat.model,
     reply: reply || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。"),
     actions,
+    artifacts: buildAgentArtifacts(actions, agentMode),
     thinkingContent,
     thinkingTrace: []
   });
@@ -1510,7 +1521,7 @@ function buildRealtimeInstruction(context) {
     "For destructive actions such as delete_node, only act when the spoken command explicitly asks to delete/remove a card.",
     "Position vocabulary: left, right, above, below, center, upper-left, upper-right, lower-left, lower-right, canvas-center, screen-center.",
     "Reusable action types:",
-    "zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, create_web_card, generate_image, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
+    "zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, create_web_card, create_agent, generate_image, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
     "When web search is needed, include create_web_card actions with real URLs, concise titles, and descriptions so the canvas can preserve references.",
     "Schema:",
     '{"transcript":"recognized user speech","reply":"short spoken response","actions":[{"type":"action_type","nodeId":"exact optional id","nodeName":"optional spoken card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url"}]}',
@@ -1537,9 +1548,10 @@ function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thinking") 
     "Use actions only when the user clearly asks the app to do something. If the user is just chatting, return an empty actions array.",
     "Prefer exact nodeId values copied from Canvas state. If a card is named but the exact id is uncertain, provide nodeName/query instead; never invent node IDs.",
     "For destructive actions such as delete_node, only act when the user explicitly asks to delete/remove a card.",
-    "Reusable action types: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, create_web_card, generate_image, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
+    "Reusable action types: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, create_web_card, create_agent, generate_image, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
     "When the user asks for web search or link research, web search may be enabled for this turn. Return create_web_card actions with url/title/description for concrete web references.",
-    "When the user asks for an agent, autonomous work, or a multi-step task, act as the main controller: decompose the task, return the immediate reply, and include a sequence of safe canvas actions that can be executed now. Do not claim background work exists unless represented by actions.",
+    "Only create or mention subagents when agent_controller_mode=true. If agent_controller_mode=false, do not return create_agent and do not claim that an agent/subagent/worker has started; handle the request as a normal assistant.",
+    "When agent_controller_mode=true and the task has separable research, planning, writing, image, or canvas-operation subtasks, prefer returning create_agent actions first. Each create_agent action should describe one no-thinking subagent with title, description, and prompt, followed by safe canvas actions that can be executed now.",
     "Position vocabulary: left, right, above, below, center, upper-left, upper-right, lower-left, lower-right, canvas-center, screen-center.",
     thinkingMode === "thinking"
       ? "Reasoning mode may be enabled by the API provider. Do not include a thinkingTrace field in your JSON; any provider-side reasoning will be read from the API response metadata."
@@ -1623,6 +1635,27 @@ function deriveSearchQuery(message) {
     .replace(/\s{2,}/g, " ")
     .trim()
     .slice(0, 120);
+}
+
+function buildAgentArtifacts(actions, agentMode = false) {
+  if (!agentMode) return [];
+  const agentActions = Array.isArray(actions)
+    ? actions.filter((action) => action?.type === "create_agent")
+    : [];
+  if (agentActions.length) {
+    return agentActions.map((action, index) => ({
+      type: "agent",
+      title: action.title || action.nodeName || `Subagent ${index + 1}`,
+      summary: action.description || action.prompt || action.query || "",
+      status: "no-thinking"
+    }));
+  }
+  return [{
+    type: "agent",
+    title: "Agent controller",
+    summary: "Subagents are enabled for this turn. The controller completed the task without spawning a separate worker.",
+    status: "ready"
+  }];
 }
 
 function inferDemoChatActions(message) {
@@ -1847,6 +1880,7 @@ const VOICE_ACTION_TYPES = new Set([
   "move_node",
   "create_direction",
   "create_web_card",
+  "create_agent",
   "generate_image",
   "analyze_source",
   "explore_source",
