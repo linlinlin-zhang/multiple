@@ -4,13 +4,14 @@ import { useHistory } from "../../hooks/useHistory";
 import HistoryPage from "./HistoryPage";
 import AppNavigation from "@/components/AppNavigation";
 import { useI18n } from "@/lib/i18n";
-import { Clock, FileText, Globe2, Image, Menu, Search, X } from "lucide-react";
+import { Clock, FileText, Globe2, Image, Menu, MessageSquare, Search, X } from "lucide-react";
 import type { HistorySession, OutputKind } from "@/types";
 
 const OUTPUT_TABS: { kind: OutputKind; labelKey: string; icon: ReactNode }[] = [
   { kind: "image", labelKey: "history.tabImages", icon: <Image size={16} /> },
   { kind: "web", labelKey: "history.tabWeb", icon: <Globe2 size={16} /> },
   { kind: "document", labelKey: "history.tabDocuments", icon: <FileText size={16} /> },
+  { kind: "chat", labelKey: "history.tabChat", icon: <MessageSquare size={16} /> },
 ];
 
 function Spinner() {
@@ -32,6 +33,7 @@ interface SessionListProps {
   onSearchOpenChange: (open: boolean) => void;
   onOpenNavigation: () => void;
   onSelect: (id: string) => void;
+  onRename: (id: string, title: string) => Promise<void> | void;
 }
 
 function SessionList({
@@ -45,9 +47,12 @@ function SessionList({
   onSearchOpenChange,
   onOpenNavigation,
   onSelect,
+  onRename,
 }: SessionListProps) {
   const { t } = useI18n();
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState("");
 
   useEffect(() => {
     if (searchOpen) {
@@ -125,6 +130,14 @@ function SessionList({
         ) : (
           sessions.map((session) => {
             const active = activeSessionId === session.id;
+            const editing = editingId === session.id;
+            const commitRename = async () => {
+              const next = draftTitle.trim();
+              setEditingId(null);
+              if (next && next !== session.title) {
+                await onRename(session.id, next);
+              }
+            };
             return (
               <button
                 key={session.id}
@@ -137,9 +150,38 @@ function SessionList({
                 <div className="flex items-start gap-3">
                   <Clock size={17} className="mt-[2px] text-cabinet-inkMuted flex-shrink-0" />
                   <div className="min-w-0">
-                    <div className="text-[15px] font-medium text-cabinet-ink truncate">
-                      {session.title || t("session.unnamed")}
-                    </div>
+                    {editing ? (
+                      <input
+                        value={draftTitle}
+                        onChange={(event) => setDraftTitle(event.target.value)}
+                        onClick={(event) => event.stopPropagation()}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void commitRename();
+                          }
+                          if (event.key === "Escape") {
+                            event.preventDefault();
+                            setEditingId(null);
+                          }
+                        }}
+                        onBlur={() => void commitRename()}
+                        className="w-full rounded border border-cabinet-blue bg-cabinet-paper px-2 py-1 text-[15px] font-medium text-cabinet-ink outline-none"
+                        autoFocus
+                      />
+                    ) : (
+                      <div
+                        className="text-[15px] font-medium text-cabinet-ink truncate cursor-text"
+                        onDoubleClick={(event) => {
+                          event.stopPropagation();
+                          setDraftTitle(session.title || "");
+                          setEditingId(session.id);
+                        }}
+                        title={t("history.rename")}
+                      >
+                        {session.title || t("session.unnamed")}
+                      </div>
+                    )}
                     <div className="mt-1 text-[13px] text-cabinet-inkMuted truncate">
                       {new Date(session.updatedAt || session.createdAt).toLocaleString()}
                     </div>
@@ -158,7 +200,7 @@ function SessionList({
 }
 
 export default function FileCabinet() {
-  const { sessions, loading, error } = useHistory(50, 0, false);
+  const { sessions, loading, error, refetch } = useHistory(50, 0, false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeOutputKind, setActiveOutputKind] = useState<OutputKind>("image");
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
@@ -187,6 +229,24 @@ export default function FileCabinet() {
   const handleSessionSelect = (id: string) => {
     setActiveSessionId(id);
     setMobileSessionsOpen(false);
+  };
+
+  const handleSessionRename = async (id: string, title: string) => {
+    try {
+      const response = await fetch(`/api/sessions/${id}/title`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title })
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || response.statusText);
+      }
+      await refetch();
+    } catch (renameError) {
+      console.error("Failed to rename session", renameError);
+      alert(t("history.renameFailed"));
+    }
   };
 
   return (
@@ -220,6 +280,7 @@ export default function FileCabinet() {
               onSearchOpenChange={setSearchOpen}
               onOpenNavigation={() => setNavigationOpen(true)}
               onSelect={handleSessionSelect}
+              onRename={handleSessionRename}
             />
           </div>
         </div>
@@ -238,6 +299,7 @@ export default function FileCabinet() {
             onSearchOpenChange={setSearchOpen}
             onOpenNavigation={() => setNavigationOpen(true)}
             onSelect={handleSessionSelect}
+            onRename={handleSessionRename}
           />
         </aside>
 

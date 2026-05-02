@@ -8,7 +8,7 @@ export function useMaterials(query: string, sort: MaterialSort) {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const fetchMaterials = useCallback(async (q: string, s: MaterialSort) => {
     setLoading(true);

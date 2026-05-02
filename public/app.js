@@ -24,6 +24,7 @@ const chatAttachButton = document.querySelector("#chatAttachButton");
 const chatActionMenu = document.querySelector("#chatActionMenu");
 const chatUploadAction = document.querySelector("#chatUploadAction");
 const chatDeepThinkAction = document.querySelector("#chatDeepThinkAction");
+const chatImageSearchAction = document.querySelector("#chatImageSearchAction");
 const chatSubagentsAction = document.querySelector("#chatSubagentsAction");
 const deepThinkModeChip = document.querySelector("#deepThinkModeChip");
 const deepThinkModeCancel = document.querySelector("#deepThinkModeCancel");
@@ -127,7 +128,7 @@ const settingsCache = {
   image: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
   asr: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3-livetranslate-flash-2025-12-01", apiKey: "", temperature: 0 },
   realtime: { endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime", model: "qwen3.5-omni-plus-realtime", apiKey: "", temperature: 0.7 },
-  deepthink: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7 }
+  deepthink: { endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation", model: "qwen-deep-research", apiKey: "", temperature: 0.7 }
 };
 
 const voiceState = {
@@ -213,7 +214,7 @@ const i18n = {
     "settings.image": "成图",
     "settings.asr": "语音输入",
     "settings.realtime": "实时语音",
-    "settings.deepthink": "深度思考",
+    "settings.deepthink": "深入研究",
     "settings.endpoint": "API Endpoint",
     "settings.model": "Model",
     "settings.apiKey": "API Key",
@@ -279,13 +280,15 @@ const i18n = {
     "chat.actionMenu": "功能区",
     "chat.upload": "上传图片或文件",
     "chat.uploadDesc": "添加到当前画布或输入框",
-    "chat.deepThink": "深度思考",
-    "chat.deepThinkDesc": "把思考过程展开成画布卡片",
-    "chat.deepThinkMode": "深度思考",
-    "chat.deepThinkActive": "正处于深度思考模式下",
-    "chat.cancelDeepThink": "取消深度思考模式",
-    "deepthink.busy": "深度思考中...",
-    "deepthink.complete": "深度思考完成",
+    "chat.deepThink": "深入研究",
+    "chat.deepThinkDesc": "调用 Qwen Deep Research，把研究过程实时展开为资料卡片",
+    "chat.deepThinkMode": "深入研究",
+    "chat.deepThinkActive": "正处于深入研究模式下",
+    "chat.cancelDeepThink": "取消深入研究模式",
+    "deepthink.busy": "深入研究中...",
+    "deepthink.complete": "深入研究完成",
+    "chat.imageSearch": "图片搜索",
+    "chat.imageSearchDesc": "以文字或选中图片搜索视觉参考",
     "chat.generatedCannotGenerate": "生成图节点无法继续生成方向",
     "chat.noSourceForGenerate": "请先上传图片或打开可作为参考的图片，再生成。",
     "thinking.mode": "思考模式",
@@ -408,7 +411,7 @@ const i18n = {
     "settings.image": "Image",
     "settings.asr": "Voice Input",
     "settings.realtime": "Realtime Voice",
-    "settings.deepthink": "Deep Think",
+    "settings.deepthink": "Deep Research",
     "settings.endpoint": "API Endpoint",
     "settings.model": "Model",
     "settings.apiKey": "API Key",
@@ -474,13 +477,15 @@ const i18n = {
     "chat.actionMenu": "Action menu",
     "chat.upload": "Upload image or file",
     "chat.uploadDesc": "Add to the canvas or input",
-    "chat.deepThink": "Deep think",
-    "chat.deepThinkDesc": "Expand the thinking process into canvas cards",
-    "chat.deepThinkMode": "Deep think",
-    "chat.deepThinkActive": "Deep thinking mode is active",
-    "chat.cancelDeepThink": "Cancel deep thinking mode",
-    "deepthink.busy": "Deep thinking...",
-    "deepthink.complete": "Deep thinking complete",
+    "chat.deepThink": "Deep research",
+    "chat.deepThinkDesc": "Use Qwen Deep Research and stream evidence into canvas cards",
+    "chat.deepThinkMode": "Deep research",
+    "chat.deepThinkActive": "Deep research mode is active",
+    "chat.cancelDeepThink": "Cancel deep research mode",
+    "deepthink.busy": "Deep research...",
+    "deepthink.complete": "Deep research complete",
+    "chat.imageSearch": "Image search",
+    "chat.imageSearchDesc": "Search visual references from text or the selected image",
     "chat.generatedCannotGenerate": "Generated image nodes cannot spawn new directions",
     "chat.noSourceForGenerate": "Upload or open a reference image before generating.",
     "thinking.mode": "Thinking Mode",
@@ -687,6 +692,12 @@ function renderAllText() {
     const desc = chatDeepThinkAction.querySelector(".chat-action-desc");
     if (title) title.textContent = t("chat.deepThink");
     if (desc) desc.textContent = t("chat.deepThinkDesc");
+  }
+  if (chatImageSearchAction) {
+    const title = chatImageSearchAction.querySelector(".chat-action-title");
+    const desc = chatImageSearchAction.querySelector(".chat-action-desc");
+    if (title) title.textContent = t("chat.imageSearch");
+    if (desc) desc.textContent = t("chat.imageSearchDesc");
   }
   if (deepThinkModeChip) {
     deepThinkModeChip.title = t("chat.deepThinkActive");
@@ -1373,6 +1384,10 @@ function wireControls() {
     setDeepThinkModeActive(true);
     chatInput?.focus();
   });
+  chatImageSearchAction?.addEventListener("click", async () => {
+    closeChatActionMenu();
+    await searchImagesFromAction({ type: "image_search", query: chatInput?.value.trim() || "" });
+  });
   chatSubagentsAction?.addEventListener("click", () => {
     closeChatActionMenu();
     toggleSubagentsMode();
@@ -2000,7 +2015,7 @@ async function runCustomAgentTask() {
 
 function setDeepThinkModeActive(active) {
   const next = Boolean(active);
-  if (next) ensureFreshChatThread(currentLang === "en" ? "Deep thinking" : "深度思考");
+  if (next) ensureFreshChatThread(currentLang === "en" ? "Deep research" : "深入研究");
   deepThinkModeActive = next;
   deepThinkModeChip?.classList.toggle("hidden", !deepThinkModeActive);
   chatForm?.classList.toggle("deep-think-active", deepThinkModeActive);
@@ -2592,7 +2607,7 @@ async function submitChatMessage(message, options = {}) {
       }
     }
 
-    const data = await postJson("/api/chat", {
+    const chatPayload = {
       message: text,
       imageDataUrl: sourceImageDataUrl,
       analysis: state.latestAnalysis,
@@ -2605,7 +2620,10 @@ async function submitChatMessage(message, options = {}) {
       thinkingMode: effectiveThinkingMode,
       agentMode,
       subagentsEnabled
-    });
+    };
+    const data = effectiveThinkingMode === "thinking"
+      ? await postStreamingChat("/api/chat", chatPayload, pendingAssistant)
+      : await postJson("/api/chat", chatPayload);
     const assistantMeta = {
       pending: false,
       thinkingTrace: data.thinkingTrace || data.trace,
@@ -2706,6 +2724,10 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
   const typedPrompt = String(explicitPrompt || chatInput?.value.trim() || "").trim();
   const selectedContext = buildSelectedNodeContext();
   const prompt = typedPrompt || selectedContext?.summary || state.latestAnalysis?.summary || state.fileName || t("chat.deepThink");
+  const activeThread = ensureActiveChatThread();
+  if (activeThread.messages.length && options.newThread !== false) {
+    startNewChat();
+  }
   deepThinkBusy = true;
   if (chatDeepThinkAction) chatDeepThinkAction.disabled = true;
   setStatus(t("deepthink.busy"), "busy");
@@ -2728,15 +2750,22 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
   });
 
   try {
-    const data = await postJson("/api/deep-think", {
+    let imageDataUrl = "";
+    try {
+      imageDataUrl = await getImageDataUrlForNode(parentNodeId);
+    } catch {
+      imageDataUrl = "";
+    }
+    const data = await postStreamingChat("/api/deep-research", {
       message: prompt,
       language: currentLang,
       selectedContext,
       selectedNodeId: parentNodeId,
       analysis: state.latestAnalysis,
       messages: state.chatMessages.slice(-8),
-      canvas: buildVoiceCanvasContext()
-    });
+      canvas: buildVoiceCanvasContext(),
+      imageDataUrl
+    }, pendingAssistant);
     updateChatMessage(pendingAssistant, {
       content: data.reply || t("deepthink.complete"),
       pending: false,
@@ -3188,6 +3217,9 @@ function buildVoiceCanvasContext() {
       "create_web_card",
       "create_agent",
       "generate_image",
+      "image_search",
+      "reverse_image_search",
+      "text_image_search",
       "analyze_source",
       "explore_source",
       "research_node",
@@ -3236,6 +3268,7 @@ async function executeCanvasAction(action) {
   if (type === "create_web_card") return createDirectionFromAction({ ...action, mode: action.mode || "web" });
   if (type === "create_agent") return showAgentAction(action);
   if (type === "generate_image") return generateImageFromAction(action);
+  if (type === "image_search" || type === "reverse_image_search" || type === "text_image_search") return searchImagesFromAction(action);
   if (type === "analyze_source") return analyzeSource(action.mode || "analyze");
   if (type === "explore_source" || type === "research_source") return exploreSource();
   if (type === "research_node") return researchNodeFromAction(action);
@@ -3545,6 +3578,104 @@ function createDirectionFromAction(action) {
     focusNodeById(nodeId, "center");
   }
   return nodeId;
+}
+
+async function searchImagesFromAction(action = {}) {
+  const fallbackParent = state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
+  const parentId = resolveParentNodeId(action, resolveActionNodeId(action, fallbackParent)) || fallbackParent;
+  const parent = parentId ? state.nodes.get(parentId) : null;
+  const query = String(
+    action.query ||
+    action.prompt ||
+    action.description ||
+    action.title ||
+    chatInput?.value.trim() ||
+    getNodeSummary(parent) ||
+    state.latestAnalysis?.summary ||
+    state.fileName ||
+    ""
+  ).trim();
+  let imageDataUrl = "";
+  const actionType = String(action.type || "");
+  const targetNodeId = resolveActionNodeId(action, state.selectedNodeId || "source");
+  if (actionType === "reverse_image_search" || targetNodeId) {
+    try {
+      imageDataUrl = await getImageDataUrlForNode(targetNodeId || "source");
+    } catch {
+      imageDataUrl = "";
+    }
+  }
+  if (!query && !imageDataUrl) {
+    showSelectionToast(currentLang === "en" ? "Type a query or select an image card first." : "请先输入搜索词，或选中一张图片卡片。");
+    return null;
+  }
+
+  setStatus(currentLang === "en" ? "Searching images..." : "正在搜索图片...", "busy");
+  const data = await postJson("/api/image-search", {
+    query,
+    imageDataUrl,
+    language: currentLang,
+    limit: 8
+  });
+  const results = Array.isArray(data?.results) ? data.results : [];
+  if (!results.length) {
+    appendChatMessage("assistant", data?.summary || (currentLang === "en" ? "No visual references were found." : "没有找到可用的视觉参考。"));
+    setStatus(currentLang === "en" ? "Ready" : "就绪", "ready");
+    return null;
+  }
+
+  const anchor = parent || state.nodes.get("source");
+  const baseX = (anchor?.x || 96) + (anchor?.width || 318) + 120;
+  const baseY = (anchor?.y || 88) - 20;
+  const createdIds = [];
+  results.slice(0, 6).forEach((result, index) => {
+    const x = baseX + Math.floor(index / 3) * 360;
+    const y = baseY + (index % 3) * 230;
+    const title = String(result.title || result.sourceUrl || result.url || "Image reference").slice(0, 48);
+    let nodeId = null;
+    if (result.imageUrl) {
+      nodeId = createStandaloneSourceCard({
+        id: `image-search-${Date.now().toString(36)}-${index}`,
+        title,
+        fileName: title,
+        imageUrl: result.imageUrl,
+        x,
+        y
+      });
+      const node = state.nodes.get(nodeId);
+      if (node?.sourceCard) {
+        node.sourceCard.summary = result.description || data.summary || "";
+        node.sourceCard.sourceUrl = result.sourceUrl || result.url || "";
+      }
+    } else {
+      nodeId = createOptionNode({
+        id: `image-search-${Date.now()}-${index}-${safeNodeSlug(title)}`,
+        title,
+        description: String(result.description || data.summary || "").slice(0, 240),
+        prompt: String(result.description || query || title).slice(0, 1200),
+        tone: currentLang === "en" ? "image search" : "图片搜索",
+        layoutHint: "reference",
+        references: result.url ? [{ title, url: result.url, description: result.description || "", type: "web" }] : [],
+        x,
+        y
+      }, parentId);
+    }
+    if (nodeId) {
+      createdIds.push(nodeId);
+      if (parentId && !state.links.some((link) => link.from === parentId && link.to === nodeId)) {
+        state.links.push({ from: parentId, to: nodeId, kind: "image-search" });
+      }
+    }
+  });
+  appendChatMessage("assistant", currentLang === "en"
+    ? `Found ${createdIds.length} visual reference cards.`
+    : `已找到 ${createdIds.length} 张视觉参考卡片。`);
+  if (createdIds[0]) focusNodeById(createdIds[0], "center");
+  drawLinks();
+  updateCounts();
+  autoSave();
+  setStatus(currentLang === "en" ? "Ready" : "就绪", "ready");
+  return createdIds[0] || null;
 }
 
 async function generateImageFromAction(action) {
@@ -5599,12 +5730,17 @@ function showToast(message) {
 }
 
 function registerNode(id, element, data) {
-  state.nodes.set(id, { id, element, ...data });
+  const nodeRecord = { id, element, ...data };
+  state.nodes.set(id, nodeRecord);
+  if (!data.isJunction && data.width && data.height) {
+    applyNodeSize(nodeRecord, data.width, data.height);
+  }
   ensureCollapseControl(id, element);
 
   // Add edge handles for connection mode (only for non-junction nodes)
   if (!data.isJunction) {
     addEdgeHandles(element, id);
+    addResizeHandles(element, id);
   }
 
   element.addEventListener("dblclick", (event) => {
@@ -5636,6 +5772,120 @@ function registerNode(id, element, data) {
   element.appendChild(deleteBtn);
 
   updateCollapseControls();
+}
+
+function addResizeHandles(element, id) {
+  if (element.dataset.resizeHandles === "true") return;
+  element.dataset.resizeHandles = "true";
+  const handles = [
+    ["n", "top"],
+    ["e", "right"],
+    ["s", "bottom"],
+    ["w", "left"],
+    ["ne", "top right"],
+    ["nw", "top left"],
+    ["se", "bottom right"],
+    ["sw", "bottom left"]
+  ];
+
+  handles.forEach(([direction, label]) => {
+    const handle = document.createElement("span");
+    handle.className = `node-resize-handle node-resize-${direction}`;
+    handle.dataset.resizeDirection = direction;
+    handle.setAttribute("role", "presentation");
+    handle.setAttribute("aria-label", `Resize ${label}`);
+    handle.addEventListener("pointerdown", (event) => startNodeResize(event, id, direction));
+    element.appendChild(handle);
+  });
+}
+
+function startNodeResize(event, id, direction) {
+  event.preventDefault();
+  event.stopPropagation();
+  const node = state.nodes.get(id);
+  if (!node) return;
+  const element = node.element;
+  const startWidth = node.width || element.offsetWidth;
+  const startHeight = node.height || element.offsetHeight;
+  const start = {
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    nodeX: node.x,
+    nodeY: node.y,
+    width: startWidth,
+    height: startHeight,
+    ratio: startWidth / Math.max(startHeight, 1)
+  };
+  const minWidth = element.classList.contains("source-node") ? 240 : 220;
+  const minHeight = element.classList.contains("source-node") ? 250 : 150;
+  const maxWidth = 760;
+  const maxHeight = 760;
+
+  function move(moveEvent) {
+    const dx = (moveEvent.clientX - start.x) / state.view.scale;
+    const dy = (moveEvent.clientY - start.y) / state.view.scale;
+    let nextX = start.nodeX;
+    let nextY = start.nodeY;
+    let nextWidth = start.width;
+    let nextHeight = start.height;
+    const isCorner = direction.length === 2;
+
+    if (isCorner) {
+      const signX = direction.includes("e") ? 1 : -1;
+      const signY = direction.includes("s") ? 1 : -1;
+      const projected = Math.abs(dx) > Math.abs(dy) ? dx * signX : dy * signY;
+      nextWidth = clamp(start.width + projected, minWidth, maxWidth);
+      nextHeight = clamp(nextWidth / start.ratio, minHeight, maxHeight);
+      if (direction.includes("w")) nextX = start.nodeX + (start.width - nextWidth);
+      if (direction.includes("n")) nextY = start.nodeY + (start.height - nextHeight);
+    } else {
+      if (direction.includes("e")) nextWidth = clamp(start.width + dx, minWidth, maxWidth);
+      if (direction.includes("s")) nextHeight = clamp(start.height + dy, minHeight, maxHeight);
+      if (direction.includes("w")) {
+        nextWidth = clamp(start.width - dx, minWidth, maxWidth);
+        nextX = start.nodeX + (start.width - nextWidth);
+      }
+      if (direction.includes("n")) {
+        nextHeight = clamp(start.height - dy, minHeight, maxHeight);
+        nextY = start.nodeY + (start.height - nextHeight);
+      }
+    }
+
+    applyNodeSize(node, nextWidth, nextHeight);
+    node.x = nextX;
+    node.y = nextY;
+    element.style.left = `${node.x}px`;
+    element.style.top = `${node.y}px`;
+    drawLinks();
+  }
+
+  function up() {
+    element.classList.remove("resizing");
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    autoSave();
+  }
+
+  element.classList.add("resizing");
+  element.setPointerCapture?.(event.pointerId);
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up, { once: true });
+}
+
+function applyNodeSize(node, width, height) {
+  const element = node.element;
+  node.width = width;
+  node.height = height;
+  element.style.width = `${width}px`;
+  element.style.minHeight = `${height}px`;
+  if (element.classList.contains("source-node")) {
+    const target = element.querySelector(".upload-target");
+    if (target) {
+      target.style.width = `${width}px`;
+      target.style.height = `${height}px`;
+    }
+  }
 }
 
 function ensureCollapseControl(id, element) {
@@ -5986,7 +6236,7 @@ function makeDraggable(element, id) {
   let start = null;
 
   element.addEventListener("pointerdown", (event) => {
-    const interactive = event.target.closest("button, input, label, .option-title, .generated-node h3, .analysis-node h2, #sourceName, .standalone-source-name, .node-title-input");
+    const interactive = event.target.closest("button, input, textarea, select, a, .option-title, .generated-node h3, .analysis-node h2, #sourceName, .standalone-source-name, .node-title-input, .image-card-action, .edge-handle, .node-resize-handle");
     if (interactive && event.target.tagName !== "SECTION") return;
     const node = state.nodes.get(id);
     if (!node) return;
@@ -6285,6 +6535,118 @@ async function postJson(url, payload, options = {}) {
   } finally {
     if (timer) window.clearTimeout(timer);
   }
+}
+
+async function postStreamingChat(url, payload, pendingMessage) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...payload, stream: true })
+  });
+
+  const contentType = response.headers.get("content-type") || "";
+  if (!contentType.includes("text/event-stream")) {
+    return parseApiResponse(response);
+  }
+  if (!response.ok) {
+    throw new Error(response.statusText || "Chat stream failed");
+  }
+  if (!response.body) {
+    throw new Error("Chat stream is unavailable");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let finalData = null;
+  let streamError = null;
+  let thinkingContent = pendingMessage?.thinkingContent || "";
+
+  function consumeEvent(eventBlock) {
+    const lines = eventBlock.split(/\r?\n/).map((line) => line.trim());
+    const eventName = lines.find((line) => line.startsWith("event:"))?.slice(6).trim() || "message";
+    const dataText = lines
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trim())
+      .join("\n");
+    if (!dataText) return;
+    let data;
+    try {
+      data = JSON.parse(dataText);
+    } catch {
+      return;
+    }
+    if (eventName === "thinking") {
+      const delta = data.delta || data.text || "";
+      if (delta && pendingMessage) {
+        thinkingContent += delta;
+        updateChatMessage(pendingMessage, {
+          thinkingContent,
+          pending: true,
+          thinkingRequested: true
+        });
+      }
+    } else if (eventName === "research") {
+      const delta = data.delta || data.text || "";
+      if (delta) thinkingContent += delta;
+      if (pendingMessage) {
+        updateChatMessage(pendingMessage, {
+          thinkingContent,
+          pending: true,
+          thinkingRequested: true,
+          artifacts: mergeResearchArtifacts(pendingMessage.artifacts || [], data)
+        });
+      }
+    } else if (eventName === "final") {
+      finalData = data;
+    } else if (eventName === "error") {
+      streamError = new Error(data.error || "Chat stream failed");
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: !done });
+    const events = buffer.split(/\r?\n\r?\n/);
+    buffer = events.pop() || "";
+    events.forEach(consumeEvent);
+    if (done) break;
+  }
+  if (buffer.trim()) consumeEvent(buffer);
+  if (streamError) throw streamError;
+  if (!finalData) throw new Error("Chat stream ended without a final response");
+  return finalData;
+}
+
+function mergeResearchArtifacts(existingArtifacts, eventData = {}) {
+  const artifacts = Array.isArray(existingArtifacts) ? existingArtifacts.map((item) => ({ ...item })) : [];
+  const title = eventData.title || eventData.stage || t("chat.deepThink");
+  const type = eventData.references?.[0]?.type || "deep-think";
+  const status = eventData.status || "running";
+  const delta = String(eventData.delta || eventData.summary || "").trim();
+  let target = artifacts.find((item) => item.title === title && item.type === type && !item.url);
+  if (!target) {
+    target = { type, title, summary: "", url: "", query: "", status };
+    artifacts.push(target);
+  }
+  if (delta) target.summary = `${target.summary ? `${target.summary} ` : ""}${delta}`.slice(-420);
+  target.status = status;
+
+  const references = Array.isArray(eventData.references) ? eventData.references : [];
+  references.slice(0, 4).forEach((reference) => {
+    const url = reference.url || reference.sourceUrl || reference.imageUrl || "";
+    if (!url || artifacts.some((item) => item.url === url)) return;
+    artifacts.push({
+      type: reference.type || (reference.imageUrl ? "image" : "web"),
+      title: reference.title || url,
+      summary: reference.description || "",
+      url,
+      query: "",
+      status: reference.type || "source"
+    });
+  });
+
+  return artifacts.slice(-12);
 }
 
 async function putJson(url, payload) {

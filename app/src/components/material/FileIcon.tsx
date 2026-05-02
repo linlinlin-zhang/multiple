@@ -15,7 +15,7 @@ function getTypeLabel(mimeType: string): { icon: typeof File; label: string } {
   return { icon: File, label: "File" };
 }
 
-export default function FileIcon({ mimeType, fileName }: FileIconProps) {
+export default function FileIcon({ mimeType, fileName: _fileName }: FileIconProps) {
   const { icon: Icon, label } = getTypeLabel(mimeType);
   return (
     <div className="flex flex-col items-center justify-center gap-2 h-full">

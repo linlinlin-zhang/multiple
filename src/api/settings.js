@@ -7,7 +7,7 @@ const DEFAULTS = {
   image: { endpoint: "https://tokenhub.tencentmaas.com/v1/api/image", model: "hy-image-v3.0", apiKey: "", temperature: 0.7 },
   asr: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3-livetranslate-flash-2025-12-01", apiKey: "", temperature: 0 },
   realtime: { endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime", model: "qwen3.5-omni-plus-realtime", apiKey: "", temperature: 0.7 },
-  deepthink: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7 }
+  deepthink: { endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation", model: "qwen-deep-research", apiKey: "", temperature: 0.7 }
 };
 
 export async function handleGetSettings(res) {
@@ -38,7 +38,7 @@ function isLegacyVoiceDefault(role, settings) {
   if (
     role === "deepthink" &&
     endpoint === "https://dashscope.aliyuncs.com/compatible-mode/v1" &&
-    model === "qwen3.6-max-preview"
+    (model === "qwen3.6-max-preview" || model === "qwen3.6-plus")
   ) {
     return true;
   }

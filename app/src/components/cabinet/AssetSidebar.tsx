@@ -1,4 +1,4 @@
-import { FileText, Globe2, Image } from "lucide-react";
+import { FileText, Globe2, Image, MessageSquare } from "lucide-react";
 import type { ReactNode } from "react";
 import Sidebar from "./Sidebar";
 import { useI18n } from "@/lib/i18n";
@@ -92,15 +92,17 @@ function documentItems(session: SessionDetail, t: (key: string) => string): Outp
       icon: <FileText size={16} className="text-cabinet-blue" />,
     }));
 
-  const messages = session.chatMessages.slice(0, 20).map((msg: ChatMessage) => ({
+  return [...files, ...textSources];
+}
+
+function chatItems(session: SessionDetail, t: (key: string) => string): OutputSidebarItem[] {
+  return session.chatMessages.slice(0, 80).map((msg: ChatMessage) => ({
     id: msg.id,
     title: msg.role === "user" ? t("detail.you") : t("detail.ai"),
     summary: summarizeText(msg.content),
     groupLabel: t("share.chatRecord"),
-    icon: <FileText size={16} className="text-cabinet-blue" />,
+    icon: <MessageSquare size={16} className="text-cabinet-blue" />,
   }));
-
-  return [...files, ...textSources, ...messages];
 }
 
 function buildOutputItems(
@@ -111,6 +113,7 @@ function buildOutputItems(
   if (!session) return [];
   if (outputKind === "image") return imageItems(session, t);
   if (outputKind === "web") return webItems(session, t);
+  if (outputKind === "chat") return chatItems(session, t);
   return documentItems(session, t);
 }
 

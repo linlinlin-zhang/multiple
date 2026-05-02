@@ -103,6 +103,32 @@ export async function handleCreateMaterial(body, res) {
 }
 
 /**
+ * PUT /api/materials/:id
+ * Body: { fileName }
+ */
+export async function handleUpdateMaterial(materialId, body, res) {
+  try {
+    if (!materialId || typeof materialId !== "string") {
+      return sendJson(res, 400, { error: "materialId is required" });
+    }
+    const fileName = typeof body?.fileName === "string" ? body.fileName.trim().slice(0, 240) : "";
+    if (!fileName) {
+      return sendJson(res, 400, { error: "fileName is required" });
+    }
+
+    const item = await prisma.materialItem.update({
+      where: { id: materialId },
+      data: { fileName }
+    });
+
+    return sendJson(res, 200, { ok: true, item });
+  } catch (error) {
+    console.error("[handleUpdateMaterial]", error);
+    return sendJson(res, 500, { error: error.message || "Failed to update material" });
+  }
+}
+
+/**
  * DELETE /api/materials/:id
  */
 export async function handleDeleteMaterial(materialId, res) {
@@ -156,7 +182,7 @@ export async function storeMaterialFile(buffer, hash, ext) {
  * GET /api/materials/:id/file
  * Streams the material file from disk.
  */
-export async function handleGetMaterialFile(materialId, res) {
+export async function handleGetMaterialFile(materialId, res, options = {}) {
   try {
     if (!materialId || typeof materialId !== "string") {
       return sendJson(res, 400, { error: "materialId is required" });
@@ -174,11 +200,16 @@ export async function handleGetMaterialFile(materialId, res) {
     }
 
     const fileBuffer = await fs.readFile(item.filePath);
-    res.writeHead(200, {
+    const headers = {
       "Content-Type": item.mimeType || "application/octet-stream",
       "Cache-Control": "public, max-age=86400",
       "Content-Length": fileBuffer.length
-    });
+    };
+    if (options.download) {
+      const safeName = String(item.fileName || "material").replace(/[\r\n"]/g, "_");
+      headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(safeName)}`;
+    }
+    res.writeHead(200, headers);
     res.end(fileBuffer);
   } catch (error) {
     console.error("[handleGetMaterialFile]", error);

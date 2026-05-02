@@ -62,3 +62,33 @@ export async function handleListHistory(query, res) {
     return sendJson(res, 500, { error: error.message || "Failed to list history" });
   }
 }
+
+/**
+ * PATCH /api/sessions/:id/title
+ */
+export async function handleRenameSession(sessionId, body, res) {
+  try {
+    if (!sessionId || typeof sessionId !== "string") {
+      return sendJson(res, 400, { error: "sessionId is required" });
+    }
+    const title = typeof body?.title === "string" ? body.title.trim().slice(0, 160) : "";
+    if (!title) {
+      return sendJson(res, 400, { error: "title is required" });
+    }
+
+    const session = await prisma.session.update({
+      where: { id: sessionId },
+      data: { title },
+      select: {
+        id: true,
+        title: true,
+        updatedAt: true
+      }
+    });
+
+    return sendJson(res, 200, { ok: true, session });
+  } catch (error) {
+    console.error("[handleRenameSession]", error);
+    return sendJson(res, 500, { error: error.message || "Failed to rename session" });
+  }
+}

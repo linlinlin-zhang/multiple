@@ -1,4 +1,5 @@
-import { Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Download, Trash2 } from "lucide-react";
 import type { MaterialItem } from "@/types";
 import { useI18n } from "@/lib/i18n";
 import FileIcon from "./FileIcon";
@@ -6,6 +7,7 @@ import FileIcon from "./FileIcon";
 interface MaterialCardProps {
   item: MaterialItem;
   onDelete: (id: string) => void;
+  onRename: (id: string, fileName: string) => Promise<void> | void;
 }
 
 function isImageMime(mimeType: string): boolean {
@@ -18,9 +20,24 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function MaterialCard({ item, onDelete }: MaterialCardProps) {
+export default function MaterialCard({ item, onDelete, onRename }: MaterialCardProps) {
   const { t } = useI18n();
   const isImage = isImageMime(item.mimeType);
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(item.fileName);
+
+  const commitRename = async () => {
+    const next = draftName.trim();
+    if (!next) {
+      setDraftName(item.fileName);
+      setEditing(false);
+      return;
+    }
+    if (next !== item.fileName) {
+      await onRename(item.id, next);
+    }
+    setEditing(false);
+  };
 
   return (
     <div
@@ -38,6 +55,16 @@ export default function MaterialCard({ item, onDelete }: MaterialCardProps) {
         ) : (
           <FileIcon mimeType={item.mimeType} fileName={item.fileName} />
         )}
+        <a
+          href={`/api/materials/${item.id}/file?download=1`}
+          download={item.fileName}
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-2 left-2 flex h-7 w-7 items-center justify-center rounded bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+          aria-label={t("library.download")}
+          title={t("library.download")}
+        >
+          <Download size={14} />
+        </a>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
@@ -48,9 +75,39 @@ export default function MaterialCard({ item, onDelete }: MaterialCardProps) {
         </button>
       </div>
       <div className="px-3 py-2">
-        <div className="text-sm font-medium text-cabinet-ink truncate">
-          {item.fileName}
-        </div>
+        {editing ? (
+          <input
+            value={draftName}
+            onChange={(event) => setDraftName(event.target.value)}
+            onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void commitRename();
+              }
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setDraftName(item.fileName);
+                setEditing(false);
+              }
+            }}
+            onBlur={() => void commitRename()}
+            className="w-full rounded border border-cabinet-blue bg-cabinet-paper px-2 py-1 text-sm font-medium text-cabinet-ink outline-none"
+            autoFocus
+          />
+        ) : (
+          <div
+            className="text-sm font-medium text-cabinet-ink truncate cursor-text"
+            onDoubleClick={(event) => {
+              event.stopPropagation();
+              setDraftName(item.fileName);
+              setEditing(true);
+            }}
+            title={t("library.rename")}
+          >
+            {item.fileName}
+          </div>
+        )}
         <div className="text-xs text-cabinet-inkMuted mt-1">
           {formatFileSize(item.fileSize)} · {new Date(item.addedAt).toLocaleDateString()}
         </div>

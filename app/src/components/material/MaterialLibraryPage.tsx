@@ -80,6 +80,24 @@ export default function MaterialLibraryPage() {
     }
   }, [deleteTarget, refetch, t]);
 
+  const handleRename = useCallback(async (id: string, fileName: string) => {
+    try {
+      const res = await fetch(`/api/materials/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileName }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      refetch();
+    } catch (err) {
+      console.error("Rename failed:", err);
+      alert(t("library.renameFailed"));
+    }
+  }, [refetch, t]);
+
   const handleUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -191,7 +209,7 @@ export default function MaterialLibraryPage() {
             ) : items.length === 0 ? (
               <MaterialEmptyState isSearch={!!searchQuery.trim()} />
             ) : (
-              <MaterialGrid items={items} onDelete={handleDelete} />
+              <MaterialGrid items={items} onDelete={handleDelete} onRename={handleRename} />
             )}
           </div>
         </div>

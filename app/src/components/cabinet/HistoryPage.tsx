@@ -51,10 +51,12 @@ function getFirstOutputId(session: SessionDetail | null, outputKind: OutputKind)
   if (outputKind === "web") {
     return session.nodes.find((node) => typeof node.data?.sourceUrl === "string" && node.data.sourceUrl)?.id ?? null;
   }
+  if (outputKind === "chat") {
+    return session.chatMessages[0]?.id ?? null;
+  }
   return (
     session.assets.find((asset) => asset.kind === "upload" && !isImageAsset(asset))?.id ??
     session.nodes.find((node) => node.type === "source" && node.data?.sourceType === "text")?.id ??
-    session.chatMessages[0]?.id ??
     null
   );
 }
@@ -67,10 +69,12 @@ function isOutputIdForKind(session: SessionDetail | null, outputKind: OutputKind
   if (outputKind === "web") {
     return session.nodes.some((node) => node.id === id && typeof node.data?.sourceUrl === "string" && node.data.sourceUrl);
   }
+  if (outputKind === "chat") {
+    return session.chatMessages.some((message) => message.id === id);
+  }
   return (
     session.assets.some((asset) => asset.id === id && asset.kind === "upload" && !isImageAsset(asset)) ||
-    session.nodes.some((node) => node.id === id && node.type === "source" && node.data?.sourceType === "text") ||
-    session.chatMessages.some((message) => message.id === id)
+    session.nodes.some((node) => node.id === id && node.type === "source" && node.data?.sourceType === "text")
   );
 }
 

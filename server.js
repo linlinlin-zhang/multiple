@@ -58,9 +58,9 @@ let runtimeConfigs = {
     apiKeyEnv: ["DASHSCOPE_API_KEY", "REALTIME_API_KEY"]
   }),
   deepthink: buildModelConfig("DEEPTHINK", {
-    provider: "dashscope-qwen",
-    model: "qwen3.6-plus",
-    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    provider: "dashscope-deep-research",
+    model: "qwen-deep-research",
+    baseUrl: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
     apiKeyEnv: ["DASHSCOPE_API_KEY", "DEEPTHINK_API_KEY"]
   })
 };
@@ -70,8 +70,10 @@ const IMAGE_POLL_ATTEMPTS = Number(process.env.IMAGE_POLL_ATTEMPTS || 30);
 const IMAGE_INCLUDE_DATA_URL = process.env.IMAGE_INCLUDE_DATA_URL === "true";
 const MAX_BODY_BYTES = 22 * 1024 * 1024;
 const CHAT_COMPLETION_TIMEOUT_MS = Number(process.env.CHAT_COMPLETION_TIMEOUT_MS || 120000);
+const DEEP_RESEARCH_TIMEOUT_MS = Number(process.env.DEEP_RESEARCH_TIMEOUT_MS || 600000);
 const EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.EXPLORE_THINKING_TIMEOUT_MS || 120000);
 const EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.EXPLORE_FALLBACK_TIMEOUT_MS || 60000);
+const IMAGE_SEARCH_MODEL = process.env.IMAGE_SEARCH_MODEL || "qwen3.5-plus";
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -116,9 +118,14 @@ const server = http.createServer(async (req, res) => {
       return await handleRealtimeVoice(body, res);
     }
 
-    if (req.method === "POST" && url.pathname === "/api/deep-think") {
+    if (req.method === "POST" && (url.pathname === "/api/deep-think" || url.pathname === "/api/deep-research")) {
       const body = await readJson(req);
       return await handleDeepThink(body, res);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/image-search") {
+      const body = await readJson(req);
+      return await handleImageSearch(body, res);
     }
 
     if (req.method === "POST" && url.pathname === "/api/analyze") {
@@ -321,9 +328,9 @@ async function refreshConfigs() {
     }, dbMap.realtime);
 
     runtimeConfigs.deepthink = buildModelConfig("DEEPTHINK", {
-      provider: "dashscope-qwen",
-      model: "qwen3.6-plus",
-      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      provider: "dashscope-deep-research",
+      model: "qwen-deep-research",
+      baseUrl: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
       apiKeyEnv: ["DASHSCOPE_API_KEY", "DEEPTHINK_API_KEY"]
     }, dbMap.deepthink);
   } catch (err) {
@@ -365,6 +372,7 @@ function buildModelConfig(role, defaults, dbSettings = null) {
 
 function inferProviderFromEndpoint(endpoint, fallback) {
   const normalized = String(endpoint || "").toLowerCase();
+  if (normalized.includes("/api/v1/services/aigc/text-generation/generation")) return "dashscope-deep-research";
   if (normalized.includes("dashscope.aliyuncs.com")) return "dashscope-qwen";
   if (normalized.includes("api.moonshot.cn")) return "kimi";
   return fallback;
@@ -380,7 +388,7 @@ function isLegacyEnvDefault(role, envSettings) {
     (provider === "kimi" || endpoint === "https://api.moonshot.cn/v1" || model === "kimi-k2.6")
   ) || (
     role === "DEEPTHINK" &&
-    model === "qwen3.6-max-preview"
+    (model === "qwen3.6-max-preview" || model === "qwen3.6-plus")
   );
 }
 
@@ -398,7 +406,7 @@ function isLegacyVoiceDefault(role, dbSettings) {
   if (
     role === "DEEPTHINK" &&
     endpoint === "https://dashscope.aliyuncs.com/compatible-mode/v1" &&
-    model === "qwen3.6-max-preview"
+    (model === "qwen3.6-max-preview" || model === "qwen3.6-plus")
   ) {
     return true;
   }
@@ -446,7 +454,13 @@ function applyReasoningMode(payload, config, thinkingMode) {
 }
 
 function isDashScopeQwenConfig(config) {
+  if (config?.provider === "dashscope-deep-research") return false;
+  if (/qwen-deep-research/i.test(config?.model || "")) return false;
   return config?.provider === "dashscope-qwen" || /dashscope\.aliyuncs\.com/i.test(config?.baseUrl || "");
+}
+
+function isDashScopeDeepResearchConfig(config) {
+  return config?.provider === "dashscope-deep-research" || /qwen-deep-research/i.test(config?.model || "") || /\/api\/v1\/services\/aigc\/text-generation\/generation/i.test(config?.baseUrl || "");
 }
 
 function applyWebSearchMode(payload, config, enabled = true, options = {}) {
@@ -583,6 +597,7 @@ async function handleRealtimeVoice(body, res) {
 
 async function handleDeepThink(body, res) {
   const message = typeof body?.message === "string" ? body.message.trim().slice(0, 2400) : "";
+  const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
   const analysis = normalizeChatAnalysis(body?.analysis);
   const messages = normalizeChatMessages(body?.messages);
   const lang = body?.language === "en" ? "en" : "zh";
@@ -592,6 +607,19 @@ async function handleDeepThink(body, res) {
 
   if (isDemoRole(runtimeConfigs.deepthink)) {
     return sendJson(res, 200, buildDemoDeepThinkPlan(prompt, lang, runtimeConfigs.deepthink.model));
+  }
+
+  if (isDashScopeDeepResearchConfig(runtimeConfigs.deepthink)) {
+    return await handleDeepResearch({
+      prompt,
+      analysis,
+      selectedContext,
+      canvas,
+      messages: messages.slice(-8),
+      imageDataUrl,
+      lang,
+      stream: body?.stream === true
+    }, res);
   }
 
   const payload = {
@@ -640,6 +668,54 @@ async function handleDeepThink(body, res) {
     thinkingContent: collectReasoningContent(response),
     ...plan
   });
+}
+
+async function handleDeepResearch(context, res) {
+  if (context.stream) {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no"
+    });
+    res.write("\n");
+    try {
+      const result = await runDashScopeDeepResearch(context, {
+        onEvent(event) {
+          writeSse(res, "research", event);
+        }
+      });
+      writeSse(res, "final", result);
+    } catch (error) {
+      writeSse(res, "error", { error: error.message || "Deep research stream failed" });
+    } finally {
+      res.end();
+    }
+    return;
+  }
+
+  const result = await runDashScopeDeepResearch(context);
+  return sendJson(res, 200, result);
+}
+
+async function handleImageSearch(body, res) {
+  const query = typeof body?.query === "string" ? body.query.trim().slice(0, 500) : "";
+  const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
+  const lang = body?.language === "en" ? "en" : "zh";
+  if (!query && !imageDataUrl) {
+    return sendJson(res, 400, { error: "query or imageDataUrl is required" });
+  }
+  if (isDemoRole(runtimeConfigs.chat) || !isDashScopeQwenConfig(runtimeConfigs.chat)) {
+    return sendJson(res, 200, buildDemoImageSearchResults(query, lang));
+  }
+
+  const result = await runQwenImageSearch({
+    query,
+    imageDataUrl,
+    lang,
+    limit: Math.max(1, Math.min(Number(body?.limit) || 8, 12))
+  });
+  return sendJson(res, 200, result);
 }
 
 async function handleChat(body, res) {
@@ -1392,8 +1468,9 @@ function buildChatActionSystemPromptReadable(lang = "zh", thinkingMode = "no-thi
     "Use actions only when the user clearly asks the app to do something. If the user is just chatting, return an empty actions array.",
     "Prefer exact nodeId values copied from Canvas state. If a card is named but the exact id is uncertain, provide nodeName/query instead; never invent node IDs.",
     "For destructive actions such as delete_node, only act when the user explicitly asks to delete/remove a card.",
-    "Reusable action types: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, create_web_card, create_agent, generate_image, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
+    "Reusable action types: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, create_web_card, create_agent, generate_image, image_search, reverse_image_search, text_image_search, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
     "When the user explicitly asks for web search, link research, latest information, official docs, or references, web search is enabled and may be forced for this turn. Use fresh web evidence and return create_web_card actions with url/title/description for concrete web references.",
+    "When visual references, similar images, reverse-image lookup, or source-image discovery would help, return image_search, text_image_search, or reverse_image_search with query/nodeId/nodeName. You may use image search even when the user only describes a visual goal.",
     "Only create or mention subagents when agent_controller_mode=true. If agent_controller_mode=false, do not return create_agent and do not claim that an agent/subagent/worker has started; handle the request as a normal assistant.",
     "When agent_controller_mode=true and the task has separable research, planning, writing, image, or canvas-operation subtasks, prefer returning create_agent actions first. Each create_agent action should describe one no-thinking subagent with title, description, and prompt, followed by safe canvas actions that can be executed now.",
     "Position vocabulary: left, right, above, below, center, upper-left, upper-right, lower-left, lower-right, canvas-center, screen-center.",
@@ -1580,11 +1657,14 @@ function inferDemoChatActions(message) {
   if (/打开对话|展开对话|open chat/.test(text)) {
     actions.push({ type: "open_chat" });
   }
-  if (/深度思考|deep think|deep research/.test(text)) {
+  if (/深入研究|深度思考|deep think|deep research/.test(text)) {
     actions.push({ type: "set_deep_think_mode", mode: "on" });
   }
   if (/上传|添加文件|open upload/.test(text)) {
     actions.push({ type: "open_upload" });
+  }
+  if (/image search|reverse image|visual reference|搜图|以图搜图|相似图片|视觉参考/.test(text)) {
+    actions.push({ type: "image_search", query: String(message || "").slice(0, 240) });
   }
   return normalizeVoiceActions(actions).slice(0, 3);
 }
@@ -1783,6 +1863,9 @@ const VOICE_ACTION_TYPES = new Set([
   "create_web_card",
   "create_agent",
   "generate_image",
+  "image_search",
+  "reverse_image_search",
+  "text_image_search",
   "analyze_source",
   "explore_source",
   "research_source",
@@ -1872,6 +1955,509 @@ function extractVoiceAudioDataUrl(response) {
     mp4: "audio/mp4"
   }[String(format).toLowerCase()] || "audio/wav";
   return `data:${mime};base64,${data}`;
+}
+
+function dashScopeNativeGenerationEndpoint(config) {
+  const base = String(config.baseUrl || "").replace(/\/+$/, "");
+  if (/\/api\/v1\/services\/aigc\/text-generation\/generation$/i.test(base)) return base;
+  return `${base || "https://dashscope.aliyuncs.com"}/api/v1/services/aigc/text-generation/generation`;
+}
+
+function buildDeepResearchPrompt({ prompt, analysis, selectedContext, canvas, messages, lang }) {
+  const zh = lang !== "en";
+  return [
+    zh ? "请以深入研究模式完成用户目标，并在研究过程中尽量给出可复用的网页、图片、文件或行动线索。" : "Complete the user goal in deep research mode and surface reusable web, image, file, or action leads as you work.",
+    zh ? "如果用户目标略宽泛，请先做清晰、保守的工作假设并继续推进研究，不要只返回澄清问题。" : "If the user goal is broad, make clear conservative working assumptions and continue the research instead of returning only clarification questions.",
+    "",
+    zh ? `用户目标：${prompt}` : `User goal: ${prompt}`,
+    "",
+    zh ? "当前图像/文件分析：" : "Current image/file analysis:",
+    JSON.stringify(analysis || {}, null, 2).slice(0, 2400),
+    "",
+    zh ? "当前选中卡片：" : "Selected canvas card:",
+    selectedContext ? JSON.stringify(selectedContext, null, 2).slice(0, 1400) : "None",
+    "",
+    zh ? "可见画布状态：" : "Visible canvas state:",
+    JSON.stringify(canvas || {}, null, 2).slice(0, 2400),
+    "",
+    zh ? "最近对话：" : "Recent dialogue:",
+    JSON.stringify(messages || [], null, 2).slice(0, 1600)
+  ].join("\n");
+}
+
+function buildDeepResearchPayload(context, includeImage = true) {
+  const text = buildDeepResearchPrompt(context);
+  const confirmedScope = context.lang === "en"
+    ? "Confirmed. Please proceed directly with deep research using the provided canvas context, current file/card context, and the user's latest goal. If scope is broad, make conservative assumptions and include sources where available."
+    : "已确认。请直接基于提供的画布上下文、当前文件/卡片上下文和用户最新目标开展深入研究；如果范围偏宽泛，请做清晰保守的工作假设，并尽可能给出来源。";
+  const userContent = includeImage && context.imageDataUrl
+    ? [{ image: context.imageDataUrl }, { text: confirmedScope }, { text }]
+    : `${confirmedScope}\n\n${text}`;
+  return {
+    model: runtimeConfigs.deepthink.model,
+    input: {
+      messages: [
+        {
+          role: "user",
+          content: context.prompt
+        },
+        {
+          role: "assistant",
+          content: context.lang === "en"
+            ? "Which scope, constraints, and output format should I focus on?"
+            : "请确认研究范围、约束条件和输出形式。"
+        },
+        {
+          role: "user",
+          content: userContent
+        }
+      ]
+    },
+    parameters: {
+      incremental_output: true,
+      output_format: "model_summary_report"
+    }
+  };
+}
+
+async function runDashScopeDeepResearch(context, options = {}) {
+  let payload = buildDeepResearchPayload(context, true);
+  let response;
+  try {
+    response = await dashScopeNativeGenerationRequest(runtimeConfigs.deepthink, payload, {
+      timeoutMs: DEEP_RESEARCH_TIMEOUT_MS
+    });
+  } catch (error) {
+    if (!context.imageDataUrl || !/image|content|invalid|unsupported/i.test(String(error?.message || ""))) {
+      throw error;
+    }
+    payload = buildDeepResearchPayload(context, false);
+    response = await dashScopeNativeGenerationRequest(runtimeConfigs.deepthink, payload, {
+      timeoutMs: DEEP_RESEARCH_TIMEOUT_MS
+    });
+  }
+
+  const collected = await collectDeepResearchPayload(response, {
+    onEvent(event) {
+      options.onEvent?.(event);
+    }
+  });
+  return buildDeepResearchResult(collected, context);
+}
+
+async function dashScopeNativeGenerationRequest(config, payload, options = {}) {
+  const timeoutMs = Number(options.timeoutMs || DEEP_RESEARCH_TIMEOUT_MS);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(dashScopeNativeGenerationEndpoint(config), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+        "X-DashScope-SSE": "enable",
+        Accept: "text/event-stream"
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      const detail = await response.text().catch(() => response.statusText);
+      throw new Error(`${config.role} API ${response.status}: ${detail || response.statusText}`);
+    }
+    return response;
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error(`${config.role} API timeout after ${Math.round(timeoutMs / 1000)}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function collectDeepResearchPayload(response, options = {}) {
+  const result = {
+    model: runtimeConfigs.deepthink.model,
+    text: "",
+    thinkingContent: "",
+    events: [],
+    references: [],
+    rawChunks: []
+  };
+  if (!response.body) return result;
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  function consumeData(data) {
+    if (!data || data === "[DONE]") return;
+    let chunk;
+    try {
+      chunk = JSON.parse(data);
+    } catch {
+      return;
+    }
+    result.rawChunks.push(chunk);
+    if (chunk?.output?.model || chunk?.model) result.model = chunk.output.model || chunk.model;
+    const event = normalizeDeepResearchEvent(chunk);
+    if (event.delta) {
+      result.thinkingContent += event.delta;
+      if (event.isAnswer) result.text += event.delta;
+    }
+    if (!event.isAnswer && event.delta) {
+      result.events.push(event);
+      options.onEvent?.(event);
+    } else if (event.stage || event.references?.length) {
+      result.events.push(event);
+      options.onEvent?.(event);
+    }
+    if (event.references?.length) {
+      result.references.push(...event.references);
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: !done });
+    const blocks = buffer.split(/\r?\n\r?\n/);
+    buffer = blocks.pop() || "";
+    for (const block of blocks) {
+      const dataLines = block
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim());
+      for (const data of dataLines) consumeData(data);
+    }
+    if (done) break;
+  }
+
+  if (buffer.trim()) {
+    const dataLines = buffer
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trim());
+    for (const data of dataLines) consumeData(data);
+  }
+
+  result.references = dedupeReferences(result.references);
+  return result;
+}
+
+function normalizeDeepResearchEvent(chunk) {
+  const output = chunk?.output || chunk || {};
+  const message = output?.choices?.[0]?.message || output?.message || {};
+  const extra = message?.extra || output?.extra || {};
+  const stage = stringOr(
+    message.phase || extra.phase || output.phase || output.status || output.event || output.type || output.name || chunk?.event || chunk?.type,
+    ""
+  );
+  const delta = extractDeepResearchText(output);
+  const references = dedupeReferences([
+    ...extractReferencesFromObject(extra),
+    ...extractReferencesFromObject(output),
+    ...extractReferencesFromText(delta)
+  ]);
+  const normalizedStage = stage.toLowerCase();
+  const isAnswer = /answer|final|response|summary_report|report/i.test(stage) || Boolean(output.finish_reason);
+  return {
+    id: chunk?.request_id || chunk?.id || `research-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    stage: stage || (isAnswer ? "answer" : "research"),
+    title: humanDeepResearchStage(stage),
+    delta,
+    references,
+    isAnswer,
+    status: /finish|complete|done|success/i.test(normalizedStage) ? "complete" : "running"
+  };
+}
+
+function extractDeepResearchText(output) {
+  const message = output?.choices?.[0]?.message || output?.message || {};
+  const candidates = [
+    message?.content,
+    message?.text,
+    output?.text,
+    output?.answer,
+    output?.content,
+    output?.summary,
+    output?.message?.content,
+    output?.choices?.[0]?.message?.content,
+    output?.choices?.[0]?.delta?.content
+  ];
+  for (const candidate of candidates) {
+    const text = textFromMixedContent(candidate);
+    if (text) return text;
+  }
+  return "";
+}
+
+function textFromMixedContent(value) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value.map((part) => textFromMixedContent(part?.text || part?.content || part)).filter(Boolean).join("");
+  }
+  if (typeof value === "object") {
+    return textFromMixedContent(value.text || value.content || value.value || value.output_text || "");
+  }
+  return "";
+}
+
+function humanDeepResearchStage(stage) {
+  const key = String(stage || "").toLowerCase();
+  if (/plan|planning|researchplanning/.test(key)) return "研究规划";
+  if (/search|web|source|crawl|retrieve|webresearch/.test(key)) return "检索资料";
+  if (/read|context|evidence/.test(key)) return "整理证据";
+  if (/answer|report|final/.test(key)) return "生成报告";
+  return stage || "深入研究";
+}
+
+function buildDeepResearchResult(collected, context) {
+  const references = dedupeReferences(collected.references);
+  const eventCards = buildDeepResearchEventCards(collected.events, context.lang);
+  const referenceCards = references.slice(0, 6).map((reference, index) => ({
+    id: `deep-reference-${index + 1}-${slug(reference.title || reference.url || "reference")}`,
+    type: reference.type === "image" ? "image" : "web",
+    title: stringOr(reference.title, reference.url || "Reference").slice(0, 48),
+    summary: stringOr(reference.description, reference.url || "").slice(0, 240),
+    prompt: stringOr(reference.description || reference.title, context.prompt).slice(0, 1200),
+    query: context.prompt,
+    url: stringOr(reference.url || reference.sourceUrl, "").slice(0, 512)
+  }));
+  const finalText = (collected.text || collected.thinkingContent || "").trim();
+  const reply = finalText
+    ? finalText.slice(0, 1800)
+    : (context.lang === "en" ? "Deep research completed." : "深入研究完成。");
+  const reportCard = {
+    id: `deep-report-${Date.now().toString(36)}`,
+    type: "note",
+    title: context.lang === "en" ? "Research report" : "研究报告",
+    summary: reply.slice(0, 240),
+    prompt: finalText || context.prompt,
+    query: context.prompt
+  };
+  const cards = [...eventCards, ...referenceCards, reportCard].slice(0, 8);
+  const links = cards.slice(1).map((_, index) => ({ from: 0, to: index + 1, label: "" }));
+  return {
+    provider: "api",
+    model: collected.model || runtimeConfigs.deepthink.model,
+    reply,
+    cards,
+    links,
+    references,
+    researchEvents: collected.events.slice(-40),
+    thinkingContent: collected.thinkingContent,
+    actions: []
+  };
+}
+
+function buildDeepResearchEventCards(events, lang) {
+  const grouped = new Map();
+  for (const event of events || []) {
+    if (!event.delta || event.isAnswer) continue;
+    const title = event.title || humanDeepResearchStage(event.stage);
+    const current = grouped.get(title) || "";
+    grouped.set(title, `${current}${event.delta}`.slice(0, 900));
+  }
+  return Array.from(grouped.entries()).slice(0, 3).map(([title, text], index) => ({
+    id: `deep-event-${index + 1}-${slug(title)}`,
+    type: index === 0 ? "note" : "file",
+    title: String(title || (lang === "en" ? "Research step" : "研究步骤")).slice(0, 48),
+    summary: String(text || "").replace(/\s+/g, " ").slice(0, 240),
+    prompt: String(text || "").slice(0, 1200),
+    query: ""
+  }));
+}
+
+async function runQwenImageSearch({ query, imageDataUrl, lang, limit }) {
+  const prompt = query || (lang === "en" ? "Find visually similar images and useful visual references." : "搜索相似图片和可参考的视觉素材。");
+  const content = [{ type: "input_text", text: prompt }];
+  if (imageDataUrl) content.push({ type: "input_image", image_url: imageDataUrl });
+  const basePayload = {
+    model: IMAGE_SEARCH_MODEL,
+    input: imageDataUrl ? [{ role: "user", content }] : prompt
+  };
+  let responseJson;
+  let lastError;
+  const toolTypes = imageDataUrl ? ["image_search", "web_search_image"] : ["web_search_image", "image_search"];
+  for (const toolType of toolTypes) {
+    try {
+      responseJson = await qwenResponsesRequest(runtimeConfigs.chat, {
+        ...basePayload,
+        tools: [{ type: toolType }]
+      });
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (!responseJson && lastError) throw lastError;
+  const summary = extractResponsesText(responseJson);
+  const references = dedupeReferences([
+    ...extractReferencesFromObject(responseJson),
+    ...extractReferencesFromText(summary)
+  ]);
+  const results = references
+    .filter((reference) => reference.type === "image" || reference.imageUrl || reference.url)
+    .slice(0, limit)
+    .map((reference, index) => ({
+      id: `image-search-${index + 1}`,
+      title: stringOr(reference.title, query || "Image reference").slice(0, 80),
+      description: stringOr(reference.description, summary).slice(0, 240),
+      imageUrl: stringOr(reference.imageUrl || reference.url, ""),
+      sourceUrl: stringOr(reference.sourceUrl || reference.url, ""),
+      url: stringOr(reference.sourceUrl || reference.url, ""),
+      type: "image"
+    }));
+  return {
+    provider: "api",
+    model: IMAGE_SEARCH_MODEL,
+    query: prompt,
+    summary,
+    results
+  };
+}
+
+async function qwenResponsesRequest(config, payload) {
+  const response = await fetch(`${qwenResponsesBaseUrl(config)}/responses`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+  const text = await response.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { raw: text };
+  }
+  if (!response.ok) {
+    const detail = json?.error?.message || json?.message || text || response.statusText;
+    throw new Error(`${config.role} image search API ${response.status}: ${detail}`);
+  }
+  return json;
+}
+
+function qwenResponsesBaseUrl(config) {
+  const base = String(config.baseUrl || "https://dashscope.aliyuncs.com/compatible-mode/v1").replace(/\/+$/, "");
+  if (/dashscope\.aliyuncs\.com\/compatible-mode\/v1$/i.test(base)) {
+    return base.replace(/dashscope\.aliyuncs\.com\/compatible-mode\/v1$/i, "dashscope.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1");
+  }
+  if (/dashscope-intl\.aliyuncs\.com\/compatible-mode\/v1$/i.test(base)) {
+    return base.replace(/dashscope-intl\.aliyuncs\.com\/compatible-mode\/v1$/i, "dashscope-intl.aliyuncs.com/api/v2/apps/protocols/compatible-mode/v1");
+  }
+  return base;
+}
+
+function extractResponsesText(value) {
+  const texts = [];
+  walkJson(value, (item) => {
+    if (!item || typeof item !== "object") return;
+    if (item.type === "output_text" && typeof item.text === "string") texts.push(item.text);
+    if (typeof item.output_text === "string") texts.push(item.output_text);
+    if (typeof item.text === "string" && /search|image|图片|来源|http/i.test(item.text)) texts.push(item.text);
+  });
+  return texts.join("\n").trim();
+}
+
+function extractReferencesFromObject(value) {
+  const references = [];
+  walkJson(value, (item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return;
+    if (typeof item.output === "string" && /image_search|web_search_image/i.test(String(item.type || ""))) {
+      try {
+        const parsedOutput = JSON.parse(item.output);
+        references.push(...extractReferencesFromObject(parsedOutput));
+      } catch {
+        references.push(...extractReferencesFromText(item.output));
+      }
+    }
+    const url = item.url || item.link || item.uri || item.source_url || item.sourceUrl || item.page_url || item.pageUrl;
+    const imageUrl = item.image_url || item.imageUrl || item.img_url || item.imgUrl || item.image || item.thumbnail || item.thumbnail_url || item.thumbnailUrl || item.original_url || item.originalUrl;
+    const sourceUrl = item.source_url || item.sourceUrl || item.page_url || item.pageUrl || url;
+    if (typeof url === "string" || typeof imageUrl === "string") {
+      references.push({
+        title: stringOr(item.title || item.name || item.site_name || item.siteName, ""),
+        description: stringOr(item.description || item.snippet || item.summary || item.content, ""),
+        url: stringOr(url || sourceUrl || imageUrl, ""),
+        sourceUrl: stringOr(sourceUrl || url, ""),
+        imageUrl: stringOr(imageUrl, ""),
+        type: imageUrl ? "image" : "web"
+      });
+    }
+  });
+  return references.filter((reference) => reference.url && !reference.url.startsWith("data:"));
+}
+
+function extractReferencesFromText(text) {
+  if (typeof text !== "string" || !text) return [];
+  const urls = text.match(/https?:\/\/[^\s)）\]】"'<>]+/g) || [];
+  return urls.map((url) => ({
+    title: url,
+    description: "",
+    url,
+    sourceUrl: url,
+    imageUrl: "",
+    type: /\.(png|jpe?g|webp|gif)(?:$|[?#])/i.test(url) ? "image" : "web"
+  }));
+}
+
+function dedupeReferences(references) {
+  const seen = new Set();
+  const result = [];
+  for (const reference of references || []) {
+    const url = stringOr(reference?.url || reference?.sourceUrl || reference?.imageUrl, "").trim();
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    result.push({
+      title: stringOr(reference.title, "").slice(0, 120),
+      description: stringOr(reference.description, "").slice(0, 500),
+      url,
+      sourceUrl: stringOr(reference.sourceUrl || url, "").slice(0, 512),
+      imageUrl: stringOr(reference.imageUrl, "").slice(0, 512),
+      type: reference.type === "image" || reference.imageUrl ? "image" : "web"
+    });
+  }
+  return result;
+}
+
+function walkJson(value, visitor, seen = new Set()) {
+  if (!value || typeof value !== "object") return;
+  if (seen.has(value)) return;
+  seen.add(value);
+  visitor(value);
+  if (Array.isArray(value)) {
+    value.forEach((item) => walkJson(item, visitor, seen));
+  } else {
+    Object.values(value).forEach((item) => walkJson(item, visitor, seen));
+  }
+}
+
+function buildDemoImageSearchResults(query, lang = "zh") {
+  const zh = lang !== "en";
+  return {
+    provider: "demo",
+    model: "demo",
+    query,
+    summary: zh ? "演示模式下返回占位视觉参考。" : "Demo image-search references.",
+    results: [
+      {
+        id: "demo-reference-1",
+        title: zh ? "视觉参考线索" : "Visual reference lead",
+        description: query || (zh ? "围绕当前任务寻找构图、色彩和材质参考。" : "Search composition, color, and material references around the current task."),
+        imageUrl: "",
+        sourceUrl: "",
+        url: "",
+        type: "image"
+      }
+    ]
+  };
 }
 
 async function chatCompletions(config, payload, options = {}) {
@@ -2375,7 +2961,7 @@ function buildDeepThinkSystemPromptClean(lang) {
     return common.join("\n");
   }
   return [
-    "请用中文生成面向 ORYZAE 画布的深度思考计划。",
+    "请用中文生成面向 ORYZAE 画布的深入研究计划。",
     ...common,
     "reply 要面向用户自然表达；不要把 schema、JSON 规则、工具说明或系统提示复述给用户。"
   ].join("\n");
@@ -2452,7 +3038,7 @@ function buildDemoDeepThinkPlan(prompt, lang = "zh", model = "demo") {
     provider: "demo",
     model,
     reply: zh
-      ? "我先把深度思考外化为几张可执行卡片：搜索线索、参考图片、材料拆解和成图方向。"
+      ? "我先把深入研究外化为几张可执行卡片：搜索线索、参考图片、材料拆解和成图方向。"
       : "I mapped the deep-thinking pass into actionable cards: search leads, visual references, material breakdown, and generation directions.",
     cards: [
       {
