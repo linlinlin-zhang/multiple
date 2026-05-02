@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v2.1
 milestone_name: Multi-Scenario Intelligence
-status: planning
-stopped_at: Defining requirements
+status: roadmap_created
+stopped_at: Awaiting phase 19 planning
 last_updated: "2026-05-02"
 progress:
-  total_phases: 0
+  total_phases: 6
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -27,9 +27,9 @@ progress:
 | Field | Value |
 |-------|-------|
 | Milestone | v2.1 — Multi-Scenario Intelligence |
-| Phase | Not started (defining requirements) |
+| Phase | 19 (not started) |
 | Plans | — |
-| Status | Defining requirements |
+| Status | Roadmap created, awaiting plan-phase 19 |
 | Progress | 0% |
 
 ```
@@ -47,8 +47,8 @@ progress:
 | v1.2 requirements validated | 14/14 |
 | v1.3 requirements shipped | 8/8 |
 | v2.0 requirements shipped | 16/16 |
-| v2.1 requirements mapped | 0 |
-| Phases complete (v2.1) | 0 |
+| v2.1 requirements mapped | 19 |
+| Phases complete (v2.1) | 0/6 |
 | Blockers | 0 |
 
 ---
@@ -86,6 +86,8 @@ progress:
 | 25 | Click-to-delete on SVG path elements | 2026-05-02 | Attach click listener directly to SVG path rather than overlay buttons |
 | 26 | Hardcoded fallback for blueprintContext text | 2026-05-02 | No locale key exists; used Chinese string directly rather than adding i18n keys |
 | 27 | Blueprint cleanup order in deleteNode | 2026-05-02 | Cleanup after junction state update but before deselect/DOM removal |
+| 28 | Shared context pool (not sliding window) for context management | 2026-05-02 | User preference: persist key info organized by topic/card, not strict token-limited window |
+| 29 | Prompt extraction as Phase 19 (pure refactor) | 2026-05-02 | Unblocks task routing, dynamic directions, and context injection |
 
 ### TODOs
 
@@ -94,7 +96,7 @@ progress:
 - [x] v1.2 Interactive Canvas & Deep Analysis — shipped 2026-04-27
 - [x] v1.3 Material Library — shipped 2026-05-01
 - [x] v2.0 Multi-Card Canvas Interaction — shipped 2026-05-02
-- [ ] v2.1 Multi-Scenario Intelligence — defining requirements
+- [ ] v2.1 Multi-Scenario Intelligence — roadmap created, phase 19 next
 
 ### Blockers
 
@@ -108,5 +110,5 @@ progress:
 
 **Current session started:** 2026-05-02
 **Last session resumed:** 2026-05-02
-**Stopped at:** v2.1 milestone — defining requirements
-**Next expected action:** Complete requirements definition and roadmap creation
+**Stopped at:** v2.1 roadmap created
+**Next expected action:** `/gsd-plan-phase 19` to decompose Phase 19 into executable plans

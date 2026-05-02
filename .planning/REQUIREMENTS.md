@@ -70,25 +70,25 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| PM-01 | TBD | Pending |
-| PM-02 | TBD | Pending |
-| PM-03 | TBD | Pending |
-| RT-01 | TBD | Pending |
-| RT-02 | TBD | Pending |
-| RT-03 | TBD | Pending |
-| RT-04 | TBD | Pending |
-| DY-01 | TBD | Pending |
-| DY-02 | TBD | Pending |
-| DY-03 | TBD | Pending |
-| FR-01 | TBD | Pending |
-| FR-02 | TBD | Pending |
-| FR-03 | TBD | Pending |
-| CT-01 | TBD | Pending |
-| CT-02 | TBD | Pending |
-| CT-03 | TBD | Pending |
-| PG-01 | TBD | Pending |
-| PG-02 | TBD | Pending |
-| PG-03 | TBD | Pending |
+| PM-01 | 19 | Pending |
+| PM-02 | 19 | Pending |
+| PM-03 | 19 | Pending |
+| RT-01 | 20 | Pending |
+| RT-02 | 20 | Pending |
+| RT-03 | 20 | Pending |
+| RT-04 | 20 | Pending |
+| DY-01 | 21 | Pending |
+| DY-02 | 21 | Pending |
+| DY-03 | 21 | Pending |
+| FR-01 | 22 | Pending |
+| FR-02 | 22 | Pending |
+| FR-03 | 22 | Pending |
+| CT-01 | 23 | Pending |
+| CT-02 | 23 | Pending |
+| CT-03 | 23 | Pending |
+| PG-01 | 24 | Pending |
+| PG-02 | 24 | Pending |
+| PG-03 | 24 | Pending |
 
 ---
 
