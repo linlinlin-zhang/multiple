@@ -2188,9 +2188,22 @@ function showSaveConfirmation(text) {
   }, 2000);
 }
 
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
 async function handleFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
+  if (event.target && "value" in event.target) {
+    event.target.value = "";
+  }
 
   const isImage = file.type.startsWith("image/");
   const isTextDoc = /\.(txt|md|json|docx|pdf|pptx)$/i.test(file.name);
@@ -2203,6 +2216,8 @@ async function handleFile(event) {
       state.sourceType = "image";
       state.sourceText = null;
       state.sourceDataUrl = null;
+      state.sourceImageHash = null;
+      state.sourceDataUrlHash = null;
       state.fileName = file.name;
 
       sourcePreview.src = image.dataUrl;
@@ -2247,7 +2262,7 @@ async function handleFile(event) {
         state.sourceDataUrl = null;
       } else {
         const arrayBuffer = await file.arrayBuffer();
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+        const base64 = arrayBufferToBase64(arrayBuffer);
         const mimeMap = {
           docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
           pdf: "application/pdf",
@@ -3980,10 +3995,10 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   upload.className = `upload-target${imageUrl ? " has-source-image" : ""}`;
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = "image/png,image/jpeg,image/webp,image/gif";
+  input.accept = "image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.docx,.pdf,.pptx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation";
   const empty = document.createElement("span");
   empty.className = `empty-state${imageUrl ? " hidden" : ""}`;
-  empty.innerHTML = `<strong>${currentLang === "en" ? "Upload image" : "上传图片"}</strong><span>${currentLang === "en" ? "Start a separate source card" : "创建独立素材卡片"}</span>`;
+  empty.innerHTML = `<strong>${t("source.uploadPrompt")}</strong><span>${t("source.uploadHint")}</span>`;
   const img = document.createElement("img");
   img.className = `source-preview${imageUrl ? " has-image" : ""}`;
   img.alt = title || "Source card";
@@ -4011,7 +4026,10 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
     fileName: fileName || "",
     imageHash: imageHash || "",
     imageUrl: imageUrl || "",
-    sourceType: "image"
+    sourceType: imageUrl || imageHash ? "image" : "empty",
+    sourceText: "",
+    sourceDataUrl: "",
+    sourceDataUrlHash: ""
   };
   registerNode(nodeId, element, {
     x: Number.isFinite(x) ? x : 520,
@@ -4045,7 +4063,8 @@ function syncSourceCardImageActionState(nodeId) {
 }
 
 async function handleStandaloneSourceFile(nodeId, file) {
-  if (!file?.type?.startsWith("image/")) {
+  const isDocumentFile = /\.(txt|md|json|docx|pdf|pptx)$/i.test(file?.name || "");
+  if (!file?.type?.startsWith("image/") && !isDocumentFile) {
     showToast(t("file.unsupported"));
     return;
   }
@@ -4053,28 +4072,67 @@ async function handleStandaloneSourceFile(nodeId, file) {
   if (!node?.sourceCard) return;
   setStatus(t("status.busy"), "busy");
   try {
-    const image = await resizeImage(file, 1600, 0.88);
-    const stored = await postJson("/api/assets", {
-      dataUrl: image.dataUrl,
-      kind: "upload",
-      fileName: file.name
-    });
-    const imageUrl = `/api/assets/${stored.hash}?kind=upload`;
-    node.sourceCard = {
-      ...node.sourceCard,
-      title: file.name,
-      fileName: file.name,
-      imageHash: stored.hash,
-      imageUrl,
-      sourceType: "image"
-    };
     const img = node.element.querySelector(".source-preview");
     const empty = node.element.querySelector(".empty-state");
     const name = node.element.querySelector(".standalone-source-name");
     const research = node.element.querySelector(".research-button");
-    if (img) {
-      img.src = imageUrl;
-      img.classList.add("has-image");
+
+    if (file.type.startsWith("image/")) {
+      const image = await resizeImage(file, 1600, 0.88);
+      const stored = await postJson("/api/assets", {
+        dataUrl: image.dataUrl,
+        kind: "upload",
+        fileName: file.name
+      });
+      const imageUrl = `/api/assets/${stored.hash}?kind=upload`;
+      node.sourceCard = {
+        ...node.sourceCard,
+        title: file.name,
+        fileName: file.name,
+        imageHash: stored.hash,
+        imageUrl,
+        sourceType: "image",
+        sourceText: "",
+        sourceDataUrl: "",
+        sourceDataUrlHash: ""
+      };
+      if (img) {
+        img.src = imageUrl;
+        img.classList.add("has-image");
+      }
+    } else {
+      const ext = file.name.split(".").pop()?.toLowerCase() || "";
+      const isPlainText = ["txt", "md", "json"].includes(ext);
+      const buffer = await file.arrayBuffer();
+      const base64 = arrayBufferToBase64(buffer);
+      const mimeMap = {
+        txt: "text/plain",
+        md: "text/markdown",
+        json: "application/json",
+        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        pdf: "application/pdf",
+        pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      };
+      const dataUrl = `data:${mimeMap[ext] || file.type || "application/octet-stream"};base64,${base64}`;
+      let stored = null;
+      try {
+        stored = await postJson("/api/assets", { dataUrl, kind: "upload", fileName: file.name });
+      } catch {}
+      node.sourceCard = {
+        ...node.sourceCard,
+        title: file.name,
+        fileName: file.name,
+        imageHash: "",
+        imageUrl: "",
+        sourceType: "text",
+        sourceText: isPlainText ? await file.text() : "",
+        sourceDataUrl: isPlainText ? "" : dataUrl,
+        sourceDataUrlHash: stored?.hash || ""
+      };
+      if (img) {
+        img.src = "";
+        img.classList.remove("has-image");
+      }
     }
     empty?.classList.add("hidden");
     if (name) name.textContent = trimMiddle(file.name, 28);
@@ -4090,7 +4148,9 @@ async function handleStandaloneSourceFile(nodeId, file) {
 async function analyzeStandaloneSourceCard(nodeId) {
   const node = state.nodes.get(nodeId);
   const sourceCard = node?.sourceCard;
-  if (!sourceCard?.imageUrl && !sourceCard?.imageHash) return;
+  if (sourceCard?.sourceType === "image" && !sourceCard?.imageUrl && !sourceCard?.imageHash) return;
+  if (sourceCard?.sourceType === "text" && !sourceCard?.sourceText && !sourceCard?.sourceDataUrl) return;
+  if (!sourceCard?.sourceType || sourceCard.sourceType === "empty") return;
   forceSelectNode(nodeId);
   setStatus(t("status.busy"), "busy");
   const button = node.element.querySelector(".research-button");
@@ -4099,15 +4159,24 @@ async function analyzeStandaloneSourceCard(nodeId) {
     button.classList.add("is-busy");
   }
   try {
-    const imageDataUrl = await getImageDataUrlForNode(nodeId);
-    const data = await postJson("/api/analyze", {
-      imageDataUrl,
-      fileName: sourceCard.fileName || sourceCard.title || "source-card",
-      thinkingMode: state.thinkingMode
-    }, {
-      timeoutMs: 150000,
-      timeoutMessage: t("research.timeout")
-    });
+    const data = sourceCard.sourceType === "text"
+      ? await postJson("/api/analyze-text", {
+          text: sourceCard.sourceText || "",
+          dataUrl: sourceCard.sourceDataUrl || "",
+          fileName: sourceCard.fileName || sourceCard.title || "source-card",
+          thinkingMode: state.thinkingMode
+        }, {
+          timeoutMs: 150000,
+          timeoutMessage: t("research.timeout")
+        })
+      : await postJson("/api/analyze", {
+          imageDataUrl: await getImageDataUrlForNode(nodeId),
+          fileName: sourceCard.fileName || sourceCard.title || "source-card",
+          thinkingMode: state.thinkingMode
+        }, {
+          timeoutMs: 150000,
+          timeoutMessage: t("research.timeout")
+        });
     const option = {
       id: `analysis-${Date.now()}`,
       title: data.title || t("analysis.title"),
@@ -6236,6 +6305,8 @@ function makeDraggable(element, id) {
   let start = null;
 
   element.addEventListener("pointerdown", (event) => {
+    const uploadTarget = event.target.closest(".upload-target");
+    if (uploadTarget && !uploadTarget.classList.contains("has-source-image")) return;
     const interactive = event.target.closest("button, input, textarea, select, a, .option-title, .generated-node h3, .analysis-node h2, #sourceName, .standalone-source-name, .node-title-input, .image-card-action, .edge-handle, .node-resize-handle");
     if (interactive && event.target.tagName !== "SECTION") return;
     const node = state.nodes.get(id);
@@ -6446,7 +6517,7 @@ function setChatActionMenuOpen(open) {
 function handleAttachClick() {
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = "image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,text/plain";
+  input.accept = "image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.docx,.pdf,.pptx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation";
   input.onchange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -6456,7 +6527,8 @@ function handleAttachClick() {
 }
 
 async function handleAttachment(file) {
-  if (file.type.startsWith("image/")) {
+  const isDocumentFile = /\.(docx|pdf|pptx)$/i.test(file.name);
+  if (file.type.startsWith("image/") || isDocumentFile) {
     await handleFile({ target: { files: [file] } });
   } else if (file.type.startsWith("text/") || file.name.endsWith(".txt") || file.name.endsWith(".md") || file.name.endsWith(".json")) {
     try {

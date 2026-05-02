@@ -2015,6 +2015,7 @@ function buildDeepResearchPayload(context, includeImage = true) {
     },
     parameters: {
       incremental_output: true,
+      enable_feedback: false,
       output_format: "model_summary_report"
     }
   };
@@ -2028,7 +2029,7 @@ async function runDashScopeDeepResearch(context, options = {}) {
       timeoutMs: DEEP_RESEARCH_TIMEOUT_MS
     });
   } catch (error) {
-    if (!context.imageDataUrl || !/image|content|invalid|unsupported/i.test(String(error?.message || ""))) {
+    if (!context.imageDataUrl || !/image|content|invalid|unsupported|base64/i.test(String(error?.message || ""))) {
       throw error;
     }
     payload = buildDeepResearchPayload(context, false);
