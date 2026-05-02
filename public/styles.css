@@ -1448,7 +1448,7 @@ body.chat-sidebar-closed .statusbar > * {
 
 .chat-thinking {
   width: min(100%, 640px);
-  margin-top: 10px;
+  margin-bottom: 8px;
 }
 
 .chat-thinking summary {
@@ -1461,19 +1461,19 @@ body.chat-sidebar-closed .statusbar > * {
 
 .chat-thinking-bar {
   cursor: pointer;
-  min-height: 44px;
+  min-height: 34px;
   display: grid;
-  grid-template-columns: 24px minmax(0, 1fr) 18px;
+  grid-template-columns: 18px minmax(0, 1fr) 16px;
   align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
+  gap: 8px;
+  padding: 6px 10px;
   border: 1px solid var(--divider);
-  border-radius: 12px;
+  border-radius: 10px;
   color: var(--inkMuted);
   background: rgba(248, 249, 251, 0.9);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
-  line-height: 1.4;
+  line-height: 1.25;
   transition: border-color 160ms ease, background 160ms ease;
 }
 
@@ -1483,15 +1483,35 @@ body.chat-sidebar-closed .statusbar > * {
 }
 
 .chat-thinking-icon {
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
   border: 2px solid rgba(0, 112, 204, 0.2);
   border-top-color: var(--ps-blue);
 }
 
-.chat-line.pending .chat-thinking-icon {
+.chat-line.pending .chat-thinking-icon,
+.chat-thinking.is-running .chat-thinking-icon {
   animation: spin 0.8s linear infinite;
+}
+
+.chat-thinking.is-complete .chat-thinking-icon {
+  border: none;
+  border-radius: 0;
+  animation: none;
+  position: relative;
+}
+
+.chat-thinking.is-complete .chat-thinking-icon::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 1px;
+  width: 8px;
+  height: 12px;
+  border-right: 2px solid var(--ps-blue);
+  border-bottom: 2px solid var(--ps-blue);
+  transform: rotate(42deg);
 }
 
 .chat-thinking-label {
@@ -1504,7 +1524,7 @@ body.chat-sidebar-closed .statusbar > * {
 .chat-thinking-chevron {
   justify-self: end;
   color: var(--inkMuted);
-  font-size: 28px;
+  font-size: 22px;
   line-height: 1;
   transition: transform 160ms ease;
 }

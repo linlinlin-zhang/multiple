@@ -3,11 +3,11 @@ const prisma = new PrismaClient();
 
 const DEFAULTS = {
   analysis: { endpoint: "https://api.moonshot.cn/v1", model: "kimi-k2.6", apiKey: "", temperature: 0.7 },
-  chat: { endpoint: "https://api.moonshot.cn/v1", model: "kimi-k2.6", apiKey: "", temperature: 0.7 },
+  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7 },
   image: { endpoint: "https://tokenhub.tencentmaas.com/v1/api/image", model: "hy-image-v3.0", apiKey: "", temperature: 0.7 },
   asr: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3-livetranslate-flash-2025-12-01", apiKey: "", temperature: 0 },
   realtime: { endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime", model: "qwen3.5-omni-plus-realtime", apiKey: "", temperature: 0.7 },
-  deepthink: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-max-preview", apiKey: "", temperature: 0.7 }
+  deepthink: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7 }
 };
 
 export async function handleGetSettings(res) {
@@ -25,9 +25,24 @@ export async function handleGetSettings(res) {
 }
 
 function isLegacyVoiceDefault(role, settings) {
-  if (!settings || settings.apiKey) return false;
+  if (!settings) return false;
   const endpoint = String(settings.endpoint || "").replace(/\/+$/, "");
   const model = String(settings.model || "");
+  if (
+    role === "chat" &&
+    endpoint === "https://api.moonshot.cn/v1" &&
+    model === "kimi-k2.6"
+  ) {
+    return true;
+  }
+  if (
+    role === "deepthink" &&
+    endpoint === "https://dashscope.aliyuncs.com/compatible-mode/v1" &&
+    model === "qwen3.6-max-preview"
+  ) {
+    return true;
+  }
+  if (settings.apiKey) return false;
   return (
     role === "asr" &&
     endpoint === "https://api.openai.com/v1" &&

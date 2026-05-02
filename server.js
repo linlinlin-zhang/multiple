@@ -27,10 +27,10 @@ const prisma = new PrismaClient();
 
 let runtimeConfigs = {
   chat: buildModelConfig("CHAT", {
-    provider: "kimi",
-    model: "kimi-k2.6",
-    baseUrl: "https://api.moonshot.cn/v1",
-    apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
+    provider: "dashscope-qwen",
+    model: "qwen3.6-plus",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    apiKeyEnv: ["DASHSCOPE_API_KEY", "CHAT_API_KEY"]
   }),
   analysis: buildModelConfig("ANALYSIS", {
     provider: "kimi",
@@ -58,7 +58,7 @@ let runtimeConfigs = {
   }),
   deepthink: buildModelConfig("DEEPTHINK", {
     provider: "dashscope-qwen",
-    model: "qwen3.6-max-preview",
+    model: "qwen3.6-plus",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     apiKeyEnv: ["DASHSCOPE_API_KEY", "DEEPTHINK_API_KEY"]
   })
@@ -269,10 +269,10 @@ async function refreshConfigs() {
     );
 
     runtimeConfigs.chat = buildModelConfig("CHAT", {
-      provider: "kimi",
-      model: "kimi-k2.6",
-      baseUrl: "https://api.moonshot.cn/v1",
-      apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
+      provider: "dashscope-qwen",
+      model: "qwen3.6-plus",
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      apiKeyEnv: ["DASHSCOPE_API_KEY", "CHAT_API_KEY"]
     }, dbMap.chat);
 
     runtimeConfigs.analysis = buildModelConfig("ANALYSIS", {
@@ -305,7 +305,7 @@ async function refreshConfigs() {
 
     runtimeConfigs.deepthink = buildModelConfig("DEEPTHINK", {
       provider: "dashscope-qwen",
-      model: "qwen3.6-max-preview",
+      model: "qwen3.6-plus",
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
       apiKeyEnv: ["DASHSCOPE_API_KEY", "DEEPTHINK_API_KEY"]
     }, dbMap.deepthink);
@@ -316,7 +316,10 @@ async function refreshConfigs() {
 
 function buildModelConfig(role, defaults, dbSettings = null) {
   const effectiveDbSettings = isLegacyVoiceDefault(role, dbSettings) ? null : dbSettings;
-  const roleProvider = (effectiveDbSettings?.provider) || process.env[`${role}_PROVIDER`] || defaults.provider;
+  const envProvider = process.env[`${role}_PROVIDER`] || "";
+  const envBaseUrl = process.env[`${role}_API_BASE_URL`] || "";
+  const envModel = process.env[`${role}_MODEL`] || "";
+  const ignoreLegacyEnv = isLegacyEnvDefault(role, { provider: envProvider, endpoint: envBaseUrl, model: envModel });
   const apiKey =
     (effectiveDbSettings?.apiKey ?? "") ||
     firstEnv(defaults.apiKeyEnv || []) ||
@@ -324,12 +327,16 @@ function buildModelConfig(role, defaults, dbSettings = null) {
     "";
   const baseUrl = (
     (effectiveDbSettings?.endpoint || "").replace(/\/+$/, "") ||
-    process.env[`${role}_API_BASE_URL`] ||
+    (ignoreLegacyEnv ? "" : envBaseUrl) ||
     defaults.baseUrl
   ).replace(/\/+$/, "");
+  const roleProvider =
+    (effectiveDbSettings?.provider) ||
+    (ignoreLegacyEnv ? "" : envProvider) ||
+    inferProviderFromEndpoint(baseUrl, defaults.provider);
   const model =
     (effectiveDbSettings?.model) ||
-    process.env[`${role}_MODEL`] ||
+    (ignoreLegacyEnv ? "" : envModel) ||
     defaults.model;
   const temperature =
     typeof effectiveDbSettings?.temperature === "number"
@@ -339,10 +346,46 @@ function buildModelConfig(role, defaults, dbSettings = null) {
   return { role: role.toLowerCase(), provider: roleProvider, apiKey, baseUrl, model, temperature };
 }
 
+function inferProviderFromEndpoint(endpoint, fallback) {
+  const normalized = String(endpoint || "").toLowerCase();
+  if (normalized.includes("dashscope.aliyuncs.com")) return "dashscope-qwen";
+  if (normalized.includes("api.moonshot.cn")) return "kimi";
+  return fallback;
+}
+
+function isLegacyEnvDefault(role, envSettings) {
+  if (!envSettings) return false;
+  const endpoint = String(envSettings.endpoint || "").replace(/\/+$/, "");
+  const model = String(envSettings.model || "");
+  const provider = String(envSettings.provider || "").toLowerCase();
+  return (
+    role === "CHAT" &&
+    (provider === "kimi" || endpoint === "https://api.moonshot.cn/v1" || model === "kimi-k2.6")
+  ) || (
+    role === "DEEPTHINK" &&
+    model === "qwen3.6-max-preview"
+  );
+}
+
 function isLegacyVoiceDefault(role, dbSettings) {
-  if (!dbSettings || dbSettings.apiKey) return false;
+  if (!dbSettings) return false;
   const endpoint = String(dbSettings.endpoint || "").replace(/\/+$/, "");
   const model = String(dbSettings.model || "");
+  if (
+    role === "CHAT" &&
+    endpoint === "https://api.moonshot.cn/v1" &&
+    model === "kimi-k2.6"
+  ) {
+    return true;
+  }
+  if (
+    role === "DEEPTHINK" &&
+    endpoint === "https://dashscope.aliyuncs.com/compatible-mode/v1" &&
+    model === "qwen3.6-max-preview"
+  ) {
+    return true;
+  }
+  if (dbSettings.apiKey) return false;
   return (
     role === "ASR" &&
     endpoint === "https://api.openai.com/v1" &&
@@ -379,8 +422,35 @@ function applyReasoningMode(payload, config, thinkingMode) {
     payload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
   } else if (config.provider === "openrouter") {
     payload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
+  } else if (isDashScopeQwenConfig(config)) {
+    payload.enable_thinking = thinkingMode === "thinking";
   }
   return payload;
+}
+
+function isDashScopeQwenConfig(config) {
+  return config?.provider === "dashscope-qwen" || /dashscope\.aliyuncs\.com/i.test(config?.baseUrl || "");
+}
+
+function applyWebSearchMode(payload, config, enabled = true) {
+  if (enabled && isDashScopeQwenConfig(config)) {
+    payload.enable_search = true;
+  }
+  return payload;
+}
+
+function shouldUseWebSearch(message, canvas = {}, selectedContext = null) {
+  const text = String(message || "");
+  if (/(联网|搜索|检索|查找|网页|网站|链接|url|最新|资料|reference|web|search|browse|lookup|internet)/i.test(text)) {
+    return true;
+  }
+  if (selectedContext?.type === "url" || selectedContext?.url) return true;
+  const nodes = Array.isArray(canvas?.nodes) ? canvas.nodes : [];
+  return nodes.some((node) => node?.type === "url" || node?.url || node?.sourceType === "url");
+}
+
+function shouldUseAgentMode(message) {
+  return /(agent|代理|自主|自动|连续任务|一系列|多步|分步骤|规划并执行|完成整个|帮我做完|long task|multi[-\s]?step)/i.test(String(message || ""));
 }
 
 function isTimeoutError(error) {
@@ -491,6 +561,7 @@ async function handleDeepThink(body, res) {
       }
     ]
   };
+  applyWebSearchMode(payload, runtimeConfigs.deepthink, true);
 
   let response;
   try {
@@ -542,6 +613,8 @@ async function handleChat(body, res) {
   const selectedContext = body?.selectedContext && typeof body.selectedContext === "object" ? body.selectedContext : null;
   const canvas = body?.canvas && typeof body.canvas === "object" ? body.canvas : {};
   const systemContext = typeof body?.systemContext === "string" ? body.systemContext.slice(0, 4000) : "";
+  const webSearchEnabled = shouldUseWebSearch(message, canvas, selectedContext);
+  const agentMode = shouldUseAgentMode(message);
   const context = lang === "en"
     ? [
         "You are the creative dialogue assistant in this canvas-based image generation app. Your task is to help users understand the current image, compare branch directions, propose new generation ideas, or organize user thoughts into executable visual directions. Answer in English, keep it concise, usually 1-3 sentences. Do not pretend to have generated a new image; if the user wants to generate, suggest clicking a direction node or explain how you would modify the prompt.",
@@ -574,6 +647,8 @@ async function handleChat(body, res) {
       messages,
       systemContext,
       thinkingMode,
+      webSearchEnabled,
+      agentMode,
       lang
     });
   }
@@ -597,12 +672,8 @@ async function handleChat(body, res) {
   };
   chatPayload.messages[0].content = buildChatActionSystemPrompt(lang, thinkingMode);
 
-  // Apply thinking mode parameter based on provider
-  if (runtimeConfigs.chat.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.chat.model)) {
-    chatPayload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
-  } else if (runtimeConfigs.chat.provider === "openrouter") {
-    chatPayload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
-  }
+  applyReasoningMode(chatPayload, runtimeConfigs.chat, thinkingMode);
+  applyWebSearchMode(chatPayload, runtimeConfigs.chat, webSearchEnabled);
 
   const response = await chatCompletions(runtimeConfigs.chat, chatPayload);
 
@@ -614,7 +685,11 @@ async function handleChat(body, res) {
     parsed = null;
   }
   const reply = stringOr(parsed?.reply, rawReply);
-  const actions = normalizeVoiceActions(parsed?.actions || parsed?.action);
+  const actions = ensureChatFallbackActions(
+    message,
+    normalizeVoiceActions(parsed?.actions || parsed?.action),
+    reply
+  );
   const thinkingContent = thinkingMode === "thinking" ? collectReasoningContent(response) : "";
   return sendJson(res, 200, {
     provider: "api",
@@ -701,11 +776,7 @@ async function handleAnalyze(body, res) {
     ]
   };
 
-  if (runtimeConfigs.analysis.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.analysis.model)) {
-    analysisPayload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
-  } else if (runtimeConfigs.analysis.provider === "openrouter") {
-    analysisPayload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
-  }
+  applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
 
   const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
   const text = collectChatContent(response);
@@ -745,6 +816,50 @@ function isValidPublicUrl(urlString) {
   }
 
   return true;
+}
+
+async function fetchPublicPageText(urlString) {
+  if (!isValidPublicUrl(urlString)) return "";
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch(urlString, {
+      headers: {
+        "User-Agent": "ORYZAE/0.1 link-analyzer",
+        Accept: "text/html, text/plain, application/xhtml+xml"
+      },
+      signal: controller.signal
+    });
+    if (!response.ok || !isValidPublicUrl(response.url || urlString)) return "";
+    const contentType = response.headers.get("content-type") || "";
+    if (!/text\/html|text\/plain|application\/xhtml\+xml/i.test(contentType)) return "";
+    const contentLength = Number(response.headers.get("content-length") || 0);
+    if (contentLength > 800000) return "";
+    const raw = (await response.text()).slice(0, 220000);
+    return htmlToReadableText(raw).slice(0, 12000);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function htmlToReadableText(raw) {
+  return String(raw || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<\/(p|div|section|article|header|footer|li|h[1-6]|br)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
 }
 
 async function handleAnalyzeExplore(body, res) {
@@ -844,7 +959,18 @@ async function handleAnalyzeExplore(body, res) {
     content.push({ type: "text", text: prompt });
     content.push({ type: "image_url", image_url: { url: imageDataUrl } });
   } else if (url) {
-    content.push({ type: "text", text: `${prompt}\n\n网页链接：${url}` });
+    const pageText = await fetchPublicPageText(url).catch(() => "");
+    content.push({
+      type: "text",
+      text: [
+        prompt,
+        "",
+        `URL: ${url}`,
+        pageText
+          ? `Fetched page text excerpt:\n${pageText.slice(0, 6000)}`
+          : "Server-side page fetch failed. If web search is available, use it to ground references and directions."
+      ].join("\n")
+    });
   } else if (text) {
     content.push({ type: "text", text: `${prompt}\n\n文档内容：\n${text.slice(0, 6000)}` });
   } else if (dataUrl) {
@@ -863,6 +989,7 @@ async function handleAnalyzeExplore(body, res) {
   };
 
   applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
+  applyWebSearchMode(analysisPayload, runtimeConfigs.analysis, Boolean(url));
 
   try {
     const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload, {
@@ -878,7 +1005,11 @@ async function handleAnalyzeExplore(body, res) {
     if (thinkingMode === "thinking" && shouldRetryExploreWithoutThinking(error)) {
       console.info("[handleAnalyzeExplore] thinking path failed, retrying without thinking:", error.message);
       try {
-        const fallbackPayload = applyReasoningMode({ messages: analysisPayload.messages }, runtimeConfigs.analysis, "no-thinking");
+        const fallbackPayload = applyWebSearchMode(
+          applyReasoningMode({ messages: analysisPayload.messages }, runtimeConfigs.analysis, "no-thinking"),
+          runtimeConfigs.analysis,
+          Boolean(url)
+        );
         const response = await chatCompletions(runtimeConfigs.analysis, fallbackPayload, {
           timeoutMs: EXPLORE_FALLBACK_TIMEOUT_MS
         });
@@ -919,6 +1050,7 @@ async function handleAnalyzeUrl(body, res) {
     return sendJson(res, 200, demo);
   }
 
+  const pageText = await fetchPublicPageText(url).catch(() => "");
   const prompt = [
     "你是一个网络内容创意导演，正在为一个画布式图片生成应用分析用户提供的网页链接。",
     "请基于你对该网页内容的理解和搜索能力，总结其核心主题、视觉氛围、可延展的叙事方向，并给出 5 个不同的成图方向。",
@@ -933,6 +1065,10 @@ async function handleAnalyzeUrl(body, res) {
     `网页链接：${url}`,
     `网页域名：${domain}`,
     "",
+    pageText
+      ? `已抓取的网页正文节选：\n${pageText.slice(0, 6000)}`
+      : "服务器未能直接抓取正文；如果模型支持联网搜索，请用联网搜索补充网页主题。",
+    "",
     "请尽可能基于该网页的内容主题生成视觉方向。如果无法访问该链接，请基于域名和常见内容类型给出合理的创意推测。"
   ].join("\n");
 
@@ -945,11 +1081,8 @@ async function handleAnalyzeUrl(body, res) {
     ]
   };
 
-  if (runtimeConfigs.analysis.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.analysis.model)) {
-    analysisPayload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
-  } else if (runtimeConfigs.analysis.provider === "openrouter") {
-    analysisPayload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
-  }
+  applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
+  applyWebSearchMode(analysisPayload, runtimeConfigs.analysis, true);
 
   try {
     const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
@@ -1044,11 +1177,7 @@ async function handleAnalyzeText(body, res) {
     ]
   };
 
-  if (runtimeConfigs.analysis.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.analysis.model)) {
-    analysisPayload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
-  } else if (runtimeConfigs.analysis.provider === "openrouter") {
-    analysisPayload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
-  }
+  applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
 
   const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
   const text = collectChatContent(response);
@@ -1226,11 +1355,7 @@ async function handleExplain(body, res) {
     ]
   };
 
-  if (runtimeConfigs.chat.provider === "kimi" && /^kimi-k2\./.test(runtimeConfigs.chat.model)) {
-    explainPayload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
-  } else if (runtimeConfigs.chat.provider === "openrouter") {
-    explainPayload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
-  }
+  applyReasoningMode(explainPayload, runtimeConfigs.chat, thinkingMode);
 
   const response = await chatCompletions(runtimeConfigs.chat, explainPayload);
 
@@ -1385,7 +1510,8 @@ function buildRealtimeInstruction(context) {
     "For destructive actions such as delete_node, only act when the spoken command explicitly asks to delete/remove a card.",
     "Position vocabulary: left, right, above, below, center, upper-left, upper-right, lower-left, lower-right, canvas-center, screen-center.",
     "Reusable action types:",
-    "zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, generate_image, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
+    "zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, create_web_card, generate_image, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
+    "When web search is needed, include create_web_card actions with real URLs, concise titles, and descriptions so the canvas can preserve references.",
     "Schema:",
     '{"transcript":"recognized user speech","reply":"short spoken response","actions":[{"type":"action_type","nodeId":"exact optional id","nodeName":"optional spoken card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url"}]}',
     "",
@@ -1411,7 +1537,9 @@ function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thinking") 
     "Use actions only when the user clearly asks the app to do something. If the user is just chatting, return an empty actions array.",
     "Prefer exact nodeId values copied from Canvas state. If a card is named but the exact id is uncertain, provide nodeName/query instead; never invent node IDs.",
     "For destructive actions such as delete_node, only act when the user explicitly asks to delete/remove a card.",
-    "Reusable action types: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, generate_image, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
+    "Reusable action types: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, create_web_card, generate_image, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
+    "When the user asks for web search or link research, web search may be enabled for this turn. Return create_web_card actions with url/title/description for concrete web references.",
+    "When the user asks for an agent, autonomous work, or a multi-step task, act as the main controller: decompose the task, return the immediate reply, and include a sequence of safe canvas actions that can be executed now. Do not claim background work exists unless represented by actions.",
     "Position vocabulary: left, right, above, below, center, upper-left, upper-right, lower-left, lower-right, canvas-center, screen-center.",
     thinkingMode === "thinking"
       ? "Reasoning mode may be enabled by the API provider. Do not include a thinkingTrace field in your JSON; any provider-side reasoning will be read from the API response metadata."
@@ -1430,7 +1558,7 @@ function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thinking") 
   ].join("\n");
 }
 
-function buildChatUserPrompt({ message, analysis, selectedContext, canvas, messages, systemContext, thinkingMode, lang }) {
+function buildChatUserPrompt({ message, analysis, selectedContext, canvas, messages, systemContext, thinkingMode, webSearchEnabled, agentMode, lang }) {
   const recentMessages = messages.map((item) => `${item.role}: ${item.content}`).join("\n") || (lang === "en" ? "None" : "暂无");
   return [
     lang === "en" ? "User message:" : "用户消息：",
@@ -1452,7 +1580,11 @@ function buildChatUserPrompt({ message, analysis, selectedContext, canvas, messa
     recentMessages,
     "",
     lang === "en" ? "Current mode:" : "当前模式：",
-    thinkingMode
+    thinkingMode,
+    "",
+    "Execution hints:",
+    `web_search_enabled=${webSearchEnabled ? "true" : "false"}`,
+    `agent_controller_mode=${agentMode ? "true" : "false"}`
   ].join("\n");
 }
 
@@ -1463,6 +1595,34 @@ function normalizeChatThinkingTrace(value) {
     .filter(Boolean)
     .slice(0, 6)
     .map((item) => item.slice(0, 220));
+}
+
+function ensureChatFallbackActions(message, actions, reply = "") {
+  const normalized = Array.isArray(actions) ? [...actions] : [];
+  if (normalized.some((action) => action.type === "create_web_card")) return normalized;
+  const requestText = String(message || "").normalize("NFKC");
+  const wantsCard = requestText.includes("卡片") || /\bcard\b/i.test(requestText);
+  const wantsWeb = /(网页|网站|链接|参考|联网|搜索|检索|查找|web|reference|search|url|link)/i.test(requestText);
+  if (wantsCard && wantsWeb) {
+    const query = deriveSearchQuery(message);
+    normalized.push({
+      type: "create_web_card",
+      title: query.slice(0, 48) || "Web reference",
+      description: String(reply || query).slice(0, 220),
+      query,
+      url: `https://www.google.com/search?q=${encodeURIComponent(query || message)}`
+    });
+  }
+  return normalized;
+}
+
+function deriveSearchQuery(message) {
+  return String(message || "")
+    .replace(/请|帮我|给我|联网搜索|搜索|检索|查找|并|给出|创建|新建|生成|一个|一张|网页|网站|链接|参考|卡片|web|reference|card/gi, " ")
+    .replace(/[，。,.!?！？:：；;]+/g, " ")
+    .replace(/\s{2,}/g, " ")
+    .trim()
+    .slice(0, 120);
 }
 
 function inferDemoChatActions(message) {
@@ -1686,6 +1846,7 @@ const VOICE_ACTION_TYPES = new Set([
   "select_node",
   "move_node",
   "create_direction",
+  "create_web_card",
   "generate_image",
   "analyze_source",
   "explore_source",

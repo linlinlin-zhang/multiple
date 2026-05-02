@@ -114,11 +114,11 @@ const state = {
 const settingsCache = {
   currentRole: "analysis",
   analysis: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
-  chat: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
+  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7 },
   image: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
   asr: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3-livetranslate-flash-2025-12-01", apiKey: "", temperature: 0 },
   realtime: { endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime", model: "qwen3.5-omni-plus-realtime", apiKey: "", temperature: 0.7 },
-  deepthink: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-max-preview", apiKey: "", temperature: 0.7 }
+  deepthink: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7 }
 };
 
 const voiceState = {
@@ -272,6 +272,7 @@ const i18n = {
     "deepthink.busy": "深度思考中...",
     "deepthink.complete": "深度思考完成",
     "chat.generatedCannotGenerate": "生成图节点无法继续生成方向",
+    "chat.noSourceForGenerate": "请先上传图片或打开可作为参考的图片，再生成。",
     "thinking.mode": "思考模式",
     "thinking.thinking": "思考",
     "thinking.fast": "快速",
@@ -461,6 +462,7 @@ const i18n = {
     "deepthink.busy": "Deep thinking...",
     "deepthink.complete": "Deep thinking complete",
     "chat.generatedCannotGenerate": "Generated image nodes cannot spawn new directions",
+    "chat.noSourceForGenerate": "Upload or open a reference image before generating.",
     "thinking.mode": "Thinking Mode",
     "thinking.thinking": "Thinking",
     "thinking.fast": "Fast",
@@ -846,10 +848,39 @@ function getWorkbenchCommands() {
 }
 
 function getFilteredCommands() {
-  const query = (chatInput?.value || "").trim().replace(/^\//, "").toLowerCase();
+  const query = getCommandQuery(chatInput?.value || "").toLowerCase();
   const commands = getWorkbenchCommands();
   if (!query) return commands;
   return commands.filter((command) => `${command.label} ${command.description} ${command.id}`.toLowerCase().includes(query));
+}
+
+function getCommandQuery(rawValue) {
+  const text = String(rawValue || "").trim().replace(/^\/+/, "").trim();
+  const matched = resolveWorkbenchCommandFromInput(rawValue);
+  if (matched?.command && matched.remainder) {
+    return matched.command.label || matched.command.id;
+  }
+  return text;
+}
+
+function resolveWorkbenchCommandFromInput(rawValue) {
+  const text = String(rawValue || "").trim().replace(/^\/+/, "").trim();
+  if (!text) return null;
+  const commands = getWorkbenchCommands();
+  const candidates = commands
+    .flatMap((command) => [command.id, command.label].filter(Boolean).map((alias) => ({ command, alias })))
+    .sort((a, b) => b.alias.length - a.alias.length);
+  const lower = text.toLowerCase();
+  for (const candidate of candidates) {
+    const alias = candidate.alias.toLowerCase();
+    if (lower === alias || lower.startsWith(`${alias} `) || lower.startsWith(`${alias}:`) || lower.startsWith(`${alias}：`)) {
+      return {
+        command: candidate.command,
+        remainder: text.slice(candidate.alias.length).replace(/^[:：\-—\s]+/, "").trim()
+      };
+    }
+  }
+  return null;
 }
 
 function renderCommandMenu() {
@@ -973,6 +1004,8 @@ function importSessionFile() {
 }
 
 async function executeWorkbenchCommand(commandId) {
+  const rawCommandInput = chatInput?.value || "";
+  const commandArgument = extractCommandArgument(commandId, rawCommandInput);
   closeCommandMenu();
   if (chatInput) chatInput.value = "";
   updateChatPrimaryButtonMode();
@@ -983,7 +1016,27 @@ async function executeWorkbenchCommand(commandId) {
   if (commandId === "sessions") return openSessionPanel();
   if (commandId === "fit") return resetView();
   if (commandId === "arrange") return arrangeCanvasLayout();
-  if (commandId === "new-card") return createNewCardNode();
+  if (commandId === "new-card") return createNewCardNode(commandArgument);
+}
+
+function extractCommandArgument(commandId, rawValue) {
+  if (commandId !== "new-card") return "";
+  let text = String(rawValue || "").trim().replace(/^\/+/, "").trim();
+  const aliases = [
+    t("command.newCard"),
+    "new-card",
+    "new card",
+    "card",
+    "新建卡片",
+    "新建",
+    "卡片"
+  ].filter(Boolean).sort((a, b) => b.length - a.length);
+  const lower = text.toLowerCase();
+  const alias = aliases.find((item) => lower === item.toLowerCase() || lower.startsWith(`${item.toLowerCase()} `));
+  if (alias) {
+    text = text.slice(alias.length).trim();
+  }
+  return text.replace(/^[:：\-—\s]+/, "").trim();
 }
 
 function wireControls() {
@@ -2182,7 +2235,8 @@ async function handleChatSubmit(event) {
   const message = chatInput.value.trim();
   if (!message) return;
   if (message.startsWith("/")) {
-    const command = getFilteredCommands()[activeCommandIndex];
+    const resolved = resolveWorkbenchCommandFromInput(message);
+    const command = resolved?.command || getFilteredCommands()[activeCommandIndex];
     if (command) {
       await executeWorkbenchCommand(command.id);
     }
@@ -2811,6 +2865,7 @@ async function executeCanvasAction(action) {
   if (type === "select_node") return focusNodeByAction(action);
   if (type === "move_node") return moveNodeByAction(action);
   if (type === "create_direction") return createDirectionFromAction(action);
+  if (type === "create_web_card") return createDirectionFromAction({ ...action, mode: action.mode || "web" });
   if (type === "generate_image") return generateImageFromAction(action);
   if (type === "analyze_source") return analyzeSource(action.mode || "analyze");
   if (type === "explore_source" || type === "research_source") return exploreSource();
@@ -3092,13 +3147,23 @@ function createDirectionFromAction(action) {
 
   const text = String(action.prompt || action.query || action.description || action.title || "").trim();
   if (!text) return null;
+  const isWebCard = action.type === "create_web_card" || Boolean(action.url);
+  const references = isWebCard && action.url
+    ? [{
+        title: String(action.title || action.url).slice(0, 80),
+        url: String(action.url).slice(0, 512),
+        description: String(action.description || action.query || "").slice(0, 200),
+        type: "web"
+      }]
+    : undefined;
   const nodeId = createOptionNode({
     id: `voice-${Date.now()}-${safeNodeSlug(action.title || text)}`,
     title: String(action.title || text).slice(0, 48),
     description: String(action.description || text),
     prompt: text,
-    tone: String(action.mode || "voice"),
-    layoutHint: "voice"
+    tone: String(action.mode || (isWebCard ? "web" : "voice")),
+    layoutHint: isWebCard ? "reference" : "voice",
+    references
   }, parentId);
   if (!nodeId) return null;
 
@@ -3324,6 +3389,13 @@ function createOptionNode(option, parentNodeId) {
 
   const button = element.querySelector(".generate-button");
   button.addEventListener("click", () => generateOption(id, option));
+  if (option.references?.length) {
+    const badge = document.createElement("span");
+    badge.className = "reference-badge";
+    badge.textContent = `${option.references.length}`;
+    badge.title = `${option.references.length} reference${option.references.length > 1 ? "s" : ""}`;
+    element.appendChild(badge);
+  }
 
   board.appendChild(element);
   registerNode(id, element, {
@@ -3344,18 +3416,8 @@ function createOptionNode(option, parentNodeId) {
   return id;
 }
 
-function createNewCardNode() {
-  const id = `new-card-${Date.now()}`;
-  const option = {
-    id,
-    title: t("command.newCard"),
-    description: "",
-    prompt: currentLang === "en" ? "Describe the new visual direction here." : "在这里描述新的视觉方向。",
-    tone: "manual",
-    layoutHint: "card"
-  };
-
-  // Compute position: offset from source node, with jitter to avoid stacking
+function createNewCardNode(seedText = "") {
+  const text = String(seedText || "").trim();
   const parentId = state.selectedNodeId && state.nodes.has(state.selectedNodeId)
     ? state.selectedNodeId
     : (state.nodes.has("analysis") && isNodeVisible(state.nodes.get("analysis")) ? "analysis" : "source");
@@ -3377,47 +3439,27 @@ function createNewCardNode() {
     attempts++;
   }
 
-  // Create a full option-style card so it can be saved, renamed, connected, and generated.
-  const fragment = optionTemplate.content.cloneNode(true);
-  const element = fragment.querySelector(".option-node");
-  element.classList.add("new-card-node");
-  element.dataset.nodeId = id;
-  element.style.left = `${newX}px`;
-  element.style.top = `${newY}px`;
-  element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
-
-  const eyebrow = element.querySelector(".option-tone");
-  const title = element.querySelector(".option-title");
-  const description = element.querySelector(".option-description");
-  const button = element.querySelector(".generate-button");
-  if (eyebrow) eyebrow.textContent = "manual / card";
-  if (title) title.textContent = option.title;
-  if (description) description.textContent = option.description;
-  if (button) button.addEventListener("click", () => generateOption(id, option));
-
-  board.appendChild(element);
-
-  registerNode(id, element, {
+  const title = text ? text.slice(0, 48) : t("command.newCard");
+  const prompt = text || (currentLang === "en" ? "Describe the new visual direction here." : "在这里描述新的视觉方向。");
+  const nodeId = createOptionNode({
+    id: `manual-${Date.now()}`,
+    title,
+    description: text,
+    prompt,
+    tone: "manual",
+    layoutHint: "card",
     x: newX,
-    y: newY,
-    width: 318,
-    height: element.offsetHeight,
-    option,
-    generated: false
-  });
+    y: newY
+  }, parentId);
 
-  makeTitleEditable(id, title);
-  makeDraggable(element, id);
-  if (parentId && parentId !== id && state.nodes.has(parentId)) {
-    state.links.push({ from: parentId, to: id, kind: "option" });
+  if (nodeId) {
+    const node = state.nodes.get(nodeId);
+    node?.element?.classList.add("new-card-node");
+    autoSave();
+    focusNodeById(nodeId, "center");
   }
-  applyCollapseState();
-  updateCounts();
-  drawLinks();
-  autoSave();
-  forceSelectNode(id);
 
-  return id;
+  return nodeId;
 }
 
 function createJunctionNode(x, y) {
@@ -3797,17 +3839,11 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
     line.className = `chat-line ${message.role}`;
     line.classList.toggle("pending", Boolean(message.pending));
 
-    if (message.content) {
-      const text = document.createElement("span");
-      text.className = "chat-text";
-      text.textContent = message.content;
-      line.appendChild(text);
-    }
-
     if (message.role === "assistant" && (message.pending || message.thinkingRequested || message.thinkingContent || message.thinkingTrace?.length)) {
       const details = document.createElement("details");
       details.className = "chat-thinking";
       details.classList.toggle("is-running", Boolean(message.pending));
+      details.classList.toggle("is-complete", Boolean(!message.pending && (message.thinkingContent || message.thinkingTrace?.length)));
       const summary = document.createElement("summary");
       summary.className = "chat-thinking-bar";
       const label = message.pending
@@ -3842,6 +3878,13 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
         details.appendChild(panel);
       }
       line.appendChild(details);
+    }
+
+    if (message.content) {
+      const text = document.createElement("span");
+      text.className = "chat-text";
+      text.textContent = message.content;
+      line.appendChild(text);
     }
     if (message.role === "assistant" && message.actions?.length) {
       const actions = document.createElement("div");
@@ -4011,7 +4054,11 @@ async function generateOption(id, option) {
 
 async function generateOptionWithReference(id, option, referenceImageDataUrl) {
   const node = state.nodes.get(id);
-  if (!node || !referenceImageDataUrl) return;
+  if (!node) return;
+  if (!referenceImageDataUrl) {
+    showSelectionToast(t("chat.noSourceForGenerate"));
+    return;
+  }
 
   const element = node.element;
   const wasGenerated = Boolean(node.generated);
