@@ -115,5 +115,5 @@ Items acknowledged and deferred at milestone close on 2026-05-02:
 
 **Current session started:** 2026-05-02
 **Last session resumed:** 2026-05-02
-**Stopped at:** Phase 18 Plan 03 complete — all plans done
-**Next expected action:** v2.0 milestone complete; plan next milestone or review
+**Stopped at:** v2.0 milestone complete — archived and tagged
+**Next expected action:** `/gsd-new-milestone` to plan next milestone
