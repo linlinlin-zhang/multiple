@@ -132,7 +132,31 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| (v3.2 phases to be mapped by roadmap) | | |
+| RESP-01 | Phase 26 | Pending |
+| RESP-02 | Phase 26 | Pending |
+| RESP-03 | Phase 26 | Pending |
+| RESP-04 | Phase 26 | Pending |
+| RESP-05 | Phase 26 | Pending |
+| RESP-06 | Phase 26 | Pending |
+| RESP-07 | Phase 26 | Pending |
+| DOC-01 | Phase 27 | Pending |
+| DOC-02 | Phase 27 | Pending |
+| DOC-03 | Phase 27 | Pending |
+| IMG-01 | Phase 28 | Pending |
+| IMG-02 | Phase 28 | Pending |
+| IMG-03 | Phase 28 | Pending |
+| IMG-04 | Phase 28 | Pending |
+| VID-01 | Phase 29 | Pending |
+| VID-02 | Phase 29 | Pending |
+| VID-03 | Phase 29 | Pending |
+| VID-04 | Phase 29 | Pending |
+| VOI-01 | Phase 30 | Pending |
+| VOI-02 | Phase 30 | Pending |
+| VOI-03 | Phase 30 | Pending |
+| RES-01 | Phase 31 | Pending |
+| RES-02 | Phase 32 | Pending |
+| RES-03 | Phase 32 | Pending |
+| RES-04 | Phase 32 | Pending |
 
 ---
 

@@ -1,6 +1,6 @@
 # ORYZAE Image Board — Roadmap
 
-**Current Milestone:** v2.1 Multi-Scenario Intelligence
+**Current Milestone:** v3.2 Qwen Web Parity
 **Granularity:** Standard
 
 ---
@@ -13,7 +13,8 @@
 - ✅ **v1.3 Material Library** — Phases 13-15 (shipped 2026-05-01) · [Details](./milestones/v1.3-ROADMAP.md)
 - ✅ **v2.0 Multi-Card Canvas Interaction** — Phases 16-18 (shipped 2026-05-02) · [Details](./milestones/v2.0-ROADMAP.md)
 - ✅ **v3.0 Infrastructure & Experience Upgrade** — Shipped 2026-05-03
-- 🔄 **v3.1 Multi-Scenario Intelligence** — Phases 19-24 (planning)
+- 🔄 **v3.1 Multi-Scenario Intelligence** — Phases 19-25 (in progress)
+- ⏳ **v3.2 Qwen Web Parity** — Phases 26-32 (planning)
 
 ---
 
@@ -107,6 +108,18 @@
 
 ---
 
+## v3.2 Qwen Web Parity — Planning
+
+- [ ] **Phase 26: Responses API Migration** — DashScope Responses API with builtin tools, citations, artifact viewer
+- [ ] **Phase 27: Document Chat** — Files API upload, qwen-long 10M context, multi-document reference UI
+- [ ] **Phase 28: Image Polish** — Async task polling, qwen-image-max/plus, editing/inpainting
+- [ ] **Phase 29: Video Generation** — wan2.x text-to-video, image-to-video, digital human, task polling UI
+- [ ] **Phase 30: Voice Interaction** — Real-time voice conversation, ASR, TTS with 9 voices
+- [ ] **Phase 31: Deep Research Visualization** — Streaming research phase UI with real-time progress
+- [ ] **Phase 32: Embedding Upgrade** — text-embedding-v4 + gte-rerank-v2 for material library RAG
+
+---
+
 ## Phase Details
 
 ### Phase 21: Chat-to-Canvas Reliability & Conversational UX
@@ -167,6 +180,92 @@
   3. When some directions fail, successfully generated images display normally and failed directions show a retry button
 **Plans**: TBD
 
+### Phase 26: Responses API Migration
+**Goal**: Chat system runs on DashScope Responses API with builtin tools (web_search, code_interpreter, web_extractor) coexisting with custom canvas tools, citations render as clickable links, and multi-turn chat uses previous_response_id
+**Depends on**: Phase 21 (chat reliability foundation)
+**Requirements**: RESP-01, RESP-02, RESP-03, RESP-04, RESP-05, RESP-06, RESP-07
+**Success Criteria** (what must be TRUE):
+  1. All chat requests hit the DashScope Responses API endpoint instead of Chat Completions; responses parse correctly
+  2. A single request can include both builtin `web_search` tool and custom `CANVAS_TOOLS` function calls; both execute and return results
+  3. `code_interpreter` runs Python code and returns outputs (charts, tables, generated files) viewable in an Artifact viewer
+  4. `web_extractor` extracts web content when referenced in user messages
+  5. `[ref_<n>]` citations in assistant replies render as clickable inline links that expand the corresponding web search result
+  6. Multi-turn conversations pass `previous_response_id` instead of resending the full `messages[]` array
+  7. Artifact viewer supports previewing and downloading code_interpreter outputs (images, CSVs, etc.)
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 27: Document Chat
+**Goal**: Users upload documents via Files API and chat with qwen-long using 10M token context, with UI support for multi-document references
+**Depends on**: Phase 26 (Responses API for chat infrastructure)
+**Requirements**: DOC-01, DOC-02, DOC-03
+**Success Criteria** (what must be TRUE):
+  1. User can upload a document and receive a `file-id` from the Files API
+  2. Referencing `fileid://<id>` in chat sends the document to qwen-long, which answers questions using the full document content (10M context supported)
+  3. UI shows uploaded document references inline in the chat input area, with ability to add/remove multiple documents per conversation
+  4. Multi-document conversations maintain history and allow follow-up questions across all referenced files
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 28: Image Polish
+**Goal**: Users generate images with qwen-image-2.0-pro (sync), qwen-image-max (async with polling), and edit/inpaint with qwen-image-plus, with full async task status UI
+**Depends on**: Phase 26 (API infrastructure)
+**Requirements**: IMG-01, IMG-02, IMG-03, IMG-04
+**Success Criteria** (what must be TRUE):
+  1. qwen-image-2.0-pro generates images synchronously and displays results on the canvas
+  2. qwen-image-max submits async tasks and polls by `task_id` until completion, then displays the result
+  3. qwen-image-plus accepts an image + mask + prompt and returns edited/inpainted results
+  4. Async task UI shows a task list with progress indicators, status badges (pending/running/succeeded/failed), and result preview with download
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 29: Video Generation
+**Goal**: Users generate videos from text, images, or audio using wan2.2 models, with async task polling and preview/download UI
+**Depends on**: Phase 28 (shares async task patterns)
+**Requirements**: VID-01, VID-02, VID-03, VID-04
+**Success Criteria** (what must be TRUE):
+  1. User can submit a text prompt and receive a wan2.2-text-to-video result after async processing
+  2. User can submit an image and receive a wan2.2-image-to-video result after async processing
+  3. User can submit audio and receive a wan2.2-s2v digital human video after async processing
+  4. Video task UI shows submission confirmation, progress polling, and a preview player with download button when complete
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 30: Voice Interaction
+**Goal**: Users can have real-time voice conversations, transcribe speech with ASR, and synthesize speech with TTS using 9 selectable voices
+**Depends on**: Phase 26 (API infrastructure)
+**Requirements**: VOI-01, VOI-02, VOI-03
+**Success Criteria** (what must be TRUE):
+  1. User can start a real-time voice conversation via WebSocket using qwen3.5-omni-plus-realtime; session supports up to 120 minutes with server_vad
+  2. ASR (qwen3-asr-flash-realtime) transcribes spoken input in real time with auto language detection
+  3. TTS (qwen3-tts-flash or cosyvoice-v3.5-plus) synthesizes speech with at least 9 selectable voices
+  4. Voice UI includes microphone toggle, voice selection dropdown, and connection status indicator
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 31: Deep Research Visualization
+**Goal**: Users can initiate deep research and watch real-time streaming phase UI as the system progresses through search, analysis, and synthesis stages
+**Depends on**: Phase 26 (Responses API streaming)
+**Requirements**: RES-01
+**Success Criteria** (what must be TRUE):
+  1. Deep research request triggers a streaming response with phase events (streamingWebResult, WebResultFinished, KeepAlive, finished)
+  2. UI displays each phase with a progress indicator and collapsible detail panel showing intermediate results
+  3. Research completes with a final synthesized answer; all intermediate web results are accessible via citations
+  4. User can cancel an in-progress research session and retain partial results
+**Plans**: TBD
+**UI hint**: yes
+
+### Phase 32: Embedding Upgrade
+**Goal**: Material library uses modern text-embedding-v4 and gte-rerank-v2 for semantic search and RAG retrieval
+**Depends on**: Phase 27 (Files API for document content) and Phase 26 (API infrastructure)
+**Requirements**: RES-02, RES-03, RES-04
+**Success Criteria** (what must be TRUE):
+  1. Uploaded files are automatically embedded using text-embedding-v4 (configurable 64-2048 dimensions, instruct parameter supported)
+  2. Semantic search in the material library returns relevant results ranked by gte-rerank-v2
+  3. RAG retrieval integrates material library content into chat context when users ask questions related to uploaded files
+  4. Embedding and reranking operations are async and do not block file upload or chat responses
+**Plans**: TBD
+
 ---
 
 ## Progress
@@ -193,23 +292,20 @@
 | 18. Blueprint Modal | v2.0 | 3/3 | Done | 2026-05-02 |
 | 19. Prompt Extraction | v3.1 | 2/2 | Done | 2026-05-02 |
 | 20. Task Routing | v3.1 | 2/2 | Done | 2026-05-03 |
-| 21. Chat-to-Canvas Reliability & UX | v3.1 | 5/6 | In Progress|  |
+| 21. Chat-to-Canvas Reliability & UX | v3.1 | 5/6 | In Progress | |
 | 22. Dynamic Directions | v3.1 | 0/? | Not started | - |
 | 23. File Rendering | v3.1 | 0/? | Not started | - |
 | 24. Context Management | v3.1 | 0/? | Not started | - |
 | 25. Parallel Generation | v3.1 | 0/? | Not started | - |
-
-### Phase 26: 21-chat-to-canvas
-
-**Goal:** [To be planned]
-**Requirements**: TBD
-**Depends on:** Phase 25
-**Plans:** 0 plans
-
-Plans:
-- [ ] TBD (run /gsd-plan-phase 26 to break down)
+| 26. Responses API Migration | v3.2 | 0/? | Not started | - |
+| 27. Document Chat | v3.2 | 0/? | Not started | - |
+| 28. Image Polish | v3.2 | 0/? | Not started | - |
+| 29. Video Generation | v3.2 | 0/? | Not started | - |
+| 30. Voice Interaction | v3.2 | 0/? | Not started | - |
+| 31. Deep Research Visualization | v3.2 | 0/? | Not started | - |
+| 32. Embedding Upgrade | v3.2 | 0/? | Not started | - |
 
 ---
 
 *Created: 2026-04-25*
-*Last updated: 2026-05-03 — v3.0 shipped, Phase 21 (Chat-to-Canvas Reliability) inserted into v3.1, originals renumbered to 22-25*
+*Last updated: 2026-05-04 — v3.2 roadmap defined (Phases 26-32)*
