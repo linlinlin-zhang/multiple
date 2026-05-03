@@ -1,8 +1,12 @@
-export { SAFETY_DIRECTIVES, FORMAT_JSON_STRICT } from './shared.js';
+export { SAFETY_DIRECTIVES, FORMAT_JSON_STRICT, THINKING_FRAMEWORKS, META_DIRECTIVES, CANVAS_ACTION_TYPES, CANVAS_ACTION_TYPES_TEXT } from './shared.js';
 export { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt } from './analysis.js';
 export { buildChatSystemContext, buildChatActionSystemPrompt, buildChatUserPrompt } from './chat.js';
-export { buildGeneratePrompt } from './generation.js';
+export { buildGeneratePrompt, buildStyleTransferGenerationPrompt, buildVariantGenerationPrompt, buildMultimodalGenerationPrompt } from './generation.js';
 export { buildExplainPrompt, buildExplainSystemPrompt } from './explain.js';
 export { buildRealtimeInstruction } from './voice.js';
 export { buildDeepThinkSystemPrompt, buildDeepThinkUserPrompt } from './deepthink.js';
 export { buildExploreContent } from './explore-context.js';
+export { buildStyleTransferPrompt, buildConceptFusionPrompt, buildVariantGenerationPrompt as buildCreativeVariantPrompt, buildMultimodalCreativePrompt } from './creative.js';
+export { buildQuickScanPrompt, buildDeepResearchPrompt, buildCompareAnalysisPrompt, buildFactCheckPrompt, buildLiteratureReviewPrompt } from './research.js';
+export { buildProjectPlanPrompt, buildLearningPathPrompt, buildSchedulePrompt, buildDecisionMatrixPrompt } from './planning.js';
+export { buildQualityAssessmentPrompt, buildImprovementPrompt, buildMultiPerspectiveReviewPrompt, buildABComparisonPrompt } from './critique.js';

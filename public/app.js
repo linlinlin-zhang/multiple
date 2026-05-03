@@ -581,7 +581,33 @@ const i18n = {
     "badge.research": "研究",
     "badge.planning": "规划",
     "badge.creative": "创意",
-    "badge.general": "通用"
+    "badge.general": "通用",
+    "badge.note": "笔记",
+    "badge.plan": "计划",
+    "badge.todo": "待办",
+    "badge.weather": "天气",
+    "badge.map": "地图",
+    "badge.link": "链接",
+    "badge.code": "代码",
+    "nodeType.view": "查看",
+    "nodeType.open": "打开",
+    "nodeType.copy": "复制",
+    "nodeType.expand": "展开",
+    "nodeType.collapse": "收起",
+    "nodeType.done": "已完成",
+    "nodeType.undone": "未完成",
+    "nodeType.forecast": "预报",
+    "nodeType.temperature": "温度",
+    "nodeType.location": "位置",
+    "nodeType.coordinates": "坐标",
+    "nodeType.preview": "预览",
+    "nodeType.steps": "步骤",
+    "nodeType.step": "第 {n} 步",
+    "generated.viewContent": "查看内容",
+    "generated.openLink": "打开链接",
+    "generated.copyCode": "复制代码",
+    "generated.viewMap": "查看地图",
+    "generated.viewWeather": "查看天气"
   },
   en: {
     "nav.workbench": "Workbench",
@@ -837,7 +863,33 @@ const i18n = {
     "badge.research": "Research",
     "badge.planning": "Planning",
     "badge.creative": "Creative",
-    "badge.general": "General"
+    "badge.general": "General",
+    "badge.note": "Note",
+    "badge.plan": "Plan",
+    "badge.todo": "Todo",
+    "badge.weather": "Weather",
+    "badge.map": "Map",
+    "badge.link": "Link",
+    "badge.code": "Code",
+    "nodeType.view": "View",
+    "nodeType.open": "Open",
+    "nodeType.copy": "Copy",
+    "nodeType.expand": "Expand",
+    "nodeType.collapse": "Collapse",
+    "nodeType.done": "Done",
+    "nodeType.undone": "Undone",
+    "nodeType.forecast": "Forecast",
+    "nodeType.temperature": "Temperature",
+    "nodeType.location": "Location",
+    "nodeType.coordinates": "Coordinates",
+    "nodeType.preview": "Preview",
+    "nodeType.steps": "Steps",
+    "nodeType.step": "Step {n}",
+    "generated.viewContent": "View Content",
+    "generated.openLink": "Open Link",
+    "generated.copyCode": "Copy Code",
+    "generated.viewMap": "View Map",
+    "generated.viewWeather": "View Weather"
   }
 };
 
@@ -1392,7 +1444,11 @@ async function executeWorkbenchCommand(commandId) {
   if (commandId === "fit") return resetView();
   if (commandId === "arrange") return arrangeCanvasLayout();
   if (commandId === "new-card") return createNewCardNode(commandArgument);
-  if (commandId === "search-card") return openCardSearchBar(commandArgument);
+  if (commandId === "search-card") {
+    // Defer opening so the originating click event doesn't immediately dismiss it
+    setTimeout(() => openCardSearchBar(commandArgument), 0);
+    return;
+  }
   if (commandId === "new-canvas") return createNewCanvas();
   if (commandId === "subagents") return toggleSubagentsMode();
 }
@@ -3977,6 +4033,10 @@ async function executeCanvasAction(action) {
   if (type === "create_card" || type === "new_card") return createNewCardNode(action.title || action.prompt || action.query || "");
   if (type === "create_web_card") return createDirectionFromAction({ ...action, mode: action.mode || "web" });
   if (type === "web_search") return createDirectionFromAction({ ...action, type: "create_web_card", mode: "web" });
+  // Rich node types
+  if (["create_note", "create_plan", "create_todo", "create_weather", "create_map", "create_link", "create_code"].includes(type)) {
+    return createDirectionFromAction({ ...action, type });
+  }
   if (type === "create_agent") return runSubagentAction(action);
   if (type === "generate_image") return generateImageFromAction(action);
   if (type === "image_search" || type === "reverse_image_search" || type === "text_image_search") return searchImagesFromAction(action);
@@ -4047,6 +4107,17 @@ function getNodeSummary(node) {
   if (node.id === "analysis") return state.latestAnalysis?.summary || analysisSummary?.textContent || "";
   if (node.id === "source") return state.fileName || state.sourceUrl || state.sourceText || "";
   if (node.sourceCard) return node.sourceCard.summary || node.sourceCard.fileName || "";
+  if (node.option?.nodeType && node.option.nodeType !== "image") {
+    const nt = node.option.nodeType;
+    const c = node.option.content || {};
+    if (nt === "note") return c.text || node.option.description || "";
+    if (nt === "plan") return (c.steps || []).map((s, i) => `${i + 1}. ${s.title || s}`).join("; ");
+    if (nt === "todo") return (c.items || []).map((it) => `[${it.done ? "x" : " "}] ${it.text || it}`).join("; ");
+    if (nt === "weather") return `${c.location || ""} ${c.temp || ""} ${c.forecast || ""}`;
+    if (nt === "map") return c.address || `${c.lat || ""},${c.lng || ""}`;
+    if (nt === "link") return c.title || c.url || node.option.description || "";
+    if (nt === "code") return c.code || node.option.description || "";
+  }
   return node.explanation || node.option?.description || node.option?.prompt || "";
 }
 
@@ -4293,6 +4364,20 @@ function createDirectionFromAction(action) {
         type: "web"
       }]
     : undefined;
+
+  // Map action types to node types
+  const nodeTypeMap = {
+    create_note: "note",
+    create_plan: "plan",
+    create_todo: "todo",
+    create_weather: "weather",
+    create_map: "map",
+    create_link: "link",
+    create_code: "code",
+    create_web_card: "link"
+  };
+  const nodeType = action.nodeType || nodeTypeMap[action.type] || (isWebCard ? "link" : "image");
+
   const nodeId = createOptionNode({
     id: `voice-${Date.now()}-${safeNodeSlug(action.title || text)}`,
     title: String(action.title || text).slice(0, 48),
@@ -4300,7 +4385,9 @@ function createDirectionFromAction(action) {
     prompt: text,
     tone: String(action.mode || (isWebCard ? "web" : "voice")),
     layoutHint: isWebCard ? "reference" : "voice",
-    references
+    references,
+    nodeType,
+    content: action.content || undefined
   }, parentId);
   if (!nodeId) return null;
 
@@ -4773,7 +4860,11 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
   if (titleEl) makeTitleEditable(id, titleEl);
 
   const button = element.querySelector(".generate-button");
+  if (option.nodeType && option.nodeType !== "image") {
+    button.textContent = t("generated.viewContent");
+  }
   button.addEventListener("click", () => generateOption(id, option));
+  element.dataset.nodeType = option.nodeType || "image";
   if (option.references?.length) {
     const badge = document.createElement("span");
     badge.className = "reference-badge";
@@ -5769,7 +5860,11 @@ function renderOptions(options, taskType = "general") {
     if (titleEl) makeTitleEditable(id, titleEl);
 
     const button = element.querySelector(".generate-button");
+    if (option.nodeType && option.nodeType !== "image") {
+      button.textContent = t("generated.viewContent");
+    }
     button.addEventListener("click", () => generateOption(id, option));
+    element.dataset.nodeType = option.nodeType || "image";
 
     board.appendChild(element);
     registerNode(id, element, {
@@ -5837,7 +5932,11 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
     if (titleEl) makeTitleEditable(id, titleEl);
 
     const button = element.querySelector(".generate-button");
+    if (option.nodeType && option.nodeType !== "image") {
+      button.textContent = t("generated.viewContent");
+    }
     button.addEventListener("click", () => generateOption(id, option));
+    element.dataset.nodeType = option.nodeType || "image";
     if (option.references?.length) {
       const badge = document.createElement("span");
       badge.className = "reference-badge";
@@ -5885,7 +5984,11 @@ function renderExploreOptions(options, references, taskType = "general") {
     if (titleEl) makeTitleEditable(id, titleEl);
 
     const button = element.querySelector(".generate-button");
+    if (option.nodeType && option.nodeType !== "image") {
+      button.textContent = t("generated.viewContent");
+    }
     button.addEventListener("click", () => generateOption(id, option));
+    element.dataset.nodeType = option.nodeType || "image";
 
     // Store references on the option data
     if (references.length > 0) {
@@ -5925,14 +6028,39 @@ async function generateOption(id, option) {
 async function generateOptionWithReference(id, option, referenceImageDataUrl, editOptions = {}) {
   const node = state.nodes.get(id);
   if (!node) return;
+
+  const element = node.element;
+  const wasGenerated = Boolean(node.generated);
+  const button = element.querySelector(".generate-button");
+
+  // Rich content nodes (non-image) bypass image generation
+  if (option.nodeType && option.nodeType !== "image") {
+    element.classList.add("loading");
+    if (button) button.disabled = true;
+    try {
+      turnIntoRichNode(element, option);
+      node.width = element.offsetWidth;
+      node.height = element.offsetHeight;
+      node.generated = true;
+      if (!wasGenerated) {
+        state.generatedCount += 1;
+      }
+      applyCollapseState();
+      updateCounts();
+      autoSave();
+      setStatus(t("status.ready"), "ready");
+    } finally {
+      element.classList.remove("loading");
+      if (button) button.disabled = false;
+    }
+    return;
+  }
+
   if (!referenceImageDataUrl) {
     showSelectionToast(t("chat.noSourceForGenerate"));
     return;
   }
 
-  const element = node.element;
-  const wasGenerated = Boolean(node.generated);
-  const button = element.querySelector(".generate-button");
   element.classList.add("loading");
   if (button) button.disabled = true;
   setStatus(t("status.busy"), "busy");
@@ -6088,6 +6216,282 @@ function turnIntoGeneratedNode(element, option, imageDataUrl) {
   element.appendChild(actions);
 
   // Re-add edge handles since innerHTML wipe removed them
+  addEdgeHandles(element, nodeId);
+}
+
+// ---- Rich Node Types ----
+
+function simpleMarkdownToHtml(text) {
+  if (!text) return "";
+  let html = String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  // code blocks
+  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+    const highlighted = highlightCode(code.trim(), lang);
+    return `<pre class="rich-code-block" data-lang="${lang || "text"}"><code>${highlighted}</code></pre>`;
+  });
+  // inline code
+  html = html.replace(/`([^`]+)`/g, "<code class=\"rich-inline-code\">$1</code>");
+  // headings
+  html = html.replace(/^### (.+)$/gm, "<h4 class=\"rich-md-h4\">$1</h4>");
+  html = html.replace(/^## (.+)$/gm, "<h3 class=\"rich-md-h3\">$1</h3>");
+  html = html.replace(/^# (.+)$/gm, "<h2 class=\"rich-md-h2\">$1</h2>");
+  // bold / italic
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  // links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
+    const safeUrl = String(url).replace(/[" -]/g, "");
+    if (!safeUrl.startsWith("http://") && !safeUrl.startsWith("https://") && !safeUrl.startsWith("mailto:")) {
+      return `<span class="rich-md-link-invalid">${text}</span>`;
+    }
+    return `<a href="${safeUrl}" target="_blank" rel="noopener" class="rich-md-link">${text}</a>`;
+  });
+  // unordered lists
+  html = html.replace(/(^|\n)- (.+)/g, '$1<li class="rich-md-li">$2</li>');
+  html = html.replace(/(<li[^>]*>.*<\/li>\n?)+/g, '<ul class="rich-md-ul">$&</ul>');
+  // ordered lists
+  html = html.replace(/(^|\n)\d+\. (.+)/g, '$1<li class="rich-md-li">$2</li>');
+  html = html.replace(/(<li[^>]*>.*<\/li>\n?)+/g, '<ol class="rich-md-ol">$&</ol>');
+  // paragraphs
+  html = html.split(/\n\n+/).map(p => p.trim() ? `<p class="rich-md-p">${p}</p>` : "").join("\n");
+  return html;
+}
+
+function highlightCode(code, language) {
+  if (!code) return "";
+  const html = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const commonKeywords = /\b(const|let|var|function|return|if|else|for|while|switch|case|break|continue|class|extends|import|export|from|async|await|new|this|typeof|instanceof|try|catch|finally|throw|yield|default|static|get|set|true|false|null|undefined)\b/g;
+  const jsTypes = /\b(string|number|boolean|object|array|void|any|never|unknown|bigint|symbol)\b/g;
+  const strings = /("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)/g;
+  const comments = /(\/\/.*$|\/\*[\s\S]*?\*\/|#.*$)/gm;
+  const numbers = /\b(\d+(?:\.\d+)?)\b/g;
+
+  let result = html;
+  // comments first (wrap in placeholder to avoid re-highlighting)
+  const placeholders = [];
+  result = result.replace(comments, (match) => {
+    placeholders.push(`<span class="hl-comment">${match}</span>`);
+    return `\x00${placeholders.length - 1}\x00`;
+  });
+  result = result.replace(strings, (match) => {
+    placeholders.push(`<span class="hl-string">${match}</span>`);
+    return `\x00${placeholders.length - 1}\x00`;
+  });
+  result = result.replace(commonKeywords, (match) => {
+    placeholders.push(`<span class="hl-keyword">${match}</span>`);
+    return `\x00${placeholders.length - 1}\x00`;
+  });
+  result = result.replace(jsTypes, (match) => {
+    placeholders.push(`<span class="hl-type">${match}</span>`);
+    return `\x00${placeholders.length - 1}\x00`;
+  });
+  result = result.replace(numbers, (match) => {
+    placeholders.push(`<span class="hl-number">${match}</span>`);
+    return `\x00${placeholders.length - 1}\x00`;
+  });
+  // restore placeholders
+  result = result.replace(/\x00(\d+)\x00/g, (_, idx) => placeholders[Number(idx)]);
+  return result;
+}
+
+function turnIntoRichNode(element, option) {
+  const nodeType = option.nodeType || "note";
+  element.className = `node option-node rich-node rich-node-${nodeType}`;
+  element.innerHTML = "";
+  ensureCollapseControl(element.dataset.nodeId, element);
+  const nodeId = element.dataset.nodeId;
+
+  const content = document.createElement("div");
+  content.className = "rich-content";
+
+  // Header
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow rich-eyebrow";
+  eyebrow.textContent = `${option.tone || nodeType} / ${t("generated.result")}`;
+  content.appendChild(eyebrow);
+
+  const title = document.createElement("h3");
+  title.className = "rich-title";
+  title.textContent = option.title || t("generated.result");
+  content.appendChild(title);
+  makeTitleEditable(nodeId, title);
+
+  // Type-specific body
+  const body = document.createElement("div");
+  body.className = "rich-body";
+
+  switch (nodeType) {
+    case "note": {
+      body.innerHTML = simpleMarkdownToHtml(option.content?.text || option.description || "");
+      break;
+    }
+    case "plan": {
+      const steps = option.content?.steps || option.description?.split(/\n/).filter(Boolean).map((s, i) => ({ title: s.replace(/^\d+\.\s*/, ""), desc: "" })) || [];
+      const ol = document.createElement("ol");
+      ol.className = "rich-plan-steps";
+      steps.forEach((step, i) => {
+        const li = document.createElement("li");
+        li.className = "rich-plan-step";
+        li.innerHTML = `<span class="rich-plan-num">${i + 1}</span><div class="rich-plan-text"><strong>${String(step.title || step).slice(0, 80)}</strong>${step.desc ? `<p>${step.desc}</p>` : ""}</div>`;
+        ol.appendChild(li);
+      });
+      body.appendChild(ol);
+      break;
+    }
+    case "todo": {
+      const items = option.content?.items || option.description?.split(/\n/).filter(Boolean).map((s) => ({ text: s.replace(/^- \[[ x]\]\s*/, ""), done: /^- \[[xX]\]/.test(s) })) || [];
+      const ul = document.createElement("ul");
+      ul.className = "rich-todo-list";
+      items.forEach((item, i) => {
+        const li = document.createElement("li");
+        li.className = "rich-todo-item";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "rich-todo-check";
+        checkbox.checked = Boolean(item.done);
+        checkbox.addEventListener("change", () => {
+          li.classList.toggle("rich-todo-done", checkbox.checked);
+          if (option.content?.items) option.content.items[i].done = checkbox.checked;
+          autoSave();
+        });
+        const span = document.createElement("span");
+        span.className = "rich-todo-text";
+        span.textContent = String(item.text || item).slice(0, 120);
+        if (item.done) li.classList.add("rich-todo-done");
+        li.append(checkbox, span);
+        ul.appendChild(li);
+      });
+      body.appendChild(ul);
+      break;
+    }
+    case "weather": {
+      const w = option.content || {};
+      const wrap = document.createElement("div");
+      wrap.className = "rich-weather-wrap";
+      const icon = document.createElement("div");
+      icon.className = "rich-weather-icon";
+      icon.textContent = w.icon || "☀"; // default sun
+      const temp = document.createElement("div");
+      temp.className = "rich-weather-temp";
+      temp.textContent = w.temp || "";
+      const loc = document.createElement("div");
+      loc.className = "rich-weather-location";
+      loc.textContent = w.location || "";
+      const forecast = document.createElement("div");
+      forecast.className = "rich-weather-forecast";
+      forecast.textContent = w.forecast || "";
+      wrap.append(icon, temp, loc, forecast);
+      body.appendChild(wrap);
+      break;
+    }
+    case "map": {
+      const m = option.content || {};
+      const wrap = document.createElement("div");
+      wrap.className = "rich-map-wrap";
+      if (m.url) {
+        const img = document.createElement("img");
+        img.className = "rich-map-img";
+        img.src = m.url;
+        img.alt = m.title || "Map";
+        img.onerror = () => { img.style.display = "none"; };
+        wrap.appendChild(img);
+      }
+      const coord = document.createElement("div");
+      coord.className = "rich-map-coord";
+      if (m.lat != null && m.lng != null) {
+        coord.textContent = `${m.lat.toFixed(4)}, ${m.lng.toFixed(4)}`;
+      } else if (m.address) {
+        coord.textContent = m.address;
+      }
+      const link = document.createElement("a");
+      link.className = "rich-map-link";
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.href = m.mapUrl || (m.lat != null && m.lng != null ? `https://maps.google.com/?q=${m.lat},${m.lng}` : (m.address ? `https://maps.google.com/?q=${encodeURIComponent(m.address)}` : "#"));
+      link.textContent = t("nodeType.open");
+      wrap.append(coord, link);
+      body.appendChild(wrap);
+      break;
+    }
+    case "link": {
+      const l = option.content || {};
+      const wrap = document.createElement("a");
+      wrap.className = "rich-link-wrap";
+      wrap.href = l.url || "#";
+      wrap.target = "_blank";
+      wrap.rel = "noopener";
+      if (l.imageUrl) {
+        const img = document.createElement("img");
+        img.className = "rich-link-thumb";
+        img.src = l.imageUrl;
+        img.alt = l.title || "";
+        img.onerror = () => { img.style.display = "none"; };
+        wrap.appendChild(img);
+      }
+      const titleEl = document.createElement("div");
+      titleEl.className = "rich-link-title";
+      titleEl.textContent = l.title || option.title || "";
+      const descEl = document.createElement("div");
+      descEl.className = "rich-link-desc";
+      descEl.textContent = l.description || option.description || "";
+      const urlEl = document.createElement("div");
+      urlEl.className = "rich-link-url";
+      urlEl.textContent = l.url || "";
+      wrap.append(titleEl, descEl, urlEl);
+      body.appendChild(wrap);
+      break;
+    }
+    case "code": {
+      const lang = option.content?.language || option.language || "javascript";
+      const codeText = option.content?.code || option.description || "";
+      const pre = document.createElement("pre");
+      pre.className = "rich-code-block";
+      const code = document.createElement("code");
+      code.innerHTML = highlightCode(codeText, lang);
+      pre.appendChild(code);
+      body.appendChild(pre);
+      break;
+    }
+    default: {
+      body.innerHTML = simpleMarkdownToHtml(option.description || "");
+    }
+  }
+
+  content.appendChild(body);
+
+  // Actions
+  const actions = document.createElement("div");
+  actions.className = "rich-actions";
+
+  const copyBtn = document.createElement("button");
+  copyBtn.className = "secondary-button";
+  copyBtn.textContent = t("nodeType.copy");
+  copyBtn.addEventListener("click", async () => {
+    let text = "";
+    switch (nodeType) {
+      case "code": text = option.content?.code || option.description || ""; break;
+      case "link": text = option.content?.url || ""; break;
+      case "note": text = option.content?.text || option.description || ""; break;
+      case "plan": text = (option.content?.steps || []).map((s, i) => `${i + 1}. ${s.title || s}`).join("\n"); break;
+      case "todo": text = (option.content?.items || []).map((it) => `- [${it.done ? "x" : " "}] ${it.text || it}`).join("\n"); break;
+      default: text = option.description || "";
+    }
+    try { await navigator.clipboard.writeText(text); showToast(t("nodeType.copy") + " OK"); } catch {}
+  });
+
+  const regen = document.createElement("button");
+  regen.className = "secondary-button";
+  regen.textContent = t("generated.regenerate");
+  regen.addEventListener("click", () => generateOption(nodeId, option));
+
+  actions.append(copyBtn, regen);
+  content.appendChild(actions);
+
+  element.appendChild(content);
+
   addEdgeHandles(element, nodeId);
 }
 
@@ -9155,7 +9559,11 @@ async function loadSession(sessionId) {
       element.querySelector(".option-description").textContent = option.description || "";
 
       const button = element.querySelector(".generate-button");
+      if (option.nodeType && option.nodeType !== "image") {
+        button.textContent = t("generated.viewContent");
+      }
       button.addEventListener("click", () => generateOption(nodeId, option));
+      element.dataset.nodeType = option.nodeType || "image";
 
       // Restore reference badge if references exist
       if (option.references && option.references.length > 0) {
@@ -9179,19 +9587,30 @@ async function loadSession(sessionId) {
       const titleEl = element.querySelector(".option-title, h3");
       if (titleEl) makeTitleEditable(nodeId, titleEl);
 
-      if (n.type === "generated" && (n.data?.imageHash || n.data?.imageDataUrl)) {
-        const hash = n.data?.imageHash || n.data?.imageDataUrl;
-        const imageUrl = hash.startsWith("data:") ? hash : `/api/assets/${hash}?kind=generated`;
-        turnIntoGeneratedNode(element, option, imageUrl);
-        const node = state.nodes.get(nodeId);
-        if (node) {
-          node.generated = true;
-          node.imageHash = n.data?.imageHash || null;
-          node.explanation = n.data?.explanation || "";
-          node.width = element.offsetWidth;
-          node.height = element.offsetHeight;
+      if (n.type === "generated") {
+        if (option.nodeType && option.nodeType !== "image") {
+          turnIntoRichNode(element, option);
+          const node = state.nodes.get(nodeId);
+          if (node) {
+            node.generated = true;
+            node.width = element.offsetWidth;
+            node.height = element.offsetHeight;
+          }
+          state.generatedCount += 1;
+        } else if (n.data?.imageHash || n.data?.imageDataUrl) {
+          const hash = n.data?.imageHash || n.data?.imageDataUrl;
+          const imageUrl = hash.startsWith("data:") ? hash : `/api/assets/${hash}?kind=generated`;
+          turnIntoGeneratedNode(element, option, imageUrl);
+          const node = state.nodes.get(nodeId);
+          if (node) {
+            node.generated = true;
+            node.imageHash = n.data?.imageHash || null;
+            node.explanation = n.data?.explanation || "";
+            node.width = element.offsetWidth;
+            node.height = element.offsetHeight;
+          }
+          state.generatedCount += 1;
         }
-        state.generatedCount += 1;
       }
 
       state.links.push({ from: "analysis", to: nodeId, kind: "option" });

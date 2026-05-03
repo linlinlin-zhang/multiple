@@ -130,7 +130,7 @@
   2. Classification includes a confidence score; low-confidence results fall back to file-format-based default routing
   3. Frontend direction cards display a task-type badge distinguishing different analysis strategies
   4. Each task type routes to a different prompt template, producing qualitatively different direction outputs
-**Plans**: TBD
+**Plans**: 2 (01: API & Router, 02: Frontend Badges)
 
 ### Phase 21: Dynamic Directions
 **Goal**: Direction count adapts to content complexity -- simple images get 5 directions, complex documents get up to 8

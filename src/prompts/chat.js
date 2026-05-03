@@ -1,3 +1,5 @@
+import { CANVAS_ACTION_TYPES_TEXT, META_DIRECTIVES } from './shared.js';
+
 export function buildChatSystemContext(lang, analysis, messages) {
   const recent = messages.map((item) => `${item.role}: ${item.content}`).join("\n") || (lang === "en" ? "None" : "暂无");
 
@@ -45,9 +47,14 @@ export function buildChatSystemContext(lang, analysis, messages) {
 export function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thinking") {
   const actionSchema = '{"reply":"short user-facing answer","actions":[{"type":"action_type","nodeId":"optional exact node id","nodeName":"optional card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url"}]}';
 
+  const meta = lang === "en" ? META_DIRECTIVES.en : META_DIRECTIVES.zh;
+
   const sectionsEn = [
     "# Role",
     "You are ORYZAE's canvas action orchestrator. You decide whether the user's message requires canvas actions.",
+    "",
+    "# Meta Directives",
+    meta,
     "",
     "# Operational Loop",
     "1. Understand user intent — what do they want?",
@@ -128,6 +135,9 @@ export function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thin
   const sectionsZh = [
     "# 角色",
     "你是 ORYZAE 的画布动作编排器。你判断用户的消息是否需要画布操作。",
+    "",
+    "# 元指令",
+    meta,
     "",
     "# 操作循环",
     "1. 理解用户意图——他们想要什么？",
