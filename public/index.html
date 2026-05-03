@@ -57,6 +57,7 @@
 
       <main id="viewport" class="viewport">
         <div id="board" class="board">
+          <div id="groupLayer" class="group-layer" aria-hidden="true"></div>
           <svg id="linkLayer" class="link-layer" viewBox="0 0 2400 1500" aria-hidden="true"></svg>
 
           <section id="sourceNode" class="node source-node" data-node-id="source" style="left: 96px; top: 88px;">
@@ -101,6 +102,18 @@
             <div id="keywordList" class="keyword-list"></div>
           </section>
         </div>
+        <div id="marqueeSelection" class="marquee-selection hidden" aria-hidden="true"></div>
+        <div id="selectionToolbar" class="selection-toolbar hidden" aria-label="画布选择工具">
+          <span id="selectionCount">0</span>
+          <button id="groupSelectionButton" type="button">分组</button>
+          <button id="ungroupSelectionButton" type="button">解除</button>
+          <button id="arrangeSelectionButton" type="button">整理</button>
+        </div>
+        <aside id="minimap" class="minimap hidden" aria-label="画布缩略地图">
+          <button id="minimapCloseButton" class="minimap-close" type="button" aria-label="关闭缩略图">×</button>
+          <canvas id="minimapCanvas" width="180" height="112"></canvas>
+          <div id="minimapViewport" class="minimap-viewport"></div>
+        </aside>
       </main>
 
       <aside id="sessionPanel" class="session-panel hidden" aria-label="历史会话">
@@ -187,6 +200,13 @@
                         <span class="chat-action-copy">
                           <span class="chat-action-title">上传图片或文件</span>
                           <span class="chat-action-desc">添加到当前画布或输入框</span>
+                        </span>
+                      </button>
+                      <button id="chatMinimapAction" class="chat-action-item" type="button" role="menuitem">
+                        <span class="chat-action-icon">M</span>
+                        <span class="chat-action-copy">
+                          <span class="chat-action-title">缩略图</span>
+                          <span class="chat-action-desc">打开或关闭画布缩略图</span>
                         </span>
                       </button>
                       <button id="chatDeepThinkAction" class="chat-action-item" type="button" role="menuitem">
@@ -326,6 +346,7 @@
           <span>Temperature</span>
           <input id="settingsTemperature" type="number" min="0" max="2" step="0.1" value="0.7" required />
         </label>
+        <div id="settingsAdvancedFields" class="settings-advanced-fields" aria-live="polite"></div>
         <div class="settings-actions">
           <button type="submit" class="primary-button">保存</button>
           <button type="button" id="settingsResetBtn" class="secondary-button">重置</button>
@@ -335,14 +356,45 @@
 
     <aside id="imageViewerModal" class="image-viewer-modal hidden" aria-label="图片查看器" role="dialog" aria-modal="true">
       <div class="image-viewer-backdrop" data-close-modal></div>
+      <button id="closeImageViewer" class="image-viewer-close" aria-label="关闭">×</button>
       <div id="viewerThumbnailStrip" class="viewer-thumbnail-strip"></div>
       <div class="image-viewer-content">
-        <button id="closeImageViewer" class="image-viewer-close" aria-label="关闭">×</button>
         <img id="viewerImage" class="viewer-image" src="" alt="" />
+        <canvas id="viewerMaskCanvas" class="viewer-mask-canvas" aria-label="图片选区画布"></canvas>
         <div class="viewer-meta">
           <h3 id="viewerTitle"></h3>
           <p id="viewerExplanation"></p>
           <div class="viewer-actions">
+            <button id="viewerBrushTool" class="viewer-tool-button" type="button" aria-pressed="false" title="选择">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 20c2.8-.3 4.7-1.1 5.8-2.4"/>
+                <path d="M8.7 17.7 4.3 13.3"/>
+                <path d="m9 18 10.2-10.2a2.7 2.7 0 0 0-3.8-3.8L5.2 14.2"/>
+                <path d="M14.6 5.4 18.6 9.4"/>
+              </svg>
+              <span>选择</span>
+            </button>
+            <button id="viewerClearMask" class="viewer-tool-button hidden" type="button" title="清除选区">清除</button>
+            <div class="viewer-aspect-control">
+              <button id="viewerAspectButton" class="viewer-tool-button" type="button" aria-expanded="false" title="宽高比">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="4" y="6" width="16" height="12" rx="2"/>
+                  <path d="M9 6v12"/>
+                  <path d="M4 11h16"/>
+                </svg>
+                <span id="viewerAspectLabel">宽高比</span>
+                <span class="viewer-aspect-caret">⌄</span>
+              </button>
+              <div id="viewerAspectMenu" class="viewer-aspect-menu hidden">
+                <div class="viewer-aspect-title">用不同宽高比生成此图片</div>
+                <button type="button" data-aspect="auto"><span></span>原图比例</button>
+                <button type="button" data-aspect="1:1"><span></span>方形 <em>1:1</em></button>
+                <button type="button" data-aspect="3:4"><span></span>竖版 <em>3:4</em></button>
+                <button type="button" data-aspect="9:16"><span></span>故事版 <em>9:16</em></button>
+                <button type="button" data-aspect="4:3"><span></span>横版 <em>4:3</em></button>
+                <button type="button" data-aspect="16:9"><span></span>宽屏 <em>16:9</em></button>
+              </div>
+            </div>
             <button id="viewerRegenerate" class="primary-button">重生成</button>
             <button id="viewerModify" class="secondary-button">修改</button>
             <button id="viewerDownload" class="secondary-button">下载</button>

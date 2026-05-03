@@ -1,6 +1,17 @@
-const viewport = document.querySelector("#viewport");
+﻿const viewport = document.querySelector("#viewport");
 const board = document.querySelector("#board");
+const groupLayer = document.querySelector("#groupLayer");
 const linkLayer = document.querySelector("#linkLayer");
+const marqueeSelection = document.querySelector("#marqueeSelection");
+const selectionToolbar = document.querySelector("#selectionToolbar");
+const selectionCount = document.querySelector("#selectionCount");
+const groupSelectionButton = document.querySelector("#groupSelectionButton");
+const ungroupSelectionButton = document.querySelector("#ungroupSelectionButton");
+const arrangeSelectionButton = document.querySelector("#arrangeSelectionButton");
+const minimap = document.querySelector("#minimap");
+const minimapCanvas = document.querySelector("#minimapCanvas");
+const minimapViewport = document.querySelector("#minimapViewport");
+const minimapCloseButton = document.querySelector("#minimapCloseButton");
 const fileInput = document.querySelector("#fileInput");
 const sourcePreview = document.querySelector("#sourcePreview");
 const emptyState = document.querySelector("#emptyState");
@@ -23,6 +34,7 @@ const commandMenu = document.querySelector("#commandMenu");
 const chatAttachButton = document.querySelector("#chatAttachButton");
 const chatActionMenu = document.querySelector("#chatActionMenu");
 const chatUploadAction = document.querySelector("#chatUploadAction");
+const chatMinimapAction = document.querySelector("#chatMinimapAction");
 const chatDeepThinkAction = document.querySelector("#chatDeepThinkAction");
 const chatImageSearchAction = document.querySelector("#chatImageSearchAction");
 const chatSubagentsAction = document.querySelector("#chatSubagentsAction");
@@ -63,6 +75,7 @@ const settingsEndpoint = document.querySelector("#settingsEndpoint");
 const settingsModel = document.querySelector("#settingsModel");
 const settingsApiKey = document.querySelector("#settingsApiKey");
 const settingsTemperature = document.querySelector("#settingsTemperature");
+const settingsAdvancedFields = document.querySelector("#settingsAdvancedFields");
 
 const imageViewerModal = document.querySelector("#imageViewerModal");
 const viewerImage = document.querySelector("#viewerImage");
@@ -72,11 +85,17 @@ const viewerExplanation = document.querySelector("#viewerExplanation");
 const viewerRegenerate = document.querySelector("#viewerRegenerate");
 const viewerModify = document.querySelector("#viewerModify");
 const viewerDownload = document.querySelector("#viewerDownload");
+const viewerBrushTool = document.querySelector("#viewerBrushTool");
+const viewerClearMask = document.querySelector("#viewerClearMask");
+const viewerAspectButton = document.querySelector("#viewerAspectButton");
+const viewerAspectLabel = document.querySelector("#viewerAspectLabel");
+const viewerAspectMenu = document.querySelector("#viewerAspectMenu");
 const imageShareButton = document.querySelector("#imageShareButton");
 const viewerModifyPanel = document.querySelector("#viewerModifyPanel");
 const viewerPromptInput = document.querySelector("#viewerPromptInput");
 const viewerSubmitModify = document.querySelector("#viewerSubmitModify");
 const viewerAsrButton = document.querySelector("#viewerAsrButton");
+const viewerMaskCanvas = document.querySelector("#viewerMaskCanvas");
 const viewerThumbnailStrip = document.querySelector("#viewerThumbnailStrip");
 const imageShareModal = document.querySelector("#imageShareModal");
 const sharePreviewImage = document.querySelector("#sharePreviewImage");
@@ -101,6 +120,7 @@ const state = {
   sourceUrl: null,             // for url sources
   fileName: "",
   latestAnalysis: null,
+  fileUnderstanding: null, // { summary, abstract, structure, keyMaterials, actionableDirections, isScanned }
   chatMessages: [],
   chatThreads: [],
   activeChatThreadId: null,
@@ -108,10 +128,12 @@ const state = {
   links: [],
   junctions: new Map(),  // junctionId -> { connectedCardIds: string[], maxCapacity: 5 }
   blueprints: new Map(),  // junctionId -> { positions: { cardId: { x, y } }, relationships: [{ from, to, type }] }
+  groups: new Map(),      // groupId -> { id, title, nodeIds, color }
   collapsed: new Set(),        // full collapse (double-click)
   selectiveHidden: new Set(),  // selective hide (single-click / auto-collapse)
   generatedCount: 0,
   selectedNodeId: null,
+  selectedNodeIds: new Set(),
   thinkingMode: "no-thinking",
   subagentsEnabled: false,
   view: {
@@ -123,12 +145,58 @@ const state = {
 
 const settingsCache = {
   currentRole: "analysis",
-  analysis: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
-  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7 },
-  image: { endpoint: "", model: "", apiKey: "", temperature: 0.7 },
-  asr: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3-livetranslate-flash-2025-12-01", apiKey: "", temperature: 0 },
-  realtime: { endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime", model: "qwen3.5-omni-plus-realtime", apiKey: "", temperature: 0.7 },
-  deepthink: { endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation", model: "qwen-deep-research", apiKey: "", temperature: 0.7 }
+  analysis: { endpoint: "", model: "", apiKey: "", temperature: 0.7, options: {} },
+  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: {} },
+  image: {
+    endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+    model: "qwen-image-2.0-pro",
+    apiKey: "",
+    temperature: 0.7,
+    options: { size: "2048*2048", n: 1, prompt_extend: true, watermark: false, negative_prompt: "", useReferenceImage: true }
+  },
+  asr: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3-livetranslate-flash-2025-12-01", apiKey: "", temperature: 0, options: { targetLanguage: "auto" } },
+  realtime: {
+    endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
+    model: "qwen3.5-omni-plus-realtime",
+    apiKey: "",
+    temperature: 0.7,
+    options: { voice: "Ethan", outputAudio: false, enableSearch: false, smoothOutput: "auto" }
+  },
+  deepthink: { endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation", model: "qwen-deep-research", apiKey: "", temperature: 0.7, options: {} }
+};
+
+const MODEL_OPTION_FIELDS = {
+  analysis: [
+    { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
+    { key: "max_tokens", type: "number", min: 1, step: 1 }
+  ],
+  chat: [
+    { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
+    { key: "max_tokens", type: "number", min: 1, step: 1 }
+  ],
+  image: [
+    { key: "size", type: "text", placeholder: "2048*2048" },
+    { key: "n", type: "number", min: 1, max: 6, step: 1 },
+    { key: "negative_prompt", type: "textarea" },
+    { key: "prompt_extend", type: "checkbox" },
+    { key: "watermark", type: "checkbox" },
+    { key: "seed", type: "number", min: 0, max: 2147483647, step: 1 },
+    { key: "useReferenceImage", type: "checkbox" }
+  ],
+  asr: [
+    { key: "targetLanguage", type: "select", options: [["auto", "Auto"], ["zh", "中文"], ["en", "English"]] }
+  ],
+  realtime: [
+    { key: "voice", type: "text", placeholder: "Ethan" },
+    { key: "outputAudio", type: "checkbox" },
+    { key: "enableSearch", type: "checkbox" },
+    { key: "smoothOutput", type: "select", options: [["auto", "Auto"], ["true", "On"], ["false", "Off"]] },
+    { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 }
+  ],
+  deepthink: [
+    { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
+    { key: "max_tokens", type: "number", min: 1, step: 1 }
+  ]
 };
 
 const voiceState = {
@@ -158,8 +226,92 @@ let currentShareNodeId = null;
 const imageShareLinks = new Map();
 let activeCommandIndex = 0;
 let currentHealthMode = "checking";
+let liveResearchCards = new Map();
 let deepThinkBusy = false;
 let deepThinkModeActive = false;
+
+const VIEWER_ASPECT_OPTIONS = {
+  auto: { label: { zh: "宽高比", en: "Aspect" }, size: "" },
+  "1:1": { label: { zh: "方形 1:1", en: "Square 1:1" }, size: "1536*1536" },
+  "3:4": { label: { zh: "竖版 3:4", en: "Portrait 3:4" }, size: "1080*1440" },
+  "9:16": { label: { zh: "故事版 9:16", en: "Story 9:16" }, size: "1080*1920" },
+  "4:3": { label: { zh: "横版 4:3", en: "Landscape 4:3" }, size: "1440*1080" },
+  "16:9": { label: { zh: "宽屏 16:9", en: "Wide 16:9" }, size: "1920*1080" }
+};
+
+const viewerEditState = {
+  brushActive: false,
+  drawing: false,
+  hasMask: false,
+  lastMaskPoint: null,
+  brushSize: 48,
+  aspect: "auto"
+};
+
+// Fire-and-forget helper that pushes a chunk of session-scoped context into
+// the RAG pool. No-ops without a session id; logs and swallows failures so
+// the caller never has to care.
+function ingestSessionContext({ kind, text, sourceId = null, sourceMeta = null, snippet = false, replace = false }) {
+  if (!currentSessionId || !text || typeof text !== "string" || !text.trim()) return;
+  fetch("/api/context/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: currentSessionId,
+      kind,
+      text,
+      sourceId,
+      sourceMeta,
+      snippet,
+      replace
+    })
+  }).catch((err) => console.warn(`[ingestSessionContext:${kind}]`, err.message));
+}
+
+const CANVAS_TOOL_DEFINITIONS = [
+  { type: "pan_view" },
+  { type: "focus_node" },
+  { type: "select_node" },
+  { type: "move_node" },
+  { type: "arrange_canvas" },
+  { type: "auto_layout" },
+  { type: "tidy_canvas" },
+  { type: "group_selection" },
+  { type: "ungroup_selection" },
+  { type: "search_card" },
+  { type: "export_report" },
+  { type: "deselect" },
+  { type: "select_source" },
+  { type: "select_analysis" },
+  { type: "create_card" },
+  { type: "new_card" },
+  { type: "create_direction" },
+  { type: "create_web_card" },
+  { type: "web_search", risk: "network" },
+  { type: "create_agent", risk: "agent" },
+  { type: "generate_image", risk: "api_cost" },
+  { type: "image_search", risk: "network" },
+  { type: "reverse_image_search", risk: "network" },
+  { type: "text_image_search", risk: "network" },
+  { type: "analyze_source" },
+  { type: "explore_source", risk: "network" },
+  { type: "research_source", risk: "network" },
+  { type: "research_node", risk: "network" },
+  { type: "open_references" },
+  { type: "save_session" },
+  { type: "new_chat" },
+  { type: "open_chat_history" },
+  { type: "close_chat" },
+  { type: "open_chat" },
+  { type: "open_history" },
+  { type: "open_settings" },
+  { type: "set_thinking_mode" },
+  { type: "set_deep_think_mode" },
+  { type: "open_upload" },
+  { type: "delete_node", risk: "destructive" }
+];
+const CANVAS_TOOL_TYPES = CANVAS_TOOL_DEFINITIONS.map((tool) => tool.type);
+const CANVAS_RISKY_TOOL_TYPES = new Set(CANVAS_TOOL_DEFINITIONS.filter((tool) => tool.risk).map((tool) => tool.type));
 
 const optionPositions = [
   { x: 850, y: 112, tilt: -1.5 },
@@ -197,6 +349,8 @@ const i18n = {
     "command.arrangeDesc": "自动整理当前画布节点",
     "command.newCard": "新建卡片",
     "command.newCardDesc": "在画布上创建一张空白卡片",
+    "command.newCanvas": "新建画布",
+    "command.newCanvasDesc": "创建一个新的空白画布",
     "command.searchCard": "搜索卡片",
     "command.searchCardDesc": "按名称搜索画布上的卡片并定位",
     "command.searchCardPrompt": "输入卡片名称搜索…",
@@ -219,6 +373,32 @@ const i18n = {
     "settings.model": "Model",
     "settings.apiKey": "API Key",
     "settings.temperature": "Temperature",
+    "settings.advanced": "模型参数",
+    "settings.option.top_p": "Top P",
+    "settings.option.max_tokens": "最大输出 Tokens",
+    "settings.option.size": "输出分辨率",
+    "settings.option.n": "生成张数",
+    "settings.option.negative_prompt": "反向提示词",
+    "settings.option.prompt_extend": "Prompt 智能改写",
+    "settings.option.watermark": "添加水印",
+    "settings.option.seed": "随机种子",
+    "settings.option.useReferenceImage": "使用当前图片作为参考",
+    "settings.option.targetLanguage": "转写目标语言",
+    "settings.option.voice": "音色",
+    "settings.option.outputAudio": "返回语音回复",
+    "settings.option.enableSearch": "实时语音联网搜索",
+    "settings.option.smoothOutput": "口语化输出",
+    "settings.hint.top_p": "留空使用模型默认值。",
+    "settings.hint.max_tokens": "留空不限制，由模型默认控制。",
+    "settings.hint.size": "Qwen Image 2.0 Pro 支持自由宽高，推荐使用 2K 预设。",
+    "settings.hint.n": "Qwen Image 2.0 系列支持 1-6 张；当前画布会使用第一张。",
+    "settings.hint.negative_prompt": "不希望出现在画面里的内容，最多 500 字符。",
+    "settings.hint.prompt_extend": "开启后模型会优化正向提示词，画面更丰富。",
+    "settings.hint.seed": "留空随机；相同 seed 可提高复现概率。",
+    "settings.hint.voice": "例如 Ethan、Cherry、Chelsie；自定义复刻音色可填音色 ID。",
+    "settings.hint.outputAudio": "开启后实时语音会播放模型原生音频。",
+    "settings.hint.enableSearch": "仅 Qwen3.5 Omni Realtime 支持，且不能与工具调用同时开启。",
+    "settings.hint.smoothOutput": "自动时由模型决定口语或书面风格。",
     "settings.save": "保存",
     "settings.reset": "重置",
     "settings.darkMode": "深色模式",
@@ -280,6 +460,8 @@ const i18n = {
     "chat.actionMenu": "功能区",
     "chat.upload": "上传图片或文件",
     "chat.uploadDesc": "添加到当前画布或输入框",
+    "chat.minimap": "缩略图",
+    "chat.minimapDesc": "打开或关闭画布缩略图",
     "chat.deepThink": "深入研究",
     "chat.deepThinkDesc": "调用 Qwen Deep Research，把研究过程实时展开为资料卡片",
     "chat.deepThinkMode": "深入研究",
@@ -310,6 +492,23 @@ const i18n = {
     "analysis.eyebrowText": "DOCUMENT READ",
     "analysis.eyebrowUrl": "LINK READ",
     "analysis.defaultSummary": "已完成内容理解。",
+    "fileUnderstanding.title": "文件理解卡",
+    "fileUnderstanding.summary": "摘要",
+    "fileUnderstanding.structure": "结构",
+    "fileUnderstanding.pages": "{count} 页",
+    "fileUnderstanding.keyMaterials": "关键素材",
+    "fileUnderstanding.images": "图片",
+    "fileUnderstanding.tables": "表格",
+    "fileUnderstanding.charts": "图表",
+    "fileUnderstanding.actionableDirections": "可执行方向",
+    "fileUnderstanding.scannedWarning": "这似乎是扫描版文档，建议使用 OCR 以提取完整文本。",
+    "fileUnderstanding.understandButton": "理解文档",
+    "fileUnderstanding.understanding": "正在理解文档...",
+    "direction.research": "研究",
+    "direction.taskPlan": "任务计划",
+    "direction.webAnalysis": "网页分析",
+    "direction.reportStructure": "汇报结构",
+    "direction.materialCollection": "素材收集",
     "session.panelTitle": "历史会话",
     "session.close": "关闭",
     "session.export": "导出会话",
@@ -342,6 +541,13 @@ const i18n = {
     "viewer.confirmModify": "确认修改",
     "viewer.cancelModify": "取消",
     "viewer.promptPlaceholder": "描述编辑",
+    "viewer.brush": "选择",
+    "viewer.clearMask": "清除",
+    "viewer.aspect": "宽高比",
+    "viewer.aspectAuto": "原图比例",
+    "viewer.aspectMenuTitle": "用不同宽高比生成此图片",
+    "viewer.maskRequired": "请先涂抹要编辑的区域。",
+    "viewer.maskHint": "已使用画笔选区，模型会优先修改涂抹区域。",
     "viewer.share": "分享",
     "viewer.shareInProgress": "生成分享链接中...",
     "viewer.shareCopied": "分享链接已复制到剪贴板",
@@ -394,6 +600,8 @@ const i18n = {
     "command.arrangeDesc": "Automatically tidy current canvas nodes",
     "command.newCard": "New Card",
     "command.newCardDesc": "Create a blank card on the canvas",
+    "command.newCanvas": "New Canvas",
+    "command.newCanvasDesc": "Create a new blank canvas",
     "command.searchCard": "Search card",
     "command.searchCardDesc": "Find and locate a card on the canvas by name",
     "command.searchCardPrompt": "Type card name to search…",
@@ -416,6 +624,32 @@ const i18n = {
     "settings.model": "Model",
     "settings.apiKey": "API Key",
     "settings.temperature": "Temperature",
+    "settings.advanced": "Model parameters",
+    "settings.option.top_p": "Top P",
+    "settings.option.max_tokens": "Max output tokens",
+    "settings.option.size": "Output resolution",
+    "settings.option.n": "Image count",
+    "settings.option.negative_prompt": "Negative prompt",
+    "settings.option.prompt_extend": "Prompt enhancement",
+    "settings.option.watermark": "Watermark",
+    "settings.option.seed": "Seed",
+    "settings.option.useReferenceImage": "Use current image as reference",
+    "settings.option.targetLanguage": "Transcript language",
+    "settings.option.voice": "Voice",
+    "settings.option.outputAudio": "Play voice reply",
+    "settings.option.enableSearch": "Realtime web search",
+    "settings.option.smoothOutput": "Conversational output",
+    "settings.hint.top_p": "Leave blank to use the model default.",
+    "settings.hint.max_tokens": "Leave blank for the provider default.",
+    "settings.hint.size": "Qwen Image 2.0 Pro supports custom width and height; 2K presets are recommended.",
+    "settings.hint.n": "Qwen Image 2.0 supports 1-6 images; the canvas uses the first image.",
+    "settings.hint.negative_prompt": "Things to avoid in the generated image, up to 500 characters.",
+    "settings.hint.prompt_extend": "Let the model expand and polish the prompt for richer images.",
+    "settings.hint.seed": "Leave blank for random generation; same seed improves repeatability.",
+    "settings.hint.voice": "For example Ethan, Cherry, or Chelsie; custom cloned voice IDs also work.",
+    "settings.hint.outputAudio": "When enabled, realtime voice plays the model's native audio.",
+    "settings.hint.enableSearch": "Only supported by Qwen3.5 Omni Realtime and incompatible with tool calling.",
+    "settings.hint.smoothOutput": "Auto lets the model choose conversational or formal style.",
     "settings.save": "Save",
     "settings.reset": "Reset",
     "settings.darkMode": "Dark Mode",
@@ -477,6 +711,8 @@ const i18n = {
     "chat.actionMenu": "Action menu",
     "chat.upload": "Upload image or file",
     "chat.uploadDesc": "Add to the canvas or input",
+    "chat.minimap": "Minimap",
+    "chat.minimapDesc": "Show or hide the canvas minimap",
     "chat.deepThink": "Deep research",
     "chat.deepThinkDesc": "Use Qwen Deep Research and stream evidence into canvas cards",
     "chat.deepThinkMode": "Deep research",
@@ -507,6 +743,23 @@ const i18n = {
     "analysis.eyebrowText": "DOCUMENT READ",
     "analysis.eyebrowUrl": "LINK READ",
     "analysis.defaultSummary": "Content understanding completed.",
+    "fileUnderstanding.title": "Document Understanding Card",
+    "fileUnderstanding.summary": "Summary",
+    "fileUnderstanding.structure": "Structure",
+    "fileUnderstanding.pages": "{count} pages",
+    "fileUnderstanding.keyMaterials": "Key Materials",
+    "fileUnderstanding.images": "Images",
+    "fileUnderstanding.tables": "Tables",
+    "fileUnderstanding.charts": "Charts",
+    "fileUnderstanding.actionableDirections": "Actionable Directions",
+    "fileUnderstanding.scannedWarning": "This appears to be a scanned document. OCR is recommended for full text extraction.",
+    "fileUnderstanding.understandButton": "Understand Document",
+    "fileUnderstanding.understanding": "Understanding...",
+    "direction.research": "Research",
+    "direction.taskPlan": "Task Plan",
+    "direction.webAnalysis": "Web Analysis",
+    "direction.reportStructure": "Report Structure",
+    "direction.materialCollection": "Material Collection",
     "session.panelTitle": "Sessions",
     "session.close": "Close",
     "session.export": "Export",
@@ -539,6 +792,13 @@ const i18n = {
     "viewer.confirmModify": "Confirm",
     "viewer.cancelModify": "Cancel",
     "viewer.promptPlaceholder": "Describe edit",
+    "viewer.brush": "Select",
+    "viewer.clearMask": "Clear",
+    "viewer.aspect": "Aspect",
+    "viewer.aspectAuto": "Original ratio",
+    "viewer.aspectMenuTitle": "Generate this image in another aspect ratio",
+    "viewer.maskRequired": "Brush over the area you want to edit first.",
+    "viewer.maskHint": "Brush selection included; the model will prioritize the painted region.",
     "viewer.share": "Share",
     "viewer.shareInProgress": "Generating share link...",
     "viewer.shareCopied": "Share link copied to clipboard",
@@ -636,8 +896,10 @@ function renderAllText() {
     const mode = opt.dataset.mode;
     if (label && mode === "analyze") label.textContent = t("research.analyze");
     if (label && mode === "explore") label.textContent = t("research.explore");
+    if (label && mode === "understand") label.textContent = t("fileUnderstanding.understandButton");
     if (tooltip && mode === "analyze") tooltip.textContent = t("research.analyzeTooltip");
     if (tooltip && mode === "explore") tooltip.textContent = t("research.exploreTooltip");
+    if (tooltip && mode === "understand") tooltip.textContent = currentLang === "en" ? "Understand document structure, extract key materials and generate actionable directions" : "理解文档结构、提取关键素材并生成可执行方向";
   });
   const urlIn = document.querySelector("#urlInput");
   if (urlIn) urlIn.placeholder = t("source.urlPlaceholder");
@@ -686,6 +948,12 @@ function renderAllText() {
     const desc = chatUploadAction.querySelector(".chat-action-desc");
     if (title) title.textContent = t("chat.upload");
     if (desc) desc.textContent = t("chat.uploadDesc");
+  }
+  if (chatMinimapAction) {
+    const title = chatMinimapAction.querySelector(".chat-action-title");
+    const desc = chatMinimapAction.querySelector(".chat-action-desc");
+    if (title) title.textContent = t("chat.minimap");
+    if (desc) desc.textContent = t("chat.minimapDesc");
   }
   if (chatDeepThinkAction) {
     const title = chatDeepThinkAction.querySelector(".chat-action-title");
@@ -754,6 +1022,7 @@ function renderAllText() {
   if (darkModeLabel) darkModeLabel.textContent = t("settings.darkMode");
   const langLabel = document.querySelector(".settings-language-row span");
   if (langLabel) langLabel.textContent = t("settings.language");
+  renderSettingsAdvancedFields();
   renderCommandMenu();
 
   const sessionPanelHeader = document.querySelector(".session-panel-header span");
@@ -792,6 +1061,26 @@ function renderAllText() {
   if (viewerModify) viewerModify.textContent = t("viewer.modify");
   if (viewerDownload) viewerDownload.textContent = t("viewer.download");
   if (imageShareButton) imageShareButton.setAttribute("title", t("viewer.share"));
+  if (viewerBrushTool) {
+    viewerBrushTool.title = t("viewer.brush");
+    viewerBrushTool.setAttribute("aria-label", t("viewer.brush"));
+    const brushLabel = viewerBrushTool.querySelector("span");
+    if (brushLabel) brushLabel.textContent = t("viewer.brush");
+  }
+  if (viewerClearMask) {
+    viewerClearMask.title = t("viewer.clearMask");
+    viewerClearMask.setAttribute("aria-label", t("viewer.clearMask"));
+    viewerClearMask.textContent = t("viewer.clearMask");
+  }
+  if (viewerAspectButton) {
+    viewerAspectButton.title = t("viewer.aspect");
+    viewerAspectButton.setAttribute("aria-label", t("viewer.aspect"));
+  }
+  const aspectTitle = viewerAspectMenu?.querySelector(".viewer-aspect-title");
+  if (aspectTitle) aspectTitle.textContent = t("viewer.aspectMenuTitle");
+  const aspectAuto = viewerAspectMenu?.querySelector('[data-aspect="auto"]');
+  if (aspectAuto?.lastChild) aspectAuto.lastChild.textContent = t("viewer.aspectAuto");
+  updateViewerAspectUI();
   if (viewerSubmitModify) viewerSubmitModify.textContent = t("viewer.confirmModify");
   if (viewerPromptInput) viewerPromptInput.placeholder = t("viewer.promptPlaceholder");
 
@@ -843,6 +1132,7 @@ async function init() {
   makeDraggable(analysisNode, "analysis");
   wireControls();
   updateBoardTransform();
+  drawLinks();
   checkHealth();
   setStatus("Ready", "ready");
   await loadSettings();
@@ -863,6 +1153,18 @@ async function init() {
       url.searchParams.delete("session");
       window.history.replaceState({}, "", url);
     }
+  } else {
+    const lastSessionId = sessionStorage.getItem("oryzae-last-session-id");
+    if (lastSessionId) {
+      try {
+        await loadSession(lastSessionId);
+        const url = new URL(window.location.href);
+        url.searchParams.set("session", lastSessionId);
+        window.history.replaceState({}, "", url);
+      } catch {
+        sessionStorage.removeItem("oryzae-last-session-id");
+      }
+    }
   }
 }
 
@@ -876,6 +1178,7 @@ function getWorkbenchCommands() {
     { id: "arrange", icon: "A", label: t("command.arrange"), description: t("command.arrangeDesc") },
     { id: "new-card", icon: "N", label: t("command.newCard"), description: t("command.newCardDesc") },
     { id: "search-card", icon: "Q", label: t("command.searchCard"), description: t("command.searchCardDesc") },
+    { id: "new-canvas", icon: "C", label: t("command.newCanvas"), description: t("command.newCanvasDesc") },
     {
       id: "subagents",
       icon: "A",
@@ -1075,24 +1378,35 @@ async function executeWorkbenchCommand(commandId) {
   if (commandId === "fit") return resetView();
   if (commandId === "arrange") return arrangeCanvasLayout();
   if (commandId === "new-card") return createNewCardNode(commandArgument);
-  if (commandId === "search-card") return openCardSearchUI();
+  if (commandId === "search-card") return openCardSearchUI(commandArgument);
+  if (commandId === "new-canvas") return createNewCanvas();
   if (commandId === "subagents") return toggleSubagentsMode();
 }
 
 function extractCommandArgument(commandId, rawValue) {
-  if (commandId !== "new-card") return "";
+  if (commandId !== "new-card" && commandId !== "search-card") return "";
   let text = String(rawValue || "").trim().replace(/^\/+/, "").trim();
-  const aliases = [
-    t("command.newCard"),
-    "new-card",
-    "new card",
-    "card",
-    "新建卡片",
-    "新建",
-    "卡片"
-  ].filter(Boolean).sort((a, b) => b.length - a.length);
+  const aliases = commandId === "new-card"
+    ? [
+        t("command.newCard"),
+        "new-card",
+        "new card",
+        "card",
+        "新建卡片",
+        "新建",
+        "卡片"
+      ]
+    : [
+        t("command.searchCard"),
+        "search-card",
+        "search card",
+        "search",
+        "搜索卡片",
+        "搜索"
+      ];
+  const sortedAliases = aliases.filter(Boolean).sort((a, b) => b.length - a.length);
   const lower = text.toLowerCase();
-  const alias = aliases.find((item) => lower === item.toLowerCase() || lower.startsWith(`${item.toLowerCase()} `));
+  const alias = sortedAliases.find((item) => lower === item.toLowerCase() || lower.startsWith(`${item.toLowerCase()} `));
   if (alias) {
     text = text.slice(alias.length).trim();
   }
@@ -1101,9 +1415,11 @@ function extractCommandArgument(commandId, rawValue) {
 
 let cardSearchMode = false;
 
-function openCardSearchUI() {
+function openCardSearchUI(initialQuery = "") {
   cardSearchMode = true;
-  if (chatInput) chatInput.value = "/";
+  if (chatInput) {
+    chatInput.value = initialQuery ? "/" + t("command.searchCard") + " " + initialQuery : "/";
+  }
   openCommandMenu();
 }
 
@@ -1239,9 +1555,25 @@ function wireControls() {
       handleAnalyze("analyze");
     } else if (mode === "explore") {
       handleExplore();
+    } else if (mode === "understand") {
+      triggerFileUnderstanding();
     }
     researchDropdownWrapper?.classList.remove("is-open");
   };
+
+  // Dynamically add "Understand Document" option for text/PDF/PPT sources
+  const researchDropdown = document.querySelector(".research-dropdown");
+  if (researchDropdown && !researchDropdown.querySelector('[data-mode="understand"]')) {
+    const understandOption = document.createElement("div");
+    understandOption.className = "research-option";
+    understandOption.dataset.mode = "understand";
+    understandOption.innerHTML = `
+      <span class="option-label">${t("fileUnderstanding.understandButton")}</span>
+      <div class="option-tooltip">理解文档结构、提取关键素材并生成可执行方向</div>
+    `;
+    understandOption.style.display = "none"; // hidden by default, shown when document source is active
+    researchDropdown.appendChild(understandOption);
+  }
 
   document.querySelectorAll(".research-option").forEach((option) => {
     option.addEventListener("pointerdown", (event) => {
@@ -1373,11 +1705,24 @@ function wireControls() {
   document.querySelector("#fitButton")?.addEventListener("click", resetView);
   document.querySelector("#saveButton")?.addEventListener("click", () => saveSession());
   document.querySelector("#arrangeButton")?.addEventListener("click", arrangeCanvasLayout);
+  groupSelectionButton?.addEventListener("click", groupSelectedNodes);
+  ungroupSelectionButton?.addEventListener("click", ungroupSelectedNodes);
+  arrangeSelectionButton?.addEventListener("click", () => arrangeCanvasLayout({ selectionOnly: true }));
+  minimap?.addEventListener("pointerdown", handleMinimapPointer);
+  minimapCloseButton?.addEventListener("pointerdown", (event) => event.stopPropagation());
+  minimapCloseButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setMinimapOpen(false);
+  });
 
   chatAttachButton?.addEventListener("click", toggleChatActionMenu);
   chatUploadAction?.addEventListener("click", () => {
     closeChatActionMenu();
     handleAttachClick();
+  });
+  chatMinimapAction?.addEventListener("click", () => {
+    closeChatActionMenu();
+    toggleMinimap();
   });
   chatDeepThinkAction?.addEventListener("click", () => {
     closeChatActionMenu();
@@ -1459,7 +1804,8 @@ function wireControls() {
         endpoint: settingsEndpoint?.value?.trim() || "",
         model: settingsModel?.value?.trim() || "",
         apiKey: settingsApiKey?.value?.trim() || "",
-        temperature: Number(settingsTemperature?.value ?? 0.7)
+        temperature: Number(settingsTemperature?.value ?? 0.7),
+        options: collectSettingsOptions()
       }
     };
     try {
@@ -1532,13 +1878,50 @@ function wireControls() {
   });
 
   viewerModify?.addEventListener("click", () => {
-    viewerModifyPanel?.classList.remove("hidden");
-    viewerPromptInput?.focus();
+    setViewerEditPanelVisible(true);
   });
 
   viewerAsrButton?.addEventListener("click", () => {
     toggleViewerAsrDictation();
   });
+
+  viewerBrushTool?.addEventListener("click", () => {
+    setViewerEditPanelVisible(true);
+    setViewerBrushActive(!viewerEditState.brushActive);
+  });
+
+  viewerClearMask?.addEventListener("click", () => {
+    clearViewerMask();
+  });
+
+  viewerAspectButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleViewerAspectMenu();
+  });
+
+  viewerAspectMenu?.querySelectorAll("[data-aspect]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setViewerAspect(button.dataset.aspect || "auto");
+      closeViewerAspectMenu();
+    });
+  });
+
+  document.addEventListener("click", (event) => {
+    if (!viewerAspectMenu || viewerAspectMenu.classList.contains("hidden")) return;
+    if (viewerAspectMenu.contains(event.target) || viewerAspectButton?.contains(event.target)) return;
+    closeViewerAspectMenu();
+  });
+
+  viewerMaskCanvas?.addEventListener("pointerdown", beginViewerMaskStroke);
+  viewerMaskCanvas?.addEventListener("pointermove", continueViewerMaskStroke);
+  viewerMaskCanvas?.addEventListener("pointerup", endViewerMaskStroke);
+  viewerMaskCanvas?.addEventListener("pointercancel", endViewerMaskStroke);
+  viewerMaskCanvas?.addEventListener("pointerleave", endViewerMaskStroke);
+  viewerImage?.addEventListener("load", () => {
+    syncViewerMaskCanvas();
+  });
+  window.addEventListener("resize", syncViewerMaskCanvas);
 
   viewerSubmitModify?.addEventListener("click", async () => {
     const customPrompt = viewerPromptInput?.value.trim();
@@ -1598,6 +1981,10 @@ function wireControls() {
   let panStart = null;
   viewport.addEventListener("pointerdown", (event) => {
     if (event.target !== viewport && event.target !== board && event.target !== linkLayer) return;
+    if (event.shiftKey) {
+      startMarqueeSelection(event);
+      return;
+    }
     panStart = {
       pointerId: event.pointerId,
       x: event.clientX,
@@ -1620,6 +2007,89 @@ function wireControls() {
     panStart = null;
     viewport.classList.remove("is-panning");
   });
+  viewport.addEventListener("pointercancel", () => {
+    panStart = null;
+    viewport.classList.remove("is-panning");
+  });
+}
+
+function startMarqueeSelection(event) {
+  if (!viewport || !marqueeSelection) return;
+  event.preventDefault();
+  event.stopPropagation();
+  const viewportRect = viewport.getBoundingClientRect();
+  const startClient = { x: event.clientX, y: event.clientY };
+  const startBoard = viewportToBoardPoint(event.clientX, event.clientY);
+  marqueeSelection.classList.remove("hidden");
+  viewport.setPointerCapture?.(event.pointerId);
+
+  const update = (moveEvent) => {
+    const left = Math.min(startClient.x, moveEvent.clientX) - viewportRect.left;
+    const top = Math.min(startClient.y, moveEvent.clientY) - viewportRect.top;
+    const width = Math.abs(moveEvent.clientX - startClient.x);
+    const height = Math.abs(moveEvent.clientY - startClient.y);
+    marqueeSelection.style.left = `${left}px`;
+    marqueeSelection.style.top = `${top}px`;
+    marqueeSelection.style.width = `${width}px`;
+    marqueeSelection.style.height = `${height}px`;
+
+    const currentBoard = viewportToBoardPoint(moveEvent.clientX, moveEvent.clientY);
+    const rect = {
+      x: Math.min(startBoard.x, currentBoard.x),
+      y: Math.min(startBoard.y, currentBoard.y),
+      right: Math.max(startBoard.x, currentBoard.x),
+      bottom: Math.max(startBoard.y, currentBoard.y)
+    };
+    const selected = [];
+    for (const [id, node] of state.nodes.entries()) {
+      if (!isNodeVisible(node) || id.startsWith("junction-")) continue;
+      const bounds = getNodeBounds(node);
+      if (bounds && bounds.right >= rect.x && bounds.x <= rect.right && bounds.bottom >= rect.y && bounds.y <= rect.bottom) {
+        selected.push(id);
+      }
+    }
+    setMultiSelection(selected, { primaryId: selected[0] });
+  };
+
+  const finish = () => {
+    marqueeSelection.classList.add("hidden");
+    window.removeEventListener("pointermove", update);
+    window.removeEventListener("pointerup", finish);
+    window.removeEventListener("pointercancel", finish);
+  };
+
+  window.addEventListener("pointermove", update);
+  window.addEventListener("pointerup", finish, { once: true });
+  window.addEventListener("pointercancel", finish, { once: true });
+}
+
+function handleMinimapPointer(event) {
+  if (!minimapCanvas || !viewport) return;
+  if (event.target.closest?.("#minimapCloseButton")) return;
+  const rect = minimapCanvas.getBoundingClientRect();
+  const scaleX = 2400 / rect.width;
+  const scaleY = 1500 / rect.height;
+  const boardX = (event.clientX - rect.left) * scaleX;
+  const boardY = (event.clientY - rect.top) * scaleY;
+  const viewRect = viewport.getBoundingClientRect();
+  state.view.x = viewRect.width / 2 - boardX * state.view.scale;
+  state.view.y = viewRect.height / 2 - boardY * state.view.scale;
+  updateBoardTransform();
+}
+
+function setMinimapOpen(open) {
+  if (!minimap) return;
+  minimap.classList.toggle("hidden", !open);
+  if (open) {
+    requestAnimationFrame(() => {
+      renderMinimap();
+      syncMinimapViewport();
+    });
+  }
+}
+
+function toggleMinimap() {
+  setMinimapOpen(Boolean(minimap?.classList.contains("hidden")));
 }
 
 function restoreNavState() {
@@ -2003,7 +2473,7 @@ async function runCustomAgentTask() {
     agentPrompt?.focus();
     return;
   }
-  setSubagentsMode(Boolean(subagentsToggle?.checked));
+  setSubagentsMode(true, { silent: true });
   if (agentPrompt) agentPrompt.value = "";
   setAgentPanelOpen(false);
   await submitChatMessage(task, {
@@ -2150,7 +2620,8 @@ async function loadSettings() {
           endpoint: data[role].endpoint || "",
           model: data[role].model || "",
           apiKey: data[role].apiKey || "",
-          temperature: typeof data[role].temperature === "number" ? data[role].temperature : 0.7
+          temperature: typeof data[role].temperature === "number" ? data[role].temperature : 0.7,
+          options: data[role].options && typeof data[role].options === "object" ? data[role].options : {}
         };
       }
     }
@@ -2170,6 +2641,107 @@ function populateSettingsForm() {
   if (settingsModel) settingsModel.value = cfg.model || "";
   if (settingsApiKey) settingsApiKey.value = cfg.apiKey || "";
   if (settingsTemperature) settingsTemperature.value = String(typeof cfg.temperature === "number" ? cfg.temperature : 0.7);
+  renderSettingsAdvancedFields();
+}
+
+function renderSettingsAdvancedFields() {
+  if (!settingsAdvancedFields) return;
+  const role = settingsCache.currentRole;
+  const fields = MODEL_OPTION_FIELDS[role] || [];
+  const cfg = settingsCache[role] || {};
+  const options = cfg.options && typeof cfg.options === "object" ? cfg.options : {};
+  settingsAdvancedFields.innerHTML = "";
+  if (!fields.length) return;
+
+  const heading = document.createElement("div");
+  heading.className = "settings-advanced-heading";
+  heading.textContent = t("settings.advanced");
+  settingsAdvancedFields.appendChild(heading);
+
+  for (const field of fields) {
+    const row = document.createElement("label");
+    row.className = `settings-option-row${field.type === "checkbox" ? " is-checkbox" : ""}`;
+    const label = document.createElement("span");
+    label.textContent = t(`settings.option.${field.key}`);
+    row.appendChild(label);
+
+    const value = options[field.key];
+    let control;
+    if (field.type === "textarea") {
+      control = document.createElement("textarea");
+      control.rows = 3;
+      control.value = typeof value === "string" ? value : "";
+    } else if (field.type === "select") {
+      control = document.createElement("select");
+      for (const [optionValue, optionLabel] of field.options || []) {
+        const option = document.createElement("option");
+        option.value = optionValue;
+        option.textContent = optionLabel;
+        control.appendChild(option);
+      }
+      control.value = normalizeOptionControlValue(field.key, value);
+    } else if (field.type === "checkbox") {
+      control = document.createElement("input");
+      control.type = "checkbox";
+      control.checked = Boolean(value);
+    } else {
+      control = document.createElement("input");
+      control.type = field.type || "text";
+      if (field.min !== undefined) control.min = String(field.min);
+      if (field.max !== undefined) control.max = String(field.max);
+      if (field.step !== undefined) control.step = String(field.step);
+      if (field.placeholder) control.placeholder = field.placeholder;
+      control.value = value === undefined || value === null ? "" : String(value);
+    }
+    control.dataset.optionKey = field.key;
+    control.dataset.optionType = field.type;
+    row.appendChild(control);
+
+    const hintKey = `settings.hint.${field.key}`;
+    const hint = t(hintKey);
+    if (hint !== hintKey) {
+      const hintEl = document.createElement("div");
+      hintEl.className = "settings-field-hint";
+      hintEl.textContent = hint;
+      row.appendChild(hintEl);
+    }
+    settingsAdvancedFields.appendChild(row);
+  }
+}
+
+function normalizeOptionControlValue(key, value) {
+  if (key === "smoothOutput") {
+    if (value === true) return "true";
+    if (value === false) return "false";
+    return "auto";
+  }
+  return value === undefined || value === null ? "auto" : String(value);
+}
+
+function collectSettingsOptions() {
+  const options = {};
+  settingsAdvancedFields?.querySelectorAll("[data-option-key]").forEach((control) => {
+    const key = control.dataset.optionKey;
+    const type = control.dataset.optionType;
+    if (!key) return;
+    if (type === "checkbox") {
+      options[key] = Boolean(control.checked);
+      return;
+    }
+    const value = control.value?.trim?.() ?? "";
+    if (value === "") return;
+    if (type === "number") {
+      const number = Number(value);
+      if (Number.isFinite(number)) options[key] = number;
+      return;
+    }
+    if (key === "smoothOutput") {
+      options[key] = value === "true" ? true : value === "false" ? false : "auto";
+      return;
+    }
+    options[key] = value;
+  });
+  return options;
 }
 
 function showSaveConfirmation(text) {
@@ -2280,8 +2852,16 @@ async function handleFile(event) {
       sourceName.textContent = trimMiddle(file.name, 28);
       if (researchButton) researchButton.disabled = false;
 
+      // Render document preview for PDF/PPT
+      const isRichDoc = ["pdf", "pptx", "docx"].includes(ext);
+      if (isRichDoc) {
+        const uploadTarget = document.querySelector("#sourceNode .upload-target");
+        renderDocumentPreview(file.name, state.sourceDataUrl, null, mimeMap[ext], uploadTarget);
+      }
+
       clearOptions();
       state.latestAnalysis = null;
+      state.fileUnderstanding = null;
       resetChatThreads();
       renderChatMessages();
       state.collapsed.clear();
@@ -2307,7 +2887,16 @@ function canResearchNode(nodeId) {
   if (!node) return false;
   // Only source and analysis nodes can be researched
   if (nodeId === "source" || nodeId === "analysis") return true;
-  if (node.sourceCard) return Boolean(node.sourceCard.imageUrl || node.sourceCard.imageHash);
+  if (node.sourceCard) {
+    return Boolean(
+      node.sourceCard.imageUrl ||
+      node.sourceCard.imageHash ||
+      node.sourceCard.sourceText ||
+      node.sourceCard.sourceDataUrl ||
+      node.sourceCard.sourceDataUrlHash ||
+      node.sourceCard.sourceUrl
+    );
+  }
   // Option nodes (not yet generated) can be researched
   if (node.option && !node.generated) return true;
   return false;
@@ -2339,6 +2928,9 @@ function handleExplore() {
 }
 
 async function exploreSource() {
+  if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) {
+    await ensureSourceDocumentDataUrl();
+  }
   if (state.sourceType === "image" && !state.sourceImage) return;
   if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) return;
   if (state.sourceType === "url" && !state.sourceUrl) return;
@@ -2353,7 +2945,8 @@ async function exploreSource() {
       data = await postJson("/api/analyze-explore", {
         imageDataUrl: sourceImageDataUrl,
         fileName: state.fileName,
-        thinkingMode: "thinking"
+        thinkingMode: "thinking",
+        sessionId: currentSessionId || ""
       }, {
         timeoutMs: 180000,
         timeoutMessage: t("research.timeout")
@@ -2361,7 +2954,8 @@ async function exploreSource() {
     } else if (state.sourceType === "url") {
       data = await postJson("/api/analyze-explore", {
         url: state.sourceUrl,
-        thinkingMode: "thinking"
+        thinkingMode: "thinking",
+        sessionId: currentSessionId || ""
       }, {
         timeoutMs: 180000,
         timeoutMessage: t("research.timeout")
@@ -2371,7 +2965,8 @@ async function exploreSource() {
         text: state.sourceText,
         dataUrl: state.sourceDataUrl,
         fileName: state.fileName,
-        thinkingMode: "thinking"
+        thinkingMode: "thinking",
+        sessionId: currentSessionId || ""
       }, {
         timeoutMs: 180000,
         timeoutMessage: t("research.timeout")
@@ -2391,6 +2986,9 @@ async function exploreSource() {
 }
 
 async function analyzeSource(mode = "analyze") {
+  if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) {
+    await ensureSourceDocumentDataUrl();
+  }
   if (state.sourceType === "image" && !state.sourceImage) return;
   if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) return;
   if (state.sourceType === "url" && !state.sourceUrl) return;
@@ -2405,13 +3003,14 @@ async function analyzeSource(mode = "analyze") {
       data = await postJson("/api/analyze", {
         imageDataUrl: sourceImageDataUrl,
         fileName: state.fileName,
-        thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode
+        thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode,
+        sessionId: currentSessionId || ""
       }, {
         timeoutMs: 150000,
         timeoutMessage: t("research.timeout")
       });
     } else if (state.sourceType === "url") {
-      data = await postJson("/api/analyze-url", { url: state.sourceUrl, thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode }, {
+      data = await postJson("/api/analyze-url", { url: state.sourceUrl, thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode, sessionId: currentSessionId || "" }, {
         timeoutMs: 150000,
         timeoutMessage: t("research.timeout")
       });
@@ -2420,7 +3019,8 @@ async function analyzeSource(mode = "analyze") {
         text: state.sourceText,
         dataUrl: state.sourceDataUrl,
         fileName: state.fileName,
-        thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode
+        thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode,
+        sessionId: currentSessionId || ""
       }, {
         timeoutMs: 150000,
         timeoutMessage: t("research.timeout")
@@ -2446,7 +3046,7 @@ async function analyzeUrl() {
   if (urlAnalyzeButton) urlAnalyzeButton.disabled = true;
 
   try {
-    const data = await postJson("/api/analyze-url", { url });
+    const data = await postJson("/api/analyze-url", { url, sessionId: currentSessionId || "" });
     state.sourceType = "url";
     state.sourceUrl = url;
     state.fileName = new URL(url).hostname;
@@ -2634,7 +3234,8 @@ async function submitChatMessage(message, options = {}) {
       selectedNodeId: state.selectedNodeId,
       thinkingMode: effectiveThinkingMode,
       agentMode,
-      subagentsEnabled
+      subagentsEnabled,
+      sessionId: currentSessionId || ""
     };
     const data = effectiveThinkingMode === "thinking"
       ? await postStreamingChat("/api/chat", chatPayload, pendingAssistant)
@@ -2744,6 +3345,7 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
     startNewChat();
   }
   deepThinkBusy = true;
+  liveResearchCards = new Map();
   if (chatDeepThinkAction) chatDeepThinkAction.disabled = true;
   setStatus(t("deepthink.busy"), "busy");
 
@@ -3206,6 +3808,7 @@ function buildVoiceCanvasContext() {
   })).slice(0, 40);
   return {
     selectedNodeId: state.selectedNodeId,
+    selectedNodeIds: Array.from(state.selectedNodeIds),
     generatedCount: state.generatedCount,
     view: {
       x: Math.round(state.view.x || 0),
@@ -3219,36 +3822,7 @@ function buildVoiceCanvasContext() {
       hasText: Boolean(state.sourceText || state.sourceDataUrl),
       url: state.sourceUrl || ""
     },
-    capabilities: [
-      "pan_view",
-      "focus_node",
-      "select_node",
-      "move_node",
-      "arrange_canvas",
-      "deselect",
-      "select_source",
-      "select_analysis",
-      "create_direction",
-      "create_web_card",
-      "create_agent",
-      "generate_image",
-      "image_search",
-      "reverse_image_search",
-      "text_image_search",
-      "analyze_source",
-      "explore_source",
-      "research_node",
-      "open_references",
-      "save_session",
-      "new_chat",
-      "open_chat_history",
-      "close_chat",
-      "open_chat",
-      "open_history",
-      "open_settings",
-      "set_thinking_mode",
-      "set_deep_think_mode"
-    ],
+    capabilities: CANVAS_TOOL_TYPES,
     visibleNodes
   };
 }
@@ -3266,6 +3840,7 @@ async function applyVoiceActions(value) {
 async function executeCanvasAction(action) {
   const type = String(action?.type || "").trim();
   if (!type) return;
+  if (!confirmRiskyCanvasAction(action)) return;
 
   if (type === "zoom_in") return zoomBy(0.08);
   if (type === "zoom_out") return zoomBy(-0.08);
@@ -3273,15 +3848,21 @@ async function executeCanvasAction(action) {
   if (type === "reset_view") return resetView();
   if (type === "pan_view") return panCanvasView(action);
   if (type === "focus_node") return focusNodeByAction(action);
-  if (type === "arrange_canvas") return arrangeCanvasLayout();
+  if (type === "arrange_canvas" || type === "auto_layout" || type === "tidy_canvas") return arrangeCanvasLayout({ selectionOnly: action.scope === "selection" || action.selectionOnly === true });
+  if (type === "group_selection") return groupSelectedNodes();
+  if (type === "ungroup_selection") return ungroupSelectedNodes();
+  if (type === "search_card") return searchCardFromAction(action);
+  if (type === "export_report") return exportCanvasReportFromAction(action);
   if (type === "deselect") return deselectNode();
   if (type === "select_source") return focusNodeById("source");
   if (type === "select_analysis") return focusNodeById("analysis");
   if (type === "select_node") return focusNodeByAction(action);
   if (type === "move_node") return moveNodeByAction(action);
   if (type === "create_direction") return createDirectionFromAction(action);
+  if (type === "create_card" || type === "new_card") return createNewCardNode(action.title || action.prompt || action.query || "");
   if (type === "create_web_card") return createDirectionFromAction({ ...action, mode: action.mode || "web" });
-  if (type === "create_agent") return showAgentAction(action);
+  if (type === "web_search") return createDirectionFromAction({ ...action, type: "create_web_card", mode: "web" });
+  if (type === "create_agent") return runSubagentAction(action);
   if (type === "generate_image") return generateImageFromAction(action);
   if (type === "image_search" || type === "reverse_image_search" || type === "text_image_search") return searchImagesFromAction(action);
   if (type === "analyze_source") return analyzeSource(action.mode || "analyze");
@@ -3305,6 +3886,27 @@ async function executeCanvasAction(action) {
   if (type === "set_deep_think_mode") return setDeepThinkModeFromAction(action);
   if (type === "open_upload") return handleAttachClick();
   if (type === "delete_node") return deleteNodeFromAction(action);
+}
+
+function confirmRiskyCanvasAction(action) {
+  const type = String(action?.type || "").trim();
+  const labels = {
+    delete_node: currentLang === "en" ? "delete this card" : "删除这张卡片",
+    generate_image: currentLang === "en" ? "call the image generation API" : "调用成图 API",
+    web_search: currentLang === "en" ? "run web search" : "运行联网搜索",
+    create_agent: currentLang === "en" ? "start a no-thinking subagent task" : "启动一个 no-thinking 子任务",
+    image_search: currentLang === "en" ? "search the web for images" : "联网搜图",
+    reverse_image_search: currentLang === "en" ? "upload the selected image for reverse image search" : "上传选中图片进行以图搜图",
+    text_image_search: currentLang === "en" ? "search the web for images" : "联网搜图",
+    research_node: currentLang === "en" ? "run web/deep research" : "运行联网/深入研究",
+    research_source: currentLang === "en" ? "run web/deep research" : "运行联网/深入研究"
+  };
+  if (!labels[type]) return true;
+  const autoConfirmed = action.confirmed === true || action.userConfirmed === true;
+  if (autoConfirmed) return true;
+  return window.confirm(currentLang === "en"
+    ? `ORYZAE is about to ${labels[type]}. Continue?`
+    : `ORYZAE 即将${labels[type]}，是否继续？`);
 }
 
 function getNodeType(node) {
@@ -3649,11 +4251,13 @@ async function searchImagesFromAction(action = {}) {
     const title = String(result.title || result.sourceUrl || result.url || "Image reference").slice(0, 48);
     let nodeId = null;
     if (result.imageUrl) {
+      const localUrl = result.localImageUrl || (result.imageHash ? `/api/assets/${result.imageHash}?kind=upload` : "");
       nodeId = createStandaloneSourceCard({
         id: `image-search-${Date.now().toString(36)}-${index}`,
         title,
         fileName: title,
-        imageUrl: result.imageUrl,
+        imageUrl: localUrl || result.imageUrl,
+        imageHash: result.imageHash || "",
         x,
         y
       });
@@ -3661,6 +4265,12 @@ async function searchImagesFromAction(action = {}) {
       if (node?.sourceCard) {
         node.sourceCard.summary = result.description || data.summary || "";
         node.sourceCard.sourceUrl = result.sourceUrl || result.url || "";
+        if (result.imageHash) {
+          node.sourceCard.imageHash = result.imageHash;
+        }
+        if (result.imageUrl) {
+          node.sourceCard.remoteImageUrl = result.imageUrl;
+        }
       }
     } else {
       nodeId = createOptionNode({
@@ -3743,9 +4353,148 @@ function openReferencesFromAction(action) {
   openReferenceModal(nodeId);
 }
 
-function showAgentAction(action) {
-  const title = action.title || action.nodeName || "Subagent";
-  showToast(`${title} · no-thinking`);
+function searchCardFromAction(action) {
+  const query = String(action.query || action.title || action.nodeName || action.target || "").trim();
+  const nodeId = resolveNodeIdByText(query);
+  if (nodeId) {
+    focusNodeById(nodeId, action.position || "center");
+    return nodeId;
+  }
+  if (chatInput) {
+    chatInput.value = `/${t("command.searchCard")} ${query}`.trim();
+    openCardSearchUI();
+  }
+  return null;
+}
+
+async function exportCanvasReportFromAction(action = {}) {
+  const title = String(action.title || state.latestAnalysis?.title || state.fileName || "oryzae-report").trim();
+  const visibleNodes = Array.from(state.nodes.values()).filter(isNodeVisible);
+  const lines = [
+    `# ${title}`,
+    "",
+    `Generated: ${new Date().toLocaleString()}`,
+    "",
+    "## Canvas Cards",
+    ...visibleNodes.map((node) => `- **${getNodeTitle(node)}** (${getNodeType(node)}): ${getNodeSummary(node).replace(/\s+/g, " ").slice(0, 260)}`),
+    "",
+    "## Links",
+    ...state.links.map((link) => `- ${getNodeTitle(state.nodes.get(link.from)) || link.from} -> ${getNodeTitle(state.nodes.get(link.to)) || link.to} (${link.kind || "link"})`)
+  ];
+  const blob = new Blob([lines.join("\n")], { type: "text/markdown;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${sanitizeFileName(title).slice(0, 40) || "oryzae-report"}.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return true;
+}
+
+async function runSubagentAction(action) {
+  if (!state.subagentsEnabled) {
+    showToast(currentLang === "en" ? "Enable Subagents before starting agent tasks." : "请先启用 Subagents，再启动 Agent 任务。");
+    return null;
+  }
+
+  const parentNodeId = resolveParentNodeId(
+    action,
+    resolveActionNodeId(action, state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source"))
+  );
+  if (!parentNodeId || !state.nodes.has(parentNodeId)) return null;
+
+  const title = String(action.title || action.nodeName || "Subagent").slice(0, 48);
+  const prompt = String(action.prompt || action.description || action.query || title).trim();
+  if (!prompt) return null;
+
+  const nodeId = createOptionNode({
+    id: `agent-${Date.now()}-${safeNodeSlug(title)}`,
+    title,
+    description: currentLang === "en" ? "Running a no-thinking subtask..." : "正在执行 no-thinking 子任务...",
+    prompt,
+    tone: "agent",
+    layoutHint: "no-thinking",
+    deepThinkType: "agent"
+  }, parentNodeId);
+
+  const node = nodeId ? state.nodes.get(nodeId) : null;
+  const button = node?.element?.querySelector(".generate-button");
+  if (button) {
+    button.disabled = true;
+    button.textContent = currentLang === "en" ? "Running" : "执行中";
+  }
+  if (nodeId) focusNodeById(nodeId, "right");
+  setStatus(currentLang === "en" ? "Agent task running..." : "Agent 任务执行中...", "busy");
+
+  try {
+    let imageDataUrl = "";
+    try {
+      imageDataUrl = await getSourceImageDataUrl();
+    } catch {
+      imageDataUrl = "";
+    }
+    const data = await postJson("/api/chat", {
+      message: prompt,
+      imageDataUrl,
+      analysis: state.latestAnalysis,
+      messages: state.chatMessages.slice(-6),
+      systemContext: currentLang === "en"
+        ? "Run this as a concise no-thinking subagent. Return only the useful result and safe canvas actions."
+        : "请作为一个简洁的 no-thinking 子任务执行者，只返回有用结果和安全的画布动作。",
+      selectedContext: buildSelectedNodeContext(),
+      canvas: buildVoiceCanvasContext(),
+      language: currentLang,
+      thinkingMode: "no-thinking",
+      agentMode: false,
+      subagentsEnabled: false
+    }, { timeoutMs: 120000 });
+
+    const reply = String(data.reply || "").trim() || (currentLang === "en" ? "Agent task completed." : "Agent 任务已完成。");
+    if (node?.option) {
+      node.option.description = reply.slice(0, 360);
+      node.option.prompt = `${prompt}\n\n${reply}`.slice(0, 1600);
+      const descEl = node.element.querySelector(".option-description");
+      if (descEl) descEl.textContent = node.option.description;
+    }
+    if (button) {
+      button.disabled = false;
+      button.textContent = currentLang === "en" ? "Use result" : "使用结果";
+    }
+
+    appendChatMessage("assistant", reply, {
+      artifacts: [{
+        type: "agent",
+        title,
+        summary: reply.slice(0, 240),
+        status: "done"
+      }]
+    });
+
+    const followupActions = (Array.isArray(data.actions) ? data.actions : (data.action ? [data.action] : []))
+      .filter((nextAction) => nextAction?.type !== "create_agent");
+    if (followupActions.length) {
+      await applyVoiceActions(followupActions);
+    }
+    setStatus(t("status.ready"), "ready");
+    autoSave();
+    return nodeId;
+  } catch (error) {
+    const message = error?.message || (currentLang === "en" ? "Agent task failed." : "Agent 任务失败。");
+    if (node?.option) {
+      node.option.description = message.slice(0, 280);
+      const descEl = node.element.querySelector(".option-description");
+      if (descEl) descEl.textContent = node.option.description;
+    }
+    if (button) {
+      button.disabled = false;
+      button.textContent = currentLang === "en" ? "Retry" : "重试";
+    }
+    appendChatMessage("assistant", message);
+    setStatus(t("status.error"), "error");
+    return null;
+  }
 }
 
 function setCanvasZoom(action) {
@@ -3973,6 +4722,13 @@ function createNewCardNode(seedText = "") {
   return nodeId;
 }
 
+function createNewCanvas() {
+  sessionStorage.removeItem("oryzae-last-session-id");
+  const url = new URL(window.location.href);
+  url.searchParams.delete("session");
+  window.location.href = url.pathname + url.search;
+}
+
 function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash = "", fileName = "" }) {
   const nodeId = id || `source-card-${Date.now().toString(36)}`;
   if (state.nodes.has(nodeId)) return nodeId;
@@ -3985,11 +4741,17 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
 
   const tabs = document.createElement("div");
   tabs.className = "source-tabs";
-  const tab = document.createElement("button");
-  tab.type = "button";
-  tab.className = "source-tab active";
-  tab.textContent = currentLang === "en" ? "File" : "文件";
-  tabs.appendChild(tab);
+  const fileTab = document.createElement("button");
+  fileTab.type = "button";
+  fileTab.className = "source-tab active";
+  fileTab.dataset.tab = "file";
+  fileTab.textContent = currentLang === "en" ? "File" : "文件";
+  const urlTab = document.createElement("button");
+  urlTab.type = "button";
+  urlTab.className = "source-tab";
+  urlTab.dataset.tab = "url";
+  urlTab.textContent = currentLang === "en" ? "Link" : "链接";
+  tabs.append(fileTab, urlTab);
 
   const upload = document.createElement("label");
   upload.className = `upload-target${imageUrl ? " has-source-image" : ""}`;
@@ -4006,6 +4768,19 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   upload.append(input, empty, img);
   attachImageCardActions(upload, nodeId);
 
+  const urlPanel = document.createElement("div");
+  urlPanel.className = "url-input-panel hidden";
+  const urlInputEl = document.createElement("input");
+  urlInputEl.type = "url";
+  urlInputEl.placeholder = "https://...";
+  urlInputEl.autocomplete = "off";
+  const urlAnalyzeBtn = document.createElement("button");
+  urlAnalyzeBtn.className = "primary-button";
+  urlAnalyzeBtn.type = "button";
+  urlAnalyzeBtn.textContent = t("source.analyzeUrl");
+  urlAnalyzeBtn.disabled = true;
+  urlPanel.append(urlInputEl, urlAnalyzeBtn);
+
   const caption = document.createElement("div");
   caption.className = "node-caption";
   const name = document.createElement("span");
@@ -4018,7 +4793,7 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   research.disabled = !imageUrl;
   caption.append(name, research);
 
-  element.append(tabs, upload, caption);
+  element.append(tabs, upload, urlPanel, caption);
   board.appendChild(element);
 
   const sourceCard = {
@@ -4048,6 +4823,50 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   });
   research.addEventListener("click", () => analyzeStandaloneSourceCard(nodeId));
 
+  // Tab switching
+  fileTab.addEventListener("click", () => {
+    fileTab.classList.add("active");
+    urlTab.classList.remove("active");
+    upload.classList.remove("hidden");
+    urlPanel.classList.add("hidden");
+  });
+  urlTab.addEventListener("click", () => {
+    urlTab.classList.add("active");
+    fileTab.classList.remove("active");
+    upload.classList.add("hidden");
+    urlPanel.classList.remove("hidden");
+  });
+
+  // URL input wiring
+  urlInputEl.addEventListener("input", () => {
+    urlAnalyzeBtn.disabled = !urlInputEl.value.trim();
+  });
+  urlAnalyzeBtn.addEventListener("click", async () => {
+    const url = urlInputEl.value.trim();
+    if (!url) return;
+    setStatus(t("status.busy"), "busy");
+    urlAnalyzeBtn.disabled = true;
+    try {
+      const data = await postJson("/api/analyze-url", { url, sessionId: currentSessionId || "" });
+      const node = state.nodes.get(nodeId);
+      if (node?.sourceCard) {
+        node.sourceCard.sourceType = "url";
+        node.sourceCard.sourceUrl = url;
+        node.sourceCard.fileName = new URL(url).hostname;
+        node.sourceCard.title = data.title || node.sourceCard.title || node.sourceCard.fileName;
+      }
+      name.textContent = trimMiddle(node.sourceCard.fileName, 28);
+      research.disabled = false;
+      syncSourceCardImageActionState(nodeId);
+      setStatus(t("status.ready"), "ready");
+      autoSave();
+    } catch (error) {
+      setStatus(error.message || "URL analysis failed", "error");
+    } finally {
+      urlAnalyzeBtn.disabled = !urlInputEl.value.trim();
+    }
+  });
+
   if (!imageUrl) syncSourceCardImageActionState(nodeId);
   applyCollapseState();
   updateCounts();
@@ -4059,7 +4878,15 @@ function syncSourceCardImageActionState(nodeId) {
   const upload = node?.element?.querySelector(".upload-target");
   if (!upload) return;
   const hasImage = Boolean(node?.sourceCard?.imageUrl || node?.sourceCard?.imageHash);
+  const hasFile = Boolean(
+    hasImage ||
+    node?.sourceCard?.sourceText ||
+    node?.sourceCard?.sourceDataUrl ||
+    node?.sourceCard?.sourceDataUrlHash ||
+    node?.sourceCard?.sourceUrl
+  );
   upload.classList.toggle("has-source-image", hasImage);
+  upload.classList.toggle("has-source-file", hasFile);
 }
 
 async function handleStandaloneSourceFile(nodeId, file) {
@@ -4148,6 +4975,9 @@ async function handleStandaloneSourceFile(nodeId, file) {
 async function analyzeStandaloneSourceCard(nodeId) {
   const node = state.nodes.get(nodeId);
   const sourceCard = node?.sourceCard;
+  if (sourceCard?.sourceType === "text" && !sourceCard.sourceText && !sourceCard.sourceDataUrl) {
+    await ensureSourceCardDocumentDataUrl(sourceCard);
+  }
   if (sourceCard?.sourceType === "image" && !sourceCard?.imageUrl && !sourceCard?.imageHash) return;
   if (sourceCard?.sourceType === "text" && !sourceCard?.sourceText && !sourceCard?.sourceDataUrl) return;
   if (!sourceCard?.sourceType || sourceCard.sourceType === "empty") return;
@@ -4159,35 +4989,54 @@ async function analyzeStandaloneSourceCard(nodeId) {
     button.classList.add("is-busy");
   }
   try {
-    const data = sourceCard.sourceType === "text"
-      ? await postJson("/api/analyze-text", {
-          text: sourceCard.sourceText || "",
-          dataUrl: sourceCard.sourceDataUrl || "",
-          fileName: sourceCard.fileName || sourceCard.title || "source-card",
-          thinkingMode: state.thinkingMode
-        }, {
-          timeoutMs: 150000,
-          timeoutMessage: t("research.timeout")
-        })
-      : await postJson("/api/analyze", {
-          imageDataUrl: await getImageDataUrlForNode(nodeId),
-          fileName: sourceCard.fileName || sourceCard.title || "source-card",
-          thinkingMode: state.thinkingMode
-        }, {
-          timeoutMs: 150000,
-          timeoutMessage: t("research.timeout")
-        });
-    const option = {
-      id: `analysis-${Date.now()}`,
-      title: data.title || t("analysis.title"),
-      description: data.summary || "",
-      prompt: data.summary || "",
-      tone: "analysis",
-      layoutHint: "source-card",
-      x: (node.x || 0) + 390,
-      y: (node.y || 0) + 30
-    };
-    createOptionNode(option, nodeId);
+    let data;
+    if (sourceCard.sourceType === "text") {
+      data = await postJson("/api/analyze-text", {
+        text: sourceCard.sourceText || "",
+        dataUrl: sourceCard.sourceDataUrl || "",
+        fileName: sourceCard.fileName || sourceCard.title || "source-card",
+        thinkingMode: state.thinkingMode,
+        sessionId: currentSessionId || ""
+      }, {
+        timeoutMs: 150000,
+        timeoutMessage: t("research.timeout")
+      });
+    } else if (sourceCard.sourceType === "url") {
+      data = await postJson("/api/analyze-url", {
+        url: sourceCard.sourceUrl,
+        thinkingMode: state.thinkingMode,
+        sessionId: currentSessionId || ""
+      }, {
+        timeoutMs: 150000,
+        timeoutMessage: t("research.timeout")
+      });
+    } else {
+      data = await postJson("/api/analyze", {
+        imageDataUrl: await getImageDataUrlForNode(nodeId),
+        fileName: sourceCard.fileName || sourceCard.title || "source-card",
+        thinkingMode: state.thinkingMode,
+        sessionId: currentSessionId || ""
+      }, {
+        timeoutMs: 150000,
+        timeoutMessage: t("research.timeout")
+      });
+    }
+
+    if (data.options?.length) {
+      renderStandaloneOptions(data.options, nodeId);
+    } else {
+      const option = {
+        id: `analysis-${Date.now()}`,
+        title: data.title || t("analysis.title"),
+        description: data.summary || "",
+        prompt: data.summary || "",
+        tone: "analysis",
+        layoutHint: "source-card",
+        x: (node.x || 0) + 390,
+        y: (node.y || 0) + 30
+      };
+      createOptionNode(option, nodeId);
+    }
     setStatus(t("status.ready"), "ready");
     autoSave();
   } catch (error) {
@@ -4251,25 +5100,21 @@ function createJunctionNode(x, y) {
   const element = document.createElement("section");
   element.className = "node junction-node";
   element.dataset.nodeId = id;
-  element.style.left = `${x - 40}px`;  // Center the 80px circle
-  element.style.top = `${y - 40}px`;
+  element.style.left = `${x - 20}px`;  // Center the 40px circle
+  element.style.top = `${y - 20}px`;
 
   const count = document.createElement("span");
   count.className = "junction-count";
   count.textContent = "0";
 
-  const label = document.createElement("span");
-  label.className = "junction-label";
-  label.textContent = "JUNCTION";
-
-  element.append(count, label);
+  element.appendChild(count);
   board.appendChild(element);
 
   registerNode(id, element, {
-    x: x - 40,
-    y: y - 40,
-    width: 80,
-    height: 80,
+    x: x - 20,
+    y: y - 20,
+    width: 40,
+    height: 40,
     isJunction: true
   });
 
@@ -4818,6 +5663,81 @@ function renderOptions(options) {
   updateCounts();
 }
 
+function renderStandaloneOptions(options, parentNodeId) {
+  const parentNode = state.nodes.get(parentNodeId);
+  if (!parentNode) return;
+
+  // Remove existing option nodes linked to this parent
+  for (const [id, node] of Array.from(state.nodes.entries())) {
+    if (id.startsWith("option-") && state.links.some(l => l.from === parentNodeId && l.to === id)) {
+      node.element.remove();
+      state.nodes.delete(id);
+      state.collapsed.delete(id);
+      state.selectiveHidden.delete(id);
+    }
+  }
+  state.links = state.links.filter(l => !(l.from === parentNodeId && l.to.startsWith("option-")));
+
+  options.forEach((option, index) => {
+    const offsetX = 380;
+    const offsetY = 40 + index * 24;
+    const newX = Number.isFinite(option.x) ? option.x : (parentNode.x || 0) + offsetX;
+    const newY = Number.isFinite(option.y) ? option.y : (parentNode.y || 0) + offsetY;
+
+    const id = `option-${option.id || `${parentNodeId}-${index}`}`;
+
+    // Remove existing node with same id if any
+    if (state.nodes.has(id)) {
+      const existing = state.nodes.get(id);
+      existing.element.remove();
+      state.nodes.delete(id);
+      state.collapsed.delete(id);
+      state.selectiveHidden.delete(id);
+      state.links = state.links.filter(l => l.from !== id && l.to !== id);
+    }
+
+    const fragment = optionTemplate.content.cloneNode(true);
+    const element = fragment.querySelector(".option-node");
+    element.classList.toggle("deep-think-node", Boolean(option.deepThinkType));
+    if (option.deepThinkType) element.dataset.deepThinkType = option.deepThinkType;
+    element.dataset.nodeId = id;
+    element.style.left = `${newX}px`;
+    element.style.top = `${newY}px`;
+    element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
+    element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
+    element.querySelector(".option-title").textContent = option.title || t("generated.result");
+    element.querySelector(".option-description").textContent = option.description || "";
+
+    const titleEl = element.querySelector(".option-title");
+    if (titleEl) makeTitleEditable(id, titleEl);
+
+    const button = element.querySelector(".generate-button");
+    button.addEventListener("click", () => generateOption(id, option));
+    if (option.references?.length) {
+      const badge = document.createElement("span");
+      badge.className = "reference-badge";
+      badge.textContent = `${option.references.length}`;
+      badge.title = `${option.references.length} reference${option.references.length > 1 ? "s" : ""}`;
+      element.appendChild(badge);
+    }
+
+    board.appendChild(element);
+    registerNode(id, element, {
+      x: newX,
+      y: newY,
+      width: 318,
+      height: element.offsetHeight,
+      option
+    });
+    state.links.push({ from: parentNodeId, to: id, kind: "option" });
+    makeDraggable(element, id);
+  });
+
+  applyCollapseState();
+  updateCounts();
+  drawLinks();
+}
+
 function renderExploreOptions(options, references) {
   clearOptions();
 
@@ -4876,7 +5796,7 @@ async function generateOption(id, option) {
   await generateOptionWithReference(id, option, referenceImageDataUrl);
 }
 
-async function generateOptionWithReference(id, option, referenceImageDataUrl) {
+async function generateOptionWithReference(id, option, referenceImageDataUrl, editOptions = {}) {
   const node = state.nodes.get(id);
   if (!node) return;
   if (!referenceImageDataUrl) {
@@ -4894,6 +5814,8 @@ async function generateOptionWithReference(id, option, referenceImageDataUrl) {
   try {
     const data = await postJson("/api/generate", {
       imageDataUrl: referenceImageDataUrl,
+      maskDataUrl: editOptions.maskDataUrl || "",
+      size: editOptions.size || "",
       option,
       language: currentLang,
       thinkingMode: state.thinkingMode
@@ -4926,6 +5848,28 @@ async function generateOptionWithReference(id, option, referenceImageDataUrl) {
       console.error("Failed to generate explanation:", e);
     }
     node.explanation = explanation;
+
+    // Push the generated direction into the session RAG pool so future chats
+    // can recall what was made and why without rehydrating from canvas state.
+    const generatedSummary = [
+      option?.title ? `标题：${option.title}` : "",
+      data?.prompt || option?.prompt ? `Prompt：${data?.prompt || option?.prompt}` : "",
+      explanation ? `说明：${explanation}` : ""
+    ].filter(Boolean).join("\n");
+    if (generatedSummary) {
+      ingestSessionContext({
+        kind: "generated",
+        text: generatedSummary,
+        sourceId: id,
+        sourceMeta: {
+          nodeId: id,
+          title: option?.title || "",
+          imageHash: node.imageHash || ""
+        },
+        snippet: true,
+        replace: true
+      });
+    }
 
     turnIntoGeneratedNode(element, option, imageUrl);
     node.width = element.offsetWidth;
@@ -5016,6 +5960,9 @@ function turnIntoGeneratedNode(element, option, imageDataUrl) {
 
   actions.append(download, regenerate);
   element.appendChild(actions);
+
+  // Re-add edge handles since innerHTML wipe removed them
+  addEdgeHandles(element, nodeId);
 }
 
 function installSourceImageActions() {
@@ -5152,6 +6099,7 @@ function viewerNavigateToImage(nodeId) {
   viewerTitle.textContent = info.title || "";
   viewerExplanation.textContent = info.explanation || "";
   if (viewerRegenerate) viewerRegenerate.classList.toggle("hidden", info.isSource);
+  clearViewerMask();
   if (viewerModifyPanel && !viewerModifyPanel.classList.contains("hidden")) {
     if (viewerPromptInput) viewerPromptInput.value = "";
   }
@@ -5181,6 +6129,207 @@ function handleViewerTouchEnd(e) {
   else if (dx > 0 && idx > 0) viewerNavigateToImage(imageIds[idx - 1]);
 }
 
+function setViewerEditPanelVisible(visible) {
+  viewerModifyPanel?.classList.toggle("hidden", !visible);
+  imageViewerModal?.classList.toggle("is-editing", visible);
+  if (!visible) {
+    setViewerBrushActive(false);
+    closeViewerAspectMenu();
+  } else {
+    syncViewerMaskCanvas();
+    viewerPromptInput?.focus();
+  }
+}
+
+function setViewerBrushActive(active) {
+  viewerEditState.brushActive = Boolean(active);
+  viewerBrushTool?.classList.toggle("active", viewerEditState.brushActive);
+  viewerBrushTool?.setAttribute("aria-pressed", viewerEditState.brushActive ? "true" : "false");
+  if (viewerMaskCanvas) {
+    viewerMaskCanvas.classList.toggle("active", viewerEditState.brushActive);
+    viewerMaskCanvas.style.pointerEvents = viewerEditState.brushActive ? "auto" : "none";
+  }
+  if (viewerEditState.brushActive) {
+    syncViewerMaskCanvas();
+  }
+}
+
+function clearViewerMask() {
+  const ctx = viewerMaskCanvas?.getContext("2d");
+  if (ctx && viewerMaskCanvas.width && viewerMaskCanvas.height) {
+    ctx.clearRect(0, 0, viewerMaskCanvas.width, viewerMaskCanvas.height);
+  }
+  viewerEditState.hasMask = false;
+  viewerEditState.lastMaskPoint = null;
+  viewerClearMask?.classList.add("hidden");
+  viewerMaskCanvas?.classList.remove("has-mask");
+}
+
+function resetViewerEditControls() {
+  setViewerEditPanelVisible(false);
+  clearViewerMask();
+  setViewerAspect("auto");
+}
+
+function syncViewerMaskCanvas() {
+  if (!viewerMaskCanvas || !viewerImage || !imageViewerModal || imageViewerModal.classList.contains("hidden")) return;
+  const rect = viewerImage.getBoundingClientRect();
+  const contentRect = imageViewerModal.getBoundingClientRect();
+  const naturalWidth = viewerImage.naturalWidth || 0;
+  const naturalHeight = viewerImage.naturalHeight || 0;
+  if (!rect.width || !rect.height || !naturalWidth || !naturalHeight) return;
+
+  const boxRatio = rect.width / rect.height;
+  const imageRatio = naturalWidth / naturalHeight;
+  let width = rect.width;
+  let height = rect.height;
+  let offsetX = 0;
+  let offsetY = 0;
+  if (imageRatio > boxRatio) {
+    height = rect.width / imageRatio;
+    offsetY = (rect.height - height) / 2;
+  } else {
+    width = rect.height * imageRatio;
+    offsetX = (rect.width - width) / 2;
+  }
+
+  if (viewerMaskCanvas.width !== naturalWidth || viewerMaskCanvas.height !== naturalHeight) {
+    viewerMaskCanvas.width = naturalWidth;
+    viewerMaskCanvas.height = naturalHeight;
+    viewerEditState.hasMask = false;
+    viewerEditState.lastMaskPoint = null;
+    viewerClearMask?.classList.add("hidden");
+  }
+  viewerMaskCanvas.style.left = `${rect.left - contentRect.left + offsetX}px`;
+  viewerMaskCanvas.style.top = `${rect.top - contentRect.top + offsetY}px`;
+  viewerMaskCanvas.style.width = `${width}px`;
+  viewerMaskCanvas.style.height = `${height}px`;
+}
+
+function viewerMaskPointFromEvent(event) {
+  if (!viewerMaskCanvas) return null;
+  const rect = viewerMaskCanvas.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  return {
+    x: clamp((event.clientX - rect.left) * (viewerMaskCanvas.width / rect.width), 0, viewerMaskCanvas.width),
+    y: clamp((event.clientY - rect.top) * (viewerMaskCanvas.height / rect.height), 0, viewerMaskCanvas.height)
+  };
+}
+
+function beginViewerMaskStroke(event) {
+  if (!viewerEditState.brushActive || !viewerMaskCanvas) return;
+  event.preventDefault();
+  syncViewerMaskCanvas();
+  viewerEditState.drawing = true;
+  viewerMaskCanvas.setPointerCapture?.(event.pointerId);
+  const point = viewerMaskPointFromEvent(event);
+  viewerEditState.lastMaskPoint = point;
+  if (point) drawViewerMaskPoint(point);
+}
+
+function continueViewerMaskStroke(event) {
+  if (!viewerEditState.drawing || !viewerEditState.brushActive) return;
+  event.preventDefault();
+  const point = viewerMaskPointFromEvent(event);
+  if (point) drawViewerMaskPoint(point, viewerEditState.lastMaskPoint);
+  viewerEditState.lastMaskPoint = point;
+}
+
+function endViewerMaskStroke(event) {
+  if (!viewerEditState.drawing) return;
+  viewerEditState.drawing = false;
+  viewerEditState.lastMaskPoint = null;
+  try {
+    viewerMaskCanvas?.releasePointerCapture?.(event.pointerId);
+  } catch {
+    // Pointer capture may already be gone after leaving the canvas.
+  }
+}
+
+function drawViewerMaskPoint(point, fromPoint = null) {
+  const ctx = viewerMaskCanvas?.getContext("2d");
+  if (!ctx) return;
+  const scale = viewerMaskCanvas.width / Math.max(viewerMaskCanvas.getBoundingClientRect().width, 1);
+  const radius = Math.max(12, viewerEditState.brushSize * scale * 0.5);
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "rgba(255, 74, 40, 0.48)";
+  ctx.strokeStyle = "rgba(255, 74, 40, 0.48)";
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.lineWidth = radius * 2;
+  ctx.shadowColor = "rgba(255, 74, 40, 0.28)";
+  ctx.shadowBlur = radius * 0.18;
+  if (fromPoint) {
+    ctx.beginPath();
+    ctx.moveTo(fromPoint.x, fromPoint.y);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+  viewerEditState.hasMask = true;
+  viewerClearMask?.classList.remove("hidden");
+  viewerMaskCanvas?.classList.add("has-mask");
+}
+
+function buildViewerMaskDataUrl() {
+  if (!viewerMaskCanvas || !viewerEditState.hasMask) return "";
+  const sourceCtx = viewerMaskCanvas.getContext("2d");
+  if (!sourceCtx) return "";
+  const sourceData = sourceCtx.getImageData(0, 0, viewerMaskCanvas.width, viewerMaskCanvas.height);
+  const output = document.createElement("canvas");
+  output.width = viewerMaskCanvas.width;
+  output.height = viewerMaskCanvas.height;
+  const outputCtx = output.getContext("2d");
+  outputCtx.fillStyle = "#000000";
+  outputCtx.fillRect(0, 0, output.width, output.height);
+  const maskData = outputCtx.createImageData(output.width, output.height);
+  for (let i = 0; i < sourceData.data.length; i += 4) {
+    const alpha = sourceData.data[i + 3];
+    const value = alpha > 8 ? 255 : 0;
+    maskData.data[i] = value;
+    maskData.data[i + 1] = value;
+    maskData.data[i + 2] = value;
+    maskData.data[i + 3] = 255;
+  }
+  outputCtx.putImageData(maskData, 0, 0);
+  return output.toDataURL("image/png");
+}
+
+function toggleViewerAspectMenu() {
+  if (!viewerAspectMenu || !viewerAspectButton) return;
+  const shouldOpen = viewerAspectMenu.classList.contains("hidden");
+  viewerAspectMenu.classList.toggle("hidden", !shouldOpen);
+  viewerAspectButton.setAttribute("aria-expanded", shouldOpen ? "true" : "false");
+}
+
+function closeViewerAspectMenu() {
+  viewerAspectMenu?.classList.add("hidden");
+  viewerAspectButton?.setAttribute("aria-expanded", "false");
+}
+
+function setViewerAspect(aspect) {
+  viewerEditState.aspect = VIEWER_ASPECT_OPTIONS[aspect] ? aspect : "auto";
+  updateViewerAspectUI();
+}
+
+function updateViewerAspectUI() {
+  const selected = VIEWER_ASPECT_OPTIONS[viewerEditState.aspect] || VIEWER_ASPECT_OPTIONS.auto;
+  if (viewerAspectLabel) viewerAspectLabel.textContent = selected.label[currentLang] || selected.label.zh;
+  viewerAspectMenu?.querySelectorAll("[data-aspect]").forEach((button) => {
+    const active = button.dataset.aspect === viewerEditState.aspect;
+    button.classList.toggle("active", active);
+  });
+}
+
+function currentViewerAspectSize() {
+  return (VIEWER_ASPECT_OPTIONS[viewerEditState.aspect] || VIEWER_ASPECT_OPTIONS.auto).size || "";
+}
+
 function openImageViewer(nodeId, { editing = false } = {}) {
   const info = getImageNodeInfo(nodeId);
   if (!info || !imageViewerModal) return;
@@ -5193,7 +6342,8 @@ function openImageViewer(nodeId, { editing = false } = {}) {
 
   if (viewerRegenerate) viewerRegenerate.classList.toggle("hidden", info.isSource);
   if (viewerPromptInput) viewerPromptInput.value = "";
-  viewerModifyPanel?.classList.toggle("hidden", !editing);
+  resetViewerEditControls();
+  setViewerEditPanelVisible(editing);
 
   const shareBtn = imageViewerModal.querySelector("#imageShareButton");
   if (shareBtn) {
@@ -5204,6 +6354,7 @@ function openImageViewer(nodeId, { editing = false } = {}) {
 
   imageViewerModal.classList.remove("hidden");
   document.body.style.overflow = "hidden";
+  requestAnimationFrame(syncViewerMaskCanvas);
 
   viewerImage.addEventListener("touchstart", handleViewerTouchStart, { passive: true });
   viewerImage.addEventListener("touchend", handleViewerTouchEnd, { passive: true });
@@ -5213,11 +6364,11 @@ function openImageViewer(nodeId, { editing = false } = {}) {
 }
 
 function closeImageViewer() {
+  resetViewerEditControls();
   imageViewerModal.classList.add("hidden");
   viewerImage.src = "";
   document.body.style.overflow = "";
   currentViewerNodeId = null;
-  if (viewerModifyPanel) viewerModifyPanel.classList.add("hidden");
   viewerImage.removeEventListener("touchstart", handleViewerTouchStart);
   viewerImage.removeEventListener("touchend", handleViewerTouchEnd);
 }
@@ -5226,7 +6377,14 @@ async function submitViewerImageEdit(prompt) {
   if (!currentViewerNodeId) return;
   const info = getImageNodeInfo(currentViewerNodeId);
   if (!info) return;
+  if (viewerEditState.brushActive && !viewerEditState.hasMask) {
+    showSelectionToast(t("viewer.maskRequired"));
+    return;
+  }
 
+  const maskDataUrl = buildViewerMaskDataUrl();
+  const aspectSize = currentViewerAspectSize();
+  const aspectKey = viewerEditState.aspect;
   closeImageViewer();
   setStatus(t("status.busy"), "busy");
   try {
@@ -5240,13 +6398,13 @@ async function submitViewerImageEdit(prompt) {
         description: prompt,
         prompt,
         tone: "edit",
-        layoutHint: "image edit"
+        layoutHint: aspectKey === "auto" ? "image edit" : aspectKey
       };
       const parentId = state.latestAnalysis && state.nodes.has("analysis") ? "analysis" : "source";
       const nodeId = createOptionNode(option, parentId);
       if (nodeId) {
         forceSelectNode(nodeId);
-        await generateOptionWithReference(nodeId, option, referenceImageDataUrl);
+        await generateOptionWithReference(nodeId, option, referenceImageDataUrl, { maskDataUrl, size: aspectSize });
       }
       return;
     }
@@ -5257,10 +6415,11 @@ async function submitViewerImageEdit(prompt) {
       id: node.option?.id || `edit-${Date.now()}`,
       title: node.option?.title || prompt.slice(0, 48),
       description: prompt,
-      prompt
+      prompt,
+      layoutHint: aspectKey === "auto" ? node.option?.layoutHint : aspectKey
     };
     node.option = modifiedOption;
-    await generateOptionWithReference(info.nodeId, modifiedOption, referenceImageDataUrl);
+    await generateOptionWithReference(info.nodeId, modifiedOption, referenceImageDataUrl, { maskDataUrl, size: aspectSize });
   } catch (error) {
     setStatus(error.message || t("status.error"), "error");
   }
@@ -5467,12 +6626,67 @@ function openBlueprintModal(junctionId) {
     card.dataset.cardId = cardId;
     card.style.left = `${pos.x}px`;
     card.style.top = `${pos.y}px`;
+    if (pos.width) card.style.width = `${pos.width}px`;
+    if (pos.height) card.style.height = `${pos.height}px`;
+
+    // Type badge
+    const typeBadge = document.createElement("span");
+    typeBadge.className = "blueprint-card-badge";
+    const typeText = node.generated ? t("generated.result") : node.option?.tone || "option";
+    typeBadge.textContent = typeText;
+
+    const header = document.createElement("div");
+    header.className = "blueprint-card-header";
 
     const title = document.createElement("div");
     title.className = "blueprint-card-title";
-    title.textContent = node.option?.title || cardId;
+    title.textContent = node.option?.title || node.sourceCard?.title || cardId;
+    title.title = "Double-click to rename";
+    title.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+      if (card.querySelector(".blueprint-card-title-input")) return;
+      const original = title.textContent;
+      title.textContent = "";
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "blueprint-card-title-input";
+      input.value = original;
+      title.appendChild(input);
+      input.focus();
+      input.select();
+      const save = () => {
+        const next = input.value.trim() || original;
+        title.textContent = next;
+        // Persist rename to actual node
+        const realNode = state.nodes.get(cardId);
+        if (realNode?.option) realNode.option.title = next;
+        if (realNode?.sourceCard) realNode.sourceCard.title = next;
+        autoSave();
+      };
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          input.blur();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          title.textContent = original;
+        }
+      });
+      input.addEventListener("blur", save, { once: true });
+    });
 
-    card.appendChild(title);
+    header.appendChild(title);
+    header.appendChild(typeBadge);
+    card.appendChild(header);
+
+    // Description
+    const descText = node.option?.description || node.explanation || "";
+    if (descText) {
+      const desc = document.createElement("div");
+      desc.className = "blueprint-card-desc";
+      desc.textContent = descText;
+      card.appendChild(desc);
+    }
 
     // Add thumbnail if node has a generated image
     if (node.generated && node.imageHash) {
@@ -5493,6 +6707,13 @@ function openBlueprintModal(junctionId) {
     leftHandle.addEventListener("pointerdown", (event) => startBlueprintConnection(event, cardId, canvas));
 
     card.append(rightHandle, leftHandle);
+
+    // Add resize handle
+    const resizeHandle = document.createElement("div");
+    resizeHandle.className = "blueprint-resize-handle";
+    resizeHandle.addEventListener("pointerdown", (event) => startBlueprintCardResize(event, card, cardId, canvas));
+    card.appendChild(resizeHandle);
+
     canvas.appendChild(card);
 
     makeModalDraggable(card, cardId, canvas);
@@ -5553,7 +6774,7 @@ function makeModalDraggable(element, cardId, canvas) {
     start = null;
     element.classList.remove("dragging");
 
-    // Persist position to state.blueprints
+    // Persist position and size to state.blueprints
     const junctionId = blueprintModal.dataset.junctionId;
     if (!junctionId) return;
     if (!state.blueprints.has(junctionId)) {
@@ -5562,7 +6783,9 @@ function makeModalDraggable(element, cardId, canvas) {
     const blueprint = state.blueprints.get(junctionId);
     blueprint.positions[cardId] = {
       x: parseFloat(element.style.left) || 0,
-      y: parseFloat(element.style.top) || 0
+      y: parseFloat(element.style.top) || 0,
+      width: parseFloat(element.style.width) || element.offsetWidth,
+      height: parseFloat(element.style.height) || element.offsetHeight
     };
     autoSave();
   });
@@ -5596,6 +6819,58 @@ function drawBlueprintLinks(canvas, relationships) {
   }
 
   svg.replaceChildren(fragments);
+}
+
+function startBlueprintCardResize(event, cardElement, cardId, canvas) {
+  event.stopPropagation();
+  event.preventDefault();
+
+  const start = {
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    width: cardElement.offsetWidth,
+    height: cardElement.offsetHeight
+  };
+  cardElement.setPointerCapture(event.pointerId);
+
+  const onPointerMove = (moveEvent) => {
+    const dx = moveEvent.clientX - start.x;
+    const dy = moveEvent.clientY - start.y;
+    const newWidth = Math.max(140, start.width + dx);
+    const newHeight = Math.max(100, start.height + dy);
+    cardElement.style.width = `${newWidth}px`;
+    cardElement.style.height = `${newHeight}px`;
+
+    const junctionId = blueprintModal.dataset.junctionId;
+    const blueprint = state.blueprints.get(junctionId);
+    if (blueprint?.relationships?.length > 0) {
+      drawBlueprintLinks(canvas, blueprint.relationships);
+    }
+  };
+
+  const onPointerUp = () => {
+    cardElement.releasePointerCapture(start.pointerId);
+    document.removeEventListener("pointermove", onPointerMove);
+    document.removeEventListener("pointerup", onPointerUp);
+
+    const junctionId = blueprintModal.dataset.junctionId;
+    if (!junctionId) return;
+    if (!state.blueprints.has(junctionId)) {
+      state.blueprints.set(junctionId, { positions: {}, relationships: [] });
+    }
+    const blueprint = state.blueprints.get(junctionId);
+    blueprint.positions[cardId] = {
+      x: parseFloat(cardElement.style.left) || 0,
+      y: parseFloat(cardElement.style.top) || 0,
+      width: parseFloat(cardElement.style.width) || cardElement.offsetWidth,
+      height: parseFloat(cardElement.style.height) || cardElement.offsetHeight
+    };
+    autoSave();
+  };
+
+  document.addEventListener("pointermove", onPointerMove);
+  document.addEventListener("pointerup", onPointerUp);
 }
 
 function startBlueprintConnection(event, fromCardId, canvas) {
@@ -5710,6 +6985,7 @@ blueprintModal?.addEventListener("click", (event) => {
 
 function clearOptions() {
   deselectNode();
+  clearMultiSelection();
   for (const [id, node] of Array.from(state.nodes.entries())) {
     if (id.startsWith("option-")) {
       node.element.remove();
@@ -5719,6 +6995,10 @@ function clearOptions() {
     }
   }
   state.links = state.links.filter((link) => !link.to.startsWith("option-") && !link.from.startsWith("option-"));
+  for (const [groupId, group] of Array.from(state.groups.entries())) {
+    group.nodeIds = group.nodeIds.filter((id) => state.nodes.has(id));
+    if (group.nodeIds.length < 2) state.groups.delete(groupId);
+  }
   state.generatedCount = 0;
   applyCollapseState();
 }
@@ -5731,23 +7011,169 @@ function selectNode(nodeId) {
   }
   deselectNode();
   state.selectedNodeId = nodeId;
+  state.selectedNodeIds = new Set([nodeId]);
   const node = state.nodes.get(nodeId);
   if (node && node.element) {
     node.element.classList.add("is-selected");
     node.element.style.zIndex = "9";
   }
+  updateMultiSelectionVisuals();
   updateDialogState();
 }
 
 function deselectNode() {
-  if (state.selectedNodeId === null) return;
-  const node = state.nodes.get(state.selectedNodeId);
-  if (node && node.element) {
+  if (state.selectedNodeId !== null) {
+    const node = state.nodes.get(state.selectedNodeId);
+    if (node && node.element) {
+      node.element.classList.remove("is-selected");
+      node.element.style.zIndex = "";
+    }
+  }
+  state.selectedNodeId = null;
+  state.selectedNodeIds.clear();
+  updateMultiSelectionVisuals();
+  updateDialogState();
+}
+
+function clearMultiSelection({ keepPrimary = false } = {}) {
+  if (keepPrimary && state.selectedNodeId) {
+    state.selectedNodeIds = new Set([state.selectedNodeId]);
+  } else {
+    state.selectedNodeIds.clear();
+    if (!keepPrimary) state.selectedNodeId = null;
+  }
+  updateMultiSelectionVisuals();
+}
+
+function setMultiSelection(nodeIds, { primaryId = null } = {}) {
+  const ids = Array.from(new Set(nodeIds)).filter((id) => state.nodes.has(id) && isNodeVisible(state.nodes.get(id)));
+  state.selectedNodeIds = new Set(ids);
+  state.selectedNodeId = primaryId && state.selectedNodeIds.has(primaryId) ? primaryId : (ids[0] || null);
+  for (const node of state.nodes.values()) {
     node.element.classList.remove("is-selected");
     node.element.style.zIndex = "";
   }
-  state.selectedNodeId = null;
+  if (state.selectedNodeId) {
+    const primary = state.nodes.get(state.selectedNodeId);
+    primary?.element?.classList.add("is-selected");
+    if (primary?.element) primary.element.style.zIndex = "9";
+  }
+  updateMultiSelectionVisuals();
   updateDialogState();
+}
+
+function updateMultiSelectionVisuals() {
+  for (const [id, node] of state.nodes.entries()) {
+    node.element.classList.toggle("is-multi-selected", state.selectedNodeIds.has(id) && id !== state.selectedNodeId);
+  }
+  renderSelectionToolbar();
+}
+
+function getNodeBounds(node) {
+  if (!node) return null;
+  const width = node.width || node.element?.offsetWidth || 318;
+  const height = node.height || node.element?.offsetHeight || 220;
+  return { x: node.x || 0, y: node.y || 0, width, height, right: (node.x || 0) + width, bottom: (node.y || 0) + height };
+}
+
+function getSelectionBounds(nodeIds = Array.from(state.selectedNodeIds)) {
+  const bounds = nodeIds.map((id) => getNodeBounds(state.nodes.get(id))).filter(Boolean);
+  if (!bounds.length) return null;
+  const x = Math.min(...bounds.map((item) => item.x));
+  const y = Math.min(...bounds.map((item) => item.y));
+  const right = Math.max(...bounds.map((item) => item.right));
+  const bottom = Math.max(...bounds.map((item) => item.bottom));
+  return { x, y, right, bottom, width: right - x, height: bottom - y };
+}
+
+function boardToViewportPoint(point) {
+  return {
+    x: point.x * state.view.scale + state.view.x,
+    y: point.y * state.view.scale + state.view.y
+  };
+}
+
+function viewportToBoardPoint(clientX, clientY) {
+  const rect = viewport.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left - state.view.x) / state.view.scale,
+    y: (clientY - rect.top - state.view.y) / state.view.scale
+  };
+}
+
+function renderSelectionToolbar() {
+  if (!selectionToolbar || !selectionCount) return;
+  const ids = Array.from(state.selectedNodeIds).filter((id) => state.nodes.has(id));
+  if (ids.length < 2) {
+    selectionToolbar.classList.add("hidden");
+    return;
+  }
+  const bounds = getSelectionBounds(ids);
+  if (!bounds) {
+    selectionToolbar.classList.add("hidden");
+    return;
+  }
+  const point = boardToViewportPoint({ x: bounds.x + bounds.width / 2, y: bounds.y - 46 });
+  selectionToolbar.style.left = `${Math.max(14, point.x - selectionToolbar.offsetWidth / 2)}px`;
+  selectionToolbar.style.top = `${Math.max(14, point.y)}px`;
+  selectionCount.textContent = `${ids.length} 选中`;
+  selectionToolbar.classList.remove("hidden");
+}
+
+function renderGroupFrames() {
+  if (!groupLayer) return;
+  const fragment = document.createDocumentFragment();
+  for (const [groupId, group] of state.groups.entries()) {
+    const nodeIds = (group.nodeIds || []).filter((id) => state.nodes.has(id) && isNodeVisible(state.nodes.get(id)));
+    if (nodeIds.length < 2) continue;
+    const bounds = getSelectionBounds(nodeIds);
+    if (!bounds) continue;
+    const padding = 34;
+    const frame = document.createElement("div");
+    frame.className = "group-frame";
+    frame.dataset.groupId = groupId;
+    frame.style.left = `${bounds.x - padding}px`;
+    frame.style.top = `${bounds.y - padding}px`;
+    frame.style.width = `${bounds.width + padding * 2}px`;
+    frame.style.height = `${bounds.height + padding * 2}px`;
+    const title = document.createElement("span");
+    title.className = "group-frame-title";
+    title.textContent = group.title || (currentLang === "en" ? "Group" : "分组");
+    frame.appendChild(title);
+    fragment.appendChild(frame);
+  }
+  groupLayer.replaceChildren(fragment);
+}
+
+function groupSelectedNodes() {
+  const ids = Array.from(state.selectedNodeIds).filter((id) => state.nodes.has(id) && id !== "source" && id !== "analysis");
+  if (ids.length < 2) {
+    showToast(currentLang === "en" ? "Select at least two cards first." : "请先框选至少两张卡片。");
+    return null;
+  }
+  const groupId = `group-${Date.now().toString(36)}`;
+  state.groups.set(groupId, {
+    id: groupId,
+    title: currentLang === "en" ? "Canvas group" : "画布分组",
+    nodeIds: ids,
+    color: "#0070cc"
+  });
+  renderGroupFrames();
+  autoSave();
+  return groupId;
+}
+
+function ungroupSelectedNodes() {
+  const ids = new Set(state.selectedNodeIds);
+  let removed = 0;
+  for (const [groupId, group] of Array.from(state.groups.entries())) {
+    if ((group.nodeIds || []).some((id) => ids.has(id))) {
+      state.groups.delete(groupId);
+      removed += 1;
+    }
+  }
+  renderGroupFrames();
+  if (removed) autoSave();
 }
 
 function updateDialogState() {
@@ -6255,6 +7681,11 @@ function deleteNode(nodeId) {
   if (state.selectedNodeId === nodeId) {
     deselectNode();
   }
+  state.selectedNodeIds.delete(nodeId);
+  for (const [groupId, group] of Array.from(state.groups.entries())) {
+    group.nodeIds = group.nodeIds.filter((id) => id !== nodeId);
+    if (group.nodeIds.length < 2) state.groups.delete(groupId);
+  }
 
   // Remove from state
   state.nodes.delete(nodeId);
@@ -6272,6 +7703,7 @@ function deleteNode(nodeId) {
     state.generatedCount = Math.max(0, state.generatedCount - 1);
   }
   updateCounts();
+  updateMultiSelectionVisuals();
   updateCollapseControls();
   drawLinks();
   autoSave();
@@ -6306,18 +7738,33 @@ function makeDraggable(element, id) {
 
   element.addEventListener("pointerdown", (event) => {
     const uploadTarget = event.target.closest(".upload-target");
-    if (uploadTarget && !uploadTarget.classList.contains("has-source-image")) return;
+    if (uploadTarget && !uploadTarget.classList.contains("has-source-image") && !uploadTarget.classList.contains("has-source-file")) return;
     const interactive = event.target.closest("button, input, textarea, select, a, .option-title, .generated-node h3, .analysis-node h2, #sourceName, .standalone-source-name, .node-title-input, .image-card-action, .edge-handle, .node-resize-handle");
     if (interactive && event.target.tagName !== "SECTION") return;
     const node = state.nodes.get(id);
     if (!node) return;
+    if (event.shiftKey || event.metaKey || event.ctrlKey) {
+      const next = new Set(state.selectedNodeIds);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setMultiSelection(Array.from(next), { primaryId: id });
+      return;
+    }
+    if (!state.selectedNodeIds.has(id)) {
+      setMultiSelection([id], { primaryId: id });
+    }
+    const movingIds = Array.from(state.selectedNodeIds).filter((nodeId) => state.nodes.has(nodeId));
 
     start = {
       pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
       nodeX: node.x,
-      nodeY: node.y
+      nodeY: node.y,
+      moving: movingIds.map((nodeId) => {
+        const movingNode = state.nodes.get(nodeId);
+        return { id: nodeId, x: movingNode.x, y: movingNode.y };
+      })
     };
     element.classList.add("dragging");
     element.setPointerCapture(event.pointerId);
@@ -6328,20 +7775,29 @@ function makeDraggable(element, id) {
     const node = state.nodes.get(id);
     if (!node) return;
 
-    node.x = start.nodeX + (event.clientX - start.x) / state.view.scale;
-    node.y = start.nodeY + (event.clientY - start.y) / state.view.scale;
-    element.style.left = `${node.x}px`;
-    element.style.top = `${node.y}px`;
-    node.width = element.offsetWidth;
-    node.height = element.offsetHeight;
+    const dx = (event.clientX - start.x) / state.view.scale;
+    const dy = (event.clientY - start.y) / state.view.scale;
+    for (const item of start.moving || [{ id, x: start.nodeX, y: start.nodeY }]) {
+      const movingNode = state.nodes.get(item.id);
+      if (!movingNode) continue;
+      movingNode.x = item.x + dx;
+      movingNode.y = item.y + dy;
+      movingNode.element.style.left = `${movingNode.x}px`;
+      movingNode.element.style.top = `${movingNode.y}px`;
+      movingNode.width = movingNode.element.offsetWidth;
+      movingNode.height = movingNode.element.offsetHeight;
+    }
     drawLinks();
   });
 
-  element.addEventListener("pointerup", () => {
+  const finishDrag = () => {
     start = null;
     element.classList.remove("dragging");
     autoSave();
-  });
+  };
+
+  element.addEventListener("pointerup", finishDrag);
+  element.addEventListener("pointercancel", finishDrag);
 }
 
 function drawLinks() {
@@ -6368,9 +7824,13 @@ function drawLinks() {
       sides.toSide,
       linkSpreadOffset(toGroups.get(`${link.to}:${sides.toSide}`), descriptor)
     );
-    const path = curvePath(start, end);
-    const shadow = svgElement("path", { d: path, class: "link-shadow" });
-    const line = svgElement("path", { d: path, class: "link" });
+    const fromGroup = fromGroups.get(`${link.from}:${sides.fromSide}`);
+    const toGroup = toGroups.get(`${link.to}:${sides.toSide}`);
+    const isBundled = (fromGroup?.length || 0) > 2 || (toGroup?.length || 0) > 2;
+    const path = routeLinkPath(start, end, descriptor, { fromGroup, toGroup });
+    const linkClass = `link link-orthogonal${isBundled ? " link-bundled" : ""}`;
+    const shadow = svgElement("path", { d: path, class: `link-shadow${isBundled ? " link-bundled" : ""}` });
+    const line = svgElement("path", { d: path, class: linkClass });
     const pinA = svgElement("circle", { cx: start.x, cy: start.y, r: 7, class: "link-pin" });
     const pinB = svgElement("circle", { cx: end.x, cy: end.y, r: 7, class: "link-pin" });
 
@@ -6378,6 +7838,8 @@ function drawLinks() {
   });
 
   linkLayer.replaceChildren(fragments);
+  renderGroupFrames();
+  renderMinimap();
 }
 
 function groupLinkDescriptors(items, keyFn) {
@@ -6475,6 +7937,187 @@ function curvePath(start, end) {
   const c2x = end.x + endTangent.x * bend;
   const c2y = end.y + endTangent.y * bend;
   return `M ${start.x} ${start.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${end.x} ${end.y}`;
+}
+
+function routeLinkPath(start, end, descriptor, groups = {}) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  const startTangent = tangentForSide(start.side);
+  const endTangent = tangentForSide(end.side);
+  const bundled = (groups.fromGroup?.length || 0) > 2 || (groups.toGroup?.length || 0) > 2;
+  const firstLeg = clamp((start.side === "left" || start.side === "right" ? absDx : absDy) * 0.32, bundled ? 96 : 62, bundled ? 180 : 132);
+  const lastLeg = clamp((end.side === "left" || end.side === "right" ? absDx : absDy) * 0.26, 54, 132);
+  const points = [{ x: start.x, y: start.y }];
+  const p1 = { x: start.x + startTangent.x * firstLeg, y: start.y + startTangent.y * firstLeg };
+  const p4 = { x: end.x + endTangent.x * lastLeg, y: end.y + endTangent.y * lastLeg };
+  points.push(p1);
+
+  if ((start.side === "left" || start.side === "right") && (end.side === "left" || end.side === "right")) {
+    const midX = bundled
+      ? p1.x
+      : (Math.abs(p1.x - p4.x) < 90 ? (p1.x + p4.x) / 2 : p1.x + (p4.x - p1.x) * 0.52);
+    points.push({ x: midX, y: p1.y }, { x: midX, y: p4.y });
+  } else if ((start.side === "top" || start.side === "bottom") && (end.side === "top" || end.side === "bottom")) {
+    const midY = bundled
+      ? p1.y
+      : (Math.abs(p1.y - p4.y) < 90 ? (p1.y + p4.y) / 2 : p1.y + (p4.y - p1.y) * 0.52);
+    points.push({ x: p1.x, y: midY }, { x: p4.x, y: midY });
+  } else if (absDx > absDy) {
+    points.push({ x: p4.x, y: p1.y });
+  } else {
+    points.push({ x: p1.x, y: p4.y });
+  }
+
+  points.push(p4, { x: end.x, y: end.y });
+  return roundedPolylinePath(avoidLinkObstacles(points, descriptor), bundled ? 24 : 18);
+}
+
+function avoidLinkObstacles(points, descriptor) {
+  const fromId = descriptor?.link?.from;
+  const toId = descriptor?.link?.to;
+  let routed = points;
+  for (let pass = 0; pass < 2; pass += 1) {
+    let changed = false;
+    const next = [];
+    for (let i = 0; i < routed.length - 1; i += 1) {
+      const a = routed[i];
+      const b = routed[i + 1];
+      next.push(a);
+      const obstacle = firstIntersectingNode(a, b, fromId, toId);
+      if (!obstacle) continue;
+      const rect = getNodeBounds(obstacle);
+      const pad = 28;
+      if (Math.abs(a.y - b.y) < 1) {
+        const y = Math.abs(a.y - (rect.y - pad)) < Math.abs(a.y - (rect.bottom + pad)) ? rect.y - pad : rect.bottom + pad;
+        next.push({ x: a.x, y }, { x: b.x, y });
+      } else if (Math.abs(a.x - b.x) < 1) {
+        const x = Math.abs(a.x - (rect.x - pad)) < Math.abs(a.x - (rect.right + pad)) ? rect.x - pad : rect.right + pad;
+        next.push({ x, y: a.y }, { x, y: b.y });
+      }
+      changed = true;
+    }
+    next.push(routed[routed.length - 1]);
+    routed = simplifyPolyline(next);
+    if (!changed) break;
+  }
+  return routed;
+}
+
+function firstIntersectingNode(a, b, fromId, toId) {
+  for (const [id, node] of state.nodes.entries()) {
+    if (id === fromId || id === toId || !isNodeVisible(node)) continue;
+    const rect = getNodeBounds(node);
+    if (!rect) continue;
+    const pad = 18;
+    const expanded = {
+      x: rect.x - pad,
+      y: rect.y - pad,
+      right: rect.right + pad,
+      bottom: rect.bottom + pad
+    };
+    if (segmentIntersectsRect(a, b, expanded)) return node;
+  }
+  return null;
+}
+
+function segmentIntersectsRect(a, b, rect) {
+  const minX = Math.min(a.x, b.x);
+  const maxX = Math.max(a.x, b.x);
+  const minY = Math.min(a.y, b.y);
+  const maxY = Math.max(a.y, b.y);
+  if (maxX < rect.x || minX > rect.right || maxY < rect.y || minY > rect.bottom) return false;
+  if (Math.abs(a.x - b.x) < 1) return a.x >= rect.x && a.x <= rect.right;
+  if (Math.abs(a.y - b.y) < 1) return a.y >= rect.y && a.y <= rect.bottom;
+  return false;
+}
+
+function simplifyPolyline(points) {
+  return points.filter((point, index) => {
+    const prev = points[index - 1];
+    if (!prev) return true;
+    return Math.abs(prev.x - point.x) > 0.5 || Math.abs(prev.y - point.y) > 0.5;
+  });
+}
+
+function roundedPolylinePath(points, radius = 18) {
+  if (!points.length) return "";
+  let path = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length; i += 1) {
+    const current = points[i];
+    const previous = points[i - 1];
+    const next = points[i + 1];
+    if (!next) {
+      path += ` L ${current.x} ${current.y}`;
+      continue;
+    }
+    const before = pointAlong(current, previous, Math.min(radius, distance(current, previous) / 2));
+    const after = pointAlong(current, next, Math.min(radius, distance(current, next) / 2));
+    path += ` L ${before.x} ${before.y} Q ${current.x} ${current.y} ${after.x} ${after.y}`;
+  }
+  return path;
+}
+
+function pointAlong(from, to, length) {
+  const total = distance(from, to) || 1;
+  const ratio = length / total;
+  return {
+    x: from.x + (to.x - from.x) * ratio,
+    y: from.y + (to.y - from.y) * ratio
+  };
+}
+
+function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function renderMinimap() {
+  if (!minimap || minimap.classList.contains("hidden") || !minimapCanvas || !minimapViewport) return;
+  const ctx = minimapCanvas.getContext("2d");
+  if (!ctx) return;
+  const width = minimapCanvas.width;
+  const height = minimapCanvas.height;
+  const sx = width / 2400;
+  const sy = height / 1500;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(248, 250, 252, 0.88)";
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = "rgba(0, 112, 204, 0.32)";
+  ctx.lineWidth = 1;
+  for (const link of state.links) {
+    const from = state.nodes.get(link.from);
+    const to = state.nodes.get(link.to);
+    if (!isNodeVisible(from) || !isNodeVisible(to)) continue;
+    const a = nodeCenter(from);
+    const b = nodeCenter(to);
+    ctx.beginPath();
+    ctx.moveTo(a.x * sx, a.y * sy);
+    ctx.lineTo(b.x * sx, b.y * sy);
+    ctx.stroke();
+  }
+  for (const [id, node] of state.nodes.entries()) {
+    if (!isNodeVisible(node)) continue;
+    const bounds = getNodeBounds(node);
+    ctx.fillStyle = id === state.selectedNodeId ? "#0070cc" : node.generated ? "rgba(0, 112, 204, 0.72)" : "rgba(28, 38, 52, 0.56)";
+    ctx.fillRect(bounds.x * sx, bounds.y * sy, Math.max(2, bounds.width * sx), Math.max(2, bounds.height * sy));
+  }
+  syncMinimapViewport();
+}
+
+function syncMinimapViewport() {
+  if (!minimap || minimap.classList.contains("hidden") || !minimapCanvas || !minimapViewport || !viewport) return;
+  const rect = viewport.getBoundingClientRect();
+  const sx = minimapCanvas.clientWidth / 2400;
+  const sy = minimapCanvas.clientHeight / 1500;
+  const x = (-state.view.x / state.view.scale) * sx;
+  const y = (-state.view.y / state.view.scale) * sy;
+  const width = (rect.width / state.view.scale) * sx;
+  const height = (rect.height / state.view.scale) * sy;
+  minimapViewport.style.left = `${clamp(x, -2, minimapCanvas.clientWidth + 2)}px`;
+  minimapViewport.style.top = `${clamp(y, -2, minimapCanvas.clientHeight + 2)}px`;
+  minimapViewport.style.width = `${clamp(width, 8, minimapCanvas.clientWidth)}px`;
+  minimapViewport.style.height = `${clamp(height, 8, minimapCanvas.clientHeight)}px`;
 }
 
 function tangentForSide(side) {
@@ -6661,6 +8304,7 @@ async function postStreamingChat(url, payload, pendingMessage) {
     } else if (eventName === "research") {
       const delta = data.delta || data.text || "";
       if (delta) thinkingContent += delta;
+      handleLiveResearchCanvasEvent(data, pendingMessage);
       if (pendingMessage) {
         updateChatMessage(pendingMessage, {
           thinkingContent,
@@ -6721,6 +8365,84 @@ function mergeResearchArtifacts(existingArtifacts, eventData = {}) {
   return artifacts.slice(-12);
 }
 
+function handleLiveResearchCanvasEvent(eventData = {}, pendingMessage = null) {
+  if (!deepThinkBusy) return;
+  const parentNodeId = pendingMessage?.branchNodeId || state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
+  if (!state.nodes.has(parentNodeId)) return;
+  const parent = state.nodes.get(parentNodeId);
+  const createdCount = liveResearchCards.size;
+  const stageTitle = String(eventData.title || eventData.stage || (currentLang === "en" ? "Research step" : "研究步骤")).slice(0, 48);
+  const delta = String(eventData.delta || eventData.summary || "").trim();
+  const query = String(eventData.query || eventData.searchQuery || "").trim();
+
+  if (query) {
+    const key = `query:${query}`;
+    if (!liveResearchCards.has(key)) {
+      const queryTitle = currentLang === "en" ? "Search query" : "搜索 query";
+      const nodeId = createOptionNode({
+        id: `live-query-${Date.now()}-${safeNodeSlug(query)}`,
+        title: queryTitle,
+        description: query.slice(0, 260),
+        prompt: query.slice(0, 1200),
+        tone: currentLang === "en" ? "search" : "搜索",
+        layoutHint: "query",
+        deepThinkType: "web",
+        x: (parent.x || 0) + 410 + Math.floor(createdCount / 4) * 360,
+        y: (parent.y || 0) + (createdCount % 4) * 210
+      }, parentNodeId);
+      if (nodeId) liveResearchCards.set(key, nodeId);
+    }
+  }
+
+  if (delta.length >= 18) {
+    const key = `stage:${stageTitle}`;
+    let nodeId = liveResearchCards.get(key);
+    if (!nodeId) {
+      nodeId = createOptionNode({
+        id: `live-research-${Date.now()}-${safeNodeSlug(stageTitle)}`,
+        title: stageTitle,
+        description: delta.slice(0, 240),
+        prompt: delta.slice(0, 1200),
+        tone: currentLang === "en" ? "research" : "研究",
+        layoutHint: "live",
+        deepThinkType: "note",
+        x: (parent.x || 0) + 410 + Math.floor(createdCount / 4) * 360,
+        y: (parent.y || 0) + (createdCount % 4) * 210
+      }, parentNodeId);
+      if (nodeId) liveResearchCards.set(key, nodeId);
+    } else {
+      const node = state.nodes.get(nodeId);
+      if (node?.option) {
+        node.option.description = `${node.option.description || ""} ${delta}`.trim().slice(-360);
+        node.option.prompt = `${node.option.prompt || ""}\n${delta}`.trim().slice(-1600);
+        node.element.querySelector(".option-description").textContent = node.option.description;
+      }
+    }
+  }
+
+  const references = Array.isArray(eventData.references) ? eventData.references : [];
+  references.slice(0, 4).forEach((reference, index) => {
+    const url = reference.url || reference.sourceUrl || reference.imageUrl || "";
+    if (!url) return;
+    const key = `ref:${url}`;
+    if (liveResearchCards.has(key)) return;
+    const title = String(reference.title || url).slice(0, 48);
+    const nodeId = createOptionNode({
+      id: `live-ref-${Date.now()}-${index}-${safeNodeSlug(title)}`,
+      title,
+      description: String(reference.description || reference.summary || url).slice(0, 260),
+      prompt: String(reference.description || reference.summary || title).slice(0, 1200),
+      tone: reference.type === "image" ? (currentLang === "en" ? "image" : "图片") : (currentLang === "en" ? "web" : "网页"),
+      layoutHint: "evidence",
+      deepThinkType: reference.type === "image" ? "image" : "web",
+      references: [{ title, url, description: reference.description || "", type: reference.type || "web" }],
+      x: (parent.x || 0) + 410 + Math.floor((createdCount + index + 1) / 4) * 360,
+      y: (parent.y || 0) + ((createdCount + index + 1) % 4) * 210
+    }, parentNodeId);
+    if (nodeId) liveResearchCards.set(key, nodeId);
+  });
+}
+
 async function putJson(url, payload) {
   const response = await fetch(url, {
     method: "PUT",
@@ -6752,6 +8474,8 @@ function resetView() {
 
 function updateBoardTransform() {
   board.style.transform = `translate(${state.view.x}px, ${state.view.y}px) scale(${state.view.scale})`;
+  renderSelectionToolbar();
+  syncMinimapViewport();
 }
 
 function updateCounts() {
@@ -6795,10 +8519,17 @@ function computeStateHash() {
     chatThreads: serializeChatThreads(),
     activeChatThreadId: state.activeChatThreadId,
     selectedNodeId: state.selectedNodeId,
+    selectedNodeIds: Array.from(state.selectedNodeIds),
     view: state.view,
+    sourceType: state.sourceType,
+    sourceText: state.sourceText ? state.sourceText.slice(0, 5000) : null,
+    sourceDataUrlHash: state.sourceDataUrlHash || null,
+    sourceUrl: state.sourceUrl || null,
+    fileName: state.fileName || "",
     sourceImage: state.sourceImage ? state.sourceImage.slice(0, 200) : null,
     latestAnalysis: state.latestAnalysis,
-    blueprints: Object.fromEntries(state.blueprints)
+    blueprints: Object.fromEntries(state.blueprints),
+    groups: Object.fromEntries(state.groups)
   });
 }
 
@@ -6809,6 +8540,7 @@ async function prepareStateForSave() {
     sourceType: state.sourceType,
     sourceText: state.sourceText,
     sourceDataUrl: state.sourceDataUrl,
+    sourceDataUrlHash: state.sourceDataUrlHash || null,
     sourceUrl: state.sourceUrl,
     fileName: state.fileName,
     latestAnalysis: state.latestAnalysis,
@@ -6819,12 +8551,14 @@ async function prepareStateForSave() {
     selectiveHidden: Array.from(state.selectiveHidden),
     generatedCount: state.generatedCount,
     selectedNodeId: state.selectedNodeId,
+    selectedNodeIds: Array.from(state.selectedNodeIds),
     view: {
       ...state.view,
       chatThreads: serializeChatThreads(),
       activeChatThreadId: state.activeChatThreadId
     },
-    blueprints: Object.fromEntries(state.blueprints)
+    blueprints: Object.fromEntries(state.blueprints),
+    groups: Object.fromEntries(state.groups)
   };
 
   for (const [id, node] of state.nodes.entries()) {
@@ -6884,6 +8618,31 @@ async function imageUrlToDataUrl(url) {
   });
 }
 
+async function assetUrlToDataUrl(url) {
+  if (!url) return "";
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("Failed to read asset");
+  const blob = await response.blob();
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Failed to read asset"));
+    reader.onloadend = () => resolve(reader.result);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function ensureSourceDocumentDataUrl() {
+  if (state.sourceDataUrl || !state.sourceDataUrlHash) return state.sourceDataUrl || "";
+  state.sourceDataUrl = await assetUrlToDataUrl(`/api/assets/${state.sourceDataUrlHash}?kind=upload`);
+  return state.sourceDataUrl;
+}
+
+async function ensureSourceCardDocumentDataUrl(sourceCard) {
+  if (!sourceCard || sourceCard.sourceDataUrl || !sourceCard.sourceDataUrlHash) return sourceCard?.sourceDataUrl || "";
+  sourceCard.sourceDataUrl = await assetUrlToDataUrl(`/api/assets/${sourceCard.sourceDataUrlHash}?kind=upload`);
+  return sourceCard.sourceDataUrl;
+}
+
 function getSourceBadgeClass() {
   if (state.sourceType === "url") return "link";
   if (state.sourceType === "text") {
@@ -6916,6 +8675,17 @@ function updateSourceBadge() {
   badge.className = `source-badge ${getSourceBadgeClass()}`;
   badge.textContent = getSourceBadgeLabel();
   syncSourceImageActionState();
+  syncResearchDropdownOptions();
+}
+
+function syncResearchDropdownOptions() {
+  const isRichDoc = state.sourceType === "text" && state.fileName && /\.(pdf|pptx|docx)$/i.test(state.fileName);
+  document.querySelectorAll('.research-option[data-mode="understand"]').forEach((el) => {
+    el.style.display = isRichDoc ? "" : "none";
+  });
+  document.querySelectorAll('.research-option[data-mode="analyze"], .research-option[data-mode="explore"]').forEach((el) => {
+    el.style.display = "";
+  });
 }
 
 async function saveSession({ isAuto = false } = {}) {
@@ -6971,6 +8741,9 @@ async function saveSession({ isAuto = false } = {}) {
       saveStatus.textContent = t("save.savedAt", { time: new Date(result.savedAt).toLocaleTimeString() });
       saveStatus.className = "save-status saved";
     }
+    if (currentSessionId) {
+      sessionStorage.setItem("oryzae-last-session-id", currentSessionId);
+    }
   } catch (error) {
     console.error("Save failed:", error);
     if (saveStatus) {
@@ -6994,6 +8767,7 @@ async function loadSession(sessionId) {
   setStatus(t("status.busy"), "busy");
   try {
     const data = await getJson(`/api/sessions/${sessionId}`);
+    const sessionState = data.state || data.viewState?.stateSnapshot || data.viewState?.state || {};
 
     clearOptions();
     for (const [id, node] of Array.from(state.nodes.entries())) {
@@ -7014,6 +8788,9 @@ async function loadSession(sessionId) {
     state.sourceUrl = null;
     state.fileName = "";
     state.latestAnalysis = null;
+    state.fileUnderstanding = null;
+    state.groups.clear();
+    groupLayer?.replaceChildren();
 
     if (data.viewState) {
       state.view = {
@@ -7025,9 +8802,18 @@ async function loadSession(sessionId) {
       updateBoardTransform();
     }
 
-    const sourceAsset = data.assets.find(a => a.kind === "upload");
+    const assets = Array.isArray(data.assets) ? data.assets : [];
+    const sourceNodeRecord = Array.isArray(data.nodes) ? data.nodes.find((node) => node.nodeId === "source" || node.type === "source") : null;
+    const sourceNodeData = sourceNodeRecord?.data || {};
+    const desiredSourceHash = sessionState?.sourceImageHash || sessionState?.sourceDataUrlHash || sourceNodeData.imageHash || null;
+    const sourceAsset = (
+      desiredSourceHash
+        ? assets.find((asset) => asset.kind === "upload" && asset.hash === desiredSourceHash)
+        : null
+    ) || assets.find((asset) => asset.kind === "upload" && asset.fileName && asset.fileName === (sessionState?.fileName || sourceNodeData.fileName))
+      || assets.find(a => a.kind === "upload");
     if (sourceAsset) {
-      const isText = data.state?.sourceType === "text" || sourceAsset.mimeType?.startsWith("text/") || /\.(txt|md|json|docx|pdf|pptx)$/i.test(sourceAsset.fileName || "");
+      const isText = sessionState?.sourceType === "text" || sourceAsset.mimeType?.startsWith("text/") || /\.(txt|md|json|docx|pdf|pptx)$/i.test(sourceAsset.fileName || "");
       state.sourceType = isText ? "text" : "image";
       state.fileName = sourceAsset.fileName || "";
 
@@ -7039,8 +8825,8 @@ async function loadSession(sessionId) {
       } else {
         state.sourceImage = null;
         state.sourceImageHash = null;
-        state.sourceText = data.state?.sourceText || null;
-        state.sourceDataUrl = data.state?.sourceDataUrl || null;
+        state.sourceText = sessionState?.sourceText || null;
+        state.sourceDataUrl = sessionState?.sourceDataUrl || null;
         state.sourceDataUrlHash = sourceAsset?.hash || null;
         sourcePreview.src = "";
         sourcePreview.classList.remove("has-image");
@@ -7049,17 +8835,17 @@ async function loadSession(sessionId) {
       sourceName.textContent = trimMiddle(state.fileName, 28);
       if (researchButton) researchButton.disabled = false;
       updateSourceBadge();
-    } else if (data.state?.sourceType === "url" && data.state?.sourceUrl) {
+    } else if (sessionState?.sourceType === "url" && sessionState?.sourceUrl) {
       // Restore URL source without upload asset
       state.sourceType = "url";
-      state.sourceUrl = data.state.sourceUrl;
-      state.fileName = data.state.fileName || new URL(data.state.sourceUrl).hostname;
+      state.sourceUrl = sessionState.sourceUrl;
+      state.fileName = sessionState.fileName || new URL(sessionState.sourceUrl).hostname;
       state.sourceImage = null;
       state.sourceImageHash = null;
       state.sourceText = null;
       state.sourceDataUrl = null;
 
-      renderUrlSource(state.sourceUrl, data.state?.latestAnalysis?.title || "");
+      renderUrlSource(state.sourceUrl, sessionState?.latestAnalysis?.title || "");
       sourceName.textContent = trimMiddle(state.fileName, 28);
       if (researchButton) researchButton.disabled = false;
       updateSourceBadge();
@@ -7094,17 +8880,27 @@ async function loadSession(sessionId) {
     }
 
     // Restore source fields from persisted state if present
-    if (data.state?.sourceType) {
-      state.sourceType = data.state.sourceType;
+    if (sessionState?.sourceType) {
+      state.sourceType = sessionState.sourceType;
     }
-    if (data.state?.sourceText) {
-      state.sourceText = data.state.sourceText;
+    if (sessionState?.sourceText) {
+      state.sourceText = sessionState.sourceText;
     }
-    if (data.state?.sourceDataUrl) {
-      state.sourceDataUrl = data.state.sourceDataUrl;
+    if (sessionState?.sourceDataUrl) {
+      state.sourceDataUrl = sessionState.sourceDataUrl;
     }
-    if (data.state?.sourceUrl) {
-      state.sourceUrl = data.state.sourceUrl;
+    if (sessionState?.sourceDataUrlHash) {
+      state.sourceDataUrlHash = sessionState.sourceDataUrlHash;
+    }
+    if (sessionState?.sourceUrl) {
+      state.sourceUrl = sessionState.sourceUrl;
+    }
+    if (sessionState?.fileUnderstanding) {
+      state.fileUnderstanding = sessionState.fileUnderstanding;
+      renderFileUnderstanding(state.fileUnderstanding);
+      if (state.fileUnderstanding?.actionableDirections?.length) {
+        renderDocumentUnderstandingOptions(state.fileUnderstanding.actionableDirections);
+      }
     }
 
     const sourceCardNodes = data.nodes.filter(n => n.type === "source-card" || n.data?.sourceCard);
@@ -7124,6 +8920,20 @@ async function loadSession(sessionId) {
       const restored = state.nodes.get(n.nodeId);
       if (restored?.sourceCard) {
         restored.sourceCard = { ...restored.sourceCard, ...sourceCard, imageHash, imageUrl };
+        const hasContent = Boolean(restored.sourceCard.imageUrl || restored.sourceCard.imageHash || restored.sourceCard.sourceText || restored.sourceCard.sourceDataUrl || restored.sourceCard.sourceDataUrlHash || restored.sourceCard.sourceUrl);
+        restored.element.querySelector(".empty-state")?.classList.toggle("hidden", hasContent);
+        const research = restored.element.querySelector(".research-button");
+        if (research) research.disabled = !hasContent;
+        // Restore URL input if this is a URL card
+        if (restored.sourceCard.sourceUrl) {
+          const urlInputEl = restored.element.querySelector('.url-input-panel input[type="url"]');
+          if (urlInputEl) urlInputEl.value = restored.sourceCard.sourceUrl;
+          const urlAnalyzeBtn = restored.element.querySelector(".url-input-panel .primary-button");
+          if (urlAnalyzeBtn) urlAnalyzeBtn.disabled = false;
+        }
+        const label = restored.element.querySelector(".standalone-source-name");
+        if (label) label.textContent = trimMiddle(restored.sourceCard.fileName || restored.sourceCard.title || "Source card", 28);
+        syncSourceCardImageActionState(n.nodeId);
       }
     }
 
@@ -7222,15 +9032,18 @@ async function loadSession(sessionId) {
     }
 
     // Restore blueprint data if present in persisted state
-    if (data.state?.blueprints) {
-      state.blueprints = new Map(Object.entries(data.state.blueprints));
+    if (sessionState?.blueprints) {
+      state.blueprints = new Map(Object.entries(sessionState.blueprints));
+    }
+    if (sessionState?.groups) {
+      state.groups = new Map(Object.entries(sessionState.groups));
     }
 
     for (const n of data.nodes) {
       if (n.collapsed) state.collapsed.add(n.nodeId);
     }
-    if (data.selectiveHidden) {
-      for (const id of data.selectiveHidden) state.selectiveHidden.add(id);
+    if (sessionState?.selectiveHidden || data.selectiveHidden) {
+      for (const id of (sessionState.selectiveHidden || data.selectiveHidden || [])) state.selectiveHidden.add(id);
     }
 
     hydrateChatThreads({
@@ -7243,8 +9056,10 @@ async function loadSession(sessionId) {
     applyCollapseState();
     updateCounts();
 
-    if (data.state?.selectedNodeId && state.nodes.has(data.state.selectedNodeId)) {
-      selectNode(data.state.selectedNodeId);
+    if (Array.isArray(sessionState?.selectedNodeIds) && sessionState.selectedNodeIds.length) {
+      setMultiSelection(sessionState.selectedNodeIds, { primaryId: sessionState.selectedNodeId });
+    } else if (sessionState?.selectedNodeId && state.nodes.has(sessionState.selectedNodeId)) {
+      selectNode(sessionState.selectedNodeId);
     }
 
     currentSessionId = sessionId;
@@ -7309,9 +9124,12 @@ async function renderSessionList() {
   }
 }
 
-function arrangeCanvasLayout() {
+function arrangeCanvasLayout(options = {}) {
+  const opts = options && typeof options === "object" && !("target" in options) ? options : {};
+  const selectionOnly = Boolean(opts.selectionOnly && state.selectedNodeIds.size >= 2);
+  const selectableIds = selectionOnly ? new Set(state.selectedNodeIds) : null;
   const visibleNodeIds = Array.from(state.nodes.entries())
-    .filter(([, node]) => isNodeVisible(node))
+    .filter(([id, node]) => isNodeVisible(node) && (!selectableIds || selectableIds.has(id)))
     .map(([id]) => id);
   if (!visibleNodeIds.length) return;
 
@@ -7478,4 +9296,346 @@ function animateNodesToPositions(targetPositions, duration = 400) {
   }
 
   requestAnimationFrame(step);
+}
+
+// ─── File Understanding ───
+
+async function triggerFileUnderstanding() {
+  const hasData = state.sourceDataUrl || state.sourceText;
+  if (state.sourceType !== "text" || !hasData) {
+    showToast(t("file.unsupported"));
+    return;
+  }
+
+  setStatus(t("fileUnderstanding.understanding"), "busy");
+  setResearchButtonBusy(true, t("fileUnderstanding.understanding"));
+
+  try {
+    let dataUrl = state.sourceDataUrl;
+    let hash = state.sourceDataUrlHash;
+
+    if (!dataUrl && state.sourceText) {
+      const textBytes = new TextEncoder().encode(state.sourceText);
+      const base64 = arrayBufferToBase64(textBytes.buffer);
+      dataUrl = `data:text/plain;base64,${base64}`;
+      hash = null;
+    }
+
+    const payload = { dataUrl, fileName: state.fileName, language: currentLang };
+    if (hash) payload.hash = hash;
+
+    const result = await postJson("/api/file-understanding", payload, {
+      timeoutMs: 180000,
+      timeoutMessage: t("research.timeout")
+    });
+
+    if (result.ok) {
+      state.fileUnderstanding = result.result;
+      renderFileUnderstanding(result.result);
+      renderDocumentUnderstandingOptions(result.result.actionableDirections || []);
+      setStatus(t("status.ready"), "ready");
+      autoSave();
+    } else {
+      throw new Error(result.error || "File understanding failed");
+    }
+  } catch (error) {
+    console.error("[triggerFileUnderstanding]", error);
+    setStatus(error.message || t("status.error"), "error");
+  } finally {
+    setResearchButtonBusy(false);
+  }
+}
+
+function renderFileUnderstanding(understanding) {
+  if (!understanding) return;
+
+  analysisSummary.textContent = understanding.summary || t("analysis.defaultSummary");
+  keywordList.replaceChildren(
+    ...(understanding.keyPhrases || []).slice(0, 8).map((keyword) => {
+      const span = document.createElement("span");
+      span.className = "keyword";
+      span.textContent = keyword;
+      return span;
+    })
+  );
+  analysisNode.classList.remove("hidden");
+
+  let cardBody = analysisNode.querySelector(".file-understanding-body");
+  if (!cardBody) {
+    cardBody = document.createElement("div");
+    cardBody.className = "file-understanding-body";
+    analysisNode.appendChild(cardBody);
+  }
+
+  const struct = understanding.structure || {};
+  const materials = understanding.keyMaterials || {};
+  const imgCount = (materials.images || []).length;
+  const tblCount = (materials.tables || []).length;
+  const chartCount = (materials.charts || []).length;
+
+  let html = `<div class="fu-section">`;
+  html += `<p class="fu-abstract">${escapeHtml(understanding.abstract || "")}</p>`;
+
+  if (struct.outline?.length || struct.totalPages) {
+    html += `<div class="fu-block">`;
+    html += `<h4>${escapeHtml(t("fileUnderstanding.structure"))}</h4>`;
+    html += `<p class="fu-pages">${escapeHtml(t("fileUnderstanding.pages", { count: struct.totalPages || 1 }))}</p>`;
+    if (struct.outline?.length) {
+      html += `<ul class="fu-outline">`;
+      for (const item of struct.outline.slice(0, 8)) {
+        html += `<li>${escapeHtml(item)}</li>`;
+      }
+      html += `</ul>`;
+    }
+    html += `</div>`;
+  }
+
+  if (imgCount || tblCount || chartCount) {
+    html += `<div class="fu-block">`;
+    html += `<h4>${escapeHtml(t("fileUnderstanding.keyMaterials"))}</h4>`;
+    html += `<div class="fu-materials">`;
+    if (imgCount) {
+      html += `<span class="fu-badge fu-badge-image">${escapeHtml(t("fileUnderstanding.images"))}: ${imgCount}</span>`;
+    }
+    if (tblCount) {
+      html += `<span class="fu-badge fu-badge-table">${escapeHtml(t("fileUnderstanding.tables"))}: ${tblCount}</span>`;
+    }
+    if (chartCount) {
+      html += `<span class="fu-badge fu-badge-chart">${escapeHtml(t("fileUnderstanding.charts"))}: ${chartCount}</span>`;
+    }
+    html += `</div></div>`;
+  }
+
+  if (understanding.isScanned) {
+    html += `<div class="fu-block fu-scanned"><p>${escapeHtml(t("fileUnderstanding.scannedWarning"))}</p></div>`;
+  }
+
+  html += `</div>`;
+  cardBody.innerHTML = html;
+
+  const eyebrow = analysisNode.querySelector(".eyebrow");
+  if (eyebrow) eyebrow.textContent = t("analysis.eyebrowText");
+  const heading = analysisNode.querySelector("h2");
+  if (heading) {
+    heading.textContent = t("analysis.titleText");
+    makeTitleEditable("analysis", heading);
+  }
+
+  state.links = [{ from: "source", to: "analysis", kind: "analysis" }];
+  state.selectiveHidden.clear();
+  applyCollapseState();
+}
+
+function renderDocumentUnderstandingOptions(directions) {
+  clearOptions();
+  if (!directions?.length) return;
+
+  directions.forEach((dir, index) => {
+    const position = optionPositions[index % optionPositions.length];
+    const id = `option-${dir.id || index}`;
+
+    const fragment = optionTemplate.content.cloneNode(true);
+    const element = fragment.querySelector(".option-node");
+
+    element.dataset.nodeId = id;
+    element.dataset.directionType = dir.type || "research";
+    element.style.left = `${position.x}px`;
+    element.style.top = `${position.y}px`;
+    element.style.setProperty("--tilt", `${position.tilt}deg`);
+
+    const typeLabel = getDirectionTypeLabel(dir.type);
+    const typeIcon = getDirectionTypeIcon(dir.type);
+    element.querySelector(".option-tone").textContent = `${typeIcon} ${typeLabel}`;
+    element.querySelector(".option-title").textContent = dir.title || t("generated.result");
+    element.querySelector(".option-description").textContent = dir.description || "";
+
+    const titleEl = element.querySelector(".option-title");
+    if (titleEl) makeTitleEditable(id, titleEl);
+
+    const button = element.querySelector(".generate-button");
+    button.textContent = getDirectionButtonLabel(dir.type);
+    button.addEventListener("click", () => handleDirectionAction(id, dir));
+
+    board.appendChild(element);
+    registerNode(id, element, {
+      x: position.x,
+      y: position.y,
+      width: 318,
+      height: element.offsetHeight,
+      option: { ...dir, directionType: dir.type }
+    });
+    state.links.push({ from: "analysis", to: id, kind: "option" });
+    makeDraggable(element, id);
+  });
+
+  applyCollapseState();
+  updateCounts();
+}
+
+function getDirectionTypeLabel(type) {
+  const map = {
+    "image-generation": t("option.generate") || "Generate",
+    "research": t("direction.research"),
+    "task-plan": t("direction.taskPlan"),
+    "web-analysis": t("direction.webAnalysis"),
+    "report-structure": t("direction.reportStructure"),
+    "material-collection": t("direction.materialCollection")
+  };
+  return map[type] || type;
+}
+
+function getDirectionTypeIcon(type) {
+  const map = {
+    "image-generation": "IMG",
+    "research": "R",
+    "task-plan": "PLAN",
+    "web-analysis": "WEB",
+    "report-structure": "DOC",
+    "material-collection": "MAT"
+  };
+  return map[type] || "TASK";
+}
+
+function getDirectionButtonLabel(type) {
+  if (type === "image-generation") return t("option.generate") || "Generate";
+  return t("direction.research") || "Research";
+}
+
+async function handleDirectionAction(nodeId, dir) {
+  if (dir.type === "image-generation") {
+    const option = {
+      id: dir.id,
+      title: dir.title,
+      description: dir.description,
+      prompt: dir.description,
+      tone: "cinematic",
+      layoutHint: "landscape"
+    };
+    generateOption(nodeId, option);
+    return;
+  }
+
+  setStatus(t("status.busy"), "busy");
+  try {
+    const node = state.nodes.get(nodeId);
+    if (node) {
+      const button = node.element.querySelector(".generate-button");
+      if (button) {
+        button.disabled = true;
+        button.classList.add("is-busy");
+      }
+    }
+
+    const prompt = buildDirectionPrompt(dir, currentLang);
+    const data = await postJson("/api/deep-think", {
+      message: prompt,
+      language: currentLang
+    }, {
+      timeoutMs: 120000,
+      timeoutMessage: t("research.timeout")
+    });
+
+    const resultId = `result-${Date.now()}`;
+    const resultOption = {
+      id: resultId,
+      title: dir.title,
+      description: data.reply || data.cards?.[0]?.summary || "",
+      prompt: dir.description,
+      tone: "cinematic",
+      layoutHint: "board",
+      deepThinkType: dir.type
+    };
+
+    const resultNodeId = createOptionNode(resultOption, nodeId);
+    if (resultNodeId) {
+      const resultNode = state.nodes.get(resultNodeId);
+      if (resultNode) {
+        resultNode.explanation = data.reply || "";
+      }
+    }
+
+    setStatus(t("status.ready"), "ready");
+    autoSave();
+  } catch (error) {
+    setStatus(error.message || t("status.error"), "error");
+  } finally {
+    const node = state.nodes.get(nodeId);
+    if (node) {
+      const button = node.element.querySelector(".generate-button");
+      if (button) {
+        button.disabled = false;
+        button.classList.remove("is-busy");
+      }
+    }
+  }
+}
+
+function buildDirectionPrompt(dir, lang) {
+  const isEn = lang === "en";
+  const typeMap = {
+    "research": isEn ? "research topic" : "研究主题",
+    "task-plan": isEn ? "task plan" : "任务计划",
+    "web-analysis": isEn ? "web analysis" : "网页分析",
+    "report-structure": isEn ? "report structure" : "汇报结构",
+    "material-collection": isEn ? "material collection" : "素材收集"
+  };
+
+  const typeName = typeMap[dir.type] || dir.type;
+
+  if (isEn) {
+    return [
+      `Please provide a detailed ${typeName} based on the following direction:`,
+      `Title: ${dir.title}`,
+      `Description: ${dir.description}`,
+      `Rationale: ${dir.rationale}`,
+      "",
+      "Return the response in a well-structured format with clear sections."
+    ].join("\n");
+  }
+
+  return [
+    `请基于以下方向提供详细的${typeName}：`,
+    `标题：${dir.title}`,
+    `描述：${dir.description}`,
+    `理由：${dir.rationale}`,
+    "",
+    "请以结构清晰的格式返回，包含明确的章节。"
+  ].join("\n");
+}
+
+function renderDocumentPreview(fileName, dataUrl, hash, mimeType, container) {
+  if (!container) return;
+
+  let previewEl = container.querySelector(".document-preview");
+  if (!previewEl) {
+    previewEl = document.createElement("div");
+    previewEl.className = "document-preview";
+    container.appendChild(previewEl);
+  }
+
+  const ext = (fileName || "").split(".").pop()?.toLowerCase() || "";
+  const isPdf = ext === "pdf" || mimeType === "application/pdf";
+  const isPptx = ext === "pptx" || mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+  if (isPdf && dataUrl) {
+    previewEl.innerHTML = `<embed src="${dataUrl}" type="application/pdf" class="document-embed" />`;
+  } else if (isPdf && hash) {
+    previewEl.innerHTML = `<iframe src="/api/assets/${hash}?kind=upload" class="document-embed"></iframe>`;
+  } else if (isPptx) {
+    previewEl.innerHTML = `
+      <div class="document-embed pptx-preview">
+        <div class="pptx-icon">📊</div>
+        <p class="pptx-name">${escapeHtml(fileName)}</p>
+        <p class="pptx-hint">${currentLang === "en" ? "PPTX preview not available in browser. Download to view." : "PPTX 浏览器预览不可用。请下载查看。"}</p>
+      </div>
+    `;
+  } else {
+    previewEl.innerHTML = `<div class="document-embed text-preview"><p>${escapeHtml(fileName)}</p></div>`;
+  }
+}
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = String(text || "");
+  return div.innerHTML;
 }
