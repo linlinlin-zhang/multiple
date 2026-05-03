@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Trash2 } from "lucide-react";
+import { Download, Star, Trash2 } from "lucide-react";
 import type { MaterialItem } from "@/types";
 import { useI18n } from "@/lib/i18n";
 import FileIcon from "./FileIcon";
@@ -8,6 +8,7 @@ interface MaterialCardProps {
   item: MaterialItem;
   onDelete: (id: string) => void;
   onRename: (id: string, fileName: string) => Promise<void> | void;
+  onToggleFavorite: (id: string, favorited: boolean) => Promise<void> | void;
 }
 
 function isImageMime(mimeType: string): boolean {
@@ -20,7 +21,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function MaterialCard({ item, onDelete, onRename }: MaterialCardProps) {
+export default function MaterialCard({ item, onDelete, onRename, onToggleFavorite }: MaterialCardProps) {
   const { t } = useI18n();
   const isImage = isImageMime(item.mimeType);
   const [editing, setEditing] = useState(false);
@@ -39,6 +40,8 @@ export default function MaterialCard({ item, onDelete, onRename }: MaterialCardP
     setEditing(false);
   };
 
+  const favorited = Boolean(item.favorited);
+
   return (
     <div
       className="group border border-cabinet-border bg-cabinet-paper rounded-lg overflow-hidden hover:shadow-sm transition-shadow"
@@ -55,16 +58,32 @@ export default function MaterialCard({ item, onDelete, onRename }: MaterialCardP
         ) : (
           <FileIcon mimeType={item.mimeType} fileName={item.fileName} />
         )}
-        <a
-          href={`/api/materials/${item.id}/file?download=1`}
-          download={item.fileName}
-          onClick={(e) => e.stopPropagation()}
-          className="absolute top-2 left-2 flex h-7 w-7 items-center justify-center rounded bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
-          aria-label={t("library.download")}
-          title={t("library.download")}
-        >
-          <Download size={14} />
-        </a>
+        <div className="absolute top-2 left-2 flex items-center gap-1.5">
+          <a
+            href={`/api/materials/${item.id}/file?download=1`}
+            download={item.fileName}
+            onClick={(e) => e.stopPropagation()}
+            className="flex h-7 w-7 items-center justify-center rounded bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+            aria-label={t("library.download")}
+            title={t("library.download")}
+          >
+            <Download size={14} />
+          </a>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); void onToggleFavorite(item.id, !favorited); }}
+            className={`flex h-7 w-7 items-center justify-center rounded transition-opacity hover:bg-black/70 ${
+              favorited
+                ? "bg-amber-400/90 text-white opacity-100"
+                : "bg-black/50 text-white opacity-0 group-hover:opacity-100"
+            }`}
+            aria-label={favorited ? t("library.unfavorite") : t("library.favorite")}
+            aria-pressed={favorited}
+            title={favorited ? t("library.unfavorite") : t("library.favorite")}
+          >
+            <Star size={14} fill={favorited ? "currentColor" : "none"} />
+          </button>
+        </div>
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}

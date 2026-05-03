@@ -3,13 +3,15 @@ import { Menu } from "lucide-react";
 import AppNavigation from "@/components/AppNavigation";
 import { useI18n, type Lang } from "@/lib/i18n";
 
-type ApiRole = "analysis" | "chat" | "image" | "asr" | "realtime";
+type ApiRole = "analysis" | "chat" | "image" | "asr" | "realtime" | "deepthink";
+type RoleOptionValue = string | number | boolean;
 
 interface RoleSettings {
   endpoint: string;
   model: string;
   apiKey: string;
   temperature: number;
+  options: Record<string, RoleOptionValue>;
 }
 
 type SettingsPayload = Record<ApiRole, RoleSettings> & {
@@ -17,13 +19,58 @@ type SettingsPayload = Record<ApiRole, RoleSettings> & {
   language?: Lang;
 };
 
-const roles: ApiRole[] = ["analysis", "chat", "image", "asr", "realtime"];
+const roles: ApiRole[] = ["analysis", "chat", "image", "asr", "realtime", "deepthink"];
 
 const emptyRole: RoleSettings = {
   endpoint: "",
   model: "",
   apiKey: "",
   temperature: 0.7,
+  options: {},
+};
+
+interface OptionField {
+  key: string;
+  type: "text" | "number" | "textarea" | "checkbox" | "select";
+  min?: number;
+  max?: number;
+  step?: number;
+  placeholder?: string;
+  options?: Array<[string, string]>;
+}
+
+const optionFields: Record<ApiRole, OptionField[]> = {
+  analysis: [
+    { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
+    { key: "max_tokens", type: "number", min: 1, step: 1 },
+  ],
+  chat: [
+    { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
+    { key: "max_tokens", type: "number", min: 1, step: 1 },
+  ],
+  image: [
+    { key: "size", type: "text", placeholder: "2048*2048" },
+    { key: "n", type: "number", min: 1, max: 6, step: 1 },
+    { key: "negative_prompt", type: "textarea" },
+    { key: "prompt_extend", type: "checkbox" },
+    { key: "watermark", type: "checkbox" },
+    { key: "seed", type: "number", min: 0, max: 2147483647, step: 1 },
+    { key: "useReferenceImage", type: "checkbox" },
+  ],
+  asr: [
+    { key: "targetLanguage", type: "select", options: [["auto", "Auto"], ["zh", "中文"], ["en", "English"]] },
+  ],
+  realtime: [
+    { key: "voice", type: "text", placeholder: "Ethan" },
+    { key: "outputAudio", type: "checkbox" },
+    { key: "enableSearch", type: "checkbox" },
+    { key: "smoothOutput", type: "select", options: [["auto", "Auto"], ["true", "On"], ["false", "Off"]] },
+    { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
+  ],
+  deepthink: [
+    { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
+    { key: "max_tokens", type: "number", min: 1, step: 1 },
+  ],
 };
 
 function getInitialTheme(): "light" | "dark" {
@@ -39,6 +86,7 @@ function normalizeRole(value: unknown): RoleSettings {
     model: input.model || "",
     apiKey: input.apiKey || "",
     temperature: typeof input.temperature === "number" ? input.temperature : 0.7,
+    options: input.options && typeof input.options === "object" ? (input.options as Record<string, RoleOptionValue>) : {},
   };
 }
 
@@ -53,6 +101,7 @@ export default function SettingsPage() {
     image: { ...emptyRole },
     asr: { ...emptyRole, temperature: 0 },
     realtime: { ...emptyRole },
+    deepthink: { ...emptyRole },
   });
   const [status, setStatus] = useState("");
 
@@ -68,6 +117,7 @@ export default function SettingsPage() {
           image: normalizeRole(data.image),
           asr: normalizeRole(data.asr),
           realtime: normalizeRole(data.realtime),
+          deepthink: normalizeRole(data.deepthink),
         });
         if (data.theme === "light" || data.theme === "dark") {
           setTheme(data.theme);
@@ -86,7 +136,7 @@ export default function SettingsPage() {
 
   const current = settings[activeRole];
 
-  const updateRole = (field: keyof RoleSettings, value: string | number) => {
+  const updateRole = (field: Exclude<keyof RoleSettings, "options">, value: string | number) => {
     setSettings((prev) => ({
       ...prev,
       [activeRole]: {
@@ -94,6 +144,34 @@ export default function SettingsPage() {
         [field]: value,
       },
     }));
+  };
+
+  const updateOption = (key: string, value: RoleOptionValue | "") => {
+    setSettings((prev) => {
+      const nextOptions = { ...prev[activeRole].options };
+      if (value === "") {
+        delete nextOptions[key];
+      } else {
+        nextOptions[key] = value;
+      }
+      return {
+        ...prev,
+        [activeRole]: {
+          ...prev[activeRole],
+          options: nextOptions,
+        },
+      };
+    });
+  };
+
+  const optionValue = (field: OptionField) => {
+    const value = current.options[field.key];
+    if (field.key === "smoothOutput") {
+      if (value === true) return "true";
+      if (value === false) return "false";
+      return "auto";
+    }
+    return value === undefined || value === null ? "" : String(value);
   };
 
   const saveTheme = async (nextTheme: "light" | "dark") => {
@@ -246,6 +324,67 @@ export default function SettingsPage() {
                   className="h-11 border border-cabinet-border bg-cabinet-paper px-3 text-cabinet-ink outline-none focus:ring-2 focus:ring-cabinet-blue"
                 />
               </label>
+
+              <div className="grid gap-4 border-t border-cabinet-border pt-4">
+                <div>
+                  <div className="text-xs font-medium text-cabinet-ink">{t("settings.advanced")}</div>
+                </div>
+                {optionFields[activeRole].map((field) => (
+                  <label
+                    key={field.key}
+                    className={`grid gap-2 text-sm text-cabinet-inkMuted ${
+                      field.type === "checkbox" ? "grid-cols-[1fr_auto] items-center" : ""
+                    }`}
+                  >
+                    <span>{t(`settings.option.${field.key}`)}</span>
+                    {field.type === "checkbox" ? (
+                      <input
+                        type="checkbox"
+                        checked={Boolean(current.options[field.key])}
+                        onChange={(event) => updateOption(field.key, event.target.checked)}
+                        className="h-5 w-5 accent-cabinet-blue"
+                      />
+                    ) : field.type === "select" ? (
+                      <select
+                        value={optionValue(field)}
+                        onChange={(event) => {
+                          const raw = event.target.value;
+                          updateOption(field.key, field.key === "smoothOutput" ? (raw === "true" ? true : raw === "false" ? false : "auto") : raw);
+                        }}
+                        className="h-11 border border-cabinet-border bg-cabinet-paper px-3 text-cabinet-ink outline-none focus:ring-2 focus:ring-cabinet-blue"
+                      >
+                        {(field.options || []).map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    ) : field.type === "textarea" ? (
+                      <textarea
+                        value={optionValue(field)}
+                        onChange={(event) => updateOption(field.key, event.target.value)}
+                        className="min-h-[84px] resize-y border border-cabinet-border bg-cabinet-paper px-3 py-2 text-cabinet-ink outline-none focus:ring-2 focus:ring-cabinet-blue"
+                      />
+                    ) : (
+                      <input
+                        type={field.type}
+                        min={field.min}
+                        max={field.max}
+                        step={field.step}
+                        value={optionValue(field)}
+                        onChange={(event) => updateOption(field.key, field.type === "number" ? (event.target.value === "" ? "" : Number(event.target.value)) : event.target.value)}
+                        className="h-11 border border-cabinet-border bg-cabinet-paper px-3 text-cabinet-ink outline-none focus:ring-2 focus:ring-cabinet-blue"
+                        placeholder={field.placeholder}
+                      />
+                    )}
+                    {t(`settings.hint.${field.key}`) !== `settings.hint.${field.key}` && (
+                      <span className={field.type === "checkbox" ? "col-span-2 text-xs leading-5 text-cabinet-inkMuted" : "text-xs leading-5 text-cabinet-inkMuted"}>
+                        {t(`settings.hint.${field.key}`)}
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
             </div>
             {status && <div className="mt-4 text-sm text-cabinet-inkMuted">{status}</div>}
           </section>

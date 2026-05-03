@@ -144,9 +144,9 @@ export default function HistoryPage({ sessionId, outputKind }: HistoryPageProps)
         />
       </div>
 
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-cabinet-paper">
+      <div className="flex-1 flex flex-col h-full overflow-y-auto cabinet-scrollbar bg-cabinet-paper">
         {error && (
-          <div className="px-5 md:px-9 py-3 bg-cabinet-paper border-b border-cabinet-border flex items-center justify-between flex-shrink-0">
+          <div className="px-5 md:px-9 py-3 bg-cabinet-paper border-b border-cabinet-border flex items-center justify-between flex-shrink-0 sticky top-0 z-10">
             <span className="text-sm text-[#d53b00]">{error}</span>
             <button
               onClick={refetch}
@@ -158,7 +158,7 @@ export default function HistoryPage({ sessionId, outputKind }: HistoryPageProps)
         )}
 
         {session && (
-          <div className="px-5 md:px-9 pt-7 pb-3 flex-shrink-0">
+          <div className="px-5 md:px-9 pt-7 pb-3">
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
                 <div className="text-[13px] text-cabinet-inkMuted mb-3">
@@ -186,20 +186,18 @@ export default function HistoryPage({ sessionId, outputKind }: HistoryPageProps)
         )}
 
         {session && (
-          <div className="px-5 md:px-9 py-4 flex-shrink-0">
+          <div className="px-5 md:px-9 py-4">
             <div className="h-[180px] md:h-[245px] rounded-[24px] overflow-hidden bg-cabinet-bg">
               <NodeGraphThumbnail nodes={session.nodes} links={session.links} />
             </div>
           </div>
         )}
 
-        <div className="flex-1 min-h-0">
-          <AssetDetailPane
-            session={session}
-            selectedAssetId={selectedAssetId}
-            emptyMessage={t("history.noOutputsInFolder")}
-          />
-        </div>
+        <AssetDetailPane
+          session={session}
+          selectedAssetId={selectedAssetId}
+          emptyMessage={t("history.noOutputsInFolder")}
+        />
       </div>
     </div>
   );

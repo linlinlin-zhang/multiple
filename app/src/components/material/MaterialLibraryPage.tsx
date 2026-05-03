@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react";
-import { Menu, Upload } from "lucide-react";
+import { Menu, Star, Upload } from "lucide-react";
 import { useI18n } from "@/lib/i18n";
 import { useMaterials } from "@/hooks/useMaterials";
 import AppNavigation from "@/components/AppNavigation";
@@ -49,8 +49,9 @@ export default function MaterialLibraryPage() {
   const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState("");
   const [sort, setSort] = useState<MaterialSort>("added");
+  const [favoritedOnly, setFavoritedOnly] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
-  const { items, total, loading, error, refetch } = useMaterials(searchQuery, sort);
+  const { items, total, loading, error, refetch } = useMaterials(searchQuery, sort, favoritedOnly);
 
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -95,6 +96,24 @@ export default function MaterialLibraryPage() {
     } catch (err) {
       console.error("Rename failed:", err);
       alert(t("library.renameFailed"));
+    }
+  }, [refetch, t]);
+
+  const handleToggleFavorite = useCallback(async (id: string, favorited: boolean) => {
+    try {
+      const res = await fetch(`/api/materials/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ favorited }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      refetch();
+    } catch (err) {
+      console.error("Favorite toggle failed:", err);
+      alert(t("library.favoriteFailed"));
     }
   }, [refetch, t]);
 
@@ -154,7 +173,9 @@ export default function MaterialLibraryPage() {
                 <Menu size={19} className="text-cabinet-ink2" />
               </button>
               <div className="flex-1">
-                <h1 className="text-xl font-medium text-cabinet-ink tracking-[0]">{t("library.title")}</h1>
+                <h1 className="text-xl font-medium text-cabinet-ink tracking-[0]">
+                  {favoritedOnly ? t("library.favorites") : t("library.title")}
+                </h1>
                 <p className="text-[13px] text-cabinet-inkMuted mt-0.5">{t("library.subtitle")}</p>
               </div>
               <input
@@ -165,6 +186,17 @@ export default function MaterialLibraryPage() {
                 className="hidden"
                 aria-hidden="true"
               />
+              <Button
+                size="sm"
+                variant={favoritedOnly ? "default" : "outline"}
+                onClick={() => setFavoritedOnly((v) => !v)}
+                className="gap-1.5"
+                aria-pressed={favoritedOnly}
+                title={favoritedOnly ? t("library.favoritesAll") : t("library.favorites")}
+              >
+                <Star size={15} fill={favoritedOnly ? "currentColor" : "none"} />
+                {favoritedOnly ? t("library.favoritesAll") : t("library.favorites")}
+              </Button>
               <Button
                 size="sm"
                 onClick={() => fileInputRef.current?.click()}
@@ -207,9 +239,14 @@ export default function MaterialLibraryPage() {
             {loading && items.length === 0 ? (
               <SkeletonGrid />
             ) : items.length === 0 ? (
-              <MaterialEmptyState isSearch={!!searchQuery.trim()} />
+              <MaterialEmptyState isSearch={!!searchQuery.trim()} isFavoritesView={favoritedOnly} />
             ) : (
-              <MaterialGrid items={items} onDelete={handleDelete} onRename={handleRename} />
+              <MaterialGrid
+                items={items}
+                onDelete={handleDelete}
+                onRename={handleRename}
+                onToggleFavorite={handleToggleFavorite}
+              />
             )}
           </div>
         </div>

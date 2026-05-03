@@ -52,6 +52,8 @@ export interface ChatMessage {
   role: string;
   content: string;
   createdAt: string;
+  thinkingContent?: string | null;
+  references?: Array<{ title?: string; url?: string; description?: string; type?: string }> | null;
 }
 
 export interface SessionDetail extends HistorySession {
@@ -78,6 +80,7 @@ export interface MaterialItem {
   fileSize: number;
   hash: string;
   filePath: string;
+  favorited: boolean;
   addedAt: string;
   updatedAt: string;
 }
