@@ -5365,6 +5365,22 @@ html[data-theme="dark"] .rich-inline-code {
 .chat-text.markdown-body a:hover {
   text-decoration: underline;
 }
+.chat-text.markdown-body del {
+  color: #888;
+}
+.chat-text.markdown-body table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.chat-text.markdown-body li.task-list-item {
+  list-style: none;
+  margin-left: -16px;
+}
+.chat-text.markdown-body li.task-list-item input[type="checkbox"] {
+  margin-right: 6px;
+  vertical-align: -1px;
+}
 .chat-code-copy {
   position: absolute;
   top: 4px;

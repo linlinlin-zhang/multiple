@@ -1,4 +1,5 @@
 ﻿import { micromark } from "https://esm.sh/micromark@4";
+import { gfm, gfmHtml } from "https://esm.sh/micromark-extension-gfm@3";
 
 const viewport = document.querySelector("#viewport");
 const board = document.querySelector("#board");
@@ -2645,15 +2646,19 @@ function getChatThreadTitle(thread, index) {
 
 function renderMarkdownToHtml(markdown) {
   if (!markdown) return "";
-  const rawHtml = micromark(markdown);
+  const rawHtml = micromark(markdown, {
+    allowDangerousHtml: false,
+    extensions: [gfm()],
+    htmlExtensions: [gfmHtml()]
+  });
   return DOMPurify.sanitize(rawHtml, {
     ALLOWED_TAGS: [
       "p", "h1", "h2", "h3", "h4", "h5", "h6",
-      "ul", "ol", "li", "strong", "em", "code", "pre",
+      "ul", "ol", "li", "strong", "em", "del", "code", "pre",
       "blockquote", "table", "thead", "tbody", "tr", "th", "td",
-      "a", "br", "hr", "div", "span"
+      "a", "br", "hr", "div", "span", "input"
     ],
-    ALLOWED_ATTR: ["href", "target", "rel", "class"],
+    ALLOWED_ATTR: ["href", "target", "rel", "class", "align", "type", "checked", "disabled"],
     ALLOW_DATA_ATTR: false
   });
 }
