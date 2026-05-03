@@ -145,6 +145,54 @@ function extractToolCallActions(response) {
     .filter(Boolean);
 }
 
+const ACTION_REPLY_TEMPLATES = {
+  zh: {
+    create_plan: (a) => `已为你创建 plan 卡片${a.title ? `「${a.title}」` : ""},你可以点击下方反馈卡跳转查看。`,
+    create_todo: (a) => `已为你创建 todo 清单${a.title ? `「${a.title}」` : ""}。`,
+    create_note: (a) => `已为你创建 note 笔记${a.title ? `「${a.title}」` : ""}。`,
+    create_weather: (a) => `已为你创建 weather 卡片${a.title ? `「${a.title}」` : ""}。`,
+    create_map: (a) => `已为你创建 map 卡片${a.title ? `「${a.title}」` : ""}。`,
+    create_link: (a) => `已为你创建 link 卡片${a.title ? `「${a.title}」` : ""}。`,
+    create_code: (a) => `已为你创建 code 卡片${a.title ? `「${a.title}」` : ""}。`,
+    create_web_card: (a) => `已为你创建 web 卡片${a.title ? `「${a.title}」` : ""}。`,
+    create_card: (a) => `已为你创建卡片${a.title ? `「${a.title}」` : ""}。`,
+    new_card: (a) => `已为你创建卡片${a.title ? `「${a.title}」` : ""}。`,
+    create_direction: (a) => `已添加方向卡片${a.title ? `「${a.title}」` : ""}。`,
+    generate_image: () => "已开始生成图片,稍候请查看画布上的新节点。",
+    zoom_in: () => "已放大画布。",
+    zoom_out: () => "已缩小画布。",
+    reset_view: () => "已重置视图。"
+  },
+  en: {
+    create_plan: (a) => `Created a plan card${a.title ? ` "${a.title}"` : ""}. Click the feedback card below to focus on it.`,
+    create_todo: (a) => `Created a todo list${a.title ? ` "${a.title}"` : ""}.`,
+    create_note: (a) => `Created a note${a.title ? ` "${a.title}"` : ""}.`,
+    create_weather: (a) => `Created a weather card${a.title ? ` "${a.title}"` : ""}.`,
+    create_map: (a) => `Created a map card${a.title ? ` "${a.title}"` : ""}.`,
+    create_link: (a) => `Created a link card${a.title ? ` "${a.title}"` : ""}.`,
+    create_code: (a) => `Created a code card${a.title ? ` "${a.title}"` : ""}.`,
+    create_web_card: (a) => `Created a web card${a.title ? ` "${a.title}"` : ""}.`,
+    create_card: (a) => `Created a card${a.title ? ` "${a.title}"` : ""}.`,
+    new_card: (a) => `Created a card${a.title ? ` "${a.title}"` : ""}.`,
+    create_direction: (a) => `Added a direction card${a.title ? ` "${a.title}"` : ""}.`,
+    generate_image: () => "Image generation started — check the canvas for the new node.",
+    zoom_in: () => "Zoomed in.",
+    zoom_out: () => "Zoomed out.",
+    reset_view: () => "View reset."
+  }
+};
+
+function synthesizeReplyFromActions(actions, lang) {
+  if (!Array.isArray(actions) || actions.length === 0) return "";
+  const templates = ACTION_REPLY_TEMPLATES[lang === "en" ? "en" : "zh"];
+  const lines = [];
+  for (const action of actions.slice(0, 3)) {
+    const tpl = templates[action?.type];
+    if (tpl) lines.push(tpl(action));
+  }
+  return lines.join(" ").slice(0, 400);
+}
+
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host}`);
@@ -1094,7 +1142,7 @@ async function handleChat(body, res) {
   return sendJson(res, 200, {
     provider: "api",
     model: runtimeConfigs.chat.model,
-    reply: reply || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。"),
+    reply: reply || synthesizeReplyFromActions(actions, lang) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。"),
     actions,
     artifacts: buildAgentArtifacts(actions, agentMode),
     thinkingContent,
@@ -1114,7 +1162,7 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
   return {
     provider: "api",
     model: runtimeConfigs.chat.model,
-    reply: reply || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。"),
+    reply: reply || synthesizeReplyFromActions(actions, lang) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。"),
     actions,
     artifacts: buildAgentArtifacts(actions, agentMode),
     thinkingContent: thinkingMode === "thinking" ? (streamedReasoning || collectReasoningContent(response)) : "",

@@ -2510,12 +2510,6 @@ const ACTION_FEEDBACK_ICONS = {
   open_references: "📚"
 };
 
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = String(text == null ? "" : text);
-  return div.innerHTML;
-}
-
 function normalizeChatActionResults(value) {
   const raw = Array.isArray(value) ? value : (value ? [value] : []);
   return raw
