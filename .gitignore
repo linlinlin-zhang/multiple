@@ -18,3 +18,8 @@ public/history/assets/*.js
 public/history/assets/*.css
 example
 home-tube*.png
+
+# Temporary / experimental files
+mainpage.html
+mainpage-1.html
+archive/
