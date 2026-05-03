@@ -37,7 +37,7 @@ let runtimeConfigs = {
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     apiKeyEnv: ["DASHSCOPE_API_KEY", "CHAT_API_KEY"],
     options: {
-      max_tokens: 4096
+      max_tokens: 32768
     }
   }),
   analysis: buildModelConfig("ANALYSIS", {

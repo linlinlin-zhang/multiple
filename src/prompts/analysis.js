@@ -158,7 +158,7 @@ export function buildAnalysisPrompt(lang, taskType = 'general') {
         '      "layoutHint": "portrait/landscape/square/board 中的一个",',
         '      "purpose": "visual/exploration/plan/research/content/tool 中的一个",',
       '      "nodeType": "可选：note|plan|todo|weather|map|link|code。当方案应渲染为富内容卡片而非图片时使用。",',
-      '      "content": "可选结构化对象，形状取决于 nodeType（例如 note.text, plan.steps, todo.items, weather.{location,temp,forecast}, map.{lat,lng,address}, link.{url,title,description}, code.{language,code}）"'
+      '      "content": "可选结构化对象，形状取决于 nodeType（例如 note.text, plan.steps, todo.items, weather.{location,temp,forecast}, map.{lat,lng,address}, link.{url,title,description}, code.{language,code}）"',
         "    }",
         "  ]",
         "}",
@@ -282,7 +282,7 @@ export function buildExplorePrompt(lang, taskType = 'general') {
         '      "layoutHint": "portrait/landscape/square/board 中的一个",',
         '      "purpose": "visual/exploration/plan/research/content/tool 中的一个",',
       '      "nodeType": "可选：note|plan|todo|weather|map|link|code。当方案应渲染为富内容卡片而非图片时使用。",',
-      '      "content": "可选结构化对象，形状取决于 nodeType（例如 note.text, plan.steps, todo.items, weather.{location,temp,forecast}, map.{lat,lng,address}, link.{url,title,description}, code.{language,code}）"'
+      '      "content": "可选结构化对象，形状取决于 nodeType（例如 note.text, plan.steps, todo.items, weather.{location,temp,forecast}, map.{lat,lng,address}, link.{url,title,description}, code.{language,code}）"',
         "    }",
         "  ],",
         '  "references": [',
