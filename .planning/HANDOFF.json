@@ -1,61 +1,56 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-03T15:30:37.780Z",
+  "timestamp": "2026-05-03T17:12:03.141Z",
   "phase": "21",
   "phase_name": "Chat-to-Canvas Reliability & Conversational UX",
   "phase_dir": ".planning/phases/21-chat-to-canvas",
   "plan": 5,
   "task": 4,
-  "total_tasks": 4,
-  "status": "in_progress",
+  "total_tasks": 6,
+  "status": "paused",
   "completed_tasks": [
-    {"id": 1, "name": "Phase 21 planning complete (6 plans, 4 waves)", "status": "done", "commit": "3f07271"},
-    {"id": 2, "name": "UI-SPEC.md generated and approved", "status": "done", "commit": "3f07271"},
-    {"id": 3, "name": "RESEARCH.md written with full root-cause analysis", "status": "done", "commit": "3f07271"},
-    {"id": 4, "name": "execute-phase initialized and plan inventory loaded", "status": "done", "commit": "3f07271"},
-    {"id": 5, "name": "Wave 1: Plan 01 — Whitelist Reconciliation", "status": "done", "commit": "0f85b18"},
-    {"id": 6, "name": "Wave 1: Plan 02 — Tool Calling Refactor", "status": "done", "commit": "0f85b18"},
-    {"id": 7, "name": "Wave 2: Plan 03 — Streaming Default", "status": "done", "commit": "0f85b18"},
-    {"id": 8, "name": "Wave 2: Plan 04 — Markdown Rendering", "status": "done", "commit": "0f85b18"},
-    {"id": 9, "name": "Retroactive SUMMARY.md for Plans 21-01 / 21-02 / 21-03 / 21-04", "status": "done", "commit": null},
-    {"id": 10, "name": "Wave 3: Plan 05 — Fallback & Action Feedback (implementation in working tree)", "status": "implemented_uncommitted", "commit": null}
+    {"id": 1, "name": "Plan 01 — Whitelist Reconciliation", "status": "done", "commit": "0f85b18"},
+    {"id": 2, "name": "Plan 02 — Tool Calling Refactor", "status": "done", "commit": "0f85b18"},
+    {"id": 3, "name": "Plan 03 — Streaming Default", "status": "done", "commit": "0f85b18"},
+    {"id": 4, "name": "Plan 04 — Markdown Rendering", "status": "done", "commit": "0f85b18"},
+    {"id": 5, "name": "Plan 05 — Fallback & Action Feedback", "status": "done", "commit": "807e529"},
+    {"id": 6, "name": "Post-plan: chat tool-call regression fixes (empty reply, generic action types)", "status": "done", "commit": "064f7a9"},
+    {"id": 7, "name": "Prompt minimal/natural style + max_tokens 32768", "status": "done", "commit": "e066d87"},
+    {"id": 8, "name": "canvas_action schema content-shape documentation + multi-call guidance", "status": "done", "commit": "37759db"},
+    {"id": 9, "name": "Web search heuristic widened to travel/lifestyle keywords", "status": "done", "commit": "b23d12f"},
+    {"id": 10, "name": "Markdown GFM extension (tables / task lists / strikethrough)", "status": "done", "commit": "0323a67"},
+    {"id": 11, "name": "Rich card UI rendering (plan / todo / weather / map / link / code)", "status": "done", "commit": "be10a88"},
+    {"id": 12, "name": "Loosen input/output caps for Qwen3.6 Plus 991K/64K window", "status": "done", "commit": "5d336e5"},
+    {"id": 13, "name": "Front-end text-paste cap widened to 32K", "status": "done", "commit": "4f60c16"},
+    {"id": 14, "name": "Web search: agent_max strategy + forced_search + enable_citation + default-on heuristic", "status": "done", "commit": "807c2db"}
   ],
   "remaining_tasks": [
-    {"id": 11, "name": "Plan 05 browser smoke test (npm run dev + manual verify)", "status": "not_started", "blocker": "needs_human_action"},
-    {"id": 12, "name": "Plan 05 commit + 21-05-SUMMARY.md", "status": "not_started"},
-    {"id": 13, "name": "Wave 4: Plan 06 — E2E Verification script (12+ scenarios)", "status": "not_started", "blocker": "needs_running_dev_server"},
-    {"id": 14, "name": "Plan 06 commit + 21-06-SUMMARY.md", "status": "not_started"},
-    {"id": 15, "name": "Phase 21 verification (gsd-verifier subagent + gates)", "status": "not_started"},
-    {"id": 16, "name": "Update STATE.md + ROADMAP.md (mark Phase 21 ✅, advance v3.1 to 1/6)", "status": "not_started"}
+    {"id": 15, "name": "Plan 06 — E2E verification script (12+ scenarios)", "status": "not_started", "blocker": "needs_running_dev_server"},
+    {"id": 16, "name": "Plan 06 commit + 21-06-SUMMARY.md", "status": "not_started"},
+    {"id": 17, "name": "Plan 05 commit + 21-05-SUMMARY.md (Plan 05 already shipped in 807e529 but no SUMMARY.md yet)", "status": "not_started"},
+    {"id": 18, "name": "Phase 21 verification (gsd-verifier subagent + gates)", "status": "not_started"},
+    {"id": 19, "name": "Update STATE.md + ROADMAP.md (mark Phase 21 ✅, advance v3.1 to 1/6)", "status": "not_started"},
+    {"id": 20, "name": "Verify agent_max strategy is accepted by qwen3.6-plus in production (fall back to agent if rejected)", "status": "not_started"}
   ],
   "blockers": [
-    {"id": "B1", "description": "Plan 06 marked autonomous: false — needs `npm run dev` running concurrently with `npm run test:chat`", "severity": "needs_human_action"},
-    {"id": "B2", "description": "PostgreSQL not running locally (long-standing v1.0 blocker, not Phase 21-specific)", "severity": "low"}
+    {"id": "B1", "description": "Plan 06 marked autonomous: false — needs npm run dev running concurrently with npm run test:chat", "type": "human_action"},
+    {"id": "B2", "description": "agent_max search_strategy may not be supported on every qwen3.6-plus snapshot — needs production smoke test", "type": "external", "workaround": "fall back to search_strategy: 'agent' or 'max' if API rejects"}
   ],
   "human_actions_pending": [
-    {"action": "Start `npm run dev` in a terminal so resuming agent can browser-verify Plan 05 and run Plan 06 E2E tests"}
+    {"action": "Browser smoke test the parity-with-Qwen improvements", "context": "Confirm agent_max search fires + GFM tables render + plan card shows steps when asking '三天深圳行程' or similar", "blocking": false},
+    {"action": "Start npm run dev in a terminal so resuming agent can run Plan 06 E2E tests", "context": "Plan 06 marked autonomous: false", "blocking": true}
   ],
   "decisions": [
-    {"decision": "Use OpenAI-style tool calling for chat endpoint", "rationale": "Separates free-form markdown replies from structured canvas actions", "phase": "21"},
-    {"decision": "Use micromark + DOMPurify for markdown rendering via CDN ESM", "rationale": "Vanilla JS project has no bundler; esm.sh and jsDelivr are reliable", "phase": "21"},
-    {"decision": "Switch public/app.js to script type=module for ESM imports", "rationale": "Required to import micromark from esm.sh", "phase": "21"},
-    {"decision": "Set default max_tokens to 4096 for chat role", "rationale": "Removes artificial length constraints and allows thorough task-oriented replies", "phase": "21"},
-    {"decision": "Render .chat-action-feedback as div[role=button][tabindex=0] not <button>", "rationale": "Matches existing chat sidebar affordances; avoids nested-interactive issues on mobile", "phase": "21"},
-    {"decision": "Keep .chat-action-summary as graceful-degradation fallback when only actions[] is present", "rationale": "Handles older session messages restored before this plan landed", "phase": "21"},
-    {"decision": "Use emoji icons in ACTION_FEEDBACK_ICONS rather than SVG sprites", "rationale": "Zero asset cost; matches existing chat-action-icon styling", "phase": "21"},
-    {"decision": "Capture actionResults BEFORE updateChatMessage in chat handler", "rationale": "Assistant message renders feedback cards on first paint, not after a re-render — eliminates flicker", "phase": "21"}
+    {"decision": "Switch search_strategy from turbo to agent_max", "rationale": "Match official Qwen app multi-round agentic search ('几十个网页')", "phase": "21", "commit": "807c2db"},
+    {"decision": "Default web search ON with negation block-list", "rationale": "Generality over allow-list — covers any non-trivial query, only suppresses chitchat / canvas-ops / pure code / pure creative", "phase": "21", "commit": "807c2db"},
+    {"decision": "enable_citation: true with citation_format [ref_<n>]", "rationale": "Inline source markers so the answer is verifiable", "phase": "21", "commit": "807c2db"},
+    {"decision": "Raise chat default max_tokens 32768 → 65536", "rationale": "Qwen3.6 Plus advertises 64K output", "phase": "21", "commit": "5d336e5"},
+    {"decision": "Raise message history depth 8 → 40 turns, per-msg 1200 → 8000 chars", "rationale": "Qwen3.6 Plus has 991K input window — old caps wasted it", "phase": "21", "commit": "5d336e5"},
+    {"decision": "Add option-rich-content slot + renderRichNodeContent helper", "rationale": "optionTemplate previously had no place for plan.steps/todo.items/etc — cards looked empty even with full content payload", "phase": "21", "commit": "be10a88"},
+    {"decision": "Use micromark-extension-gfm for chat reply rendering", "rationale": "Bare CommonMark micromark@4 doesn't emit tables/task-lists/del — Qwen-style answers stayed unrendered", "phase": "21", "commit": "0323a67"},
+    {"decision": "Document content shapes per nodeType in canvas_action tool schema", "rationale": "Model needs to know content.steps shape; without it create_plan fired with only a title", "phase": "21", "commit": "37759db"}
   ],
-  "uncommitted_files": [
-    "public/app.js",
-    "public/styles.css",
-    ".planning/STATE.md",
-    ".planning/phases/21-chat-to-canvas/21-01-SUMMARY.md",
-    ".planning/phases/21-chat-to-canvas/21-02-SUMMARY.md",
-    ".planning/phases/21-chat-to-canvas/21-03-SUMMARY.md",
-    ".planning/phases/21-chat-to-canvas/21-04-SUMMARY.md",
-    ".planning/phases/21-chat-to-canvas/.continue-here.md",
-    ".planning/HANDOFF.json"
-  ],
-  "next_action": "Resume with '/gsd-resume-work' or '/gsd-execute-phase 21' after starting `npm run dev`. First: read .planning/phases/21-chat-to-canvas/.continue-here.md, browser-verify Plan 05, then commit and proceed to Plan 06.",
-  "context_notes": "Waves 1+2 (Plans 01-04) shipped in commit 0f85b18. Plan 05 (Fallback & Action Feedback) is fully implemented in working tree — applyVoiceActions returns result array, executeCanvasAction returns descriptors for zoom branches, chat handler captures actionResults before render, normalizeChatActionResults + ACTION_FEEDBACK_ICONS + escapeHtml helpers added, .chat-action-feedback CSS shipped, i18n keys added. Pending: browser smoke test, commit, then Plan 06 (E2E verification — 12+ scenarios — autonomous: false, needs dev server)."
+  "uncommitted_files": [],
+  "next_action": "Resume with /gsd-resume-work or /gsd-execute-phase 21. Browser-verify the parity improvements first (agent_max search, GFM tables, rich plan cards), then write 21-05-SUMMARY.md, then start Plan 06 (needs npm run dev running).",
+  "context_notes": "Wave 3 of phase 21 was originally about Plan 05 fallback feedback. After that shipped, the user pushed for parity with the official Qwen app on three axes: web search invocation, rich markdown rendering, answer depth. This session closed all three: agent_max strategy + forced_search + enable_citation (commit 807c2db); GFM tables/task lists/del rendered via micromark-extension-gfm (0323a67); and the biggest one — rich card UI rendering so plan/todo/weather/map/link/code cards show their content payload (be10a88). Also loosened input/output caps to match Qwen3.6 Plus 991K/64K window (5d336e5 + 4f60c16). Remaining: Plan 06 E2E (needs dev server), retroactive Plan 05 SUMMARY.md, phase verification + STATE/ROADMAP update."
 }
