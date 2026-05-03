@@ -768,11 +768,11 @@ function applyWebSearchMode(payload, config, enabled = true, options = {}) {
     payload.search_options = {
       ...(payload.search_options || {}),
       enable_source: true,
-      search_strategy: "turbo"
+      enable_citation: true,
+      citation_format: "[ref_<number>]",
+      forced_search: true,
+      search_strategy: options.strategy || "agent_max"
     };
-    if (options.forced) {
-      payload.search_options.forced_search = true;
-    }
   }
   return payload;
 }
@@ -796,19 +796,39 @@ function applyRequestOptions(payload, config) {
 }
 
 function shouldUseWebSearchReadable(message, canvas = {}, selectedContext = null) {
-  const text = String(message || "").normalize("NFKC");
-  const explicit = /(联网|上网|网页|网站|链接|网址|搜索|搜一下|查一下|检索|资料|最新|新闻|引用|来源|官方文档|官方资料|web|search|browse|lookup|internet|reference|url|link)/i.test(text);
-  // Real-world topics where current data improves the answer (travel, lifestyle,
-  // shopping, weather, transit, prices, recommendations). Mirror the official
-  // Qwen behaviour where the assistant grounds these queries in fresh sources.
-  const realWorld = /(旅游|旅行|旅程|出行|行程|攻略|路线|路書|路线图|计划|规划|推荐|推介|介绍下|景点|酒店|餐厅|餐馆|美食|住宿|民宿|商场|商圈|景区|博物馆|公园|地图|价格|价位|票价|费用|多少钱|性价比|开放时间|营业时间|开放|营业|地址|位置|在哪|哪里|哪家|哪种|哪个|怎么去|怎么走|周边|附近|最近的|评分|口碑|排名|排行|网红|热门|流行|风评|对比|比较|品牌|型号|测评|教程|步骤|做法|怎么做|天气|气温|风暴|降水|开车|地铁|高铁|机场|预算|订房|订票|预订|travel|trip|itinerary|recommend|suggest|place\s+to|hotel|restaurant|food|cuisine|weather|price|cost|hours|near|around|location|nearby|where\s+is|how\s+to\s+(?:get|reach|find)|best\s+(?:place|spot|restaurant|hotel|time)|directions?\s+to|review|rating)/i.test(text);
-  if (explicit || realWorld) return true;
-  if (selectedContext?.type === "url" || selectedContext?.url) return true;
-  const nodes = Array.isArray(canvas?.nodes) ? canvas.nodes : [];
-  return nodes.some((node) => node?.type === "url" || node?.url || node?.sourceType === "url");
+  const text = String(message || "").normalize("NFKC").trim();
+  if (!text) return false;
+
+  // Trivial / no-info-need patterns: identity meta, greetings, app commands, pure
+  // creative writing or pure local code/math problems. These do NOT benefit from
+  // web search and would just slow the reply down. Everything else defaults to
+  // search ON, mirroring the official Qwen app's behaviour.
+  const trivialChat = /^(你好|您好|嗨|喂|早上好|晚上好|晚安|再见|谢谢|多谢|不客气|hi+|hello|hey|good\s+(morning|night|evening)|thanks?|thank you|bye)\b/i.test(text)
+    || text.length <= 4;
+  if (trivialChat) return false;
+
+  const identityMeta = /(你是谁|你叫什么|你能做什么|你是.*(模型|ai|助手)|介绍.*你自己|who\s+are\s+you|what\s+can\s+you\s+do|tell\s+me\s+about\s+yourself)/i.test(text);
+  if (identityMeta) return false;
+
+  // Canvas-only operations: zoom/pan/select/delete/move — no info-seek.
+  const canvasOnly = /^(放大|缩小|居中|重置|聚焦|选中|取消选中|删除|移动|平移|对齐|整理|排版|关闭|打开|新建|新对话|清空|展开|收起|zoom|pan|focus|select|deselect|delete|move|arrange|tidy|open|close|new|reset)\b/i.test(text);
+  if (canvasOnly) return false;
+
+  // Pure creative writing / role-play — local generation, no search.
+  const pureCreative = /^(写一(首|段|篇|个)|帮我写|创作一(首|段|篇)|扮演|角色扮演|continue\s+the\s+story|write\s+(me\s+)?a\s+(poem|story|song))/i.test(text);
+  if (pureCreative) return false;
+
+  // Pure code / math — local reasoning unless they explicitly ask for docs/refs.
+  const pureCode = /^(解释一下这段|帮我看看(这段|这个)?(代码|程序|报错|bug)|debug|fix\s+this|why\s+does\s+this\s+(code|fn|function))/i.test(text);
+  if (pureCode) return false;
+
+  return true;
 }
 
 function shouldForceWebSearchReadable(message) {
+  // forced_search is on by default once enable_search is on (see applyWebSearchMode),
+  // so this only matters for callers that want to flip search ON for a query that
+  // shouldUseWebSearchReadable would otherwise reject. Keep the explicit-keyword path.
   const text = String(message || "").normalize("NFKC");
   return /(请.*(联网|上网|搜索|搜一下|查一下|检索)|联网.*(搜索|查|找)|上网.*(搜索|查|找)|搜索.*(资料|网页|网站|链接|新闻|最新|官方|文档)|最新|官方文档|官方资料|引用来源|web\s*search|search\s+the\s+web|browse|lookup|internet)/i.test(text);
 }
