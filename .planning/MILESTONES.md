@@ -1,5 +1,51 @@
 # ORYZAE Image Board — Milestones
 
+## v3.0 Infrastructure & Experience Upgrade
+
+**Shipped:** 2026-05-03
+**Tag:** `v3.0.0`
+
+### What Was Built
+
+- Default AI model stack fully migrated from Kimi/Moonshot to Qwen/DashScope
+- Immersive Three.js animated homepage with floating card gallery
+- Workbench entry point separated to `/app.html` (home now at `/`)
+- Material library preview modal supporting images, PDF, text, and fallback download
+- Expanded i18n coverage for detail/share/library modals and loading states
+- Canvas chat action tooltip positioning polish
+
+### Key Accomplishments
+
+1. **Model Migration** — All default providers switched to Qwen/DashScope; legacy Kimi detection added to settings refresh; chat system prompt updated
+2. **Homepage Redesign** — Three.js canvas background, showcase gallery with 25 sample cards, responsive layout, dedicated `/app.html` workbench entry
+3. **Material Library Preview** — Full-screen modal with thumbnail strip navigation, image/PDF iframe/text rendering, keyboard Escape close
+4. **i18n Expansion** — Added detail, share, and library keys for modal labels, loading states, and error messages
+
+### Requirements
+
+| Requirement | Description | Status |
+|-------------|-------------|--------|
+| V3-MODEL | 默认模型全面切换至 Qwen/DashScope | ✓ Shipped |
+| V3-HOME | Three.js 沉浸式首页 | ✓ Shipped |
+| V3-ENTRY | 工作台与主页入口分离 | ✓ Shipped |
+| V3-PREVIEW | 素材库完整预览弹窗 | ✓ Shipped |
+| V3-I18N | 国际化键大幅扩充 | ✓ Shipped |
+
+**5/5 requirements shipped (100%)**
+
+### Tech Decisions
+
+- Unified Qwen/DashScope default stack simplifies key management and improves Chinese language support
+- Three.js homepage loads `three.min.js` locally to avoid CDN dependency
+- `/app.html` preserves original workbench HTML so existing bookmarks continue working after index.html becomes homepage
+- Preview modal reuses `/api/materials/:id/file` endpoint for all file types
+
+---
+
+*v3.0 completed: 2026-05-03*
+
+---
+
 ## v2.0 Multi-Card Canvas Interaction
 
 **Shipped:** 2026-05-02

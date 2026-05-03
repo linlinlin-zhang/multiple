@@ -12,7 +12,8 @@
 - ✅ **v1.2 Interactive Canvas & Deep Analysis** — Phases 9-12 (shipped 2026-04-27) · [Details](./milestones/v1.2-ROADMAP.md)
 - ✅ **v1.3 Material Library** — Phases 13-15 (shipped 2026-05-01) · [Details](./milestones/v1.3-ROADMAP.md)
 - ✅ **v2.0 Multi-Card Canvas Interaction** — Phases 16-18 (shipped 2026-05-02) · [Details](./milestones/v2.0-ROADMAP.md)
-- 🔄 **v2.1 Multi-Scenario Intelligence** — Phases 19-24 (planning)
+- ✅ **v3.0 Infrastructure & Experience Upgrade** — Shipped 2026-05-03
+- 🔄 **v3.1 Multi-Scenario Intelligence** — Phases 19-24 (planning)
 
 ---
 
@@ -68,7 +69,35 @@
 
 ---
 
-## v2.1 Multi-Scenario Intelligence — Active Phases
+## v3.0 Infrastructure & Experience Upgrade — Shipped
+
+<details>
+<summary>✅ v3.0 Infrastructure & Experience Upgrade — SHIPPED 2026-05-03</summary>
+
+**What was shipped outside the original v2.1 roadmap:**
+
+- Default AI model stack fully migrated from Kimi to Qwen/DashScope
+- Immersive Three.js animated homepage with showcase gallery
+- Workbench entry point separated to `/app.html` (home now at `/`)
+- Material library preview modal (images, PDF, text, fallback download)
+- Expanded i18n coverage for modals, share pages, and loading states
+- Canvas chat action tooltip positioning polish
+
+**Requirements:**
+
+| Requirement | Description | Status |
+|-------------|-------------|--------|
+| V3-MODEL | 默认模型全面切换至 Qwen/DashScope | ✓ Shipped |
+| V3-HOME | Three.js 沉浸式首页 | ✓ Shipped |
+| V3-ENTRY | 工作台与主页入口分离 | ✓ Shipped |
+| V3-PREVIEW | 素材库完整预览弹窗 | ✓ Shipped |
+| V3-I18N | 国际化键大幅扩充 | ✓ Shipped |
+
+</details>
+
+---
+
+## v3.1 Multi-Scenario Intelligence — Active Phases
 
 - [ ] **Phase 19: Prompt Extraction** — Extract hard-coded prompts into `src/prompts/` template module with `{{var}}` substitution
 - [ ] **Phase 20: Task Routing** — LLM-based content classification endpoint with confidence scoring and task-type badges
@@ -169,14 +198,14 @@
 | 16. Menu Cleanup & New Card | v2.0 | 2/2 | Done | 2026-05-02 |
 | 17. Connection Lines & Junction Nodes | v2.0 | 3/3 | Done | 2026-05-02 |
 | 18. Blueprint Modal | v2.0 | 3/3 | Done | 2026-05-02 |
-| 19. Prompt Extraction | v2.1 | 0/? | Not started | - |
-| 20. Task Routing | v2.1 | 0/? | Not started | - |
-| 21. Dynamic Directions | v2.1 | 0/? | Not started | - |
-| 22. File Rendering | v2.1 | 0/? | Not started | - |
-| 23. Context Management | v2.1 | 0/? | Not started | - |
-| 24. Parallel Generation | v2.1 | 0/? | Not started | - |
+| 19. Prompt Extraction | v3.1 | 0/? | Not started | - |
+| 20. Task Routing | v3.1 | 0/? | Not started | - |
+| 21. Dynamic Directions | v3.1 | 0/? | Not started | - |
+| 22. File Rendering | v3.1 | 0/? | Not started | - |
+| 23. Context Management | v3.1 | 0/? | Not started | - |
+| 24. Parallel Generation | v3.1 | 0/? | Not started | - |
 
 ---
 
 *Created: 2026-04-25*
-*Last updated: 2026-05-02 — v2.1 roadmap created*
+*Last updated: 2026-05-03 — v3.0 shipped, v3.1 roadmap active*

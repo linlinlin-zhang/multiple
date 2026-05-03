@@ -97,6 +97,14 @@
 - ✓ **MC-15**: 精简菜单 — 移除 history 命令 — v2.0
 - ✓ **MC-16**: 精简菜单 — 移除 settings 命令 — v2.0
 
+**v3.0 — Infrastructure & Experience Upgrade**
+
+- ✓ **V3-MODEL**: 默认模型全面切换至 Qwen/DashScope — v3.0
+- ✓ **V3-HOME**: Three.js 沉浸式首页 — v3.0
+- ✓ **V3-ENTRY**: 工作台与主页入口分离 — v3.0
+- ✓ **V3-PREVIEW**: 素材库完整预览弹窗（图片/PDF/文本/下载） — v3.0
+- ✓ **V3-I18N**: 国际化键大幅扩充 — v3.0
+
 ### Active
 
 **Future / v2+**
@@ -126,24 +134,24 @@
 - 画布支持一键整理、节点折叠/展开、深色模式、中英文切换
 - Demo 模式在缺少 API key 时静默启用
 
-## Current Milestone: v2.1 Multi-Scenario Intelligence
+## Current Milestone: v3.1 Multi-Scenario Intelligence
 
 **Goal:** 提升应用的多场景实用性——根据输入内容类型智能选择分析策略，支持更多文件格式，扩展方向卡片数量，优化 prompt 管理和上下文维护。
 
 **Target features:**
-- 文件渲染修复 — PDF/PPT 文件正确上传和预览显示
+- Prompt 提取与模板化 — 所有硬编码 prompt 集中到 `src/prompts/`，支持 `{{var}}` 替换
 - 智能任务路由 — 大模型根据文件内容自动判断任务类型（成图方向/内容调研/资料收集/任务规划/网页分析等）
 - 动态方向数量 — 源卡片生成方向卡片从固定 5 张改为 5-8 张，由大模型根据复杂度决定
-- 上下文管理 — 引入 RAG 或上下文空间维护工具，支持并行 API 调用
-- Prompt 策略优化 — 不同任务类型使用不同 prompt，研究合理的调用和组织方式
+- 文件渲染修复 — PDF/PPT 文件正确上传和预览显示
+- 上下文管理 — 引入共享上下文池，支持并行 API 调用
 
-**Previous:** v2.0 Multi-Card Canvas Interaction (2026-05-02)
+**Previous:** v3.0 Infrastructure & Experience Upgrade (2026-05-03)
 
 ## Current State
 
-**Shipped:** v2.0 Multi-Card Canvas Interaction (2026-05-02)
+**Shipped:** v3.0 Infrastructure & Experience Upgrade (2026-05-03)
 
-画布现在支持多卡片交互：用户可创建额外卡片、通过连接线构建卡片关系网络、在蓝图弹窗中编排关系图。蓝图关系可注入 AI 上下文指导探索。
+默认模型已全面迁移至 Qwen/DashScope；全新 Three.js 沉浸式首页上线，工作台入口分离为 `/app.html`；素材库支持完整预览弹窗；国际化覆盖大幅扩充。v3.1 将在此基础上构建多场景智能能力。
 
 ## Key Decisions
 
@@ -170,6 +178,9 @@
 | 蓝图关系点击删除 | 直接在 SVG path 上绑定 click 事件 | Validated v2.0 |
 | 蓝图上下文硬编码中文 | 无 locale key，直接使用中文字符串 | Validated v2.0 |
 | deleteNode 清理顺序 | 聚合状态更新后、取消选中/DOM 移除前 | Validated v2.0 |
+| v3.0 作为基础设施+体验升级先行发布 | 模型迁移、首页重做、素材库预览等基础工作已完成 | Validated v3.0 |
+| 默认模型全面统一至 Qwen/DashScope | 简化密钥管理，中文支持更好，API 面一致 | Validated v3.0 |
+| Three.js 首页与工作台分离入口 | 展示/营销页面与日常画布使用分离；工作台保留 /app.html | Validated v3.0 |
 
 ## Constraints
 
@@ -197,4 +208,4 @@ This document evolves at phase transitions and milestone boundaries.
 
 ---
 
-*Last updated: 2026-05-02 — v2.1 milestone started*
+*Last updated: 2026-05-03 — v3.0 shipped, v3.1 milestone started*
