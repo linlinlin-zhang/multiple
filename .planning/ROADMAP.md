@@ -99,40 +99,33 @@
 
 ## v3.1 Multi-Scenario Intelligence — Active Phases
 
-- [ ] **Phase 19: Prompt Extraction** — Extract hard-coded prompts into `src/prompts/` template module with `{{var}}` substitution
-- [ ] **Phase 20: Task Routing** — LLM-based content classification endpoint with confidence scoring and task-type badges
-- [ ] **Phase 21: Dynamic Directions** — Variable 5-8 direction count driven by content complexity score
-- [ ] **Phase 22: File Rendering** — PDF preview with pdf.js, PPTX preview, large file streaming
-- [ ] **Phase 23: Context Management** — Shared context pool organized by topic/card, injected into LLM prompts
-- [ ] **Phase 24: Parallel Generation** — Concurrent direction generation with Promise.allSettled, retry on failure
+- [ ] **Phase 21: Chat-to-Canvas Reliability & Conversational UX** — Fix chat→canvas action whitelist, switch to OpenAI tool calling, default streaming, markdown rendering
+- [ ] **Phase 22: Dynamic Directions** — Variable 5-8 direction count driven by content complexity score
+- [ ] **Phase 23: File Rendering** — PDF preview with pdf.js, PPTX preview, large file streaming
+- [ ] **Phase 24: Context Management** — Shared context pool organized by topic/card, injected into LLM prompts
+- [ ] **Phase 25: Parallel Generation** — Concurrent direction generation with Promise.allSettled, retry on failure
 
 ---
 
 ## Phase Details
 
-### Phase 19: Prompt Extraction
-**Goal**: All AI prompts are centralized in template functions with variable substitution, replacing scattered hard-coded strings in server.js
-**Depends on**: Nothing (first v2.1 phase)
-**Requirements**: PM-01, PM-02, PM-03
+### Phase 21: Chat-to-Canvas Reliability & Conversational UX
+**Goal**: Users can issue natural-language commands in the chat sidebar that reliably trigger any canvas action (including 7 rich node types and zoom), and chat replies feel comparable to mainstream AI workbenches (streaming, markdown-rendered, length-adaptive)
+**Depends on**: Phase 19 (prompts), Phase 20 (task routing)
+**Requirements**: CC-01..CC-09
 **Success Criteria** (what must be TRUE):
-  1. All prompt strings live in `src/prompts/` as exported template functions, not inline in server.js handlers
-  2. Prompt templates support `{{variable}}` substitution and include unified safety/format directives
-  3. All existing handlers (handleAnalyze, handleChat, handleExplore, handleGenerateDirections, etc.) call `getPrompt()` instead of assembling strings inline
-  4. Existing behavior is preserved -- analyze, chat, explore, and direction generation produce identical outputs before and after refactor
-**Plans**: TBD
+  1. Typing "做个去日本 7 天计划" in chat creates a `plan` card on the canvas (and similarly for note/todo/weather/map/link/code)
+  2. Typing "放大画布" / "重置视图" triggers the corresponding canvas action
+  3. `server.js CANVAS_TOOL_TYPES` is removed and replaced with import from `src/prompts/shared.js CANVAS_ACTION_TYPES` (single source of truth)
+  4. Chat endpoint uses OpenAI tool calling: `reply` is free-form markdown, canvas actions arrive as `tool_calls`
+  5. Default chat mode (no-thinking) streams via SSE; characters appear progressively
+  6. Assistant messages render as sanitized HTML (micromark + DOMPurify) — markdown headings, lists, code blocks, links, tables all visible
+  7. Reply length adapts to context — casual chat short, task-oriented chat long; no hard "1-3 sentences" cap
+  8. When LLM output is malformed, fallback action inference covers plan/todo/note/weather/map/link/code keywords
+  9. End-to-end verification covers ≥ 12 chat→canvas scenarios
+**Plans**: 6 (01: Whitelist Reconciliation, 02: Tool Calling Refactor, 03: Streaming Default, 04: Markdown Rendering, 05: Fallback & Action Feedback, 06: E2E Verification)
 
-### Phase 20: Task Routing
-**Goal**: The system automatically classifies uploaded content into task types and selects the appropriate analysis strategy
-**Depends on**: Phase 19
-**Requirements**: RT-01, RT-02, RT-03, RT-04
-**Success Criteria** (what must be TRUE):
-  1. `POST /api/route-task` returns a `taskType` classification (at least `image_generation`, `research`, `planning`) for any uploaded content
-  2. Classification includes a confidence score; low-confidence results fall back to file-format-based default routing
-  3. Frontend direction cards display a task-type badge distinguishing different analysis strategies
-  4. Each task type routes to a different prompt template, producing qualitatively different direction outputs
-**Plans**: 2 (01: API & Router, 02: Frontend Badges)
-
-### Phase 21: Dynamic Directions
+### Phase 22: Dynamic Directions
 **Goal**: Direction count adapts to content complexity -- simple images get 5 directions, complex documents get up to 8
 **Depends on**: Phase 19
 **Requirements**: DY-01, DY-02, DY-03
@@ -142,7 +135,7 @@
   3. Frontend canvas layout correctly arranges 5, 6, 7, or 8 direction cards without overlap or clipping
 **Plans**: TBD
 
-### Phase 22: File Rendering
+### Phase 23: File Rendering
 **Goal**: PDF and PPTX files preview correctly in the upload dialog, and large files do not crash the browser
 **Depends on**: Nothing (independent)
 **Requirements**: FR-01, FR-02, FR-03
@@ -153,7 +146,7 @@
 **Plans**: TBD
 **UI hint**: yes
 
-### Phase 23: Context Management
+### Phase 24: Context Management
 **Goal**: The system maintains a persistent shared context pool that accumulates key information across a session, improving generation quality over time
 **Depends on**: Phase 19
 **Requirements**: CT-01, CT-02, CT-03
@@ -164,9 +157,9 @@
   4. Context pool survives page refresh (persisted to database)
 **Plans**: TBD
 
-### Phase 24: Parallel Generation
+### Phase 25: Parallel Generation
 **Goal**: Multiple direction images generate concurrently with graceful failure handling, dramatically reducing wait time for 5-8 directions
-**Depends on**: Nothing (benefits most from Phase 21)
+**Depends on**: Nothing (benefits most from Phase 22)
 **Requirements**: PG-01, PG-02, PG-03
 **Success Criteria** (what must be TRUE):
   1. Multiple directions generate in parallel via `Promise.allSettled` instead of sequential await loops
@@ -198,14 +191,15 @@
 | 16. Menu Cleanup & New Card | v2.0 | 2/2 | Done | 2026-05-02 |
 | 17. Connection Lines & Junction Nodes | v2.0 | 3/3 | Done | 2026-05-02 |
 | 18. Blueprint Modal | v2.0 | 3/3 | Done | 2026-05-02 |
-| 19. Prompt Extraction | v3.1 | 0/? | Not started | - |
-| 20. Task Routing | v3.1 | 0/? | Not started | - |
-| 21. Dynamic Directions | v3.1 | 0/? | Not started | - |
-| 22. File Rendering | v3.1 | 0/? | Not started | - |
-| 23. Context Management | v3.1 | 0/? | Not started | - |
-| 24. Parallel Generation | v3.1 | 0/? | Not started | - |
+| 19. Prompt Extraction | v3.1 | 2/2 | Done | 2026-05-02 |
+| 20. Task Routing | v3.1 | 2/2 | Done | 2026-05-03 |
+| 21. Chat-to-Canvas Reliability & UX | v3.1 | 0/6 | Not started | - |
+| 22. Dynamic Directions | v3.1 | 0/? | Not started | - |
+| 23. File Rendering | v3.1 | 0/? | Not started | - |
+| 24. Context Management | v3.1 | 0/? | Not started | - |
+| 25. Parallel Generation | v3.1 | 0/? | Not started | - |
 
 ---
 
 *Created: 2026-04-25*
-*Last updated: 2026-05-03 — v3.0 shipped, v3.1 roadmap active*
+*Last updated: 2026-05-03 — v3.0 shipped, Phase 21 (Chat-to-Canvas Reliability) inserted into v3.1, originals renumbered to 22-25*

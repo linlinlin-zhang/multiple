@@ -20,6 +20,18 @@
 - [ ] **RT-03**: 分类结果包含置信度分数，低于阈值时自动回退到基于文件格式的默认路由
 - [ ] **RT-04**: 前端方向卡片显示任务类型标签（badge），区分不同分析策略的产出
 
+### Chat-Canvas Reliability & Conversational UX (CC)
+
+- [ ] **CC-01**: 后端 server.js 与 prompt 模块共用单一 canvas action 白名单（统一从 shared.js 导入），覆盖全部 7 类富节点（note/plan/todo/weather/map/link/code）及 zoom 类（zoom_in/zoom_out/set_zoom/reset_view）
+- [ ] **CC-02**: 用户在对话框输入"做计划/列任务/记笔记/查天气/打开地图/保存链接/写代码片段/放大画布"等自然语言时，对应富节点/视图动作能可靠在画布上落地
+- [ ] **CC-03**: chat 端点改为 OpenAI 风格 tool calling 架构：reply 字段为自由 markdown，画布动作通过 tool_calls 抽取；移除"动作编排器 JSON 强制输出"的双重 prompt 覆盖
+- [ ] **CC-04**: 移除 "1-3 句"、"闲聊 1-2 句" 等硬性长度约束，改为按用户意图自适应；设置 max_tokens 默认值（≥ 4096），让模型在任务场景输出充分内容
+- [ ] **CC-05**: no-thinking 模式默认启用 SSE 流式输出，前端字符级渐进渲染（与 thinking 模式行为一致）
+- [ ] **CC-06**: 助手消息内容用 micromark + DOMPurify 渲染为安全 HTML，支持标题、有序/无序列表、代码块（含语言高亮 fence）、链接、表格、粗体/斜体；代码块带复制按钮
+- [ ] **CC-07**: 模型异常输出（JSON 解析失败、tool_call 空）时，fallback 动作推断关键词扩展到 plan/todo/note/weather/map/link/code（不仅 web card）
+- [ ] **CC-08**: 动作执行后在聊天消息中显示内联反馈卡片（"已创建 plan 卡片：XXX"），点击可跳转到画布对应节点
+- [ ] **CC-09**: 端到端验证脚本覆盖至少 12 个 chat→canvas 场景（每类富节点 1 个 + zoom 1 个 + 选中卡片 1 个 + 错误兜底 1 个），全部通过
+
 ### Dynamic Directions (DY)
 
 - [ ] **DY-01**: 分析 prompt 改为"根据内容复杂度生成 5-8 条方向"，不再固定 5 条
@@ -77,18 +89,27 @@
 | RT-02 | 20 | Pending |
 | RT-03 | 20 | Pending |
 | RT-04 | 20 | Pending |
-| DY-01 | 21 | Pending |
-| DY-02 | 21 | Pending |
-| DY-03 | 21 | Pending |
-| FR-01 | 22 | Pending |
-| FR-02 | 22 | Pending |
-| FR-03 | 22 | Pending |
-| CT-01 | 23 | Pending |
-| CT-02 | 23 | Pending |
-| CT-03 | 23 | Pending |
-| PG-01 | 24 | Pending |
-| PG-02 | 24 | Pending |
-| PG-03 | 24 | Pending |
+| CC-01 | 21 | Pending |
+| CC-02 | 21 | Pending |
+| CC-03 | 21 | Pending |
+| CC-04 | 21 | Pending |
+| CC-05 | 21 | Pending |
+| CC-06 | 21 | Pending |
+| CC-07 | 21 | Pending |
+| CC-08 | 21 | Pending |
+| CC-09 | 21 | Pending |
+| DY-01 | 22 | Pending |
+| DY-02 | 22 | Pending |
+| DY-03 | 22 | Pending |
+| FR-01 | 23 | Pending |
+| FR-02 | 23 | Pending |
+| FR-03 | 23 | Pending |
+| CT-01 | 24 | Pending |
+| CT-02 | 24 | Pending |
+| CT-03 | 24 | Pending |
+| PG-01 | 25 | Pending |
+| PG-02 | 25 | Pending |
+| PG-03 | 25 | Pending |
 
 ---
 
