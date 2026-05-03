@@ -5394,3 +5394,43 @@ html[data-theme="dark"] .rich-inline-code {
 @keyframes blink {
   50% { opacity: 0; }
 }
+
+/* Chat action feedback cards (Phase 21 Plan 05) */
+.chat-action-feedback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-2, #f5f5f5);
+  border: 1px solid var(--border, rgba(0,0,0,0.08));
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 150ms ease, transform 150ms ease;
+}
+.chat-action-feedback:hover {
+  background: var(--surface-3, #eaeaea);
+  transform: translateY(-1px);
+}
+.chat-action-feedback:focus {
+  outline: 2px solid var(--accent, #1F1F1B);
+  outline-offset: 2px;
+}
+.chat-action-feedback .chat-action-icon {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.chat-action-feedback .chat-action-label {
+  font-weight: 500;
+  color: var(--text-secondary, #4a4a4a);
+  white-space: nowrap;
+}
+.chat-action-feedback .chat-action-title {
+  color: var(--text-primary, #1F1F1B);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}

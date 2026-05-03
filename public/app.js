@@ -451,6 +451,29 @@ const i18n = {
     "chat.scrollBottom": "回到底部",
     "chat.copyCode": "复制",
     "chat.copied": "已复制",
+    "chat.actionApplied": "已执行画布操作",
+    "chat.clickToFocus": "点击跳转到画布节点",
+    "chat.actionFeedback.create_plan": "已创建 plan 卡片",
+    "chat.actionFeedback.create_todo": "已创建 todo 卡片",
+    "chat.actionFeedback.create_note": "已创建 note 卡片",
+    "chat.actionFeedback.create_weather": "已创建 weather 卡片",
+    "chat.actionFeedback.create_map": "已创建 map 卡片",
+    "chat.actionFeedback.create_link": "已创建 link 卡片",
+    "chat.actionFeedback.create_code": "已创建 code 卡片",
+    "chat.actionFeedback.create_web_card": "已创建 web 卡片",
+    "chat.actionFeedback.create_direction": "已创建方向卡片",
+    "chat.actionFeedback.create_card": "已创建卡片",
+    "chat.actionFeedback.new_card": "已创建卡片",
+    "chat.actionFeedback.zoom_in": "已放大画布",
+    "chat.actionFeedback.zoom_out": "已缩小画布",
+    "chat.actionFeedback.reset_view": "已重置视图",
+    "chat.actionFeedback.set_zoom": "已调整缩放",
+    "chat.actionFeedback.pan_view": "已平移画布",
+    "chat.actionFeedback.focus_node": "已聚焦节点",
+    "chat.actionFeedback.arrange_canvas": "已整理画布",
+    "chat.actionFeedback.delete_node": "已删除卡片",
+    "chat.actionFeedback.generate_image": "已生成图片",
+    "chat.actionFeedback.research_node": "已开始研究",
     "voice.asr": "语音转文字",
     "voice.asrListening": "正在听写...",
     "voice.asrTranscribing": "正在转写...",
@@ -735,6 +758,29 @@ const i18n = {
     "chat.scrollBottom": "Scroll to bottom",
     "chat.copyCode": "Copy",
     "chat.copied": "Copied!",
+    "chat.actionApplied": "Action applied",
+    "chat.clickToFocus": "Click to focus node on canvas",
+    "chat.actionFeedback.create_plan": "Created plan card",
+    "chat.actionFeedback.create_todo": "Created todo card",
+    "chat.actionFeedback.create_note": "Created note card",
+    "chat.actionFeedback.create_weather": "Created weather card",
+    "chat.actionFeedback.create_map": "Created map card",
+    "chat.actionFeedback.create_link": "Created link card",
+    "chat.actionFeedback.create_code": "Created code card",
+    "chat.actionFeedback.create_web_card": "Created web card",
+    "chat.actionFeedback.create_direction": "Created direction card",
+    "chat.actionFeedback.create_card": "Created card",
+    "chat.actionFeedback.new_card": "Created card",
+    "chat.actionFeedback.zoom_in": "Zoomed in",
+    "chat.actionFeedback.zoom_out": "Zoomed out",
+    "chat.actionFeedback.reset_view": "Reset view",
+    "chat.actionFeedback.set_zoom": "Adjusted zoom",
+    "chat.actionFeedback.pan_view": "Panned canvas",
+    "chat.actionFeedback.focus_node": "Focused node",
+    "chat.actionFeedback.arrange_canvas": "Tidied canvas",
+    "chat.actionFeedback.delete_node": "Deleted card",
+    "chat.actionFeedback.generate_image": "Generated image",
+    "chat.actionFeedback.research_node": "Started research",
     "voice.asr": "Speech to text",
     "voice.asrListening": "Listening...",
     "voice.asrTranscribing": "Transcribing...",
@@ -2431,6 +2477,62 @@ function normalizeChatMessageActions(value) {
     .map((action) => ({ ...action, type: String(action.type) }));
 }
 
+const ACTION_FEEDBACK_ICONS = {
+  create_plan: "📋",
+  create_todo: "✅",
+  create_note: "📝",
+  create_weather: "🌤",
+  create_map: "🗺",
+  create_link: "🔗",
+  create_code: "💻",
+  create_web_card: "🌐",
+  create_direction: "🎨",
+  create_card: "➕",
+  new_card: "➕",
+  zoom_in: "🔍+",
+  zoom_out: "🔍-",
+  reset_view: "🎯",
+  set_zoom: "🔍",
+  pan_view: "🖐",
+  focus_node: "📍",
+  arrange_canvas: "📐",
+  auto_layout: "📐",
+  tidy_canvas: "📐",
+  delete_node: "🗑",
+  generate_image: "🖼",
+  image_search: "🖼",
+  reverse_image_search: "🖼",
+  text_image_search: "🖼",
+  research_node: "🔬",
+  research_source: "🔬",
+  explore_source: "🧭",
+  analyze_source: "🧪",
+  open_references: "📚"
+};
+
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = String(text == null ? "" : text);
+  return div.innerHTML;
+}
+
+function normalizeChatActionResults(value) {
+  const raw = Array.isArray(value) ? value : (value ? [value] : []);
+  return raw
+    .filter((entry) => entry && typeof entry === "object" && entry.type)
+    .slice(0, 8)
+    .map((entry) => {
+      const result = entry.result;
+      const nodeId = (typeof result === "string" ? result : result?.nodeId) || entry.nodeId || "";
+      return {
+        type: String(entry.type),
+        title: String(entry.title || entry.nodeName || result?.title || "").slice(0, 80),
+        nodeId: String(nodeId).slice(0, 96),
+        success: result === null || result === undefined ? false : true
+      };
+    });
+}
+
 function normalizeChatArtifacts(value) {
   const raw = Array.isArray(value) ? value : (value ? [value] : []);
   return raw
@@ -3456,14 +3558,16 @@ async function submitChatMessage(message, options = {}) {
       actions: data.actions || data.action,
       artifacts: data.artifacts || data.agentPlan || []
     };
+    const returnedActions = data?.actions || data?.action;
+    let actionResults = [];
+    if (returnedActions) {
+      actionResults = await applyVoiceActions(returnedActions);
+    }
+    assistantMeta.actionResults = actionResults;
     updateChatMessage(pendingAssistant, {
       content: data.reply || t("chat.systemContext"),
       ...assistantMeta
     });
-    const returnedActions = data?.actions || data?.action;
-    if (returnedActions) {
-      await applyVoiceActions(returnedActions);
-    }
     setStatus(t("status.ready"), "ready");
     autoSave();
   } catch (error) {
@@ -4029,12 +4133,16 @@ function buildVoiceCanvasContext() {
 
 async function applyVoiceActions(value) {
   const actions = Array.isArray(value) ? value : (value ? [value] : []);
+  const results = [];
   for (const action of actions) {
     const type = typeof action === "string" ? action : action?.type || action?.name;
     if (!type) continue;
-    await executeCanvasAction(typeof action === "string" ? { type } : { ...action, type });
+    const normalized = typeof action === "string" ? { type } : { ...action, type };
+    const result = await executeCanvasAction(normalized);
+    results.push({ ...normalized, result });
   }
   autoSave();
+  return results;
 }
 
 async function executeCanvasAction(action) {
@@ -4042,10 +4150,10 @@ async function executeCanvasAction(action) {
   if (!type) return;
   if (!confirmRiskyCanvasAction(action)) return;
 
-  if (type === "zoom_in") return zoomBy(0.08);
-  if (type === "zoom_out") return zoomBy(-0.08);
-  if (type === "set_zoom") return setCanvasZoom(action);
-  if (type === "reset_view") return resetView();
+  if (type === "zoom_in") { zoomBy(0.08); return { type, success: true }; }
+  if (type === "zoom_out") { zoomBy(-0.08); return { type, success: true }; }
+  if (type === "set_zoom") { setCanvasZoom(action); return { type, success: true }; }
+  if (type === "reset_view") { resetView(); return { type, success: true }; }
   if (type === "pan_view") return panCanvasView(action);
   if (type === "focus_node") return focusNodeByAction(action);
   if (type === "arrange_canvas" || type === "auto_layout" || type === "tidy_canvas") return arrangeCanvasLayout({ selectionOnly: action.scope === "selection" || action.selectionOnly === true });
@@ -5632,6 +5740,7 @@ function appendChatMessage(role, content, metadata = {}) {
     thinkingContent: normalizeChatThinkingContent(metadata.thinkingContent || metadata.reasoningContent || metadata.reasoning),
     thinkingRequested: Boolean(metadata.thinkingRequested || metadata.pending),
     actions: normalizeChatMessageActions(metadata.actions),
+    actionResults: normalizeChatActionResults(metadata.actionResults),
     artifacts: normalizeChatArtifacts(metadata.artifacts || metadata.materials || metadata.cards),
     pending: Boolean(metadata.pending),
     createdAt: new Date().toISOString()
@@ -5655,6 +5764,9 @@ function updateChatMessage(message, updates = {}) {
   if ("thinkingRequested" in updates) message.thinkingRequested = Boolean(updates.thinkingRequested);
   if ("actions" in updates) {
     message.actions = normalizeChatMessageActions(updates.actions);
+  }
+  if ("actionResults" in updates) {
+    message.actionResults = normalizeChatActionResults(updates.actionResults);
   }
   if ("artifacts" in updates || "materials" in updates || "cards" in updates) {
     message.artifacts = normalizeChatArtifacts(updates.artifacts || updates.materials || updates.cards);
@@ -5772,7 +5884,28 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
     if (message.role === "assistant" && message.artifacts?.length) {
       line.appendChild(renderChatArtifacts(message.artifacts));
     }
-    if (message.role === "assistant" && message.actions?.length) {
+    if (message.role === "assistant" && message.actionResults?.length) {
+      message.actionResults.forEach((ar) => {
+        const card = document.createElement("div");
+        card.className = "chat-action-feedback";
+        card.setAttribute("role", "button");
+        card.setAttribute("tabindex", "0");
+        const icon = ACTION_FEEDBACK_ICONS[ar.type] || "⚡";
+        const labelKey = `chat.actionFeedback.${ar.type}`;
+        const label = t(labelKey) || t("chat.actionApplied") || "已执行";
+        card.innerHTML = `
+          <span class="chat-action-icon">${escapeHtml(icon)}</span>
+          <span class="chat-action-label">${escapeHtml(label)}</span>
+          <span class="chat-action-title">${escapeHtml(ar.title || "")}</span>
+        `;
+        if (ar.nodeId) {
+          card.title = t("chat.clickToFocus") || "点击跳转到画布节点";
+          card.onclick = () => focusNodeById(ar.nodeId);
+          card.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); focusNodeById(ar.nodeId); } };
+        }
+        line.appendChild(card);
+      });
+    } else if (message.role === "assistant" && message.actions?.length) {
       const actions = document.createElement("div");
       actions.className = "chat-action-summary";
       actions.textContent = t("chat.actionsApplied", { count: message.actions.length });

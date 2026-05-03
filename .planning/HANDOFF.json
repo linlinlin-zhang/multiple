@@ -1,44 +1,61 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-03T15:45:00Z",
+  "timestamp": "2026-05-03T15:30:37.780Z",
   "phase": "21",
   "phase_name": "Chat-to-Canvas Reliability & Conversational UX",
   "phase_dir": ".planning/phases/21-chat-to-canvas",
-  "plan": null,
-  "task": null,
-  "total_tasks": null,
-  "status": "paused",
+  "plan": 5,
+  "task": 4,
+  "total_tasks": 4,
+  "status": "in_progress",
   "completed_tasks": [
     {"id": 1, "name": "Phase 21 planning complete (6 plans, 4 waves)", "status": "done", "commit": "3f07271"},
     {"id": 2, "name": "UI-SPEC.md generated and approved", "status": "done", "commit": "3f07271"},
     {"id": 3, "name": "RESEARCH.md written with full root-cause analysis", "status": "done", "commit": "3f07271"},
     {"id": 4, "name": "execute-phase initialized and plan inventory loaded", "status": "done", "commit": "3f07271"},
-    {"id": 5, "name": "Wave 1: Plan 01 — Whitelist Reconciliation", "status": "done", "commit": null},
-    {"id": 6, "name": "Wave 1: Plan 02 — Tool Calling Refactor", "status": "done", "commit": null},
-    {"id": 7, "name": "Wave 2: Plan 03 — Streaming Default", "status": "done", "commit": null},
-    {"id": 8, "name": "Wave 2: Plan 04 — Markdown Rendering", "status": "done", "commit": null}
+    {"id": 5, "name": "Wave 1: Plan 01 — Whitelist Reconciliation", "status": "done", "commit": "0f85b18"},
+    {"id": 6, "name": "Wave 1: Plan 02 — Tool Calling Refactor", "status": "done", "commit": "0f85b18"},
+    {"id": 7, "name": "Wave 2: Plan 03 — Streaming Default", "status": "done", "commit": "0f85b18"},
+    {"id": 8, "name": "Wave 2: Plan 04 — Markdown Rendering", "status": "done", "commit": "0f85b18"},
+    {"id": 9, "name": "Retroactive SUMMARY.md for Plans 21-01 / 21-02 / 21-03 / 21-04", "status": "done", "commit": null},
+    {"id": 10, "name": "Wave 3: Plan 05 — Fallback & Action Feedback (implementation in working tree)", "status": "implemented_uncommitted", "commit": null}
   ],
   "remaining_tasks": [
-    {"id": 9, "name": "Wave 3: Plan 05 — Fallback & Action Feedback", "status": "not_started"},
-    {"id": 10, "name": "Wave 4: Plan 06 — E2E Verification", "status": "not_started"}
+    {"id": 11, "name": "Plan 05 browser smoke test (npm run dev + manual verify)", "status": "not_started", "blocker": "needs_human_action"},
+    {"id": 12, "name": "Plan 05 commit + 21-05-SUMMARY.md", "status": "not_started"},
+    {"id": 13, "name": "Wave 4: Plan 06 — E2E Verification script (12+ scenarios)", "status": "not_started", "blocker": "needs_running_dev_server"},
+    {"id": 14, "name": "Plan 06 commit + 21-06-SUMMARY.md", "status": "not_started"},
+    {"id": 15, "name": "Phase 21 verification (gsd-verifier subagent + gates)", "status": "not_started"},
+    {"id": 16, "name": "Update STATE.md + ROADMAP.md (mark Phase 21 ✅, advance v3.1 to 1/6)", "status": "not_started"}
   ],
-  "blockers": [],
-  "human_actions_pending": [],
+  "blockers": [
+    {"id": "B1", "description": "Plan 06 marked autonomous: false — needs `npm run dev` running concurrently with `npm run test:chat`", "severity": "needs_human_action"},
+    {"id": "B2", "description": "PostgreSQL not running locally (long-standing v1.0 blocker, not Phase 21-specific)", "severity": "low"}
+  ],
+  "human_actions_pending": [
+    {"action": "Start `npm run dev` in a terminal so resuming agent can browser-verify Plan 05 and run Plan 06 E2E tests"}
+  ],
   "decisions": [
     {"decision": "Use OpenAI-style tool calling for chat endpoint", "rationale": "Separates free-form markdown replies from structured canvas actions", "phase": "21"},
     {"decision": "Use micromark + DOMPurify for markdown rendering via CDN ESM", "rationale": "Vanilla JS project has no bundler; esm.sh and jsDelivr are reliable", "phase": "21"},
     {"decision": "Switch public/app.js to script type=module for ESM imports", "rationale": "Required to import micromark from esm.sh", "phase": "21"},
-    {"decision": "Set default max_tokens to 4096 for chat role", "rationale": "Removes artificial length constraints and allows thorough task-oriented replies", "phase": "21"}
+    {"decision": "Set default max_tokens to 4096 for chat role", "rationale": "Removes artificial length constraints and allows thorough task-oriented replies", "phase": "21"},
+    {"decision": "Render .chat-action-feedback as div[role=button][tabindex=0] not <button>", "rationale": "Matches existing chat sidebar affordances; avoids nested-interactive issues on mobile", "phase": "21"},
+    {"decision": "Keep .chat-action-summary as graceful-degradation fallback when only actions[] is present", "rationale": "Handles older session messages restored before this plan landed", "phase": "21"},
+    {"decision": "Use emoji icons in ACTION_FEEDBACK_ICONS rather than SVG sprites", "rationale": "Zero asset cost; matches existing chat-action-icon styling", "phase": "21"},
+    {"decision": "Capture actionResults BEFORE updateChatMessage in chat handler", "rationale": "Assistant message renders feedback cards on first paint, not after a re-render — eliminates flicker", "phase": "21"}
   ],
   "uncommitted_files": [
-    "server.js",
-    "src/prompts/shared.js",
-    "src/prompts/chat.js",
-    "src/prompts/index.js",
     "public/app.js",
-    "public/app.html",
-    "public/styles.css"
+    "public/styles.css",
+    ".planning/STATE.md",
+    ".planning/phases/21-chat-to-canvas/21-01-SUMMARY.md",
+    ".planning/phases/21-chat-to-canvas/21-02-SUMMARY.md",
+    ".planning/phases/21-chat-to-canvas/21-03-SUMMARY.md",
+    ".planning/phases/21-chat-to-canvas/21-04-SUMMARY.md",
+    ".planning/phases/21-chat-to-canvas/.continue-here.md",
+    ".planning/HANDOFF.json"
   ],
-  "next_action": "Resume with '/gsd-execute-phase 21' to execute Waves 3 and 4 (Plans 05 + 06).",
-  "context_notes": "Waves 1 and 2 fully implemented. All backend changes (whitelist reconciliation, tool calling refactor) and frontend changes (streaming default, markdown rendering) are complete and syntax-checked. Remaining: Plan 05 (fallback inference refinement + inline action feedback cards) and Plan 06 (E2E verification script with 12+ test scenarios)."
+  "next_action": "Resume with '/gsd-resume-work' or '/gsd-execute-phase 21' after starting `npm run dev`. First: read .planning/phases/21-chat-to-canvas/.continue-here.md, browser-verify Plan 05, then commit and proceed to Plan 06.",
+  "context_notes": "Waves 1+2 (Plans 01-04) shipped in commit 0f85b18. Plan 05 (Fallback & Action Feedback) is fully implemented in working tree — applyVoiceActions returns result array, executeCanvasAction returns descriptors for zoom branches, chat handler captures actionResults before render, normalizeChatActionResults + ACTION_FEEDBACK_ICONS + escapeHtml helpers added, .chat-action-feedback CSS shipped, i18n keys added. Pending: browser smoke test, commit, then Plan 06 (E2E verification — 12+ scenarios — autonomous: false, needs dev server)."
 }
