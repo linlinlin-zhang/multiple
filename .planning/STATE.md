@@ -1,24 +1,24 @@
 ---
 gsd_state_version: 1.0
-milestone: v3.1
-milestone_name: Multi-Scenario Intelligence — Active Phases
-status: executing
-stopped_at: context exhaustion at 100% (2026-05-03)
-last_updated: "2026-05-03T15:20:26.882Z"
+milestone: v3.2
+milestone_name: Qwen Web Parity
+status: planning
+stopped_at: null
+last_updated: "2026-05-04T00:00:00.000Z"
 progress:
-  total_phases: 6
+  total_phases: 7
   completed_phases: 0
-  total_plans: 6
+  total_plans: 0
   completed_plans: 0
   percent: 0
 ---
 
 # ORYZAE Image Board — Project State
 
-**Milestone:** Multi-Scenario Intelligence v3.1
-**Core Value:** 提升应用的多场景实用性——根据输入内容类型智能选择分析策略，支持更多文件格式，扩展方向卡片数量，优化 prompt 管理和上下文维护。
+**Milestone:** Qwen Web Parity v3.2
+**Core Value:** 让应用体验对标官方 Qwen Web 应用 —— 内置搜索、代码解释器与自定义画布工具并存，支持文档长文本聊天、图像/视频/语音生成、深度研究可视化、现代嵌入检索。
 **Project Reference:** [PROJECT.md](./PROJECT.md)
-**Last Updated:** 2026-05-03
+**Last Updated:** 2026-05-04
 
 ---
 
@@ -26,14 +26,14 @@ progress:
 
 | Field | Value |
 |-------|-------|
-| Milestone | v3.1 — Multi-Scenario Intelligence |
-| Phase | 21 (planned) |
-| Plans | 6 |
-| Status | Ready to execute |
-| Progress | 20% |
+| Milestone | v3.2 — Qwen Web Parity |
+| Phase | Not started (defining requirements) |
+| Plans | — |
+| Status | Defining requirements |
+| Progress | 0% |
 
 ```
-[████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 20%
+[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
 ```
 
 ---
@@ -115,5 +115,5 @@ progress:
 
 **Current session started:** 2026-05-03
 **Last session resumed:** 2026-05-03
-**Stopped at:** context exhaustion at 100% (2026-05-03)
+**Stopped at:** context exhaustion at 79% (2026-05-03)
 **Next expected action:** `/gsd-execute-phase 21` to begin executing the 6 plans

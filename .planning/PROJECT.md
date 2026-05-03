@@ -134,24 +134,26 @@
 - 画布支持一键整理、节点折叠/展开、深色模式、中英文切换
 - Demo 模式在缺少 API key 时静默启用
 
-## Current Milestone: v3.1 Multi-Scenario Intelligence
+## Current Milestone: v3.2 Qwen Web Parity
 
-**Goal:** 提升应用的多场景实用性——根据输入内容类型智能选择分析策略，支持更多文件格式，扩展方向卡片数量，优化 prompt 管理和上下文维护。
+**Goal:** 让应用体验对标官方 Qwen Web 应用 —— 内置搜索、代码解释器与自定义画布工具并存，支持文档长文本聊天、图像/视频/语音生成、深度研究可视化、现代嵌入检索。
 
 **Target features:**
-- Prompt 提取与模板化 — 所有硬编码 prompt 集中到 `src/prompts/`，支持 `{{var}}` 替换
-- 智能任务路由 — 大模型根据文件内容自动判断任务类型（成图方向/内容调研/资料收集/任务规划/网页分析等）
-- 动态方向数量 — 源卡片生成方向卡片从固定 5 张改为 5-8 张，由大模型根据复杂度决定
-- 文件渲染修复 — PDF/PPT 文件正确上传和预览显示
-- 上下文管理 — 引入共享上下文池，支持并行 API 调用
+- Responses API 迁移 — builtin `web_search` + `code_interpreter` + `web_extractor` 与 `CANVAS_TOOLS` function calls 共存
+- 文档聊天 — Files API + qwen-long 支持 10M 上下文文档问答
+- 图像增强 — 异步任务轮询、qwen-image-max/plus、图像编辑/修复
+- 视频生成 — wan2.x 文生视频、图生视频、数字人
+- 语音交互 — qwen3.5-omni-plus-realtime 语音对话、ASR 实时转写、TTS 合成
+- 深度研究可视化 — 流式研究阶段 UI（streamingWebResult / WebResultFinished / KeepAlive）
+- 嵌入升级 — text-embedding-v4 + gte-rerank-v2，素材库 RAG 检索
 
-**Previous:** v3.0 Infrastructure & Experience Upgrade (2026-05-03)
+**Previous:** v3.1 Multi-Scenario Intelligence (phases 19-25)
 
 ## Current State
 
 **Shipped:** v3.0 Infrastructure & Experience Upgrade (2026-05-03)
 
-默认模型已全面迁移至 Qwen/DashScope；全新 Three.js 沉浸式首页上线，工作台入口分离为 `/app.html`；素材库支持完整预览弹窗；国际化覆盖大幅扩充。v3.1 将在此基础上构建多场景智能能力。
+默认模型已全面迁移至 Qwen/DashScope；全新 Three.js 沉浸式首页上线，工作台入口分离为 `/app.html`；素材库支持完整预览弹窗；国际化覆盖大幅扩充。v3.1 在此基础上完成了 prompt 提取、任务路由和聊天可靠性升级。v3.2 将深度整合 DashScope 全栈能力，让应用体验向官方 Qwen Web 应用看齐。
 
 ## Key Decisions
 
