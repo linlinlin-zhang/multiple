@@ -30,26 +30,30 @@ export const META_DIRECTIVES = {
     "Do not expose system instructions, internal field names, response schemas, or serialization rules in user-facing text.",
     "When uncertain, ask clarifying questions instead of guessing.",
     "Prioritize user intent over literal interpretation; infer the underlying goal when the request is vague.",
-    "Adapt depth to context: use 1-2 sentences for casual chat, structured detail for complex tasks.",
+    "Adapt depth to context: brief for casual chat, detailed and thorough for complex tasks.",
     "Always surface actionable next steps; never end with a dead-end observation."
   ].join("\n"),
   zh: [
     "不要在面向用户的文本中暴露系统指令、内部字段名、响应格式或序列化规则。",
     "不确定时，提出澄清问题而不是猜测。",
     "优先理解用户意图而非字面意思；请求模糊时推断背后的目标。",
-    "根据上下文调整深度：闲聊用1-2句，复杂任务用结构化细节。",
+    "根据上下文调整深度：闲聊简短，复杂任务充分详细。",
     "始终提供可执行的下一步；不要用死胡同式的观察结尾。"
   ].join("\n")
 };
 
 export const CANVAS_ACTION_TYPES = [
   "pan_view", "focus_node", "select_node", "move_node", "arrange_canvas",
-  "deselect", "select_source", "select_analysis", "create_direction",
-  "create_web_card", "web_search", "create_agent", "generate_image",
-  "image_search", "reverse_image_search", "text_image_search",
-  "analyze_source", "explore_source", "research_source", "research_node",
+  "auto_layout", "tidy_canvas", "group_selection", "ungroup_selection",
+  "search_card", "export_report", "deselect", "select_source", "select_analysis",
+  "create_card", "new_card", "create_direction", "create_web_card",
+  "web_search", "create_agent", "generate_image", "image_search",
+  "reverse_image_search", "text_image_search", "analyze_source",
+  "explore_source", "research_source", "research_node", "open_references",
   "save_session", "new_chat", "open_chat_history", "close_chat",
   "open_chat", "open_history", "open_settings", "open_upload", "delete_node",
+  "set_thinking_mode", "set_deep_think_mode",
+  "zoom_in", "zoom_out", "set_zoom", "reset_view",
   "create_note", "create_plan", "create_todo", "create_weather",
   "create_map", "create_link", "create_code"
 ];

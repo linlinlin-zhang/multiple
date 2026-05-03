@@ -15,7 +15,7 @@ import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js
 import { extractTextFromBuffer } from "./src/lib/textExtract.js";
 import { PrismaClient } from "@prisma/client";
 import WebSocket from "ws";
-import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt, buildChatSystemContext, buildChatActionSystemPrompt, buildChatUserPrompt, buildGeneratePrompt, buildExplainPrompt, buildExplainSystemPrompt, buildRealtimeInstruction, buildDeepThinkSystemPrompt, buildDeepThinkUserPrompt, buildExploreContent } from "./src/prompts/index.js";
+import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt, buildChatSystemContext, buildChatUserPrompt, buildGeneratePrompt, buildExplainPrompt, buildExplainSystemPrompt, buildRealtimeInstruction, buildDeepThinkSystemPrompt, buildDeepThinkUserPrompt, buildExploreContent, CANVAS_ACTION_TYPES, CANVAS_ACTION_TYPES_TEXT } from "./src/prompts/index.js";
 import { ingestText, ingestSnippet, retrieveContext, formatContextForPrompt, isEmbeddingConfigured, CONTEXT_KINDS } from "./src/lib/rag/index.js";
 import { classifyContent, getFallbackTaskType, resolveTaskType, routeContent } from "./src/lib/taskRouter.js";
 
@@ -35,7 +35,10 @@ let runtimeConfigs = {
     provider: "dashscope-qwen",
     model: "qwen3.6-plus",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    apiKeyEnv: ["DASHSCOPE_API_KEY", "CHAT_API_KEY"]
+    apiKeyEnv: ["DASHSCOPE_API_KEY", "CHAT_API_KEY"],
+    options: {
+      max_tokens: 4096
+    }
   }),
   analysis: buildModelConfig("ANALYSIS", {
     provider: "dashscope-qwen",
@@ -93,49 +96,54 @@ const DEEP_RESEARCH_TIMEOUT_MS = Number(process.env.DEEP_RESEARCH_TIMEOUT_MS || 
 const EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.EXPLORE_THINKING_TIMEOUT_MS || 120000);
 const EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.EXPLORE_FALLBACK_TIMEOUT_MS || 60000);
 const IMAGE_SEARCH_MODEL = process.env.IMAGE_SEARCH_MODEL || "qwen3.5-plus";
-const CANVAS_TOOL_TYPES = [
-  "pan_view",
-  "focus_node",
-  "select_node",
-  "move_node",
-  "arrange_canvas",
-  "auto_layout",
-  "tidy_canvas",
-  "group_selection",
-  "ungroup_selection",
-  "search_card",
-  "export_report",
-  "deselect",
-  "select_source",
-  "select_analysis",
-  "create_card",
-  "new_card",
-  "create_direction",
-  "create_web_card",
-  "web_search",
-  "create_agent",
-  "generate_image",
-  "image_search",
-  "reverse_image_search",
-  "text_image_search",
-  "analyze_source",
-  "explore_source",
-  "research_source",
-  "research_node",
-  "open_references",
-  "save_session",
-  "new_chat",
-  "open_chat_history",
-  "close_chat",
-  "open_chat",
-  "open_history",
-  "open_settings",
-  "set_thinking_mode",
-  "set_deep_think_mode",
-  "open_upload",
-  "delete_node"
-];
-const CANVAS_ACTION_TYPES_TEXT = CANVAS_TOOL_TYPES.join(", ");
+
+const CANVAS_ACTION_TOOL_SCHEMA = {
+  type: "function",
+  function: {
+    name: "canvas_action",
+    description: "Execute a canvas action such as creating a card, zooming, searching, or manipulating the view.",
+    parameters: {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: CANVAS_ACTION_TYPES, description: "The action type to execute" },
+        title: { type: "string", description: "Title for the new card or action" },
+        description: { type: "string", description: "Description or body text" },
+        prompt: { type: "string", description: "Prompt for image generation or detailed instruction" },
+        query: { type: "string", description: "Search query" },
+        url: { type: "string", description: "URL for link or web card" },
+        nodeType: { type: "string", enum: ["note", "plan", "todo", "weather", "map", "link", "code"], description: "Rich node type" },
+        content: { type: "object", description: "Structured content object whose shape depends on nodeType" },
+        position: { type: "string", description: "Position hint: left, right, above, below, center, etc." },
+        nodeId: { type: "string", description: "Exact node ID from canvas state" },
+        nodeName: { type: "string", description: "Node name when exact ID is uncertain" },
+        anchorNodeId: { type: "string" },
+        x: { type: "number" },
+        y: { type: "number" },
+        scale: { type: "number" },
+        amount: { type: "number" },
+        mode: { type: "string" },
+        scope: { type: "string" }
+      },
+      required: ["type"]
+    }
+  }
+};
+
+const CANVAS_TOOLS = [CANVAS_ACTION_TOOL_SCHEMA];
+
+function extractToolCallActions(response) {
+  const toolCalls = response?.choices?.[0]?.message?.tool_calls || [];
+  return toolCalls
+    .filter((tc) => tc.type === "function" && tc.function?.name === "canvas_action")
+    .map((tc) => {
+      try {
+        return JSON.parse(tc.function.arguments || "{}");
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -1039,9 +1047,7 @@ async function handleChat(body, res) {
     messages: [
       {
         role: "system",
-        content: lang === "en"
-          ? "You are ORYZAE's Qwen-powered canvas assistant. Answers are concise, direct, and actionable."
-          : "你是 ORYZAE 的 Qwen 画布助手。回答简洁、直接、可执行。"
+        content: buildChatSystemContext(lang, analysis, messages)
       },
       {
         role: "user",
@@ -1049,11 +1055,12 @@ async function handleChat(body, res) {
       }
     ]
   };
-  chatPayload.messages[0].content = buildChatActionSystemPrompt(lang, thinkingMode);
+
+  chatPayload.tools = CANVAS_TOOLS;
+  chatPayload.tool_choice = "auto";
 
   applyReasoningMode(chatPayload, runtimeConfigs.chat, thinkingMode);
   applyWebSearchMode(chatPayload, runtimeConfigs.chat, webSearchEnabled, { forced: webSearchForced });
-  applyJsonObjectResponseMode(chatPayload, runtimeConfigs.chat, thinkingMode !== "thinking");
 
   if (body?.stream === true) {
     return await handleChatStream({
@@ -1068,31 +1075,11 @@ async function handleChat(body, res) {
     }, res);
   }
 
-  let response;
-  try {
-    response = await chatCompletions(runtimeConfigs.chat, chatPayload);
-  } catch (error) {
-    if (!/response_format|json_object|unsupported|invalid/i.test(String(error?.message || ""))) {
-      throw error;
-    }
-    const fallbackPayload = { ...chatPayload };
-    delete fallbackPayload.response_format;
-    response = await chatCompletions(runtimeConfigs.chat, fallbackPayload);
-  }
+  const response = await chatCompletions(runtimeConfigs.chat, chatPayload);
 
-  const rawReply = collectChatContent(response).trim();
-  let parsed = null;
-  try {
-    parsed = parseJsonFromText(rawReply);
-  } catch {
-    parsed = null;
-  }
-  const reply = stringOr(parsed?.reply, rawReply);
-  let actions = ensureChatFallbackActionsClean(
-    message,
-    normalizeVoiceActions(parsed?.actions || parsed?.action),
-    reply
-  );
+  const reply = collectChatContent(response).trim();
+  let actions = normalizeVoiceActions(extractToolCallActions(response));
+  actions = ensureChatFallbackActionsClean(message, actions, reply);
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled || webSearchForced);
   if (!agentMode) {
     actions = actions.filter((action) => action.type !== "create_agent");
@@ -1117,19 +1104,9 @@ async function handleChat(body, res) {
 }
 
 function buildChatResultFromResponse({ response, message, thinkingMode, agentMode, lang, streamedReasoning = "", webSearchEnabled = false }) {
-  const rawReply = collectChatContent(response).trim();
-  let parsed = null;
-  try {
-    parsed = parseJsonFromText(rawReply);
-  } catch {
-    parsed = null;
-  }
-  const reply = stringOr(parsed?.reply, rawReply);
-  let actions = ensureChatFallbackActionsClean(
-    message,
-    normalizeVoiceActions(parsed?.actions || parsed?.action),
-    reply
-  );
+  const reply = collectChatContent(response).trim();
+  let actions = normalizeVoiceActions(extractToolCallActions(response));
+  actions = ensureChatFallbackActionsClean(message, actions, reply);
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled);
   if (!agentMode) {
     actions = actions.filter((action) => action.type !== "create_agent");
@@ -2020,21 +1997,33 @@ function deriveSearchQuery(message) {
     .slice(0, 120);
 }
 
+const FALLBACK_KEYWORDS = {
+  create_plan: /计划|日程|行程|规划|itinerary|schedule|plan/i,
+  create_todo: /任务|待办|清单|checklist|todo|task list/i,
+  create_note: /笔记|记录|备忘|note|jot down/i,
+  create_weather: /天气|气温|forecast|weather/i,
+  create_map: /地图|位置|地址|导航|map|location/i,
+  create_link: /链接|收藏|书签|link|bookmark/i,
+  create_code: /代码|脚本|程序|snippet|code/i,
+  create_web_card: /卡片|网页|资料|搜索|web|search/i,
+  zoom_in: /放大|zoom in|enlarge/i,
+  zoom_out: /缩小|zoom out|shrink/i,
+  reset_view: /重置视图|reset view|恢复默认视图/i
+};
+
 function ensureChatFallbackActionsClean(message, actions, reply = "") {
   const normalized = Array.isArray(actions) ? [...actions] : [];
-  if (normalized.some((action) => action.type === "create_web_card")) return normalized;
+  if (normalized.length > 0) return normalized;
+
   const requestText = String(message || "").normalize("NFKC");
-  const wantsCard = /卡片|素材|资料卡|网页卡|链接卡|\bcard\b/i.test(requestText);
-  const wantsWeb = /(联网|上网|网页|网站|链接|网址|搜索|搜一下|查一下|检索|资料|最新|新闻|引用|来源|官方文档|官方资料|web|reference|search|url|link)/i.test(requestText);
-  if (wantsCard && wantsWeb) {
-    const query = deriveSearchQueryClean(message);
-    normalized.push({
-      type: "create_web_card",
-      title: query.slice(0, 48) || "Web reference",
-      description: String(reply || query).slice(0, 220),
-      query,
-      url: `https://www.google.com/search?q=${encodeURIComponent(query || message)}`
-    });
+  const combinedText = requestText + " " + String(reply || "").normalize("NFKC");
+
+  for (const [actionType, regex] of Object.entries(FALLBACK_KEYWORDS)) {
+    if (regex.test(combinedText)) {
+      const title = requestText.slice(0, 48);
+      normalized.push({ type: actionType, title, description: reply || title });
+      break; // only one fallback action per message
+    }
   }
   return normalized;
 }
@@ -2044,34 +2033,6 @@ function deriveSearchQueryClean(message) {
     .normalize("NFKC")
     .replace(/请|帮我|给我|联网搜索|联网|上网|搜索|搜一下|查一下|检索|查找|并给出|创建|新建|生成|一张|一个|网页|网站|链接|资料|引用|参考|卡片|web|reference|card/gi, " ")
     .replace(/[，。、《》“”‘’（）()[\]{}?.!?！？:：；;]+/g, " ")
-    .replace(/\s{2,}/g, " ")
-    .trim()
-    .slice(0, 120);
-}
-
-function ensureChatFallbackActionsReadable(message, actions, reply = "") {
-  const normalized = Array.isArray(actions) ? [...actions] : [];
-  if (normalized.some((action) => action.type === "create_web_card")) return normalized;
-  const requestText = String(message || "").normalize("NFKC");
-  const wantsCard = requestText.includes("卡片") || requestText.includes("鍗＄墖") || /\bcard\b/i.test(requestText);
-  const wantsWeb = /(联网|搜索|搜一下|查一下|检索|网页|网站|链接|资料|引用|参考|最新|web|reference|search|url|link)/i.test(requestText);
-  if (wantsCard && wantsWeb) {
-    const query = deriveSearchQueryReadable(message);
-    normalized.push({
-      type: "create_web_card",
-      title: query.slice(0, 48) || "Web reference",
-      description: String(reply || query).slice(0, 220),
-      query,
-      url: `https://www.google.com/search?q=${encodeURIComponent(query || message)}`
-    });
-  }
-  return normalized;
-}
-
-function deriveSearchQueryReadable(message) {
-  return String(message || "")
-    .replace(/请|帮我|给我|联网搜索|联网|搜索|搜一下|查一下|检索|查找|并|给出|创建|新建|生成|一张|一个|网页|网站|链接|资料|引用|参考|卡片|web|reference|card/gi, " ")
-    .replace(/[，。、《》“”‘’（）()?.!?！？:：；;]+/g, " ")
     .replace(/\s{2,}/g, " ")
     .trim()
     .slice(0, 120);
@@ -2355,7 +2316,7 @@ function audioFormatFromMimeType(mimeType) {
   }[normalized] || "webm";
 }
 
-const VOICE_ACTION_TYPES = new Set(CANVAS_TOOL_TYPES);
+const VOICE_ACTION_TYPES = new Set(CANVAS_ACTION_TYPES);
 
 function normalizedActionString(value, maxLength = 160) {
   if (typeof value !== "string") return undefined;
@@ -3070,7 +3031,15 @@ async function streamChatCompletions(config, payload, options = {}) {
   }
 
   try {
-    const { content, reasoning, model } = await collectStreamingChatPayload(response, options);
+    const { content, reasoning, model, toolCalls } = await collectStreamingChatPayload(response, options);
+    const message = {
+      role: "assistant",
+      content,
+      reasoning_content: reasoning
+    };
+    if (toolCalls && toolCalls.length) {
+      message.tool_calls = toolCalls;
+    }
     return {
       id: `stream-${Date.now()}`,
       object: "chat.completion",
@@ -3078,12 +3047,8 @@ async function streamChatCompletions(config, payload, options = {}) {
       choices: [
         {
           index: 0,
-          message: {
-            role: "assistant",
-            content,
-            reasoning_content: reasoning
-          },
-          finish_reason: "stop"
+          message,
+          finish_reason: toolCalls && toolCalls.length ? "tool_calls" : "stop"
         }
       ]
     };
@@ -3137,7 +3102,7 @@ async function collectStreamingChatText(response) {
 }
 
 async function collectStreamingChatPayload(response, options = {}) {
-  if (!response.body) return { content: "", reasoning: "", model: "" };
+  if (!response.body) return { content: "", reasoning: "", model: "", toolCalls: [] };
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -3145,6 +3110,7 @@ async function collectStreamingChatPayload(response, options = {}) {
   let content = "";
   let reasoning = "";
   let model = "";
+  const toolCalls = [];
 
   function consumeData(data) {
     if (!data || data === "[DONE]") return;
@@ -3153,6 +3119,15 @@ async function collectStreamingChatPayload(response, options = {}) {
       if (chunk?.model) model = chunk.model;
       const textDelta = extractStreamingTextDelta(chunk);
       const reasoningDelta = extractStreamingReasoningDelta(chunk);
+      const toolDeltas = chunk?.choices?.[0]?.delta?.tool_calls || [];
+      for (const td of toolDeltas) {
+        const idx = td.index ?? 0;
+        if (!toolCalls[idx]) {
+          toolCalls[idx] = { id: td.id || "", type: td.type || "function", function: { name: "", arguments: "" } };
+        }
+        if (td.function?.name) toolCalls[idx].function.name += td.function.name;
+        if (td.function?.arguments) toolCalls[idx].function.arguments += td.function.arguments;
+      }
       if (textDelta) {
         content += textDelta;
         options.onText?.(textDelta);
@@ -3193,7 +3168,7 @@ async function collectStreamingChatPayload(response, options = {}) {
     for (const data of dataLines) consumeData(data);
   }
 
-  return { content, reasoning, model };
+  return { content, reasoning, model, toolCalls };
 }
 
 function extractStreamingTextDelta(chunk) {

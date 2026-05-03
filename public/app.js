@@ -1,4 +1,6 @@
-﻿const viewport = document.querySelector("#viewport");
+﻿import { micromark } from "https://esm.sh/micromark@4";
+
+const viewport = document.querySelector("#viewport");
 const board = document.querySelector("#board");
 const groupLayer = document.querySelector("#groupLayer");
 const linkLayer = document.querySelector("#linkLayer");
@@ -447,6 +449,8 @@ const i18n = {
     "chat.thinkingUnavailable": "模型本次没有返回可展开的思考过程。",
     "chat.actionsApplied": "已执行 {count} 个画布操作",
     "chat.scrollBottom": "回到底部",
+    "chat.copyCode": "复制",
+    "chat.copied": "已复制",
     "voice.asr": "语音转文字",
     "voice.asrListening": "正在听写...",
     "voice.asrTranscribing": "正在转写...",
@@ -729,6 +733,8 @@ const i18n = {
     "chat.thinkingUnavailable": "The model did not return an expandable thinking process for this turn.",
     "chat.actionsApplied": "{count} canvas actions applied",
     "chat.scrollBottom": "Scroll to bottom",
+    "chat.copyCode": "Copy",
+    "chat.copied": "Copied!",
     "voice.asr": "Speech to text",
     "voice.asrListening": "Listening...",
     "voice.asrTranscribing": "Transcribing...",
@@ -2541,6 +2547,41 @@ function getChatThreadTitle(thread, index) {
   return title.length > 28 ? `${title.slice(0, 28)}...` : title;
 }
 
+function renderMarkdownToHtml(markdown) {
+  if (!markdown) return "";
+  const rawHtml = micromark(markdown);
+  return DOMPurify.sanitize(rawHtml, {
+    ALLOWED_TAGS: [
+      "p", "h1", "h2", "h3", "h4", "h5", "h6",
+      "ul", "ol", "li", "strong", "em", "code", "pre",
+      "blockquote", "table", "thead", "tbody", "tr", "th", "td",
+      "a", "br", "hr", "div", "span"
+    ],
+    ALLOWED_ATTR: ["href", "target", "rel", "class"],
+    ALLOW_DATA_ATTR: false
+  });
+}
+
+function addCopyButtons(container) {
+  container.querySelectorAll("pre code").forEach((codeBlock) => {
+    const pre = codeBlock.parentElement;
+    if (pre.querySelector(".chat-code-copy")) return;
+    const button = document.createElement("button");
+    button.className = "chat-code-copy";
+    button.textContent = t("chat.copyCode") || "Copy";
+    button.setAttribute("aria-label", t("chat.copyCode") || "Copy code");
+    button.onclick = () => {
+      navigator.clipboard.writeText(codeBlock.textContent).then(() => {
+        button.textContent = t("chat.copied") || "Copied!";
+        setTimeout(() => {
+          button.textContent = t("chat.copyCode") || "Copy";
+        }, 1500);
+      }).catch(() => {});
+    };
+    pre.appendChild(button);
+  });
+}
+
 function renderChatConversationList() {
   if (!chatConversationList) return;
   ensureActiveChatThread();
@@ -3356,12 +3397,10 @@ async function submitChatMessage(message, options = {}) {
   updateChatPrimaryButtonMode();
   updateActiveChatThreadTitle(text);
   appendChatMessage("user", text);
-  const pendingAssistant = effectiveThinkingMode === "thinking"
-    ? appendChatMessage("assistant", "", {
-        pending: true,
-        thinkingRequested: true
-      })
-    : null;
+  const pendingAssistant = appendChatMessage("assistant", "", {
+    pending: true,
+    thinkingRequested: effectiveThinkingMode === "thinking"
+  });
   setStatus(t("status.busy"), "busy");
   if (chatRealtimeButton) chatRealtimeButton.disabled = true;
 
@@ -3408,9 +3447,7 @@ async function submitChatMessage(message, options = {}) {
       subagentsEnabled,
       sessionId: currentSessionId || ""
     };
-    const data = effectiveThinkingMode === "thinking"
-      ? await postStreamingChat("/api/chat", chatPayload, pendingAssistant)
-      : await postJson("/api/chat", chatPayload);
+    const data = await postStreamingChat("/api/chat", chatPayload, pendingAssistant);
     const assistantMeta = {
       pending: false,
       thinkingTrace: data.thinkingTrace || data.trace,
@@ -3419,14 +3456,10 @@ async function submitChatMessage(message, options = {}) {
       actions: data.actions || data.action,
       artifacts: data.artifacts || data.agentPlan || []
     };
-    if (pendingAssistant) {
-      updateChatMessage(pendingAssistant, {
-        content: data.reply || t("chat.systemContext"),
-        ...assistantMeta
-      });
-    } else {
-      appendChatMessage("assistant", data.reply || t("chat.systemContext"), assistantMeta);
-    }
+    updateChatMessage(pendingAssistant, {
+      content: data.reply || t("chat.systemContext"),
+      ...assistantMeta
+    });
     const returnedActions = data?.actions || data?.action;
     if (returnedActions) {
       await applyVoiceActions(returnedActions);
@@ -3435,11 +3468,7 @@ async function submitChatMessage(message, options = {}) {
     autoSave();
   } catch (error) {
     const errorText = error.message || (currentLang === "en" ? "Chat request failed." : "对话请求失败。");
-    if (pendingAssistant) {
-      updateChatMessage(pendingAssistant, { content: errorText, pending: false });
-    } else {
-      appendChatMessage("assistant", errorText);
-    }
+    updateChatMessage(pendingAssistant, { content: errorText, pending: false });
     setStatus(t("status.error"), "error");
   } finally {
     if (chatRealtimeButton) chatRealtimeButton.disabled = false;
@@ -4634,7 +4663,7 @@ async function runSubagentAction(action) {
     } catch {
       imageDataUrl = "";
     }
-    const data = await postJson("/api/chat", {
+    const subagentPayload = {
       message: prompt,
       imageDataUrl,
       analysis: state.latestAnalysis,
@@ -4648,7 +4677,8 @@ async function runSubagentAction(action) {
       thinkingMode: "no-thinking",
       agentMode: false,
       subagentsEnabled: false
-    }, { timeoutMs: 120000 });
+    };
+    const data = await postStreamingChat("/api/chat", subagentPayload, null);
 
     const reply = String(data.reply || "").trim() || (currentLang === "en" ? "Agent task completed." : "Agent 任务已完成。");
     if (node?.option) {
@@ -5718,8 +5748,25 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
 
     if (message.content) {
       const text = document.createElement("span");
-      text.className = "chat-text";
-      text.textContent = message.content;
+      text.className = "chat-text markdown-body";
+      if (message.role === "assistant") {
+        text.innerHTML = renderMarkdownToHtml(message.content);
+        addCopyButtons(text);
+      } else {
+        text.textContent = message.content;
+      }
+      if (message.pending) {
+        const cursor = document.createElement("span");
+        cursor.className = "streaming-cursor";
+        text.appendChild(cursor);
+      }
+      line.appendChild(text);
+    } else if (message.pending) {
+      const text = document.createElement("span");
+      text.className = "chat-text markdown-body";
+      const cursor = document.createElement("span");
+      cursor.className = "streaming-cursor";
+      text.appendChild(cursor);
       line.appendChild(text);
     }
     if (message.role === "assistant" && message.artifacts?.length) {
@@ -8877,6 +8924,7 @@ async function postStreamingChat(url, payload, pendingMessage) {
   let finalData = null;
   let streamError = null;
   let thinkingContent = pendingMessage?.thinkingContent || "";
+  let replyBuffer = "";
 
   function consumeEvent(eventBlock) {
     const lines = eventBlock.split(/\r?\n/).map((line) => line.trim());
@@ -8900,6 +8948,15 @@ async function postStreamingChat(url, payload, pendingMessage) {
           thinkingContent,
           pending: true,
           thinkingRequested: true
+        });
+      }
+    } else if (eventName === "reply") {
+      const delta = data.delta || data.text || "";
+      if (delta && pendingMessage) {
+        replyBuffer += delta;
+        updateChatMessage(pendingMessage, {
+          content: replyBuffer,
+          pending: true
         });
       }
     } else if (eventName === "research") {

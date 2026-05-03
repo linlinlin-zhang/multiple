@@ -5295,3 +5295,102 @@ html[data-theme="dark"] .rich-inline-code {
 .badge-map     { background: linear-gradient(135deg, #22c55e, #16a34a); color: white; }
 .badge-link    { background: linear-gradient(135deg, #f97316, #ea580c); color: white; }
 .badge-code    { background: linear-gradient(135deg, #64748b, #475569); color: white; }
+
+/* Markdown rendering in chat messages */
+.chat-text.markdown-body h1,
+.chat-text.markdown-body h2,
+.chat-text.markdown-body h3 {
+  margin: 12px 0 8px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.chat-text.markdown-body h1 { font-size: 18px; }
+.chat-text.markdown-body h2 { font-size: 16px; }
+.chat-text.markdown-body h3 { font-size: 15px; }
+.chat-text.markdown-body p {
+  margin: 0 0 8px;
+}
+.chat-text.markdown-body ul,
+.chat-text.markdown-body ol {
+  padding-left: 20px;
+  margin: 0 0 8px;
+}
+.chat-text.markdown-body li {
+  margin-bottom: 4px;
+}
+.chat-text.markdown-body code {
+  font-family: 'Space Mono', monospace;
+  font-size: 13px;
+  background: #f0f0f0;
+  padding: 2px 4px;
+  border-radius: 3px;
+}
+.chat-text.markdown-body pre {
+  background: #f5f5f5;
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  position: relative;
+  margin: 8px 0;
+}
+.chat-text.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+}
+.chat-text.markdown-body blockquote {
+  border-left: 3px solid #ccc;
+  padding-left: 12px;
+  margin: 8px 0;
+  color: #666;
+}
+.chat-text.markdown-body table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.chat-text.markdown-body th,
+.chat-text.markdown-body td {
+  border: 1px solid #ddd;
+  padding: 6px 10px;
+  text-align: left;
+}
+.chat-text.markdown-body th {
+  background: #f0f0f0;
+  font-weight: 600;
+}
+.chat-text.markdown-body a {
+  color: #2563eb;
+  text-decoration: none;
+}
+.chat-text.markdown-body a:hover {
+  text-decoration: underline;
+}
+.chat-code-copy {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.1);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: 'Space Mono', monospace;
+  cursor: pointer;
+}
+.chat-code-copy:hover {
+  background: rgba(0,0,0,0.1);
+}
+
+/* Streaming cursor */
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: currentColor;
+  animation: blink 1s step-end infinite;
+  vertical-align: text-bottom;
+  margin-left: 1px;
+}
+@keyframes blink {
+  50% { opacity: 0; }
+}

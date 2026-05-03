@@ -1,6 +1,6 @@
 export { SAFETY_DIRECTIVES, FORMAT_JSON_STRICT, THINKING_FRAMEWORKS, META_DIRECTIVES, CANVAS_ACTION_TYPES, CANVAS_ACTION_TYPES_TEXT } from './shared.js';
 export { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt } from './analysis.js';
-export { buildChatSystemContext, buildChatActionSystemPrompt, buildChatUserPrompt } from './chat.js';
+export { buildChatSystemContext, buildChatUserPrompt } from './chat.js';
 export { buildGeneratePrompt, buildStyleTransferGenerationPrompt, buildVariantGenerationPrompt, buildMultimodalGenerationPrompt } from './generation.js';
 export { buildExplainPrompt, buildExplainSystemPrompt } from './explain.js';
 export { buildRealtimeInstruction } from './voice.js';

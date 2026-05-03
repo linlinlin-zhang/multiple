@@ -1,39 +1,44 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-03T14:00:00Z",
-  "phase": null,
-  "phase_name": "Phase 21 pre-planning",
-  "phase_dir": null,
+  "timestamp": "2026-05-03T15:45:00Z",
+  "phase": "21",
+  "phase_name": "Chat-to-Canvas Reliability & Conversational UX",
+  "phase_dir": ".planning/phases/21-chat-to-canvas",
   "plan": null,
   "task": null,
   "total_tasks": null,
   "status": "paused",
   "completed_tasks": [
-    {"id": 1, "name": "Root-cause analysis: chat→canvas whitelist mismatch and reply length constraints", "status": "done", "commit": "cba57c2"},
-    {"id": 2, "name": "Insert Phase 21 into ROADMAP.md with 6 plans and 9 success criteria", "status": "done", "commit": "uncommitted"},
-    {"id": 3, "name": "Add CC-01..CC-09 requirements to REQUIREMENTS.md, renumber DY/FR/CT/PG to 22-25", "status": "done", "commit": "uncommitted"},
-    {"id": 4, "name": "Update STATE.md milestone to v3.1", "status": "done", "commit": "uncommitted"}
+    {"id": 1, "name": "Phase 21 planning complete (6 plans, 4 waves)", "status": "done", "commit": "3f07271"},
+    {"id": 2, "name": "UI-SPEC.md generated and approved", "status": "done", "commit": "3f07271"},
+    {"id": 3, "name": "RESEARCH.md written with full root-cause analysis", "status": "done", "commit": "3f07271"},
+    {"id": 4, "name": "execute-phase initialized and plan inventory loaded", "status": "done", "commit": "3f07271"},
+    {"id": 5, "name": "Wave 1: Plan 01 — Whitelist Reconciliation", "status": "done", "commit": null},
+    {"id": 6, "name": "Wave 1: Plan 02 — Tool Calling Refactor", "status": "done", "commit": null},
+    {"id": 7, "name": "Wave 2: Plan 03 — Streaming Default", "status": "done", "commit": null},
+    {"id": 8, "name": "Wave 2: Plan 04 — Markdown Rendering", "status": "done", "commit": null}
   ],
   "remaining_tasks": [
-    {"id": 5, "name": "Run /gsd-plan-phase 21 to generate formal PLAN.md with 6 sub-plans", "status": "not_started"},
-    {"id": 6, "name": "Execute Plan 01: Whitelist Reconciliation", "status": "not_started"},
-    {"id": 7, "name": "Execute Plan 02: Tool Calling Refactor", "status": "not_started"},
-    {"id": 8, "name": "Execute Plan 03: Streaming Default", "status": "not_started"},
-    {"id": 9, "name": "Execute Plan 04: Markdown Rendering", "status": "not_started"},
-    {"id": 10, "name": "Execute Plan 05: Fallback & Action Feedback", "status": "not_started"},
-    {"id": 11, "name": "Execute Plan 06: E2E Verification", "status": "not_started"}
+    {"id": 9, "name": "Wave 3: Plan 05 — Fallback & Action Feedback", "status": "not_started"},
+    {"id": 10, "name": "Wave 4: Plan 06 — E2E Verification", "status": "not_started"}
   ],
   "blockers": [],
-  "human_actions_pending": [
-    {"action": "Run /gsd-plan-phase 21 then /gsd-execute-phase 21", "context": "Phase 21 has been scoped but PLAN.md does not exist yet. The gsd-plan-phase orchestrator must create it.", "blocking": true}
-  ],
+  "human_actions_pending": [],
   "decisions": [
-    {"decision": "Insert Phase 21 before original Phase 22 (File Rendering)", "rationale": "Chat-to-Canvas reliability and conversational UX are blocking daily use and higher priority than file rendering.", "phase": "21"},
-    {"decision": "Use OpenAI-style tool calling for chat endpoint", "rationale": "Separates free-form markdown replies from structured canvas actions, removing dual prompt overlap.", "phase": "21"},
-    {"decision": "Use micromark + DOMPurify for markdown rendering", "rationale": "Lightweight, streaming-friendly, secure HTML output for chat messages.", "phase": "21"},
-    {"decision": "Single source of truth for canvas actions: src/prompts/shared.js CANVAS_ACTION_TYPES", "rationale": "Eliminates whitelist mismatch between server.js CANVAS_TOOL_TYPES and prompt module.", "phase": "21"}
+    {"decision": "Use OpenAI-style tool calling for chat endpoint", "rationale": "Separates free-form markdown replies from structured canvas actions", "phase": "21"},
+    {"decision": "Use micromark + DOMPurify for markdown rendering via CDN ESM", "rationale": "Vanilla JS project has no bundler; esm.sh and jsDelivr are reliable", "phase": "21"},
+    {"decision": "Switch public/app.js to script type=module for ESM imports", "rationale": "Required to import micromark from esm.sh", "phase": "21"},
+    {"decision": "Set default max_tokens to 4096 for chat role", "rationale": "Removes artificial length constraints and allows thorough task-oriented replies", "phase": "21"}
   ],
-  "uncommitted_files": [".planning/REQUIREMENTS.md", ".planning/ROADMAP.md", ".planning/STATE.md"],
-  "next_action": "Run '/gsd-plan-phase 21' to generate the formal 6-plan PLAN.md for Chat-to-Canvas Reliability & Conversational UX.",
-  "context_notes": "Full-chain inspection completed. Root causes confirmed: (1) server.js VOICE_ACTION_TYPES whitelist excludes 7 rich node types so normalizeVoiceActions silently drops create_note/plan/todo/weather/map/link/code; (2) three layers of short-reply constraints in chat.js prompts + JSON object mode + system prompt overwrite by action orchestrator cause terse replies; (3) no streaming in no-thinking mode; (4) textContent instead of HTML rendering in chat messages. User explicitly prioritized this above File Rendering. All planning docs updated. Ready for formal plan generation."
+  "uncommitted_files": [
+    "server.js",
+    "src/prompts/shared.js",
+    "src/prompts/chat.js",
+    "src/prompts/index.js",
+    "public/app.js",
+    "public/app.html",
+    "public/styles.css"
+  ],
+  "next_action": "Resume with '/gsd-execute-phase 21' to execute Waves 3 and 4 (Plans 05 + 06).",
+  "context_notes": "Waves 1 and 2 fully implemented. All backend changes (whitelist reconciliation, tool calling refactor) and frontend changes (streaming default, markdown rendering) are complete and syntax-checked. Remaining: Plan 05 (fallback inference refinement + inline action feedback cards) and Plan 06 (E2E verification script with 12+ test scenarios)."
 }
