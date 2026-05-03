@@ -1,11 +1,11 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-03T17:12:03.141Z",
+  "timestamp": "2026-05-04T00:00:00Z",
   "phase": "21",
   "phase_name": "Chat-to-Canvas Reliability & Conversational UX",
   "phase_dir": ".planning/phases/21-chat-to-canvas",
-  "plan": 5,
-  "task": 4,
+  "plan": 6,
+  "task": 6,
   "total_tasks": 6,
   "status": "paused",
   "completed_tasks": [
@@ -13,44 +13,44 @@
     {"id": 2, "name": "Plan 02 — Tool Calling Refactor", "status": "done", "commit": "0f85b18"},
     {"id": 3, "name": "Plan 03 — Streaming Default", "status": "done", "commit": "0f85b18"},
     {"id": 4, "name": "Plan 04 — Markdown Rendering", "status": "done", "commit": "0f85b18"},
-    {"id": 5, "name": "Plan 05 — Fallback & Action Feedback", "status": "done", "commit": "807e529"},
-    {"id": 6, "name": "Post-plan: chat tool-call regression fixes (empty reply, generic action types)", "status": "done", "commit": "064f7a9"},
-    {"id": 7, "name": "Prompt minimal/natural style + max_tokens 32768", "status": "done", "commit": "e066d87"},
-    {"id": 8, "name": "canvas_action schema content-shape documentation + multi-call guidance", "status": "done", "commit": "37759db"},
-    {"id": 9, "name": "Web search heuristic widened to travel/lifestyle keywords", "status": "done", "commit": "b23d12f"},
-    {"id": 10, "name": "Markdown GFM extension (tables / task lists / strikethrough)", "status": "done", "commit": "0323a67"},
-    {"id": 11, "name": "Rich card UI rendering (plan / todo / weather / map / link / code)", "status": "done", "commit": "be10a88"},
-    {"id": 12, "name": "Loosen input/output caps for Qwen3.6 Plus 991K/64K window", "status": "done", "commit": "5d336e5"},
-    {"id": 13, "name": "Front-end text-paste cap widened to 32K", "status": "done", "commit": "4f60c16"},
-    {"id": 14, "name": "Web search: agent_max strategy + forced_search + enable_citation + default-on heuristic", "status": "done", "commit": "807c2db"}
+    {"id": 5, "name": "Plan 05 — Fallback & Action Feedback + Qwen-parity sub-track", "status": "done", "commit": "807c2db", "summary_commit": "db447f2"}
   ],
   "remaining_tasks": [
-    {"id": 15, "name": "Plan 06 — E2E verification script (12+ scenarios)", "status": "not_started", "blocker": "needs_running_dev_server"},
-    {"id": 16, "name": "Plan 06 commit + 21-06-SUMMARY.md", "status": "not_started"},
-    {"id": 17, "name": "Plan 05 commit + 21-05-SUMMARY.md (Plan 05 already shipped in 807e529 but no SUMMARY.md yet)", "status": "not_started"},
-    {"id": 18, "name": "Phase 21 verification (gsd-verifier subagent + gates)", "status": "not_started"},
-    {"id": 19, "name": "Update STATE.md + ROADMAP.md (mark Phase 21 ✅, advance v3.1 to 1/6)", "status": "not_started"},
-    {"id": 20, "name": "Verify agent_max strategy is accepted by qwen3.6-plus in production (fall back to agent if rejected)", "status": "not_started"}
+    {"id": 6, "name": "Commit server.js:774 path-B fix (search_strategy: agent_max → max)", "status": "uncommitted", "blocker": "working_tree_dirty"},
+    {"id": 7, "name": "Plan 06 — E2E verification script (12+ chat→canvas scenarios)", "status": "not_started", "blocker": "needs_running_dev_server"},
+    {"id": 8, "name": "21-06-SUMMARY.md", "status": "not_started"},
+    {"id": 9, "name": "Phase 21 verification (gsd-verifier subagent + gates)", "status": "not_started"},
+    {"id": 10, "name": "Update STATE.md + ROADMAP.md (mark Phase 21 ✅, advance v3.1 to 1/6)", "status": "not_started"},
+    {"id": 11, "name": "Production smoke test: confirm `max` strategy works on current qwen3.6-plus snapshot", "status": "not_started"},
+    {"id": 12, "name": "/gsd-new-milestone v3.2 'Qwen Web Parity' (after Phase 21 ships)", "status": "not_started"},
+    {"id": 13, "name": "/gsd-phase add 26 'Responses API Migration' + /gsd-plan-phase 26", "status": "not_started"}
   ],
   "blockers": [
-    {"id": "B1", "description": "Plan 06 marked autonomous: false — needs npm run dev running concurrently with npm run test:chat", "type": "human_action"},
-    {"id": "B2", "description": "agent_max search_strategy may not be supported on every qwen3.6-plus snapshot — needs production smoke test", "type": "external", "workaround": "fall back to search_strategy: 'agent' or 'max' if API rejects"}
+    {"id": "B1", "description": "Plan 06 needs `npm run dev` running in a second terminal", "type": "human_action", "workaround": "User starts dev server before resuming"},
+    {"id": "B2", "description": "DashScope `agent_max` (and `agent`) search_strategy puts the API into Agent mode, which is mutually exclusive with custom `tools: CANVAS_TOOLS`. This is what produced the chat 400 error this session.", "type": "technical", "workaround": "Path-B fix applied at server.js:774 — fell back to `max` (multi-round, non-agent). v3.2 phase 26 will properly migrate to DashScope Responses API where builtin agent tools coexist with custom function tools."},
+    {"id": "B3", "description": "PostgreSQL not running locally", "type": "external", "workaround": "Long-standing v1.0 blocker; not relevant to Phase 21"}
   ],
   "human_actions_pending": [
-    {"action": "Browser smoke test the parity-with-Qwen improvements", "context": "Confirm agent_max search fires + GFM tables render + plan card shows steps when asking '三天深圳行程' or similar", "blocking": false},
-    {"action": "Start npm run dev in a terminal so resuming agent can run Plan 06 E2E tests", "context": "Plan 06 marked autonomous: false", "blocking": true}
+    {"action": "Commit the server.js:774 path-B fix", "context": "Edit applied this session: `search_strategy: options.strategy || \"agent_max\"` → `search_strategy: options.strategy || \"max\"`. Suggested commit message: `fix(21): fall back search_strategy to max to unblock CANVAS_TOOLS coexistence`", "blocking": true},
+    {"action": "Start `npm run dev` in a second terminal", "context": "Plan 06 verification needs the live server", "blocking": true},
+    {"action": "Production smoke test of `max` strategy", "context": "If the current qwen3.6-plus snapshot rejects `max`, fall back to omitting `search_strategy` entirely (plain enable_search). Phase 26 (Responses API) eliminates this fragility.", "blocking": false}
   ],
   "decisions": [
-    {"decision": "Switch search_strategy from turbo to agent_max", "rationale": "Match official Qwen app multi-round agentic search ('几十个网页')", "phase": "21", "commit": "807c2db"},
-    {"decision": "Default web search ON with negation block-list", "rationale": "Generality over allow-list — covers any non-trivial query, only suppresses chitchat / canvas-ops / pure code / pure creative", "phase": "21", "commit": "807c2db"},
+    {"decision": "Apply path-B one-line fix (search_strategy: agent_max → max) to unblock chat 400", "rationale": "agent_max puts DashScope into Agent mode which forbids custom `tools` array. `max` keeps multi-round search behavior without agent orchestration, so CANVAS_TOOLS continues to work.", "phase": "21"},
+    {"decision": "Open new v3.2 milestone 'Qwen Web Parity' instead of extending v3.1", "rationale": "v3.1 was scoped for chat reliability + dynamic dirs + file rendering + context + parallel gen. The Qwen-web-parity work (Responses API, document chat, image polish, video, voice, deep research viz, embedding upgrade) is materially new scope and deserves its own milestone story.", "phase": "v3.2 planning"},
+    {"decision": "v3.2 will have 7 sequential phases (26-32)", "rationale": "User chose conservative sequential execution over parallel tracks. Phase 26 (Responses API Migration) is the keystone — once builtin agent tools coexist with CANVAS_TOOLS, all later phases simplify.", "phase": "v3.2 planning"},
+    {"decision": "Phase 26 will migrate the chat endpoint to DashScope Responses API", "rationale": "Only the Responses API allows builtin web_search + code_interpreter + web_extractor to coexist with user-defined function tools. This permanently eliminates the agent-mode-vs-tools tradeoff that forced path-B fix.", "phase": "26 (planned)"},
+    {"decision": "Choose `max` over `agent` for path-B fallback", "rationale": "`agent` ALSO forbids tools (it's the same Agent mode behind agent_max). `max` is the highest non-agent multi-round tier.", "phase": "21"},
+    {"decision": "Keep forced_search + enable_citation + enable_source", "rationale": "Those are non-agent options and do not interact with the tools array — preserved through the fix.", "phase": "21"},
+    {"decision": "Switch search_strategy from turbo to agent_max", "rationale": "Match official Qwen app multi-round agentic search ('几十个网页')", "phase": "21", "commit": "807c2db", "superseded_by": "path-B fix this session"},
+    {"decision": "Default web search ON with negation block-list", "rationale": "Generality over allow-list", "phase": "21", "commit": "807c2db"},
     {"decision": "enable_citation: true with citation_format [ref_<n>]", "rationale": "Inline source markers so the answer is verifiable", "phase": "21", "commit": "807c2db"},
     {"decision": "Raise chat default max_tokens 32768 → 65536", "rationale": "Qwen3.6 Plus advertises 64K output", "phase": "21", "commit": "5d336e5"},
-    {"decision": "Raise message history depth 8 → 40 turns, per-msg 1200 → 8000 chars", "rationale": "Qwen3.6 Plus has 991K input window — old caps wasted it", "phase": "21", "commit": "5d336e5"},
-    {"decision": "Add option-rich-content slot + renderRichNodeContent helper", "rationale": "optionTemplate previously had no place for plan.steps/todo.items/etc — cards looked empty even with full content payload", "phase": "21", "commit": "be10a88"},
-    {"decision": "Use micromark-extension-gfm for chat reply rendering", "rationale": "Bare CommonMark micromark@4 doesn't emit tables/task-lists/del — Qwen-style answers stayed unrendered", "phase": "21", "commit": "0323a67"},
+    {"decision": "Add option-rich-content slot + renderRichNodeContent helper", "rationale": "optionTemplate previously had no place for plan.steps/todo.items/etc", "phase": "21", "commit": "be10a88"},
+    {"decision": "Use micromark-extension-gfm for chat reply rendering", "rationale": "Bare CommonMark micromark@4 doesn't emit tables/task-lists/del", "phase": "21", "commit": "0323a67"},
     {"decision": "Document content shapes per nodeType in canvas_action tool schema", "rationale": "Model needs to know content.steps shape; without it create_plan fired with only a title", "phase": "21", "commit": "37759db"}
   ],
-  "uncommitted_files": [],
-  "next_action": "Resume with /gsd-resume-work or /gsd-execute-phase 21. Browser-verify the parity improvements first (agent_max search, GFM tables, rich plan cards), then write 21-05-SUMMARY.md, then start Plan 06 (needs npm run dev running).",
-  "context_notes": "Wave 3 of phase 21 was originally about Plan 05 fallback feedback. After that shipped, the user pushed for parity with the official Qwen app on three axes: web search invocation, rich markdown rendering, answer depth. This session closed all three: agent_max strategy + forced_search + enable_citation (commit 807c2db); GFM tables/task lists/del rendered via micromark-extension-gfm (0323a67); and the biggest one — rich card UI rendering so plan/todo/weather/map/link/code cards show their content payload (be10a88). Also loosened input/output caps to match Qwen3.6 Plus 991K/64K window (5d336e5 + 4f60c16). Remaining: Plan 06 E2E (needs dev server), retroactive Plan 05 SUMMARY.md, phase verification + STATE/ROADMAP update."
+  "uncommitted_files": ["server.js", ".planning/STATE.md"],
+  "next_action": "1. git diff server.js — review the one-line path-B fix at line 774. 2. Commit it: `fix(21): fall back search_strategy to max to unblock CANVAS_TOOLS coexistence`. 3. Start `npm run dev`. 4. Execute Plan 06 E2E (12+ scenarios). 5. Production smoke test. 6. Write 21-06-SUMMARY.md. 7. Phase 21 verification + STATE.md/ROADMAP.md update. 8. /gsd-new-milestone v3.2 'Qwen Web Parity'. 9. /gsd-phase add 26 'Responses API Migration' + /gsd-plan-phase 26.",
+  "context_notes": "This session deeply analyzed the full DashScope API surface (10 capability groups: Chat Completions / Responses / Application API / Files+qwen-long / qwen-deep-research streaming / qwen-image sync+async+edit / wan2.x video / qwen3.5-omni-plus-realtime websocket + ASR + TTS / qwen-mt translation / text-embedding-v4 + gte-rerank-v2). Key discovery: `search_strategy: agent_max` is Qwen-web's private internal tier (not in DashScope public docs) — it triggers Agent mode, which is mutually exclusive with `tools: [...]`. This explained the user's chat 400 error. Three fix paths identified: (A) Migrate to DashScope Responses API where builtin web_search + custom function tools coexist [proper, scoped as v3.2 phase 26]; (B) One-line `search_strategy` change to `max` [path B, applied this session]; (C) Client-side Qwen-Agent orchestration [out of scope]. v3.2 plan covers 7 sequential phases agreed with the user: 26 Responses API Migration / 27 Document Chat (Files API + qwen-long 10M ctx) / 28 Image Generation Polish (qwen-image-max async + edit) / 29 Video Generation (wan2.x text/image/first-last-frame/s2v) / 30 Voice (qwen3.5-omni-plus-realtime + qwen3-asr-flash + qwen3-tts-flash + cosyvoice) / 31 Deep Research Visualization (streamingWebResult/WebResultFinished/KeepAlive phase UI) / 32 Embedding Upgrade (text-embedding-v4 + gte-rerank-v2 for material library RAG). When resuming: DO NOT redo the analysis or re-litigate the v3.2 plan — it's agreed. Just execute: commit fix → run E2E → ship phase 21 → /gsd-new-milestone."
 }
