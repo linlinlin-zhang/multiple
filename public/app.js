@@ -9013,7 +9013,7 @@ async function handleAttachment(file) {
   } else if (file.type.startsWith("text/") || file.name.endsWith(".txt") || file.name.endsWith(".md") || file.name.endsWith(".json")) {
     try {
       const text = await file.text();
-      chatInput.value = text.slice(0, 2000);
+      chatInput.value = text.slice(0, 32000);
       chatInput.focus();
       showChatAttachmentPreview(file);
     } catch (err) {
