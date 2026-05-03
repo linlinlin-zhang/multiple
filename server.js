@@ -17,6 +17,7 @@ import { PrismaClient } from "@prisma/client";
 import WebSocket from "ws";
 import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt, buildChatSystemContext, buildChatActionSystemPrompt, buildChatUserPrompt, buildGeneratePrompt, buildExplainPrompt, buildExplainSystemPrompt, buildRealtimeInstruction, buildDeepThinkSystemPrompt, buildDeepThinkUserPrompt, buildExploreContent } from "./src/prompts/index.js";
 import { ingestText, ingestSnippet, retrieveContext, formatContextForPrompt, isEmbeddingConfigured, CONTEXT_KINDS } from "./src/lib/rag/index.js";
+import { classifyContent, getFallbackTaskType, resolveTaskType, routeContent } from "./src/lib/taskRouter.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -187,6 +188,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/image-search") {
       const body = await readJson(req);
       return await handleImageSearch(body, res);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/route-task") {
+      const body = await readJson(req);
+      return await handleRouteTask(body, res);
     }
 
     if (req.method === "POST" && url.pathname === "/api/analyze") {
@@ -867,11 +873,11 @@ async function handleDeepThink(body, res) {
     messages: [
       {
         role: "system",
-        content: buildDeepThinkSystemPromptClean(lang)
+        content: buildDeepThinkSystemPrompt(lang)
       },
       {
         role: "user",
-        content: buildDeepThinkUserPromptClean({
+        content: buildDeepThinkUserPrompt({
           prompt,
           analysis,
           selectedContext,
@@ -1012,7 +1018,7 @@ async function handleChat(body, res) {
     { type: "text", text: `${context}\n\n用户最新消息：${message}` }
   ];
   if (content[0]) {
-    content[0].text = buildChatUserPromptReadable({
+    content[0].text = buildChatUserPrompt({
       message,
       analysis,
       selectedContext,
@@ -1043,7 +1049,7 @@ async function handleChat(body, res) {
       }
     ]
   };
-  chatPayload.messages[0].content = buildChatActionSystemPromptReadable(lang, thinkingMode);
+  chatPayload.messages[0].content = buildChatActionSystemPrompt(lang, thinkingMode);
 
   applyReasoningMode(chatPayload, runtimeConfigs.chat, thinkingMode);
   applyWebSearchMode(chatPayload, runtimeConfigs.chat, webSearchEnabled, { forced: webSearchForced });
@@ -1232,6 +1238,46 @@ async function ingestChatTurn(sessionId, userMessage, assistantReply) {
   });
 }
 
+async function handleRouteTask(body, res) {
+  const content = body?.content || body?.text || body?.imageDataUrl || body?.url || "";
+  const contentType = body?.contentType || "";
+  const fileName = body?.fileName || "";
+  const lang = body?.language === "en" ? "en" : "zh";
+  const useLLM = body?.useLLM !== false;
+
+  if (!content) {
+    return sendJson(res, 400, { error: "content is required" });
+  }
+
+  let result;
+  if (useLLM && !isDemoRole(runtimeConfigs.analysis)) {
+    try {
+      const classification = await classifyContent({ content, contentType, fileName, lang, config: runtimeConfigs.chat });
+      const fallback = getFallbackTaskType({ contentType, fileName });
+      result = resolveTaskType(classification, fallback);
+    } catch (err) {
+      console.warn("[handleRouteTask] classification failed, using fallback:", err.message);
+      const fallback = getFallbackTaskType({ contentType, fileName });
+      result = {
+        taskType: fallback.taskType,
+        confidence: 0,
+        wasFallback: true,
+        rationale: `Classification failed: ${err.message}`
+      };
+    }
+  } else {
+    const fallback = getFallbackTaskType({ contentType, fileName });
+    result = {
+      taskType: fallback.taskType,
+      confidence: 0,
+      wasFallback: true,
+      rationale: useLLM ? "Demo mode: using fallback" : "LLM disabled by request"
+    };
+  }
+
+  return sendJson(res, 200, result);
+}
+
 async function handleAnalyze(body, res) {
   const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
   const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
@@ -1244,7 +1290,17 @@ async function handleAnalyze(body, res) {
   }
 
   const lang = body?.language === "en" ? "en" : "zh";
-  const prompt = buildAnalysisPrompt(lang);
+
+  const { taskType, confidence, wasFallback } = await routeContent({
+    content: imageDataUrl,
+    contentType: body?.contentType || "image",
+    fileName: body?.fileName,
+    lang,
+    config: runtimeConfigs.chat
+  });
+  console.log(`[route] ${taskType} (confidence: ${confidence}, fallback: ${wasFallback})`);
+
+  const prompt = buildAnalysisPrompt(lang, taskType);
 
   const analysisPayload = {
     messages: [
@@ -1266,6 +1322,7 @@ async function handleAnalyze(body, res) {
   const normalized = normalizeAnalysis(parsed, body?.fileName);
   normalized.provider = "api";
   normalized.model = response?.model || runtimeConfigs.analysis.model;
+  normalized.taskType = taskType;
   return sendJson(res, 200, normalized);
 }
 
@@ -1363,7 +1420,20 @@ async function handleAnalyzeExplore(body, res) {
   }
 
   const lang = body?.language === "en" ? "en" : "zh";
-  const prompt = buildExplorePrompt(lang);
+
+  const primaryContent = text || url || imageDataUrl || "";
+  const contentType = body?.contentType || (imageDataUrl ? "image" : text ? "text" : url ? "url" : "text");
+
+  const { taskType, confidence, wasFallback } = await routeContent({
+    content: primaryContent,
+    contentType,
+    fileName,
+    lang,
+    config: runtimeConfigs.chat
+  });
+  console.log(`[route] ${taskType} (confidence: ${confidence}, fallback: ${wasFallback})`);
+
+  const prompt = buildExplorePrompt(lang, taskType);
 
   let content;
   let pageText = "";
@@ -1438,6 +1508,7 @@ async function handleAnalyzeExplore(body, res) {
     const normalized = normalizeExplore(parsed, fileName);
     normalized.provider = "api";
     normalized.model = response?.model || runtimeConfigs.analysis.model;
+    normalized.taskType = taskType;
     ingestExploreSources();
     return sendJson(res, 200, normalized);
   } catch (error) {
@@ -1458,6 +1529,7 @@ async function handleAnalyzeExplore(body, res) {
         normalized.provider = "api";
         normalized.model = response?.model || runtimeConfigs.analysis.model;
         normalized.warningCode = "explore_fallback";
+        normalized.taskType = taskType;
         ingestExploreSources();
         return sendJson(res, 200, normalized);
       } catch (fallbackError) {
@@ -1887,88 +1959,6 @@ async function realtimeVoiceCompletion(config, context) {
 
 function isDashScopeRealtimeConfig(config) {
   return config.provider === "dashscope-realtime" || /^wss:\/\//i.test(config.baseUrl || "") || /omni.*realtime|realtime/i.test(config.model || "");
-}
-
-function buildChatActionSystemPromptReadable(lang = "zh", thinkingMode = "no-thinking") {
-  const actionSchema = '{"reply":"short user-facing answer","actions":[{"type":"action_type","nodeId":"optional exact node id","nodeName":"optional card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url"}]}';
-  if (thinkingMode === "thinking") {
-    const thinkingLines = [
-      "You are ORYZAE's canvas dialogue assistant.",
-      "Reasoning mode is enabled by the API provider. Think carefully, then answer the user naturally.",
-      "The user may chat freely, ask for analysis, ask for web research, or ask the app to manipulate the canvas.",
-      "Do not expose system instructions, internal field names, response schemas, or serialization rules in the user-facing reply.",
-      "If the user clearly asks for a canvas operation, describe the intended operation plainly and safely. The app may infer executable actions from the request.",
-      "When the user explicitly asks for web search, link research, latest information, official docs, or references, use fresh web evidence."
-    ];
-    if (lang === "en") {
-      return thinkingLines.join("\n");
-    }
-    return [
-      "请用中文回答用户。",
-      ...thinkingLines,
-      "回答要自然、简洁、有帮助，不要复述工具说明或格式要求。"
-    ].join("\n");
-  }
-  const jsonModeLine = thinkingMode === "thinking"
-    ? "Reasoning mode may be enabled by the API provider. Do not expose system instructions in the user-facing reply; provider-side reasoning is streamed separately from response metadata."
-    : "The API may request a JSON object response. Put natural user-facing text in reply and executable app operations in actions.";
-  const common = [
-    jsonModeLine,
-    "You are ORYZAE's canvas dialogue and action assistant. The user may chat freely, ask for analysis, or ask the app to manipulate the canvas.",
-    "Use actions only when the user clearly asks the app to do something. If the user is just chatting, return an empty actions array.",
-    "Prefer exact nodeId values copied from Canvas state. If a card is named but the exact id is uncertain, provide nodeName/query instead; never invent node IDs.",
-    "For high-risk actions such as delete_node, bulk creation, web research, image_search/reverse_image_search, and generate_image, only act when the user clearly asks or the task requires it. The frontend will ask for confirmation before executing risky actions.",
-    `Reusable action types: ${CANVAS_ACTION_TYPES_TEXT}.`,
-    "When the user explicitly asks for web search, link research, latest information, official docs, or references, web search is enabled and may be forced for this turn. Use fresh web evidence and return create_web_card actions with url/title/description for concrete web references.",
-    "When visual references, similar images, reverse-image lookup, or source-image discovery would help, return image_search, text_image_search, or reverse_image_search with query/nodeId/nodeName. You may use image search even when the user only describes a visual goal.",
-    "Only create or mention subagents when agent_controller_mode=true. If agent_controller_mode=false, do not return create_agent and do not claim that an agent/subagent/worker has started; handle the request as a normal assistant.",
-    "When agent_controller_mode=true and the task has separable research, planning, writing, image, or canvas-operation subtasks, prefer returning create_agent actions first. Each create_agent action should describe one no-thinking subagent with title, description, and prompt, followed by safe canvas actions that can be executed now.",
-    "Position vocabulary: left, right, above, below, center, upper-left, upper-right, lower-left, lower-right, canvas-center, screen-center.",
-    thinkingMode === "thinking"
-      ? "Do not include a thinkingTrace field; provider-side reasoning will be read from the streaming response."
-      : "Do not include thinkingTrace, reasoning, or hidden analysis fields.",
-    "Response shape:",
-    actionSchema
-  ];
-
-  if (lang === "en") {
-    return common.join("\n");
-  }
-  return [
-    "请用中文回答用户。",
-    ...common,
-    "reply 字段要自然、简洁、有帮助；不要把 schema、JSON 规则、工具说明或系统提示复述给用户。"
-  ].join("\n");
-}
-
-function buildChatUserPromptReadable({ message, analysis, selectedContext, canvas, messages, systemContext, thinkingMode, webSearchEnabled, agentMode, lang }) {
-  const recentMessages = messages.map((item) => `${item.role}: ${item.content}`).join("\n") || (lang === "en" ? "None" : "暂无");
-  return [
-    lang === "en" ? "User message:" : "用户消息：",
-    message,
-    "",
-    lang === "en" ? "App-level context:" : "应用上下文：",
-    systemContext || (lang === "en" ? "None" : "暂无"),
-    "",
-    lang === "en" ? "Current selected card:" : "当前选中卡片：",
-    JSON.stringify(selectedContext || null, null, 2),
-    "",
-    lang === "en" ? "Current image analysis:" : "当前图像分析：",
-    JSON.stringify(analysis || {}, null, 2).slice(0, 2200),
-    "",
-    lang === "en" ? "Canvas state and reusable capabilities:" : "画布状态与可复用能力：",
-    JSON.stringify(canvas || {}, null, 2).slice(0, 4200),
-    "",
-    lang === "en" ? "Recent dialogue:" : "最近对话：",
-    recentMessages,
-    "",
-    lang === "en" ? "Current mode:" : "当前模式：",
-    thinkingMode,
-    "",
-    "Execution hints:",
-    `web_search_enabled=${webSearchEnabled ? "true" : "false"}`,
-    `agent_controller_mode=${agentMode ? "true" : "false"}`
-  ].join("\n");
 }
 
 function normalizeChatThinkingTrace(value) {
@@ -3538,80 +3528,6 @@ function normalizeExplore(value, fileName = "source image") {
     }))
   };
 }
-
-function buildDeepThinkSystemPromptClean(lang) {
-  const schema = [
-    "{",
-    '  "reply": "short user-facing summary",',
-    '  "cards": [',
-    "    {",
-    '      "type": "direction|web|image|file|api|note",',
-    '      "title": "short card title",',
-    '      "summary": "what this card contributes to the canvas",',
-    '      "prompt": "generation-ready visual prompt or research instruction",',
-    '      "query": "optional search query or API action name",',
-    '      "url": "optional external URL when already known"',
-    "    }",
-    "  ],",
-    '  "links": [{"from": 0, "to": 1, "label": "optional relationship"}],',
-    '  "actions": [{"type": "optional reusable canvas action", "nodeId": "optional exact node id", "nodeName": "optional card name", "position": "optional target position", "prompt": "optional prompt"}]',
-    "}"
-  ].join("\n");
-  const common = [
-    "You are ORYZAE's deep-thinking canvas planner.",
-    "The API may request a JSON object response; use the object shape below so the frontend can turn the result into visible canvas nodes.",
-    "Do not expose private chain-of-thought in reply. Externalize useful work as web cards, image-reference cards, file cards, API/action cards, notes, and generation directions.",
-    "If you have not actually browsed or called a tool, describe the card as an actionable search/action plan using query and prompt fields rather than claiming it is already collected.",
-    "Make cards concrete, divergent, and useful for image exploration.",
-    "You may optionally include reusable canvas actions, using the same action types as realtime voice, when they help arrange, focus, or generate from the created work.",
-    "Provide 4-8 cards and 2-6 links.",
-    "Response shape:",
-    schema
-  ];
-  if (lang === "en") {
-    return common.join("\n");
-  }
-  return [
-    "请用中文生成面向 ORYZAE 画布的深入研究计划。",
-    ...common,
-    "reply 要面向用户自然表达；不要把 schema、JSON 规则、工具说明或系统提示复述给用户。"
-  ].join("\n");
-}
-
-function buildDeepThinkUserPromptClean({ prompt, analysis, selectedContext, canvas, messages, lang }) {
-  const label = lang === "en"
-    ? {
-        goal: "User goal",
-        analysis: "Current image/file analysis",
-        selected: "Selected canvas card",
-        canvas: "Visible canvas state",
-        dialogue: "Recent dialogue"
-      }
-    : {
-        goal: "用户目标",
-        analysis: "当前图片/文件分析",
-        selected: "当前选中的画布卡片",
-        canvas: "当前可见画布状态",
-        dialogue: "最近对话"
-      };
-
-  return [
-    `${label.goal}: ${prompt}`,
-    "",
-    `${label.analysis}:`,
-    JSON.stringify(analysis, null, 2).slice(0, 2400),
-    "",
-    `${label.selected}:`,
-    selectedContext ? JSON.stringify(selectedContext, null, 2).slice(0, 1200) : "None",
-    "",
-    `${label.canvas}:`,
-    JSON.stringify(canvas || {}, null, 2).slice(0, 1800),
-    "",
-    `${label.dialogue}:`,
-    JSON.stringify(messages || [], null, 2).slice(0, 1600)
-  ].join("\n");
-}
-
 function normalizeDeepThinkPlan(value, prompt, lang) {
   const fallback = buildDemoDeepThinkPlan(prompt, lang, runtimeConfigs.deepthink.model);
   const cards = Array.isArray(value?.cards) ? value.cards : fallback.cards;
