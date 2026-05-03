@@ -4,9 +4,9 @@ export function buildRealtimeInstruction(context) {
     .map((item) => `${item.role}: ${item.content}`)
     .join("\n") || "None";
   const selected = context.selectedContext
-    ? JSON.stringify(context.selectedContext).slice(0, 1200)
+    ? JSON.stringify(context.selectedContext).slice(0, 8000)
     : "None";
-  const canvas = JSON.stringify(context.canvas || {}).slice(0, 3600);
+  const canvas = JSON.stringify(context.canvas || {}).slice(0, 24000);
 
   return [
     "# Role",
@@ -44,7 +44,7 @@ export function buildRealtimeInstruction(context) {
     selected,
     "",
     "Current analysis:",
-    JSON.stringify(context.analysis || {}).slice(0, 1600),
+    JSON.stringify(context.analysis || {}).slice(0, 12000),
     "",
     "Canvas state:",
     canvas,

@@ -117,15 +117,15 @@ export function buildDeepThinkUserPrompt({ prompt, analysis, selectedContext, ca
     `${label.goal}: ${prompt}`,
     "",
     `${label.analysis}:` ,
-    JSON.stringify(analysis, null, 2).slice(0, 2400),
+    JSON.stringify(analysis, null, 2).slice(0, 16000),
     "",
     `${label.selected}:` ,
-    selectedContext ? JSON.stringify(selectedContext, null, 2).slice(0, 1200) : "None",
+    selectedContext ? JSON.stringify(selectedContext, null, 2).slice(0, 8000) : "None",
     "",
     `${label.canvas}:` ,
-    JSON.stringify(canvas || {}, null, 2).slice(0, 1800),
+    JSON.stringify(canvas || {}, null, 2).slice(0, 32000),
     "",
     `${label.dialogue}:` ,
-    JSON.stringify(messages || [], null, 2).slice(0, 1600)
+    JSON.stringify(messages || [], null, 2).slice(0, 12000)
   ].join("\n");
 }

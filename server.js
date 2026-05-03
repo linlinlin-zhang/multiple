@@ -37,7 +37,7 @@ let runtimeConfigs = {
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     apiKeyEnv: ["DASHSCOPE_API_KEY", "CHAT_API_KEY"],
     options: {
-      max_tokens: 32768
+      max_tokens: 65536
     }
   }),
   analysis: buildModelConfig("ANALYSIS", {
@@ -911,7 +911,7 @@ async function handleRealtimeVoice(body, res) {
 }
 
 async function handleDeepThink(body, res) {
-  const message = typeof body?.message === "string" ? body.message.trim().slice(0, 2400) : "";
+  const message = typeof body?.message === "string" ? body.message.trim().slice(0, 32000) : "";
   const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
   const analysis = normalizeChatAnalysis(body?.analysis);
   const messages = normalizeChatMessages(body?.messages);
@@ -930,7 +930,7 @@ async function handleDeepThink(body, res) {
       analysis,
       selectedContext,
       canvas,
-      messages: messages.slice(-8),
+      messages: messages.slice(-40),
       imageDataUrl,
       lang,
       stream: body?.stream === true
@@ -953,7 +953,7 @@ async function handleDeepThink(body, res) {
           analysis,
           selectedContext,
           canvas,
-          messages: messages.slice(-8),
+          messages: messages.slice(-40),
           lang
         })
       }
@@ -1034,7 +1034,7 @@ async function handleImageSearch(body, res) {
 }
 
 async function handleChat(body, res) {
-  const message = typeof body?.message === "string" ? body.message.trim().slice(0, 2000) : "";
+  const message = typeof body?.message === "string" ? body.message.trim().slice(0, 32000) : "";
   const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
   const analysis = normalizeChatAnalysis(body?.analysis);
   const messages = normalizeChatMessages(body?.messages);
@@ -1060,7 +1060,7 @@ async function handleChat(body, res) {
   const lang = body?.language === "en" ? "en" : "zh";
   const selectedContext = body?.selectedContext && typeof body.selectedContext === "object" ? body.selectedContext : null;
   const canvas = body?.canvas && typeof body.canvas === "object" ? body.canvas : {};
-  let systemContext = typeof body?.systemContext === "string" ? body.systemContext.slice(0, 4000) : "";
+  let systemContext = typeof body?.systemContext === "string" ? body.systemContext.slice(0, 32000) : "";
 
   // Session-scoped RAG: retrieve relevant chunks before the LLM call.
   // Falls through silently when sessionId is missing or embeddings aren't configured.
@@ -2472,16 +2472,16 @@ function buildDeepResearchPrompt({ prompt, analysis, selectedContext, canvas, me
     zh ? `用户目标：${prompt}` : `User goal: ${prompt}`,
     "",
     zh ? "当前图像/文件分析：" : "Current image/file analysis:",
-    JSON.stringify(analysis || {}, null, 2).slice(0, 2400),
+    JSON.stringify(analysis || {}, null, 2).slice(0, 16000),
     "",
     zh ? "当前选中卡片：" : "Selected canvas card:",
-    selectedContext ? JSON.stringify(selectedContext, null, 2).slice(0, 1400) : "None",
+    selectedContext ? JSON.stringify(selectedContext, null, 2).slice(0, 8000) : "None",
     "",
     zh ? "可见画布状态：" : "Visible canvas state:",
-    JSON.stringify(canvas || {}, null, 2).slice(0, 2400),
+    JSON.stringify(canvas || {}, null, 2).slice(0, 32000),
     "",
     zh ? "最近对话：" : "Recent dialogue:",
-    JSON.stringify(messages || [], null, 2).slice(0, 1600)
+    JSON.stringify(messages || [], null, 2).slice(0, 12000)
   ].join("\n");
 }
 
@@ -3718,10 +3718,10 @@ function normalizeChatAnalysis(value) {
 function normalizeChatMessages(value) {
   if (!Array.isArray(value)) return [];
   return value
-    .slice(-8)
+    .slice(-40)
     .map((item) => ({
       role: item?.role === "assistant" ? "assistant" : "user",
-      content: typeof item?.content === "string" ? item.content.trim().slice(0, 1200) : ""
+      content: typeof item?.content === "string" ? item.content.trim().slice(0, 8000) : ""
     }))
     .filter((item) => item.content);
 }
