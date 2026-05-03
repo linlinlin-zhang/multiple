@@ -64,6 +64,10 @@ const chatAsrAcceptButton = document.querySelector("#chatAsrAcceptButton");
 const navToggle = document.querySelector("#navToggle");
 const urlInput = document.querySelector("#urlInput");
 const urlAnalyzeButton = document.querySelector("#urlAnalyzeButton");
+const cardSearchBar = document.querySelector("#cardSearchBar");
+const cardSearchInput = document.querySelector("#cardSearchInput");
+const cardSearchResults = document.querySelector("#cardSearchResults");
+const chatAttachmentPreview = document.querySelector("#chatAttachmentPreview");
 
 const settingsPanel = document.querySelector("#settingsPanel");
 const settingsBtn = document.querySelector("#settingsBtn");
@@ -145,7 +149,7 @@ const state = {
 
 const settingsCache = {
   currentRole: "analysis",
-  analysis: { endpoint: "", model: "", apiKey: "", temperature: 0.7, options: {} },
+  analysis: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: {} },
   chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: {} },
   image: {
     endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
@@ -523,13 +527,13 @@ const i18n = {
     "health.api": "api",
     "health.mixed": "mixed",
     "chat.systemContext": "你是这个画布式图片生成应用里的创意对话助手。你的任务是帮助用户理解当前图片、比较分支方向、提出新的生成建议，或把用户的想法整理成可执行的视觉方向。回答用中文，保持简洁，通常 1-3 句。不要假装已经生成了新图片；如果用户想生成，请建议他点击方向节点或说明你会如何改提示词。",
-    "chat.systemRole": "你是 Kimi K2.6 no thinking 模式下的创意对话助手。回答简洁、直接、可执行。",
+    "chat.systemRole": "你是 ORYZAE 的 Qwen 画布助手。回答简洁、直接、可执行。",
     "chat.selectedCardContext": "当前用户正在与画布上的以下卡片对话：\n类型：{type}\n标题：{title}\n内容摘要：{summary}",
     "chat.selectedCardPrompt": "提示词：{prompt}",
     "analysis.systemPrompt": "你是一个视觉创意导演，正在为一个画布式图片生成应用分析用户上传的图片。请快速理解图片内容、主体、氛围、可延展的叙事方向，并给出 5 个不同的成图方向。这些方向会作为画布上的分支节点展示，用户点击后会调用成图模型。请只返回严格 JSON，不要 Markdown，不要代码块。",
     "generate.systemPrompt": "请基于参考图生成一张新图，保留原图最重要的主体、颜色关系或视觉记忆点，但不要只是复制。成图方向：{title}\n\n方向说明：{description}\n\n详细提示词：{prompt}\n\n输出应是一张完整、可独立展示的图片；构图清晰；不要添加水印、UI 截图边框或说明文字。",
     "explain.systemContext": "你是一位视觉创意评论助手，正在为画布式图片生成应用中的每张生成图撰写简短的内容讲解。用户会看到：原图分析摘要、选中的创作方向、以及实际发给成图模型的提示词。你的任务是用 1-2 句话（30-60 字）描述这张生成图在视觉上做了什么、保留了什么、改变了什么。语气专业、简洁、有画面感。不要重复提示词原文，要提炼成观众能感知的视觉描述。",
-    "explain.systemRole": "你是 Kimi K2.6 no thinking 模式下的视觉创意评论助手。讲解要短、有画面感、不提技术细节。",
+    "explain.systemRole": "你是 ORYZAE 的 Qwen 视觉创意评论助手。讲解要短、有画面感、不提技术细节。",
     "generated.download": "下载",
     "generated.regenerate": "重生成",
     "generated.result": "生成结果",
@@ -774,13 +778,13 @@ const i18n = {
     "health.api": "api",
     "health.mixed": "mixed",
     "chat.systemContext": "You are the creative dialogue assistant in this canvas-based image generation app. Your task is to help users understand the current image, compare branch directions, propose new generation ideas, or organize user thoughts into executable visual directions. Answer in English, keep it concise, usually 1-3 sentences. Do not pretend to have generated a new image; if the user wants to generate, suggest clicking a direction node or explain how you would modify the prompt.",
-    "chat.systemRole": "You are the Kimi K2.6 no-thinking creative dialogue assistant. Answers are concise, direct, and actionable.",
+    "chat.systemRole": "You are ORYZAE's Qwen-powered canvas assistant. Answers are concise, direct, and actionable.",
     "chat.selectedCardContext": "The user is currently chatting about the following card on the canvas:\nType: {type}\nTitle: {title}\nSummary: {summary}",
     "chat.selectedCardPrompt": "Prompt: {prompt}",
     "analysis.systemPrompt": "You are a visual creative director analyzing user-uploaded images for a canvas-based image generation app. Quickly understand the image content, subjects, atmosphere, and extensible narrative directions, then provide 5 different image generation directions. These directions will be displayed as branch nodes on the canvas; users click them to invoke the image generation model. Return strict JSON only, no Markdown, no code blocks.",
     "generate.systemPrompt": "Generate a new image based on the reference image, preserving the most important subjects, color relationships, or visual memory points, but do not simply copy. Direction: {title}\n\nDescription: {description}\n\nDetailed prompt: {prompt}\n\nOutput should be a complete, standalone image; clear composition; no watermarks, UI screenshot borders, or explanatory text.",
     "explain.systemContext": "You are a visual creative commentary assistant writing short descriptions for each generated image in a canvas-based image generation app. The user sees: original image analysis summary, selected creative direction, and the actual prompt sent to the image generation model. Your task is to describe in 1-2 sentences (30-60 words) what this generated image did visually, what it preserved, and what it changed. Tone: professional, concise, evocative. Do not repeat the prompt verbatim; distill it into a description the viewer can perceive.",
-    "explain.systemRole": "You are the Kimi K2.6 no-thinking visual creative commentary assistant. Descriptions are short, evocative, and avoid technical details.",
+    "explain.systemRole": "You are ORYZAE's Qwen-powered visual creative commentary assistant. Descriptions are short, evocative, and avoid technical details.",
     "generated.download": "Download",
     "generated.regenerate": "Regenerate",
     "generated.result": "Generated Result",
@@ -873,9 +877,9 @@ async function saveLanguage(lang) {
 
 function renderAllText() {
   const navLabels = {
-    "nav.workbench": ".nav-link[href='/'] .nav-label",
+    "nav.workbench": ".nav-link[href='/app.html'] .nav-label",
     "nav.history": ".nav-link[href='/history/'] .nav-label",
-    "nav.home": ".nav-link[href='/home.html'] .nav-label",
+    "nav.home": ".nav-link[href='/'] .nav-label",
     "nav.settings": ".nav-link[href='/history/?view=settings'] .nav-label"
   };
   for (const [key, selector] of Object.entries(navLabels)) {
@@ -1356,7 +1360,7 @@ function importSessionFile() {
       });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Import failed");
-      window.location.href = `/?session=${data.sessionId}`;
+      window.location.href = `/app.html?session=${data.sessionId}`;
     } catch (err) {
       alert(t("save.importFailed") + (err instanceof Error ? err.message : String(err)));
     }
@@ -1378,7 +1382,7 @@ async function executeWorkbenchCommand(commandId) {
   if (commandId === "fit") return resetView();
   if (commandId === "arrange") return arrangeCanvasLayout();
   if (commandId === "new-card") return createNewCardNode(commandArgument);
-  if (commandId === "search-card") return openCardSearchUI(commandArgument);
+  if (commandId === "search-card") return openCardSearchBar(commandArgument);
   if (commandId === "new-canvas") return createNewCanvas();
   if (commandId === "subagents") return toggleSubagentsMode();
 }
@@ -1425,6 +1429,66 @@ function openCardSearchUI(initialQuery = "") {
 
 function closeCardSearchUI() {
   cardSearchMode = false;
+}
+
+function openCardSearchBar(initialQuery = "") {
+  if (cardSearchBar) {
+    cardSearchBar.classList.remove("hidden");
+  }
+  if (cardSearchInput) {
+    cardSearchInput.value = initialQuery;
+    cardSearchInput.focus();
+    renderCardSearchBarResults();
+  }
+}
+
+function closeCardSearchBar() {
+  if (cardSearchBar) {
+    cardSearchBar.classList.add("hidden");
+  }
+  if (cardSearchResults) {
+    cardSearchResults.innerHTML = "";
+  }
+  if (cardSearchInput) {
+    cardSearchInput.value = "";
+  }
+}
+
+function renderCardSearchBarResults() {
+  if (!cardSearchResults || !cardSearchInput) return;
+  const query = cardSearchInput.value.trim().toLowerCase();
+  const allCards = getAllCanvasCards();
+  const cards = query
+    ? allCards.filter((card) => card.title.toLowerCase().includes(query))
+    : allCards;
+
+  cardSearchResults.innerHTML = "";
+
+  if (!cards.length) {
+    const empty = document.createElement("div");
+    empty.className = "card-search-empty";
+    empty.textContent = t("command.searchCardEmpty");
+    cardSearchResults.appendChild(empty);
+    return;
+  }
+
+  cards.forEach((card) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "card-search-item";
+    const title = document.createElement("span");
+    title.className = "card-search-item-title";
+    title.textContent = card.title;
+    const id = document.createElement("span");
+    id.className = "card-search-item-id";
+    id.textContent = card.id;
+    item.append(title, id);
+    item.addEventListener("click", () => {
+      locateCard(card.id, card.title);
+      closeCardSearchBar();
+    });
+    cardSearchResults.appendChild(item);
+  });
 }
 
 function getCardSearchQuery() {
@@ -1978,6 +2042,24 @@ function wireControls() {
     }
   }, { passive: false });
 
+  // Card search bar wiring
+  cardSearchInput?.addEventListener("input", renderCardSearchBarResults);
+  cardSearchInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeCardSearchBar();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      const first = cardSearchResults?.querySelector(".card-search-item");
+      if (first) first.click();
+    }
+  });
+  document.addEventListener("click", (event) => {
+    if (cardSearchBar && !cardSearchBar.classList.contains("hidden")&& !cardSearchBar.contains(event.target)) {
+      closeCardSearchBar();
+    }
+  });
+
   let panStart = null;
   viewport.addEventListener("pointerdown", (event) => {
     if (event.target !== viewport && event.target !== board && event.target !== linkLayer) return;
@@ -2010,6 +2092,33 @@ function wireControls() {
   viewport.addEventListener("pointercancel", () => {
     panStart = null;
     viewport.classList.remove("is-panning");
+  });
+
+  chatActionMenu?.querySelectorAll(".chat-action-item").forEach((item) => {
+    const desc = item.querySelector(".chat-action-desc");
+    if (!desc) return;
+    item.addEventListener("mouseenter", () => {
+      const itemRect = item.getBoundingClientRect();
+      const descWidth = desc.offsetWidth || 220;
+      const descHeight = desc.offsetHeight || 60;
+      const gap = 10;
+      const margin = 8;
+      let left = itemRect.left - descWidth - gap;
+      let top = itemRect.top + (itemRect.height - descHeight) / 2;
+      if (left < margin) {
+        left = itemRect.right + gap;
+      }
+      if (top < margin) top = margin;
+      if (top + descHeight > window.innerHeight - margin) {
+        top = window.innerHeight - descHeight - margin;
+      }
+      desc.style.left = `${Math.round(left)}px`;
+      desc.style.top = `${Math.round(top)}px`;
+    });
+    item.addEventListener("mouseleave", () => {
+      desc.style.left = "";
+      desc.style.top = "";
+    });
   });
 }
 
@@ -3153,12 +3262,7 @@ async function handleChatSubmit(event) {
     const command = resolved?.command || getFilteredCommands()[activeCommandIndex];
     if (command) {
       if (command.id === "search-card") {
-        const cards = getFilteredCards();
-        if (cards.length > 0) {
-          locateCard(cards[0].id, cards[0].title);
-        } else {
-          showToast(t("command.searchCardEmpty"));
-        }
+        openCardSearchBar(resolved?.remainder || "");
         return;
       }
       await executeWorkbenchCommand(command.id);
@@ -3182,6 +3286,7 @@ async function submitChatMessage(message, options = {}) {
   const effectiveThinkingMode = options.forcedThinkingMode || (agentMode ? "no-thinking" : state.thinkingMode);
 
   chatInput.value = "";
+  clearChatAttachmentPreview();
   updateChatPrimaryButtonMode();
   updateActiveChatThreadTitle(text);
   appendChatMessage("user", text);
@@ -4360,10 +4465,7 @@ function searchCardFromAction(action) {
     focusNodeById(nodeId, action.position || "center");
     return nodeId;
   }
-  if (chatInput) {
-    chatInput.value = `/${t("command.searchCard")} ${query}`.trim();
-    openCardSearchUI();
-  }
+  openCardSearchBar(query);
   return null;
 }
 
@@ -8173,16 +8275,87 @@ async function handleAttachment(file) {
   const isDocumentFile = /\.(docx|pdf|pptx)$/i.test(file.name);
   if (file.type.startsWith("image/") || isDocumentFile) {
     await handleFile({ target: { files: [file] } });
+    showChatAttachmentPreview(file);
   } else if (file.type.startsWith("text/") || file.name.endsWith(".txt") || file.name.endsWith(".md") || file.name.endsWith(".json")) {
     try {
       const text = await file.text();
       chatInput.value = text.slice(0, 2000);
       chatInput.focus();
+      showChatAttachmentPreview(file);
     } catch (err) {
       alert(t("file.readError") + (err instanceof Error ? err.message : String(err)));
     }
   } else {
     alert(t("file.unsupported"));
+  }
+}
+
+function showChatAttachmentPreview(file) {
+  if (!chatAttachmentPreview) return;
+  chatAttachmentPreview.innerHTML = "";
+  chatAttachmentPreview.classList.remove("hidden");
+
+  const chip = document.createElement("div");
+  chip.className = "chat-attachment-chip";
+
+  if (file.type.startsWith("image/")) {
+    const img = document.createElement("img");
+    img.src = URL.createObjectURL(file);
+    img.alt = file.name;
+    img.className = "chat-attachment-thumb";
+    chip.appendChild(img);
+  } else {
+    const icon = document.createElement("span");
+    icon.className = "chat-attachment-icon";
+    icon.textContent = "📄";
+    chip.appendChild(icon);
+  }
+
+  const name = document.createElement("span");
+  name.className = "chat-attachment-name";
+  name.textContent = file.name;
+  chip.appendChild(name);
+
+  const remove = document.createElement("button");
+  remove.type = "button";
+  remove.className = "chat-attachment-remove";
+  remove.textContent = "×";
+  remove.addEventListener("click", (e) => {
+    e.stopPropagation();
+    chatAttachmentPreview.innerHTML = "";
+    chatAttachmentPreview.classList.add("hidden");
+  });
+  chip.appendChild(remove);
+
+  chip.addEventListener("click", () => {
+    if (file.type.startsWith("image/")) {
+      openAttachmentPreviewModal(file);
+    }
+  });
+
+  chatAttachmentPreview.appendChild(chip);
+}
+
+function openAttachmentPreviewModal(file) {
+  const url = URL.createObjectURL(file);
+  const modal = document.createElement("div");
+  modal.className = "attachment-preview-modal";
+  modal.innerHTML = `
+    <div class="attachment-preview-backdrop"></div>
+    <div class="attachment-preview-content">
+      <button class="attachment-preview-close" type="button" aria-label="关闭">×</button>
+      <img src="${url}" alt="${file.name}" class="attachment-preview-img" />
+    </div>
+  `;
+  modal.querySelector(".attachment-preview-backdrop").addEventListener("click", () => modal.remove());
+  modal.querySelector(".attachment-preview-close").addEventListener("click", () => modal.remove());
+  document.body.appendChild(modal);
+}
+
+function clearChatAttachmentPreview() {
+  if (chatAttachmentPreview) {
+    chatAttachmentPreview.innerHTML = "";
+    chatAttachmentPreview.classList.add("hidden");
   }
 }
 

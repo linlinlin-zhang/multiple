@@ -9,6 +9,7 @@ interface MaterialCardProps {
   onDelete: (id: string) => void;
   onRename: (id: string, fileName: string) => Promise<void> | void;
   onToggleFavorite: (id: string, favorited: boolean) => Promise<void> | void;
+  onPreview?: (id: string) => void;
 }
 
 function isImageMime(mimeType: string): boolean {
@@ -21,7 +22,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function MaterialCard({ item, onDelete, onRename, onToggleFavorite }: MaterialCardProps) {
+export default function MaterialCard({ item, onDelete, onRename, onToggleFavorite, onPreview }: MaterialCardProps) {
   const { t } = useI18n();
   const isImage = isImageMime(item.mimeType);
   const [editing, setEditing] = useState(false);
@@ -44,8 +45,9 @@ export default function MaterialCard({ item, onDelete, onRename, onToggleFavorit
 
   return (
     <div
-      className="group border border-cabinet-border bg-cabinet-paper rounded-lg overflow-hidden hover:shadow-sm transition-shadow"
+      className="group border border-cabinet-border bg-cabinet-paper rounded-lg overflow-hidden hover:shadow-sm transition-shadow cursor-pointer"
       aria-label={item.fileName}
+      onClick={() => onPreview?.(item.id)}
     >
       <div className="relative aspect-square overflow-hidden bg-cabinet-bg">
         {isImage ? (

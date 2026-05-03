@@ -26,8 +26,8 @@ export default function AppNavigation({ activePage, open, onClose }: AppNavigati
   if (!open) return null;
 
   const items: NavigationItem[] = [
-    { key: "home", labelKey: "nav.home", href: "/home.html", icon: <Home size={18} />, active: "home" },
-    { key: "workbench", labelKey: "nav.workbench", href: "/", icon: <LayoutDashboard size={18} />, active: "workbench" },
+    { key: "home", labelKey: "nav.home", href: "/", icon: <Home size={18} />, active: "home" },
+    { key: "workbench", labelKey: "nav.workbench", href: "/app.html", icon: <LayoutDashboard size={18} />, active: "workbench" },
     { key: "library", labelKey: "nav.materialLibrary", href: "/history/?view=library", icon: <FolderOpen size={18} />, active: "library" },
     { key: "history", labelKey: "nav.history", href: historyHref, icon: <History size={18} />, active: "history" },
     { key: "settings", labelKey: "nav.settings", href: settingsHref, icon: <Settings size={18} />, active: "settings" },
