@@ -31,9 +31,9 @@ export async function buildFileUnderstanding(buffer, fileName, ext, options = {}
     return buildScannedUnderstanding(parsed, fileName, lang);
   }
 
-  const apiKey = options.apiKey || process.env.KIMI_API_KEY || process.env.ANALYSIS_API_KEY || "";
-  const baseUrl = options.baseUrl || process.env.ANALYSIS_API_BASE_URL || "https://api.moonshot.cn/v1";
-  const model = options.model || process.env.ANALYSIS_MODEL || "kimi-k2.6";
+  const apiKey = options.apiKey || process.env.ANALYSIS_API_KEY || process.env.DASHSCOPE_API_KEY || "";
+  const baseUrl = options.baseUrl || process.env.ANALYSIS_API_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1";
+  const model = options.model || process.env.ANALYSIS_MODEL || "qwen3.6-plus";
 
   if (!apiKey) {
     return buildFallbackUnderstanding(parsed, fileName, lang);

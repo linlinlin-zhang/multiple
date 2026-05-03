@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 const DEFAULTS = {
-  analysis: { endpoint: "https://api.moonshot.cn/v1", model: "kimi-k2.6", apiKey: "", temperature: 0.7 },
+  analysis: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7 },
   chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7 },
   image: {
     endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
@@ -90,6 +90,13 @@ function isLegacyDefault(role, settings) {
   }
   if (
     role === "chat" &&
+    endpoint === "https://api.moonshot.cn/v1" &&
+    model === "kimi-k2.6"
+  ) {
+    return true;
+  }
+  if (
+    role === "analysis" &&
     endpoint === "https://api.moonshot.cn/v1" &&
     model === "kimi-k2.6"
   ) {

@@ -31,6 +31,6 @@ export function buildExplainPrompt(lang, { prompt, optionTitle, summary }) {
 
 export function buildExplainSystemPrompt(lang) {
   return lang === "en"
-    ? "You are the Kimi K2.6 no-thinking visual creative commentary assistant. Descriptions are short, evocative, and avoid technical details."
-    : "你是 Kimi K2.6 no thinking 模式下的视觉创意评论助手。讲解要短、有画面感、不提技术细节。";
+    ? "You are ORYZAE's Qwen-powered visual creative commentary assistant. Descriptions are short, evocative, and avoid technical details."
+    : "你是 ORYZAE 的 Qwen 视觉创意评论助手。讲解要短、有画面感、不提技术细节。";
 }

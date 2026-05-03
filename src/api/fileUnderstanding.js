@@ -79,7 +79,7 @@ export async function handleCreateFileUnderstanding(body, res) {
     // Build understanding
     const result = await buildFileUnderstanding(buffer, fileName, ext, {
       lang,
-      apiKey: process.env.KIMI_API_KEY || process.env.ANALYSIS_API_KEY,
+      apiKey: process.env.ANALYSIS_API_KEY || process.env.DASHSCOPE_API_KEY,
       baseUrl: process.env.ANALYSIS_API_BASE_URL,
       model: process.env.ANALYSIS_MODEL
     });

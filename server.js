@@ -37,10 +37,10 @@ let runtimeConfigs = {
     apiKeyEnv: ["DASHSCOPE_API_KEY", "CHAT_API_KEY"]
   }),
   analysis: buildModelConfig("ANALYSIS", {
-    provider: "kimi",
-    model: "kimi-k2.6",
-    baseUrl: "https://api.moonshot.cn/v1",
-    apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
+    provider: "dashscope-qwen",
+    model: "qwen3.6-plus",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    apiKeyEnv: ["DASHSCOPE_API_KEY", "ANALYSIS_API_KEY"]
   }),
   image: buildModelConfig("IMAGE", {
     provider: "dashscope-qwen-image",
@@ -348,6 +348,9 @@ const server = http.createServer(async (req, res) => {
       if (/^\/share-image\/[^/]+\/?$/.test(url.pathname)) {
         return serveStatic("/share-image.html", res);
       }
+      if (url.pathname === "/home.html") {
+        return sendJson(res, 404, { error: "Not found" });
+      }
       return serveStatic(url.pathname, res);
     }
 
@@ -387,10 +390,10 @@ async function refreshConfigs() {
     }, dbMap.chat);
 
     runtimeConfigs.analysis = buildModelConfig("ANALYSIS", {
-      provider: "kimi",
-      model: "kimi-k2.6",
-      baseUrl: "https://api.moonshot.cn/v1",
-      apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
+      provider: "dashscope-qwen",
+      model: "qwen3.6-plus",
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      apiKeyEnv: ["DASHSCOPE_API_KEY", "ANALYSIS_API_KEY"]
     }, dbMap.analysis);
 
     runtimeConfigs.image = buildModelConfig("IMAGE", {
@@ -482,7 +485,6 @@ function inferProviderFromEndpoint(endpoint, fallback) {
   if (normalized.includes("/api/v1/services/aigc/multimodal-generation/generation")) return "dashscope-qwen-image";
   if (normalized.includes("/api/v1/services/aigc/text-generation/generation")) return "dashscope-deep-research";
   if (normalized.includes("dashscope.aliyuncs.com")) return "dashscope-qwen";
-  if (normalized.includes("api.moonshot.cn")) return "kimi";
   return fallback;
 }
 
@@ -493,6 +495,9 @@ function isLegacyEnvDefault(role, envSettings) {
   const provider = String(envSettings.provider || "").toLowerCase();
   return (
     role === "CHAT" &&
+    (provider === "kimi" || endpoint === "https://api.moonshot.cn/v1" || model === "kimi-k2.6")
+  ) || (
+    role === "ANALYSIS" &&
     (provider === "kimi" || endpoint === "https://api.moonshot.cn/v1" || model === "kimi-k2.6")
   ) || (
     role === "IMAGE" &&
@@ -516,6 +521,13 @@ function isLegacyDefault(role, dbSettings) {
   }
   if (
     role === "CHAT" &&
+    endpoint === "https://api.moonshot.cn/v1" &&
+    model === "kimi-k2.6"
+  ) {
+    return true;
+  }
+  if (
+    role === "ANALYSIS" &&
     endpoint === "https://api.moonshot.cn/v1" &&
     model === "kimi-k2.6"
   ) {
@@ -1022,8 +1034,8 @@ async function handleChat(body, res) {
       {
         role: "system",
         content: lang === "en"
-          ? "You are the Kimi K2.6 no-thinking creative dialogue assistant. Answers are concise, direct, and actionable."
-          : "你是 Kimi K2.6 no thinking 模式下的创意对话助手。回答简洁、直接、可执行。"
+          ? "You are ORYZAE's Qwen-powered canvas assistant. Answers are concise, direct, and actionable."
+          : "你是 ORYZAE 的 Qwen 画布助手。回答简洁、直接、可执行。"
       },
       {
         role: "user",
