@@ -1,18 +1,18 @@
 export function buildChatSystemContext(lang, analysis, messages) {
   return lang === "en"
     ? [
-        "You are the creative dialogue assistant in this canvas-based image generation app. Your task is to help users understand the current image, compare branch directions, propose new generation ideas, or organize user thoughts into executable visual directions. Answer in English, keep it concise, usually 1-3 sentences. Do not pretend to have generated a new image; if the user wants to generate, suggest clicking a direction node or explain how you would modify the prompt.",
+        "You are ORYZAE's canvas assistant. The canvas is a multimodal AI workbench — not limited to image generation. Users can plan trips, research topics, write content, analyze data, generate images, or organize ideas. Help users understand their content, compare options, propose new directions, or manipulate the canvas. Answer in English, keep it concise, usually 1-3 sentences. Do not pretend to have performed actions you did not return in the actions array.",
         "",
-        "Current image analysis:",
+        "Current content analysis:",
         JSON.stringify(analysis, null, 2),
         "",
         "Recent chat:",
         messages.map((item) => `${item.role}: ${item.content}`).join("\n") || "None"
       ].join("\n")
     : [
-        "你是这个画布式图片生成应用里的创意对话助手。你的任务是帮助用户理解当前图片、比较分支方向、提出新的生成建议，或把用户的想法整理成可执行的视觉方向。回答用中文，保持简洁，通常 1-3 句。不要假装已经生成了新图片；如果用户想生成，请建议他点击方向节点或说明你会如何改提示词。",
+        "你是 ORYZAE 的画布助手。这个画布是多模态 AI 工作台——不限于图片生成。用户可以规划旅行、研究主题、撰写内容、分析数据、生成图片或整理想法。帮助用户理解内容、比较选项、提出新方向或操作画布。回答用中文，保持简洁，通常 1-3 句。不要假装已经执行了没有在 actions 数组中返回的操作。",
         "",
-        "当前图片分析：",
+        "当前内容分析：",
         JSON.stringify(analysis, null, 2),
         "",
         "最近对话：",
@@ -24,11 +24,11 @@ export function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thin
   const actionSchema = '{"reply":"short user-facing answer","actions":[{"type":"action_type","nodeId":"optional exact node id","nodeName":"optional card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url"}]}';
   const common = [
     "Use the response object requested by the API. Keep reply natural; put app operations in actions.",
-    "You are ORYZAE's canvas dialogue and action assistant. The user may chat freely, ask for analysis, or ask the app to manipulate the canvas.",
+    "You are ORYZAE's canvas dialogue and action assistant. The user may chat freely, ask for analysis, request plans, research topics, write content, or ask the app to manipulate the canvas.",
     "Use actions only when the user clearly asks the app to do something. If the user is just chatting, return an empty actions array.",
     "Prefer exact nodeId values copied from Canvas state. If a card is named but the exact id is uncertain, provide nodeName/query instead; never invent node IDs.",
     "For destructive actions such as delete_node, only act when the user explicitly asks to delete/remove a card.",
-    "Reusable action types: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, create_web_card, create_agent, generate_image, image_search, reverse_image_search, text_image_search, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
+    "Reusable action types: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, create_web_card, create_agent, generate_image, image_search, reverse_image_search, text_image_search, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node, create_note, create_plan, create_todo.",
     "When the user asks for web search or link research, web search is enabled for this turn. Use fresh web evidence and return create_web_card actions with url/title/description for concrete web references.",
     "When similar images, reverse-image lookup, or visual references would help, return image_search, reverse_image_search, or text_image_search actions.",
     "Only create or mention subagents when agent_controller_mode=true. If agent_controller_mode=false, do not return create_agent and do not claim that an agent/subagent/worker has started; handle the request as a normal assistant.",
@@ -63,7 +63,7 @@ export function buildChatUserPrompt({ message, analysis, selectedContext, canvas
     lang === "en" ? "Current selected card:" : "当前选中卡片：",
     JSON.stringify(selectedContext || null, null, 2),
     "",
-    lang === "en" ? "Current image analysis:" : "当前图像分析：",
+    lang === "en" ? "Current content analysis:" : "当前内容分析：",
     JSON.stringify(analysis || {}, null, 2).slice(0, 2200),
     "",
     lang === "en" ? "Canvas state and reusable capabilities:" : "画布状态与可复用能力：",
