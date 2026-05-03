@@ -4958,6 +4958,129 @@ function pcmChunksToBase64(chunks) {
   return btoa(binary);
 }
 
+function renderRichNodeContent(element, option) {
+  const slot = element?.querySelector?.(".option-rich-content");
+  if (!slot) return;
+  slot.innerHTML = "";
+  slot.hidden = true;
+
+  const c = option?.content;
+  if (!c || typeof c !== "object") return;
+  const nt = String(option.nodeType || "").toLowerCase();
+
+  if (nt === "plan" && Array.isArray(c.steps) && c.steps.length) {
+    const ol = document.createElement("ol");
+    ol.className = "option-plan-steps";
+    c.steps.forEach((step) => {
+      const li = document.createElement("li");
+      const title = (step && (step.title || step.name)) || (typeof step === "string" ? step : "");
+      const desc = step && step.description;
+      if (title) {
+        const titleEl = document.createElement("strong");
+        titleEl.textContent = title;
+        li.appendChild(titleEl);
+      }
+      if (desc) {
+        const descEl = document.createElement("p");
+        descEl.textContent = desc;
+        li.appendChild(descEl);
+      }
+      ol.appendChild(li);
+    });
+    slot.appendChild(ol);
+    slot.hidden = false;
+  } else if (nt === "todo" && Array.isArray(c.items) && c.items.length) {
+    const ul = document.createElement("ul");
+    ul.className = "option-todo-items";
+    c.items.forEach((item) => {
+      const li = document.createElement("li");
+      const text = (item && (item.text || item.label)) || (typeof item === "string" ? item : "");
+      const done = Boolean(item && item.done);
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.disabled = true;
+      cb.checked = done;
+      li.appendChild(cb);
+      const span = document.createElement("span");
+      span.textContent = " " + text;
+      if (done) span.classList.add("done");
+      li.appendChild(span);
+      ul.appendChild(li);
+    });
+    slot.appendChild(ul);
+    slot.hidden = false;
+  } else if (nt === "note" && (c.text || c.body)) {
+    const p = document.createElement("p");
+    p.className = "option-note-text";
+    p.textContent = c.text || c.body;
+    slot.appendChild(p);
+    slot.hidden = false;
+  } else if (nt === "weather") {
+    const wrap = document.createElement("div");
+    wrap.className = "option-weather";
+    if (c.location) {
+      const loc = document.createElement("div");
+      loc.className = "option-weather-loc";
+      loc.textContent = c.location;
+      wrap.appendChild(loc);
+    }
+    if (c.temp) {
+      const tEl = document.createElement("div");
+      tEl.className = "option-weather-temp";
+      tEl.textContent = c.temp;
+      wrap.appendChild(tEl);
+    }
+    if (c.forecast) {
+      const f = document.createElement("div");
+      f.className = "option-weather-forecast";
+      f.textContent = c.forecast;
+      wrap.appendChild(f);
+    }
+    if (wrap.childNodes.length) {
+      slot.appendChild(wrap);
+      slot.hidden = false;
+    }
+  } else if (nt === "map") {
+    if (c.address) {
+      const a = document.createElement("p");
+      a.className = "option-map-address";
+      a.textContent = c.address;
+      slot.appendChild(a);
+      if (c.lat != null && c.lng != null) {
+        const ll = document.createElement("p");
+        ll.className = "option-map-latlng";
+        ll.textContent = `${c.lat}, ${c.lng}`;
+        slot.appendChild(ll);
+      }
+      slot.hidden = false;
+    }
+  } else if (nt === "link" && c.url) {
+    const a = document.createElement("a");
+    a.className = "option-link-href";
+    a.href = c.url;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    a.textContent = c.title || c.url;
+    slot.appendChild(a);
+    if (c.description) {
+      const d = document.createElement("p");
+      d.className = "option-link-desc";
+      d.textContent = c.description;
+      slot.appendChild(d);
+    }
+    slot.hidden = false;
+  } else if (nt === "code" && c.code) {
+    const pre = document.createElement("pre");
+    pre.className = "option-code-block";
+    if (c.language) pre.dataset.language = c.language;
+    const code = document.createElement("code");
+    code.textContent = c.code;
+    pre.appendChild(code);
+    slot.appendChild(pre);
+    slot.hidden = false;
+  }
+}
+
 function createOptionNode(option, parentNodeId, taskType = "general") {
   const parentNode = state.nodes.get(parentNodeId);
   if (!parentNode) return null;
@@ -4992,6 +5115,7 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
   element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
   element.querySelector(".option-title").textContent = option.title || t("generated.result");
   element.querySelector(".option-description").textContent = option.description || "";
+  renderRichNodeContent(element, option);
 
   const titleEl = element.querySelector(".option-title");
   if (titleEl) makeTitleEditable(id, titleEl);
@@ -6034,6 +6158,7 @@ function renderOptions(options, taskType = "general") {
     element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
     element.querySelector(".option-title").textContent = option.title || t("generated.result");
     element.querySelector(".option-description").textContent = option.description || "";
+    renderRichNodeContent(element, option);
 
     const titleEl = element.querySelector(".option-title");
     if (titleEl) makeTitleEditable(id, titleEl);
@@ -6106,6 +6231,7 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
     element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
     element.querySelector(".option-title").textContent = option.title || t("generated.result");
     element.querySelector(".option-description").textContent = option.description || "";
+    renderRichNodeContent(element, option);
 
     const titleEl = element.querySelector(".option-title");
     if (titleEl) makeTitleEditable(id, titleEl);
@@ -6158,6 +6284,7 @@ function renderExploreOptions(options, references, taskType = "general") {
     element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
     element.querySelector(".option-title").textContent = option.title || t("generated.result");
     element.querySelector(".option-description").textContent = option.description || "";
+    renderRichNodeContent(element, option);
 
     const titleEl = element.querySelector(".option-title");
     if (titleEl) makeTitleEditable(id, titleEl);
@@ -9746,6 +9873,7 @@ async function loadSession(sessionId) {
       element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
       element.querySelector(".option-title").textContent = option.title || t("generated.result");
       element.querySelector(".option-description").textContent = option.description || "";
+      renderRichNodeContent(element, option);
 
       const button = element.querySelector(".generate-button");
       if (option.nodeType && option.nodeType !== "image") {

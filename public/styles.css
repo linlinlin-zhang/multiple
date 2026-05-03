@@ -1245,6 +1245,107 @@ body.nav-collapsed .nav-settings {
   margin: 18px 0 22px;
 }
 
+.option-rich-content {
+  margin: 0 0 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ps-ink, #1f1f1f);
+}
+.option-rich-content[hidden] {
+  display: none;
+}
+.option-plan-steps {
+  list-style: decimal;
+  padding-left: 22px;
+  margin: 0;
+}
+.option-plan-steps li {
+  margin-bottom: 10px;
+}
+.option-plan-steps strong {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.option-plan-steps p {
+  margin: 0;
+  color: #555;
+  font-size: 12px;
+}
+.option-todo-items {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+.option-todo-items li {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.option-todo-items input[type="checkbox"] {
+  margin-right: 6px;
+}
+.option-todo-items .done {
+  text-decoration: line-through;
+  color: #999;
+}
+.option-note-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.option-weather-loc {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.option-weather-temp {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--ps-blue, #2563eb);
+  margin-bottom: 4px;
+}
+.option-weather-forecast {
+  color: #555;
+}
+.option-map-address {
+  margin: 0 0 4px;
+  font-weight: 500;
+}
+.option-map-latlng {
+  margin: 0;
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  color: #777;
+}
+.option-link-href {
+  display: inline-block;
+  color: var(--ps-blue, #2563eb);
+  text-decoration: none;
+  word-break: break-all;
+  margin-bottom: 4px;
+}
+.option-link-href:hover {
+  text-decoration: underline;
+}
+.option-link-desc {
+  margin: 0;
+  color: #555;
+}
+.option-code-block {
+  background: #1e1e1e;
+  color: #f5f5f5;
+  padding: 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  margin: 0;
+}
+.option-code-block code {
+  font-family: inherit;
+  background: transparent;
+  color: inherit;
+}
+
 .option-node.loading {
   opacity: 1;
 }
