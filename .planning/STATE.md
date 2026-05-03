@@ -27,13 +27,13 @@ progress:
 | Field | Value |
 |-------|-------|
 | Milestone | v3.1 — Multi-Scenario Intelligence |
-| Phase | 20 (planned) |
-| Plans | 2 |
+| Phase | 21 (planned) |
+| Plans | 6 |
 | Status | Ready to execute |
-| Progress | 15% |
+| Progress | 20% |
 
 ```
-[░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
+[████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 20%
 ```
 
 ---
@@ -101,7 +101,7 @@ progress:
 - [x] v1.3 Material Library — shipped 2026-05-01
 - [x] v2.0 Multi-Card Canvas Interaction — shipped 2026-05-02
 - [x] v3.0 Infrastructure & Experience Upgrade — shipped 2026-05-03
-- [ ] v3.1 Multi-Scenario Intelligence — roadmap ready, phase 19 next
+- [ ] v3.1 Multi-Scenario Intelligence — Phase 21 planned, ready to execute
 
 ### Blockers
 
@@ -116,4 +116,4 @@ progress:
 **Current session started:** 2026-05-03
 **Last session resumed:** 2026-05-03
 **Stopped at:** context exhaustion at 75% (2026-05-03)
-**Next expected action:** `/gsd-plan-phase 19` to decompose Phase 19 into executable plans
+**Next expected action:** `/gsd-execute-phase 21` to begin executing the 6 plans

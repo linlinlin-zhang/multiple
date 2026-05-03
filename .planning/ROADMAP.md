@@ -193,11 +193,21 @@
 | 18. Blueprint Modal | v2.0 | 3/3 | Done | 2026-05-02 |
 | 19. Prompt Extraction | v3.1 | 2/2 | Done | 2026-05-02 |
 | 20. Task Routing | v3.1 | 2/2 | Done | 2026-05-03 |
-| 21. Chat-to-Canvas Reliability & UX | v3.1 | 0/6 | Not started | - |
+| 21. Chat-to-Canvas Reliability & UX | v3.1 | 6/6 | Planned | 2026-05-03 |
 | 22. Dynamic Directions | v3.1 | 0/? | Not started | - |
 | 23. File Rendering | v3.1 | 0/? | Not started | - |
 | 24. Context Management | v3.1 | 0/? | Not started | - |
 | 25. Parallel Generation | v3.1 | 0/? | Not started | - |
+
+### Phase 26: 21-chat-to-canvas
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 25
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 26 to break down)
 
 ---
 
