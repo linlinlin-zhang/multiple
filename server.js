@@ -797,9 +797,12 @@ function applyRequestOptions(payload, config) {
 
 function shouldUseWebSearchReadable(message, canvas = {}, selectedContext = null) {
   const text = String(message || "").normalize("NFKC");
-  if (/(联网|上网|网页|网站|链接|网址|搜索|搜一下|查一下|检索|资料|最新|新闻|引用|来源|官方文档|官方资料|web|search|browse|lookup|internet|reference|url|link)/i.test(text)) {
-    return true;
-  }
+  const explicit = /(联网|上网|网页|网站|链接|网址|搜索|搜一下|查一下|检索|资料|最新|新闻|引用|来源|官方文档|官方资料|web|search|browse|lookup|internet|reference|url|link)/i.test(text);
+  // Real-world topics where current data improves the answer (travel, lifestyle,
+  // shopping, weather, transit, prices, recommendations). Mirror the official
+  // Qwen behaviour where the assistant grounds these queries in fresh sources.
+  const realWorld = /(旅游|旅行|旅程|出行|行程|攻略|路线|路書|路线图|计划|规划|推荐|推介|介绍下|景点|酒店|餐厅|餐馆|美食|住宿|民宿|商场|商圈|景区|博物馆|公园|地图|价格|价位|票价|费用|多少钱|性价比|开放时间|营业时间|开放|营业|地址|位置|在哪|哪里|哪家|哪种|哪个|怎么去|怎么走|周边|附近|最近的|评分|口碑|排名|排行|网红|热门|流行|风评|对比|比较|品牌|型号|测评|教程|步骤|做法|怎么做|天气|气温|风暴|降水|开车|地铁|高铁|机场|预算|订房|订票|预订|travel|trip|itinerary|recommend|suggest|place\s+to|hotel|restaurant|food|cuisine|weather|price|cost|hours|near|around|location|nearby|where\s+is|how\s+to\s+(?:get|reach|find)|best\s+(?:place|spot|restaurant|hotel|time)|directions?\s+to|review|rating)/i.test(text);
+  if (explicit || realWorld) return true;
   if (selectedContext?.type === "url" || selectedContext?.url) return true;
   const nodes = Array.isArray(canvas?.nodes) ? canvas.nodes : [];
   return nodes.some((node) => node?.type === "url" || node?.url || node?.sourceType === "url");
