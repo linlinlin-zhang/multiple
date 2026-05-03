@@ -101,7 +101,7 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
   type: "function",
   function: {
     name: "canvas_action",
-    description: "Execute a canvas action such as creating a card, zooming, searching, or manipulating the view.",
+    description: "Execute a canvas action such as creating a card, zooming, searching, or manipulating the view. You may invoke this tool MULTIPLE times in a single turn — e.g., for a trip request, call create_plan, create_weather, and create_map together so the canvas holds the full deliverable instead of just a title card.",
     parameters: {
       type: "object",
       properties: {
@@ -112,7 +112,19 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
         query: { type: "string", description: "Search query" },
         url: { type: "string", description: "URL for link or web card" },
         nodeType: { type: "string", enum: ["note", "plan", "todo", "weather", "map", "link", "code"], description: "Rich node type" },
-        content: { type: "object", description: "Structured content object whose shape depends on nodeType" },
+        content: {
+          type: "object",
+          description: [
+            "Structured payload that fills the rich node. REQUIRED for create_plan/create_todo/create_note/create_weather/create_map/create_link/create_code — without it the card renders empty. Shape per type:",
+            "- create_plan: { steps: [{ title: string, description?: string }, ...] } — populate with the FULL itinerary, not a placeholder",
+            "- create_todo: { items: [{ text: string, done: boolean }, ...] }",
+            "- create_note: { text: string } — the full note body (markdown allowed)",
+            "- create_weather: { location: string, temp: string, forecast: string }",
+            "- create_map: { address: string, lat?: number, lng?: number }",
+            "- create_link: { title: string, url: string, description?: string }",
+            "- create_code: { language: string, code: string }"
+          ].join("\n")
+        },
         position: { type: "string", description: "Position hint: left, right, above, below, center, etc." },
         nodeId: { type: "string", description: "Exact node ID from canvas state" },
         nodeName: { type: "string", description: "Node name when exact ID is uncertain" },
