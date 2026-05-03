@@ -45,7 +45,7 @@ export function buildChatSystemContext(lang, analysis, messages) {
 }
 
 export function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thinking") {
-  const actionSchema = '{"reply":"short user-facing answer","actions":[{"type":"action_type","nodeId":"optional exact node id","nodeName":"optional card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url"}]}';
+  const actionSchema = '{"reply":"short user-facing answer","actions":[{"type":"action_type","nodeId":"optional exact node id","nodeName":"optional card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url","nodeType":"optional node type for rich content: note|plan|todo|weather|map|link|code","content":"optional structured content object whose shape depends on nodeType"}]}';
 
   const meta = lang === "en" ? META_DIRECTIVES.en : META_DIRECTIVES.zh;
 
@@ -81,6 +81,10 @@ export function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thin
     "- create_note — when user wants to save a note, observation, or free-form text on the canvas.",
     "- create_plan — when user wants to create a structured plan or schedule on the canvas.",
     "- create_todo — when user wants a checklist of tasks on the canvas.",
+    "- create_weather — when user asks for weather information for a location.",
+    "- create_map — when user mentions a location, address, or coordinates.",
+    "- create_link — when user mentions a URL or asks to save a link preview.",
+    "- create_code — when user wants to save a code snippet, script, or configuration.",
     "- generate_image — when user explicitly asks to generate an image from a prompt.",
     "",
     "## Search & Research",
@@ -123,6 +127,15 @@ export function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thin
     "- nodeName: used only when exact nodeId is uncertain.",
     "- position vocabulary: left, right, above, below, center, upper-left, upper-right, lower-left, lower-right, canvas-center, screen-center.",
     "- prompt: for image generation, include style, composition, lighting. For research, include search query. For plans, include outline.",
+    "- nodeType: for rich content cards, use note|plan|todo|weather|map|link|code. When omitted, defaults to image generation.",
+    "- content: structured object whose shape depends on nodeType:",
+    "  - note: { text: 'markdown string' }",
+    "  - plan: { steps: [{ title, desc }] }",
+    "  - todo: { items: [{ text, done }] }",
+    "  - weather: { location, temp, forecast, icon }",
+    "  - map: { lat, lng, address, mapUrl, url }",
+    "  - link: { url, title, description, imageUrl }",
+    "  - code: { language, code }",
     "",
     "# Output Format",
     actionSchema,
@@ -164,6 +177,10 @@ export function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thin
     "- create_note — 用户想在画布上保存笔记、观察或自由文本时。",
     "- create_plan — 用户想在画布上创建结构化计划或日程时。",
     "- create_todo — 用户想在画布上创建任务清单时。",
+    "- create_weather — 用户询问某地天气信息时。",
+    "- create_map — 用户提到地点、地址或坐标时。",
+    "- create_link — 用户提到 URL 或要求保存链接预览时。",
+    "- create_code — 用户想保存代码片段、脚本或配置时。",
     "- generate_image — 用户明确要求根据提示词生成图片时。",
     "",
     "## 搜索与研究",
@@ -206,6 +223,15 @@ export function buildChatActionSystemPrompt(lang = "zh", thinkingMode = "no-thin
     "- nodeName：仅在无法确定精确 nodeId 时使用。",
     "- 位置词汇：left, right, above, below, center, upper-left, upper-right, lower-left, lower-right, canvas-center, screen-center。",
     "- prompt：图片生成时包含风格、构图、光影。研究时包含搜索查询。计划时包含大纲。",
+    "- nodeType：富内容卡片类型，可选 note|plan|todo|weather|map|link|code。省略时默认生成图片。",
+    "- content：结构化对象，形状取决于 nodeType：",
+    "  - note: { text: 'markdown 字符串' }",
+    "  - plan: { steps: [{ title, desc }] }",
+    "  - todo: { items: [{ text, done }] }",
+    "  - weather: { location, temp, forecast, icon }",
+    "  - map: { lat, lng, address, mapUrl, url }",
+    "  - link: { url, title, description, imageUrl }",
+    "  - code: { language, code }",
     "",
     "# 输出格式",
     actionSchema,

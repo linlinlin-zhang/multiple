@@ -2392,6 +2392,8 @@ function normalizeVoiceActions(value) {
         direction: normalizedActionString(action.direction, 60),
         mode: normalizedActionString(action.mode, 80),
         scope: normalizedActionString(action.scope, 80),
+        nodeType: normalizedActionString(action.nodeType, 40) || undefined,
+        content: action.content || undefined,
         x: normalizedActionNumber(action.x),
         y: normalizedActionNumber(action.y),
         dx: normalizedActionNumber(action.dx),
@@ -3518,7 +3520,9 @@ function normalizeAnalysis(value, fileName = "source image") {
       description: stringOr(option?.description, fallback.options[index % fallback.options.length].description),
       prompt: stringOr(option?.prompt, fallback.options[index % fallback.options.length].prompt),
       tone: stringOr(option?.tone, fallback.options[index % fallback.options.length].tone),
-      layoutHint: stringOr(option?.layoutHint, fallback.options[index % fallback.options.length].layoutHint)
+      layoutHint: stringOr(option?.layoutHint, fallback.options[index % fallback.options.length].layoutHint),
+      nodeType: option?.nodeType || undefined,
+      content: option?.content || undefined
     }))
   };
 }
@@ -3540,7 +3544,9 @@ function normalizeExplore(value, fileName = "source image") {
       description: stringOr(option?.description, fallback.options[index % fallback.options.length].description),
       prompt: stringOr(option?.prompt, fallback.options[index % fallback.options.length].prompt),
       tone: stringOr(option?.tone, fallback.options[index % fallback.options.length].tone),
-      layoutHint: stringOr(option?.layoutHint, fallback.options[index % fallback.options.length].layoutHint)
+      layoutHint: stringOr(option?.layoutHint, fallback.options[index % fallback.options.length].layoutHint),
+      nodeType: option?.nodeType || undefined,
+      content: option?.content || undefined
     })),
     references: references.slice(0, 6).map((ref, index) => ({
       title: stringOr(ref?.title, fallback.references[index % fallback.references.length].title).slice(0, 80),
@@ -3554,7 +3560,7 @@ function normalizeDeepThinkPlan(value, prompt, lang) {
   const fallback = buildDemoDeepThinkPlan(prompt, lang, runtimeConfigs.deepthink.model);
   const cards = Array.isArray(value?.cards) ? value.cards : fallback.cards;
   const links = Array.isArray(value?.links) ? value.links : fallback.links;
-  const allowedTypes = new Set(["direction", "web", "image", "file", "api", "note"]);
+  const allowedTypes = new Set(["direction", "web", "image", "file", "api", "note", "plan", "todo", "weather", "map", "link", "code"]);
 
   return {
     reply: stringOr(value?.reply, fallback.reply),

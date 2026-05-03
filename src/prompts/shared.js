@@ -49,7 +49,9 @@ export const CANVAS_ACTION_TYPES = [
   "image_search", "reverse_image_search", "text_image_search",
   "analyze_source", "explore_source", "research_source", "research_node",
   "save_session", "new_chat", "open_chat_history", "close_chat",
-  "open_chat", "open_history", "open_settings", "open_upload", "delete_node"
+  "open_chat", "open_history", "open_settings", "open_upload", "delete_node",
+  "create_note", "create_plan", "create_todo", "create_weather",
+  "create_map", "create_link", "create_code"
 ];
 
 export const CANVAS_ACTION_TYPES_TEXT = CANVAS_ACTION_TYPES.join(", ");
