@@ -17,16 +17,20 @@ function sendJson(res, status, data) {
 const MATERIAL_FILE_LIMIT = 100;
 
 /**
- * GET /api/materials?q=keyword&sort=date|added|name|size
+ * GET /api/materials?q=keyword&sort=date|added|name|size&favorited=1
  */
 export async function handleListMaterials(query, res) {
   try {
     const q = typeof query?.q === "string" ? query.q.trim() : "";
     const sort = query?.sort || "added";
+    const favoritedOnly = query?.favorited === "1" || query?.favorited === "true";
 
     const where = {};
     if (q) {
       where.fileName = { contains: q, mode: "insensitive" };
+    }
+    if (favoritedOnly) {
+      where.favorited = true;
     }
 
     let orderBy;
@@ -104,21 +108,36 @@ export async function handleCreateMaterial(body, res) {
 
 /**
  * PUT /api/materials/:id
- * Body: { fileName }
+ * Body: { fileName?, favorited? }
+ *
+ * Both fields are optional; whichever is supplied is updated. Sending neither
+ * is rejected so the client doesn't accidentally produce a no-op call.
  */
 export async function handleUpdateMaterial(materialId, body, res) {
   try {
     if (!materialId || typeof materialId !== "string") {
       return sendJson(res, 400, { error: "materialId is required" });
     }
-    const fileName = typeof body?.fileName === "string" ? body.fileName.trim().slice(0, 240) : "";
-    if (!fileName) {
-      return sendJson(res, 400, { error: "fileName is required" });
+
+    const data = {};
+    if (typeof body?.fileName === "string") {
+      const fileName = body.fileName.trim().slice(0, 240);
+      if (!fileName) {
+        return sendJson(res, 400, { error: "fileName must not be empty" });
+      }
+      data.fileName = fileName;
+    }
+    if (typeof body?.favorited === "boolean") {
+      data.favorited = body.favorited;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return sendJson(res, 400, { error: "fileName or favorited is required" });
     }
 
     const item = await prisma.materialItem.update({
       where: { id: materialId },
-      data: { fileName }
+      data
     });
 
     return sendJson(res, 200, { ok: true, item });

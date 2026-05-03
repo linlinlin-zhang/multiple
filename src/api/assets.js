@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import { prisma } from "../lib/prisma.js";
 import { storeDataUrl, readFile, parseDataUrl, hashBuffer } from "../lib/storage.js";
 import { syncToMaterialLibrary, storeMaterialFile } from "./materials.js";
 
@@ -72,8 +74,19 @@ export async function handleGetAsset(req, res) {
       return sendJson(res, 400, { error: "Invalid hash format" });
     }
 
-    const buffer = await readFile(hash, { kind });
-    const contentType = detectMimeType(buffer);
+    let buffer;
+    let contentType = "";
+    let downloadName = "";
+    try {
+      buffer = await readFile(hash, { kind });
+      contentType = detectMimeType(buffer);
+    } catch (storageError) {
+      const item = await prisma.materialItem.findFirst({ where: { hash } });
+      if (!item?.filePath) throw storageError;
+      buffer = await fs.readFile(item.filePath);
+      contentType = item.mimeType || detectMimeType(buffer);
+      downloadName = item.fileName || "";
+    }
 
     const isDownload = url.searchParams.get("download") === "1";
     const headers = {
@@ -82,7 +95,8 @@ export async function handleGetAsset(req, res) {
     };
     if (isDownload) {
       const ext = contentType.split("/").pop()?.replace("jpeg", "jpg") || "png";
-      headers["Content-Disposition"] = `attachment; filename="oryzae_${hash.slice(0, 8)}.${ext}"`;
+      const safeName = downloadName || `oryzae_${hash.slice(0, 8)}.${ext}`;
+      headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(safeName)}`;
     }
 
     res.writeHead(200, headers);
@@ -103,6 +117,8 @@ function detectMimeType(buffer) {
     if (header.startsWith("ffd8ff")) return "image/jpeg";
     if (header.startsWith("52494646")) return "image/webp";
     if (header.startsWith("47494638")) return "image/gif";
+    if (header.startsWith("25504446")) return "application/pdf";
+    if (header.startsWith("504b0304")) return "application/vnd.openxmlformats-officedocument";
   }
 
   const textPrefix = buffer.slice(0, 128).toString("utf8").trimStart();

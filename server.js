@@ -9,11 +9,14 @@ import { handleCreateShare, handleGetShare, handleCreateImageShare, handleGetIma
 import { handleImportSession } from "./src/api/import.js";
 import { handleGetSettings, handleUpdateSettings } from "./src/api/settings.js";
 import { handleListMaterials, handleCreateMaterial, handleUpdateMaterial, handleDeleteMaterial, handleGetMaterialFile } from "./src/api/materials.js";
+import { handleCreateFileUnderstanding, handleGetFileUnderstanding } from "./src/api/fileUnderstanding.js";
+import { handleContextIngest, handleContextRetrieve, handleContextStats, handleContextWipe } from "./src/api/context.js";
 import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js";
 import { extractTextFromBuffer } from "./src/lib/textExtract.js";
 import { PrismaClient } from "@prisma/client";
 import WebSocket from "ws";
 import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt, buildChatSystemContext, buildChatActionSystemPrompt, buildChatUserPrompt, buildGeneratePrompt, buildExplainPrompt, buildExplainSystemPrompt, buildRealtimeInstruction, buildDeepThinkSystemPrompt, buildDeepThinkUserPrompt, buildExploreContent } from "./src/prompts/index.js";
+import { ingestText, ingestSnippet, retrieveContext, formatContextForPrompt, isEmbeddingConfigured, CONTEXT_KINDS } from "./src/lib/rag/index.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -40,22 +43,37 @@ let runtimeConfigs = {
     apiKeyEnv: ["KIMI_API_KEY", "MOONSHOT_API_KEY"]
   }),
   image: buildModelConfig("IMAGE", {
-    provider: "tencent-tokenhub-image",
-    model: "hy-image-v3.0",
-    baseUrl: "https://tokenhub.tencentmaas.com/v1/api/image",
-    apiKeyEnv: ["TENCENT_TOKENHUB_API_KEY", "TOKENHUB_API_KEY"]
+    provider: "dashscope-qwen-image",
+    model: "qwen-image-2.0-pro",
+    baseUrl: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+    apiKeyEnv: ["DASHSCOPE_API_KEY", "IMAGE_API_KEY"],
+    options: {
+      size: "2048*2048",
+      n: 1,
+      prompt_extend: true,
+      watermark: false,
+      negative_prompt: "",
+      useReferenceImage: true
+    }
   }),
   asr: buildModelConfig("ASR", {
     provider: "dashscope-livetranslate",
     model: "qwen3-livetranslate-flash-2025-12-01",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    apiKeyEnv: ["DASHSCOPE_API_KEY", "ASR_API_KEY"]
+    apiKeyEnv: ["DASHSCOPE_API_KEY", "ASR_API_KEY"],
+    options: { targetLanguage: "auto" }
   }),
   realtime: buildModelConfig("REALTIME", {
     provider: "dashscope-realtime",
     model: "qwen3.5-omni-plus-realtime",
     baseUrl: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
-    apiKeyEnv: ["DASHSCOPE_API_KEY", "REALTIME_API_KEY"]
+    apiKeyEnv: ["DASHSCOPE_API_KEY", "REALTIME_API_KEY"],
+    options: {
+      voice: "Ethan",
+      outputAudio: false,
+      enableSearch: false,
+      smoothOutput: "auto"
+    }
   }),
   deepthink: buildModelConfig("DEEPTHINK", {
     provider: "dashscope-deep-research",
@@ -74,6 +92,49 @@ const DEEP_RESEARCH_TIMEOUT_MS = Number(process.env.DEEP_RESEARCH_TIMEOUT_MS || 
 const EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.EXPLORE_THINKING_TIMEOUT_MS || 120000);
 const EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.EXPLORE_FALLBACK_TIMEOUT_MS || 60000);
 const IMAGE_SEARCH_MODEL = process.env.IMAGE_SEARCH_MODEL || "qwen3.5-plus";
+const CANVAS_TOOL_TYPES = [
+  "pan_view",
+  "focus_node",
+  "select_node",
+  "move_node",
+  "arrange_canvas",
+  "auto_layout",
+  "tidy_canvas",
+  "group_selection",
+  "ungroup_selection",
+  "search_card",
+  "export_report",
+  "deselect",
+  "select_source",
+  "select_analysis",
+  "create_card",
+  "new_card",
+  "create_direction",
+  "create_web_card",
+  "web_search",
+  "create_agent",
+  "generate_image",
+  "image_search",
+  "reverse_image_search",
+  "text_image_search",
+  "analyze_source",
+  "explore_source",
+  "research_source",
+  "research_node",
+  "open_references",
+  "save_session",
+  "new_chat",
+  "open_chat_history",
+  "close_chat",
+  "open_chat",
+  "open_history",
+  "open_settings",
+  "set_thinking_mode",
+  "set_deep_think_mode",
+  "open_upload",
+  "delete_node"
+];
+const CANVAS_ACTION_TYPES_TEXT = CANVAS_TOOL_TYPES.join(", ");
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -244,6 +305,32 @@ const server = http.createServer(async (req, res) => {
       });
     }
 
+    // File understanding routes
+    if (req.method === "POST" && url.pathname === "/api/file-understanding") {
+      const body = await readJson(req);
+      return await handleCreateFileUnderstanding(body, res);
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/api/file-understanding/")) {
+      return await handleGetFileUnderstanding(req, res);
+    }
+
+    // Context (session-scoped RAG) routes
+    if (req.method === "POST" && url.pathname === "/api/context/ingest") {
+      const body = await readJson(req);
+      return await handleContextIngest(body, res);
+    }
+    if (req.method === "POST" && url.pathname === "/api/context/retrieve") {
+      const body = await readJson(req);
+      return await handleContextRetrieve(body, res);
+    }
+    if (req.method === "GET" && url.pathname === "/api/context/stats") {
+      return await handleContextStats(req, res);
+    }
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/context/")) {
+      const id = url.pathname.split("/")[3];
+      return await handleContextWipe(id, res);
+    }
+
     if (req.method === "GET") {
       if (url.pathname === "/history") {
         res.writeHead(302, { Location: "/history/" });
@@ -288,7 +375,7 @@ async function refreshConfigs() {
     const dbMap = Object.fromEntries(
       rows.map((r) => [
         r.role,
-        { endpoint: r.endpoint, model: r.model, apiKey: r.apiKey, temperature: r.temperature }
+        { endpoint: r.endpoint, model: r.model, apiKey: r.apiKey, temperature: r.temperature, options: r.options }
       ])
     );
 
@@ -307,24 +394,39 @@ async function refreshConfigs() {
     }, dbMap.analysis);
 
     runtimeConfigs.image = buildModelConfig("IMAGE", {
-      provider: "tencent-tokenhub-image",
-      model: "hy-image-v3.0",
-      baseUrl: "https://tokenhub.tencentmaas.com/v1/api/image",
-      apiKeyEnv: ["TENCENT_TOKENHUB_API_KEY", "TOKENHUB_API_KEY"]
+      provider: "dashscope-qwen-image",
+      model: "qwen-image-2.0-pro",
+      baseUrl: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+      apiKeyEnv: ["DASHSCOPE_API_KEY", "IMAGE_API_KEY"],
+      options: {
+        size: "2048*2048",
+        n: 1,
+        prompt_extend: true,
+        watermark: false,
+        negative_prompt: "",
+        useReferenceImage: true
+      }
     }, dbMap.image);
 
     runtimeConfigs.asr = buildModelConfig("ASR", {
       provider: "dashscope-livetranslate",
       model: "qwen3-livetranslate-flash-2025-12-01",
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      apiKeyEnv: ["DASHSCOPE_API_KEY", "ASR_API_KEY"]
+      apiKeyEnv: ["DASHSCOPE_API_KEY", "ASR_API_KEY"],
+      options: { targetLanguage: "auto" }
     }, dbMap.asr);
 
     runtimeConfigs.realtime = buildModelConfig("REALTIME", {
       provider: "dashscope-realtime",
       model: "qwen3.5-omni-plus-realtime",
       baseUrl: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
-      apiKeyEnv: ["DASHSCOPE_API_KEY", "REALTIME_API_KEY"]
+      apiKeyEnv: ["DASHSCOPE_API_KEY", "REALTIME_API_KEY"],
+      options: {
+        voice: "Ethan",
+        outputAudio: false,
+        enableSearch: false,
+        smoothOutput: "auto"
+      }
     }, dbMap.realtime);
 
     runtimeConfigs.deepthink = buildModelConfig("DEEPTHINK", {
@@ -339,7 +441,7 @@ async function refreshConfigs() {
 }
 
 function buildModelConfig(role, defaults, dbSettings = null) {
-  const effectiveDbSettings = isLegacyVoiceDefault(role, dbSettings) ? null : dbSettings;
+  const effectiveDbSettings = isLegacyDefault(role, dbSettings) ? null : dbSettings;
   const envProvider = process.env[`${role}_PROVIDER`] || "";
   const envBaseUrl = process.env[`${role}_API_BASE_URL`] || "";
   const envModel = process.env[`${role}_MODEL`] || "";
@@ -366,12 +468,18 @@ function buildModelConfig(role, defaults, dbSettings = null) {
     typeof effectiveDbSettings?.temperature === "number"
       ? effectiveDbSettings.temperature
       : (parseFloat(process.env[`${role}_TEMPERATURE`]) || defaults.temperature || 0.7);
+  const options = normalizeModelOptions(role.toLowerCase(), {
+    ...(defaults.options || {}),
+    ...parseEnvOptions(role),
+    ...(effectiveDbSettings?.options && typeof effectiveDbSettings.options === "object" ? effectiveDbSettings.options : {})
+  });
 
-  return { role: role.toLowerCase(), provider: roleProvider, apiKey, baseUrl, model, temperature };
+  return { role: role.toLowerCase(), provider: roleProvider, apiKey, baseUrl, model, temperature, options };
 }
 
 function inferProviderFromEndpoint(endpoint, fallback) {
   const normalized = String(endpoint || "").toLowerCase();
+  if (normalized.includes("/api/v1/services/aigc/multimodal-generation/generation")) return "dashscope-qwen-image";
   if (normalized.includes("/api/v1/services/aigc/text-generation/generation")) return "dashscope-deep-research";
   if (normalized.includes("dashscope.aliyuncs.com")) return "dashscope-qwen";
   if (normalized.includes("api.moonshot.cn")) return "kimi";
@@ -387,15 +495,25 @@ function isLegacyEnvDefault(role, envSettings) {
     role === "CHAT" &&
     (provider === "kimi" || endpoint === "https://api.moonshot.cn/v1" || model === "kimi-k2.6")
   ) || (
+    role === "IMAGE" &&
+    (provider === "tencent-tokenhub-image" || endpoint === "https://tokenhub.tencentmaas.com/v1/api/image" || model === "hy-image-v3.0")
+  ) || (
     role === "DEEPTHINK" &&
     (model === "qwen3.6-max-preview" || model === "qwen3.6-plus")
   );
 }
 
-function isLegacyVoiceDefault(role, dbSettings) {
+function isLegacyDefault(role, dbSettings) {
   if (!dbSettings) return false;
   const endpoint = String(dbSettings.endpoint || "").replace(/\/+$/, "");
   const model = String(dbSettings.model || "");
+  if (
+    role === "IMAGE" &&
+    endpoint === "https://tokenhub.tencentmaas.com/v1/api/image" &&
+    model === "hy-image-v3.0"
+  ) {
+    return true;
+  }
   if (
     role === "CHAT" &&
     endpoint === "https://api.moonshot.cn/v1" &&
@@ -420,6 +538,92 @@ function isLegacyVoiceDefault(role, dbSettings) {
     endpoint === "https://api.openai.com/v1" &&
     model === "gpt-4o-audio-preview"
   );
+}
+
+function parseEnvOptions(role) {
+  const raw = process.env[`${role}_OPTIONS`];
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    console.warn(`[settings] Ignoring invalid ${role}_OPTIONS JSON.`);
+    return {};
+  }
+}
+
+function normalizeModelOptions(role, value) {
+  const raw = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  if (role === "image") {
+    return dropUndefined({
+      size: cleanSize(raw.size) || "2048*2048",
+      n: cleanInteger(raw.n, 1, 6, 1),
+      prompt_extend: cleanBoolean(raw.prompt_extend, true),
+      watermark: cleanBoolean(raw.watermark, false),
+      negative_prompt: cleanString(raw.negative_prompt, 500),
+      seed: cleanOptionalInteger(raw.seed, 0, 2147483647),
+      useReferenceImage: cleanBoolean(raw.useReferenceImage, true)
+    });
+  }
+  if (role === "asr") {
+    return {
+      targetLanguage: ["auto", "zh", "en"].includes(raw.targetLanguage) ? raw.targetLanguage : "auto"
+    };
+  }
+  if (role === "realtime") {
+    return dropUndefined({
+      voice: cleanString(raw.voice, 64) || "Ethan",
+      outputAudio: cleanBoolean(raw.outputAudio, false),
+      enableSearch: cleanBoolean(raw.enableSearch, false),
+      smoothOutput: raw.smoothOutput === true || raw.smoothOutput === false ? raw.smoothOutput : "auto",
+      top_p: cleanOptionalNumber(raw.top_p, 0.01, 1)
+    });
+  }
+  return dropUndefined({
+    top_p: cleanOptionalNumber(raw.top_p, 0.01, 1),
+    max_tokens: cleanOptionalInteger(raw.max_tokens, 1, 200000)
+  });
+}
+
+function cleanString(value, max = 256) {
+  if (typeof value !== "string") return "";
+  return value.trim().slice(0, max);
+}
+
+function cleanBoolean(value, fallback = false) {
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return fallback;
+}
+
+function cleanInteger(value, min, max, fallback) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function cleanOptionalInteger(value, min, max) {
+  if (value === "" || value === null || value === undefined) return undefined;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return undefined;
+  return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function cleanOptionalNumber(value, min, max) {
+  if (value === "" || value === null || value === undefined) return undefined;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return undefined;
+  return Math.min(max, Math.max(min, number));
+}
+
+function cleanSize(value) {
+  const size = cleanString(value, 32).replace(/[xX]/g, "*");
+  return /^\d{3,4}\*\d{3,4}$/.test(size) ? size : "";
+}
+
+function dropUndefined(value) {
+  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
 function firstEnv(keys) {
@@ -455,8 +659,17 @@ function applyReasoningMode(payload, config, thinkingMode) {
 
 function isDashScopeQwenConfig(config) {
   if (config?.provider === "dashscope-deep-research") return false;
+  if (config?.provider === "dashscope-qwen-image") return false;
   if (/qwen-deep-research/i.test(config?.model || "")) return false;
   return config?.provider === "dashscope-qwen" || /dashscope\.aliyuncs\.com/i.test(config?.baseUrl || "");
+}
+
+function isDashScopeQwenImageConfig(config) {
+  return (
+    config?.provider === "dashscope-qwen-image" ||
+    /qwen-image/i.test(config?.model || "") ||
+    /\/api\/v1\/services\/aigc\/multimodal-generation\/generation/i.test(config?.baseUrl || "")
+  );
 }
 
 function isDashScopeDeepResearchConfig(config) {
@@ -481,6 +694,17 @@ function applyWebSearchMode(payload, config, enabled = true, options = {}) {
 function applyJsonObjectResponseMode(payload, config, enabled = true) {
   if (enabled && isDashScopeQwenConfig(config)) {
     payload.response_format = { type: "json_object" };
+  }
+  return payload;
+}
+
+function applyRequestOptions(payload, config) {
+  const options = config?.options || {};
+  if (payload.top_p === undefined && typeof options.top_p === "number") {
+    payload.top_p = options.top_p;
+  }
+  if (payload.max_tokens === undefined && Number.isInteger(options.max_tokens)) {
+    payload.max_tokens = options.max_tokens;
   }
   return payload;
 }
@@ -551,7 +775,9 @@ async function handleAsr(body, res) {
     });
   }
 
-  const language = body?.language === "en" ? "en" : "zh";
+  const requestedLanguage = body?.language === "en" ? "en" : "zh";
+  const configuredLanguage = runtimeConfigs.asr.options?.targetLanguage;
+  const language = configuredLanguage === "zh" || configuredLanguage === "en" ? configuredLanguage : requestedLanguage;
   const text = await transcribeAudio(runtimeConfigs.asr, audioDataUrl, language);
   return sendJson(res, 200, {
     provider: "api",
@@ -724,6 +950,7 @@ async function handleChat(body, res) {
   const analysis = normalizeChatAnalysis(body?.analysis);
   const messages = normalizeChatMessages(body?.messages);
   const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
+  const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
 
   if (!message) {
     return sendJson(res, 400, { error: "message is required" });
@@ -744,7 +971,25 @@ async function handleChat(body, res) {
   const lang = body?.language === "en" ? "en" : "zh";
   const selectedContext = body?.selectedContext && typeof body.selectedContext === "object" ? body.selectedContext : null;
   const canvas = body?.canvas && typeof body.canvas === "object" ? body.canvas : {};
-  const systemContext = typeof body?.systemContext === "string" ? body.systemContext.slice(0, 4000) : "";
+  let systemContext = typeof body?.systemContext === "string" ? body.systemContext.slice(0, 4000) : "";
+
+  // Session-scoped RAG: retrieve relevant chunks before the LLM call.
+  // Falls through silently when sessionId is missing or embeddings aren't configured.
+  let retrieved = [];
+  if (sessionId && isEmbeddingConfigured()) {
+    try {
+      retrieved = await retrieveContext({ sessionId, query: message, topK: 6, minScore: 0.22 });
+      if (retrieved.length) {
+        const ragBlock = formatContextForPrompt(retrieved, { maxChars: 2400, lang });
+        systemContext = systemContext
+          ? `${systemContext}\n\n${ragBlock}`
+          : ragBlock;
+      }
+    } catch (ragError) {
+      console.warn("[handleChat] RAG retrieve failed:", ragError.message);
+    }
+  }
+
   const webSearchEnabled = shouldUseWebSearchReadable(message, canvas, selectedContext);
   const webSearchForced = shouldForceWebSearchReadable(message);
   const subagentsEnabled = body?.subagentsEnabled === true;
@@ -793,7 +1038,16 @@ async function handleChat(body, res) {
   applyJsonObjectResponseMode(chatPayload, runtimeConfigs.chat, thinkingMode !== "thinking");
 
   if (body?.stream === true) {
-    return await handleChatStream({ payload: chatPayload, message, thinkingMode, agentMode, lang }, res);
+    return await handleChatStream({
+      payload: chatPayload,
+      message,
+      thinkingMode,
+      agentMode,
+      lang,
+      sessionId,
+      retrievedCount: retrieved.length,
+      webSearchEnabled: webSearchEnabled || webSearchForced
+    }, res);
   }
 
   let response;
@@ -821,10 +1075,17 @@ async function handleChat(body, res) {
     normalizeVoiceActions(parsed?.actions || parsed?.action),
     reply
   );
+  actions = mergeReferenceActions(actions, response, message, webSearchEnabled || webSearchForced);
   if (!agentMode) {
     actions = actions.filter((action) => action.type !== "create_agent");
   }
   const thinkingContent = thinkingMode === "thinking" ? collectReasoningContent(response) : "";
+
+  // Fire-and-forget: persist this turn into the session context pool.
+  ingestChatTurn(sessionId, message, reply).catch((e) =>
+    console.warn("[handleChat] chat turn ingest failed:", e.message)
+  );
+
   return sendJson(res, 200, {
     provider: "api",
     model: runtimeConfigs.chat.model,
@@ -832,11 +1093,12 @@ async function handleChat(body, res) {
     actions,
     artifacts: buildAgentArtifacts(actions, agentMode),
     thinkingContent,
-    thinkingTrace: []
+    thinkingTrace: [],
+    retrievedContext: retrieved.length ? retrieved.length : undefined
   });
 }
 
-function buildChatResultFromResponse({ response, message, thinkingMode, agentMode, lang, streamedReasoning = "" }) {
+function buildChatResultFromResponse({ response, message, thinkingMode, agentMode, lang, streamedReasoning = "", webSearchEnabled = false }) {
   const rawReply = collectChatContent(response).trim();
   let parsed = null;
   try {
@@ -850,6 +1112,7 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
     normalizeVoiceActions(parsed?.actions || parsed?.action),
     reply
   );
+  actions = mergeReferenceActions(actions, response, message, webSearchEnabled);
   if (!agentMode) {
     actions = actions.filter((action) => action.type !== "create_agent");
   }
@@ -864,7 +1127,46 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
   };
 }
 
-async function handleChatStream({ payload, message, thinkingMode, agentMode, lang }, res) {
+function mergeReferenceActions(actions, response, message, webSearchEnabled = false) {
+  const normalized = Array.isArray(actions) ? [...actions] : [];
+  if (!webSearchEnabled) return normalized;
+
+  const existingUrls = new Set(normalized.map((action) => stringOr(action?.url, "")).filter(Boolean));
+  const references = dedupeReferences([
+    ...extractReferencesFromObject(response),
+    ...extractReferencesFromText(collectChatContent(response))
+  ]).filter((reference) => reference.type !== "image" && reference.url);
+
+  for (const reference of references.slice(0, 4)) {
+    if (existingUrls.has(reference.url)) continue;
+    existingUrls.add(reference.url);
+    normalized.push({
+      type: "create_web_card",
+      title: stringOr(reference.title, reference.url).slice(0, 48),
+      description: stringOr(reference.description, reference.url).slice(0, 260),
+      prompt: stringOr(reference.description || reference.title, message).slice(0, 1200),
+      query: deriveSearchQueryClean(message) || String(message || "").slice(0, 120),
+      url: reference.url
+    });
+  }
+
+  if (!references.length && !normalized.some((action) => action.type === "create_web_card")) {
+    const query = deriveSearchQueryClean(message) || String(message || "").slice(0, 120);
+    if (query) {
+      normalized.push({
+        type: "web_search",
+        title: query.slice(0, 48),
+        description: query,
+        query,
+        url: `https://www.google.com/search?q=${encodeURIComponent(query)}`
+      });
+    }
+  }
+
+  return normalized;
+}
+
+async function handleChatStream({ payload, message, thinkingMode, agentMode, lang, sessionId = "", retrievedCount = 0, webSearchEnabled = false }, res) {
   res.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache, no-transform",
@@ -878,19 +1180,44 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
         writeSse(res, "thinking", { delta });
       }
     });
-    writeSse(res, "final", buildChatResultFromResponse({
+    const finalPayload = buildChatResultFromResponse({
       response,
       message,
       thinkingMode,
       agentMode,
       lang,
-      streamedReasoning: response?.choices?.[0]?.message?.reasoning_content || ""
-    }));
+      streamedReasoning: response?.choices?.[0]?.message?.reasoning_content || "",
+      webSearchEnabled
+    });
+    if (retrievedCount) finalPayload.retrievedContext = retrievedCount;
+    ingestChatTurn(sessionId, message, finalPayload.reply || "").catch((e) =>
+      console.warn("[handleChatStream] chat turn ingest failed:", e.message)
+    );
+    writeSse(res, "final", finalPayload);
   } catch (error) {
     writeSse(res, "error", { error: error.message || "Chat stream failed" });
   } finally {
     res.end();
   }
+}
+
+/**
+ * Persist a single chat turn (user message + assistant reply) into the
+ * session-scoped RAG pool. Designed for fire-and-forget invocation — silently
+ * no-ops when sessionId is missing or embeddings aren't configured.
+ */
+async function ingestChatTurn(sessionId, userMessage, assistantReply) {
+  if (!sessionId || !isEmbeddingConfigured()) return;
+  const userText = typeof userMessage === "string" ? userMessage.trim() : "";
+  const replyText = typeof assistantReply === "string" ? assistantReply.trim() : "";
+  if (!userText && !replyText) return;
+  const turnText = `用户：${userText}\n\n助手：${replyText}`.slice(0, 4000);
+  await ingestSnippet({
+    sessionId,
+    kind: CONTEXT_KINDS.CHAT,
+    text: turnText,
+    sourceMeta: { role: "turn", at: new Date().toISOString() }
+  });
 }
 
 async function handleAnalyze(body, res) {
@@ -1012,6 +1339,7 @@ async function handleAnalyzeExplore(body, res) {
   const url = typeof body?.url === "string" ? body.url.trim() : "";
   const fileName = typeof body?.fileName === "string" ? body.fileName.trim() : "";
   const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
+  const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
 
   const hasContent = imageDataUrl || text || dataUrl || url;
   if (!hasContent) {
@@ -1026,8 +1354,20 @@ async function handleAnalyzeExplore(body, res) {
   const prompt = buildExplorePrompt(lang);
 
   let content;
+  let pageText = "";
+  let extractedText = "";
   try {
-    const pageText = url ? await fetchPublicPageText(url).catch(() => "") : "";
+    pageText = url ? await fetchPublicPageText(url).catch(() => "") : "";
+    if (dataUrl && fileName) {
+      try {
+        const parsed = parseDataUrl(dataUrl);
+        const ext = extensionFromFileName(fileName) || parsed.ext || "";
+        const result = extractTextFromBuffer(parsed.buffer, ext);
+        extractedText = result?.text || "";
+      } catch {
+        extractedText = "";
+      }
+    }
     content = buildExploreContent({ prompt, imageDataUrl, url, pageText, text, dataUrl, fileName, parseDataUrl, extensionFromFileName, extractTextFromBuffer });
   } catch (parseErr) {
     return sendJson(res, 400, { error: parseErr.message || "Failed to parse uploaded file." });
@@ -1040,6 +1380,43 @@ async function handleAnalyzeExplore(body, res) {
   applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
   applyWebSearchMode(analysisPayload, runtimeConfigs.analysis, Boolean(url));
 
+  // Fire-and-forget: ingest whatever explorable text we have so subsequent
+  // chats can recall what the user dropped on the canvas.
+  const ingestExploreSources = () => {
+    if (!sessionId || !isEmbeddingConfigured()) return;
+    if (text && text.length > 30) {
+      ingestText({
+        sessionId,
+        kind: CONTEXT_KINDS.NOTE,
+        text,
+        sourceId: `note:${Date.now()}`,
+        sourceMeta: { fileName: fileName || "note" }
+      }).catch((e) => console.warn("[handleAnalyzeExplore] note ingest failed:", e.message));
+    }
+    if (extractedText && extractedText.length > 30) {
+      ingestText({
+        sessionId,
+        kind: CONTEXT_KINDS.FILE,
+        text: extractedText,
+        sourceId: `file:${fileName || "uploaded"}`,
+        sourceMeta: { fileName: fileName || "uploaded" },
+        replace: true
+      }).catch((e) => console.warn("[handleAnalyzeExplore] file ingest failed:", e.message));
+    }
+    if (url && pageText && pageText.length > 50) {
+      let domain = "";
+      try { domain = new URL(url).hostname; } catch {}
+      ingestText({
+        sessionId,
+        kind: CONTEXT_KINDS.WEB,
+        text: pageText,
+        sourceId: `url:${url}`,
+        sourceMeta: { url, domain },
+        replace: true
+      }).catch((e) => console.warn("[handleAnalyzeExplore] web ingest failed:", e.message));
+    }
+  };
+
   try {
     const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload, {
       timeoutMs: thinkingMode === "thinking" ? EXPLORE_THINKING_TIMEOUT_MS : CHAT_COMPLETION_TIMEOUT_MS
@@ -1049,6 +1426,7 @@ async function handleAnalyzeExplore(body, res) {
     const normalized = normalizeExplore(parsed, fileName);
     normalized.provider = "api";
     normalized.model = response?.model || runtimeConfigs.analysis.model;
+    ingestExploreSources();
     return sendJson(res, 200, normalized);
   } catch (error) {
     if (thinkingMode === "thinking" && shouldRetryExploreWithoutThinking(error)) {
@@ -1068,6 +1446,7 @@ async function handleAnalyzeExplore(body, res) {
         normalized.provider = "api";
         normalized.model = response?.model || runtimeConfigs.analysis.model;
         normalized.warningCode = "explore_fallback";
+        ingestExploreSources();
         return sendJson(res, 200, normalized);
       } catch (fallbackError) {
         console.error("[handleAnalyzeExplore] fallback error:", fallbackError);
@@ -1081,6 +1460,7 @@ async function handleAnalyzeExplore(body, res) {
 async function handleAnalyzeUrl(body, res) {
   const url = typeof body?.url === "string" ? body.url.trim() : "";
   const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
+  const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
 
   if (!isValidPublicUrl(url)) {
     return sendJson(res, 400, { error: "Invalid URL. Only http:// and https:// links are supported." });
@@ -1122,6 +1502,20 @@ async function handleAnalyzeUrl(body, res) {
     normalized.provider = "api";
     normalized.model = response?.model || runtimeConfigs.analysis.model;
     normalized.domain = domain;
+
+    // Fire-and-forget: ingest the page body so future chat turns can recall
+    // it without re-fetching. Skipped if the page returned nothing useful.
+    if (sessionId && pageText && pageText.length > 50 && isEmbeddingConfigured()) {
+      ingestText({
+        sessionId,
+        kind: CONTEXT_KINDS.WEB,
+        text: pageText,
+        sourceId: `url:${url}`,
+        sourceMeta: { url, domain, title: normalized?.title || domain },
+        replace: true
+      }).catch((e) => console.warn("[handleAnalyzeUrl] ingest failed:", e.message));
+    }
+
     return sendJson(res, 200, normalized);
   } catch (error) {
     console.error("[handleAnalyzeUrl] error:", error);
@@ -1133,6 +1527,7 @@ async function handleAnalyzeText(body, res) {
   const fileName = typeof body?.fileName === "string" ? body.fileName.trim() : "";
   const safeFileName = fileName || "document";
   const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
+  const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
 
   let extractedText = "";
   let storedHash = null;
@@ -1188,6 +1583,20 @@ async function handleAnalyzeText(body, res) {
   normalized.provider = "api";
   normalized.model = response?.model || runtimeConfigs.analysis.model;
   if (storedHash) normalized.sourceHash = storedHash;
+
+  // Fire-and-forget: ingest the extracted text into the session pool so
+  // future chat turns can recall this document without resending it.
+  if (sessionId && isEmbeddingConfigured()) {
+    ingestText({
+      sessionId,
+      kind: CONTEXT_KINDS.FILE,
+      text: extractedText,
+      sourceId: storedHash || `file:${safeFileName}`,
+      sourceMeta: { fileName: safeFileName, hash: storedHash || null },
+      replace: true
+    }).catch((e) => console.warn("[handleAnalyzeText] ingest failed:", e.message));
+  }
+
   return sendJson(res, 200, normalized);
 }
 
@@ -1199,6 +1608,8 @@ function extensionFromFileName(fileName) {
 
 async function handleGenerate(body, res) {
   const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
+  const maskDataUrl = normalizeDataUrl(body?.maskDataUrl);
+  const sizeOverride = cleanSize(body?.size);
   const option = normalizeOption(body?.option);
   if (!imageDataUrl || !option) {
     return sendJson(res, 400, { error: "imageDataUrl and option are required" });
@@ -1216,8 +1627,10 @@ async function handleGenerate(body, res) {
   const lang = body?.language === "en" ? "en" : "zh";
   const prompt = buildGeneratePrompt(lang, option);
 
-  // thinkingMode is accepted for consistency but image generation APIs don't support it directly
-  const result = await generateTokenHubImage(prompt, body?.imageUrl || null, imageDataUrl);
+  // thinkingMode is accepted for consistency but image generation APIs don't support it directly.
+  const result = isDashScopeQwenImageConfig(runtimeConfigs.image)
+    ? await generateDashScopeQwenImage(prompt, body?.imageUrl || null, imageDataUrl, { maskDataUrl, size: sizeOverride })
+    : await generateTokenHubImage(prompt, body?.imageUrl || null, imageDataUrl);
 
   const generatedImage = result.imageDataUrl || result.imageUrl || "";
   let stored = null;
@@ -1262,6 +1675,31 @@ async function storeGeneratedImage(imageReference) {
   const ext = extensionFromContentType(contentType) || extensionFromUrl(imageReference) || "jpg";
   const buffer = Buffer.from(await response.arrayBuffer());
   return storeFile(buffer, { kind: "generated", ext });
+}
+
+async function ingestRemoteImageAsUpload(imageUrl) {
+  if (typeof imageUrl !== "string" || !/^https?:\/\//i.test(imageUrl)) return null;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    const response = await fetch(imageUrl, { signal: controller.signal, headers: { "User-Agent": "ORYZAE-Search/1.0" } });
+    clearTimeout(timeout);
+    if (!response.ok) return null;
+    const contentType = (response.headers.get("content-type") || "").split(";")[0].trim();
+    if (contentType && !/^image\//i.test(contentType)) return null;
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length || buffer.length > 12 * 1024 * 1024) return null;
+    const ext = extensionFromContentType(contentType) || extensionFromUrl(imageUrl) || "jpg";
+    const stored = await storeFile(buffer, { kind: "upload", ext });
+    return {
+      hash: stored.hash,
+      mimeType: contentType || stored.mimeType || "image/jpeg",
+      fileSize: stored.size || buffer.length
+    };
+  } catch (error) {
+    console.warn("[ingestRemoteImageAsUpload] failed:", imageUrl?.slice(0, 80), error?.message || error);
+    return null;
+  }
 }
 
 async function handleExplain(body, res) {
@@ -1467,8 +1905,8 @@ function buildChatActionSystemPromptReadable(lang = "zh", thinkingMode = "no-thi
     "You are ORYZAE's canvas dialogue and action assistant. The user may chat freely, ask for analysis, or ask the app to manipulate the canvas.",
     "Use actions only when the user clearly asks the app to do something. If the user is just chatting, return an empty actions array.",
     "Prefer exact nodeId values copied from Canvas state. If a card is named but the exact id is uncertain, provide nodeName/query instead; never invent node IDs.",
-    "For destructive actions such as delete_node, only act when the user explicitly asks to delete/remove a card.",
-    "Reusable action types: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas, deselect, select_source, select_analysis, select_node, move_node, create_direction, create_web_card, create_agent, generate_image, image_search, reverse_image_search, text_image_search, analyze_source, explore_source, research_source, research_node, open_references, save_session, new_chat, open_chat_history, close_chat, open_chat, open_history, open_settings, set_thinking_mode, set_deep_think_mode, open_upload, delete_node.",
+    "For high-risk actions such as delete_node, bulk creation, web research, image_search/reverse_image_search, and generate_image, only act when the user clearly asks or the task requires it. The frontend will ask for confirmation before executing risky actions.",
+    `Reusable action types: ${CANVAS_ACTION_TYPES_TEXT}.`,
     "When the user explicitly asks for web search, link research, latest information, official docs, or references, web search is enabled and may be forced for this turn. Use fresh web evidence and return create_web_card actions with url/title/description for concrete web references.",
     "When visual references, similar images, reverse-image lookup, or source-image discovery would help, return image_search, text_image_search, or reverse_image_search with query/nodeId/nodeName. You may use image search even when the user only describes a visual goal.",
     "Only create or mention subagents when agent_controller_mode=true. If agent_controller_mode=false, do not return create_agent and do not claim that an agent/subagent/worker has started; handle the request as a normal assistant.",
@@ -1675,6 +2113,7 @@ async function dashScopeRealtimeVoiceCompletion(config, context) {
   const events = await runDashScopeRealtimeTurn(config, pcmBase64, instruction);
   const transcript = events.inputTranscript.trim();
   const responseText = (events.text || events.audioTranscript).trim();
+  const audioDataUrl = events.audioChunks?.length ? wavDataUrlFromPcm16Chunks(events.audioChunks, 24000) : "";
   let parsed;
   try {
     parsed = parseJsonFromText(responseText);
@@ -1686,7 +2125,7 @@ async function dashScopeRealtimeVoiceCompletion(config, context) {
     transcript: stringOr(parsed?.transcript, transcript),
     reply: stringOr(parsed?.reply, responseText),
     actions: normalizeVoiceActions(parsed?.actions || parsed?.action),
-    audioDataUrl: ""
+    audioDataUrl
   };
 }
 
@@ -1697,7 +2136,7 @@ function runDashScopeRealtimeTurn(config, pcmBase64, instruction) {
       headers: { Authorization: `Bearer ${config.apiKey}` }
     });
     const chunks = splitBuffer(Buffer.from(pcmBase64, "base64"), 3200);
-    const result = { inputTranscript: "", text: "", audioTranscript: "" };
+    const result = { inputTranscript: "", text: "", audioTranscript: "", audioChunks: [] };
     let settled = false;
     let audioSent = false;
 
@@ -1736,16 +2175,34 @@ function runDashScopeRealtimeTurn(config, pcmBase64, instruction) {
     }
 
     ws.on("open", () => {
+      const outputAudio = config.options?.outputAudio === true;
+      const session = {
+        modalities: outputAudio ? ["text", "audio"] : ["text"],
+        instructions: instruction,
+        input_audio_format: "pcm",
+        output_audio_format: "pcm",
+        input_audio_transcription: { model: "qwen3-asr-flash-realtime" },
+        turn_detection: null
+      };
+      if (outputAudio) {
+        session.voice = cleanString(config.options?.voice, 64) || "Ethan";
+      }
+      if (config.options?.enableSearch === true) {
+        session.enable_search = true;
+        session.search_options = { enable_source: true };
+      }
+      if (config.options?.smoothOutput === true || config.options?.smoothOutput === false) {
+        session.smooth_output = config.options.smoothOutput;
+      }
+      if (typeof config.temperature === "number") {
+        session.temperature = config.temperature;
+      }
+      if (typeof config.options?.top_p === "number") {
+        session.top_p = config.options.top_p;
+      }
       send({
         type: "session.update",
-        session: {
-          modalities: ["text"],
-          instructions: instruction,
-          input_audio_format: "pcm",
-          output_audio_format: "pcm",
-          input_audio_transcription: { model: "qwen3-asr-flash-realtime" },
-          turn_detection: null
-        }
+        session
       });
     });
 
@@ -1776,6 +2233,9 @@ function runDashScopeRealtimeTurn(config, pcmBase64, instruction) {
         case "response.audio_transcript.done":
           if (event.transcript && !result.audioTranscript) result.audioTranscript = event.transcript;
           break;
+        case "response.audio.delta":
+          if (event.delta) result.audioChunks.push(event.delta);
+          break;
         case "response.done":
           finish();
           break;
@@ -1797,6 +2257,31 @@ function splitBuffer(buffer, size) {
     chunks.push(buffer.subarray(i, i + size));
   }
   return chunks;
+}
+
+function wavDataUrlFromPcm16Chunks(base64Chunks, sampleRate = 24000) {
+  const pcm = Buffer.concat(
+    base64Chunks
+      .filter((chunk) => typeof chunk === "string" && chunk)
+      .map((chunk) => Buffer.from(chunk, "base64"))
+  );
+  if (!pcm.length) return "";
+  const header = Buffer.alloc(44);
+  const byteRate = sampleRate * 2;
+  header.write("RIFF", 0);
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write("WAVE", 8);
+  header.write("fmt ", 12);
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36);
+  header.writeUInt32LE(pcm.length, 40);
+  return `data:audio/wav;base64,${Buffer.concat([header, pcm]).toString("base64")}`;
 }
 
 function pcmBase64FromAudioDataUrl(audioDataUrl) {
@@ -1846,43 +2331,7 @@ function audioFormatFromMimeType(mimeType) {
   }[normalized] || "webm";
 }
 
-const VOICE_ACTION_TYPES = new Set([
-  "zoom_in",
-  "zoom_out",
-  "set_zoom",
-  "reset_view",
-  "pan_view",
-  "focus_node",
-  "arrange_canvas",
-  "deselect",
-  "select_source",
-  "select_analysis",
-  "select_node",
-  "move_node",
-  "create_direction",
-  "create_web_card",
-  "create_agent",
-  "generate_image",
-  "image_search",
-  "reverse_image_search",
-  "text_image_search",
-  "analyze_source",
-  "explore_source",
-  "research_source",
-  "research_node",
-  "open_references",
-  "save_session",
-  "new_chat",
-  "open_chat_history",
-  "close_chat",
-  "open_chat",
-  "open_history",
-  "open_settings",
-  "set_thinking_mode",
-  "set_deep_think_mode",
-  "open_upload",
-  "delete_node"
-]);
+const VOICE_ACTION_TYPES = new Set(CANVAS_TOOL_TYPES);
 
 function normalizedActionString(value, maxLength = 160) {
   if (typeof value !== "string") return undefined;
@@ -1918,6 +2367,7 @@ function normalizeVoiceActions(value) {
         position: normalizedActionString(action.position, 60),
         direction: normalizedActionString(action.direction, 60),
         mode: normalizedActionString(action.mode, 80),
+        scope: normalizedActionString(action.scope, 80),
         x: normalizedActionNumber(action.x),
         y: normalizedActionNumber(action.y),
         dx: normalizedActionNumber(action.dx),
@@ -2157,6 +2607,8 @@ function normalizeDeepResearchEvent(chunk) {
     ""
   );
   const delta = extractDeepResearchText(output);
+  const queries = extractDeepResearchQueries({ extra, output, message });
+  const query = queries[0] || "";
   const references = dedupeReferences([
     ...extractReferencesFromObject(extra),
     ...extractReferencesFromObject(output),
@@ -2166,13 +2618,36 @@ function normalizeDeepResearchEvent(chunk) {
   const isAnswer = /answer|final|response|summary_report|report/i.test(stage) || Boolean(output.finish_reason);
   return {
     id: chunk?.request_id || chunk?.id || `research-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    stage: stage || (isAnswer ? "answer" : "research"),
-    title: humanDeepResearchStage(stage),
+    stage: stage || (isAnswer ? "answer" : (query ? "search" : "research")),
+    title: humanDeepResearchStage(stage || (query ? "search" : "")),
     delta,
+    query,
+    queries,
     references,
     isAnswer,
     status: /finish|complete|done|success/i.test(normalizedStage) ? "complete" : "running"
   };
+}
+
+function extractDeepResearchQueries(value) {
+  const queries = [];
+  walkJson(value, (item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return;
+    const direct = item.query || item.search_query || item.searchQuery || item.keyword || item.q;
+    if (typeof direct === "string") queries.push(direct);
+    const arrays = [item.queries, item.search_queries, item.searchQueries, item.keywords];
+    for (const list of arrays) {
+      if (!Array.isArray(list)) continue;
+      for (const entry of list) {
+        if (typeof entry === "string") queries.push(entry);
+        else if (entry && typeof entry === "object") {
+          const nested = entry.query || entry.search_query || entry.searchQuery || entry.keyword || entry.q;
+          if (typeof nested === "string") queries.push(nested);
+        }
+      }
+    }
+  });
+  return Array.from(new Set(queries.map((query) => query.trim()).filter(Boolean))).slice(0, 8);
 }
 
 function extractDeepResearchText(output) {
@@ -2313,6 +2788,19 @@ async function runQwenImageSearch({ query, imageDataUrl, lang, limit }) {
       url: stringOr(reference.sourceUrl || reference.url, ""),
       type: "image"
     }));
+
+  await Promise.all(results.map(async (result) => {
+    const remoteImage = result.imageUrl;
+    if (!remoteImage || !/^https?:\/\//i.test(remoteImage)) return;
+    const stored = await ingestRemoteImageAsUpload(remoteImage);
+    if (stored?.hash) {
+      result.imageHash = stored.hash;
+      result.localImageUrl = `/api/assets/${stored.hash}?kind=upload`;
+      result.mimeType = stored.mimeType;
+      result.fileSize = stored.fileSize;
+    }
+  }));
+
   return {
     provider: "api",
     model: IMAGE_SEARCH_MODEL,
@@ -2462,10 +2950,10 @@ function buildDemoImageSearchResults(query, lang = "zh") {
 }
 
 async function chatCompletions(config, payload, options = {}) {
-  const requestPayload = {
+  const requestPayload = applyRequestOptions({
     model: config.model,
     ...payload
-  };
+  }, config);
   const timeoutMs = Number(options.timeoutMs || CHAT_COMPLETION_TIMEOUT_MS);
   const controller = new AbortController();
   const timer = setTimeout(() => {
@@ -2515,7 +3003,7 @@ function writeSse(res, event, data) {
 }
 
 async function streamChatCompletions(config, payload, options = {}) {
-  const requestPayload = {
+  const requestPayload = applyRequestOptions({
     model: config.model,
     ...payload,
     stream: true,
@@ -2523,7 +3011,7 @@ async function streamChatCompletions(config, payload, options = {}) {
       ...(payload.stream_options || {}),
       include_usage: false
     }
-  };
+  }, config);
   const timeoutMs = Number(options.timeoutMs || CHAT_COMPLETION_TIMEOUT_MS);
   const controller = new AbortController();
   const timer = setTimeout(() => {
@@ -2810,6 +3298,116 @@ async function generateTokenHubImage(prompt, imageUrl, imageDataUrl) {
   }
 
   throw new Error("TokenHub image job timed out before completion.");
+}
+
+function buildMaskedEditPrompt(prompt) {
+  return [
+    "图 1 是需要编辑的原图。",
+    "图 2 是用户涂抹生成的黑白选区蒙版：白色区域是唯一允许修改的区域，黑色区域必须尽量保持不变。",
+    "请只根据用户指令修改白色选区，保留黑色区域的构图、主体、透视、光照、材质和文字细节。",
+    `用户指令：${prompt}`
+  ].join("\n");
+}
+
+async function generateDashScopeQwenImage(prompt, imageUrl, imageDataUrl, requestOptions = {}) {
+  const options = runtimeConfigs.image.options || {};
+  const content = [];
+  const maskDataUrl = normalizeDataUrl(requestOptions.maskDataUrl);
+  const referenceImage =
+    typeof imageUrl === "string" && /^https?:\/\//i.test(imageUrl)
+      ? imageUrl
+      : imageDataUrl;
+  if (options.useReferenceImage !== false && referenceImage) {
+    content.push({ image: referenceImage });
+  }
+  if (maskDataUrl) {
+    content.push({ image: maskDataUrl });
+  }
+  const finalPrompt = maskDataUrl ? buildMaskedEditPrompt(prompt) : String(prompt || "");
+  content.push({ text: finalPrompt.slice(0, 800) });
+
+  const parameters = dropUndefined({
+    size: cleanSize(requestOptions.size) || cleanSize(options.size) || "2048*2048",
+    n: cleanInteger(options.n, 1, 6, 1),
+    prompt_extend: cleanBoolean(options.prompt_extend, true),
+    watermark: cleanBoolean(options.watermark, false),
+    negative_prompt: cleanString(options.negative_prompt, 500),
+    seed: cleanOptionalInteger(options.seed, 0, 2147483647)
+  });
+
+  const payload = {
+    model: runtimeConfigs.image.model,
+    input: {
+      messages: [
+        {
+          role: "user",
+          content
+        }
+      ]
+    },
+    parameters
+  };
+
+  const response = await fetch(dashScopeQwenImageEndpoint(runtimeConfigs.image), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${runtimeConfigs.image.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const text = await response.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { raw: text };
+  }
+
+  if (!response.ok || json?.code) {
+    const detail = json?.message || json?.error?.message || text || response.statusText;
+    throw new Error(`DashScope image API ${response.status}: ${detail}`);
+  }
+
+  const imageUrlResult = extractDashScopeImageUrl(json);
+  if (!imageUrlResult) {
+    throw new Error("DashScope image response did not include an image URL.");
+  }
+  return {
+    imageUrl: imageUrlResult,
+    imageDataUrl: imageUrlResult,
+    revisedPrompt: json?.output?.actual_prompt || json?.output?.revised_prompt || "",
+    usage: json?.usage || null
+  };
+}
+
+function dashScopeQwenImageEndpoint(config) {
+  const base = String(config.baseUrl || "").replace(/\/+$/, "");
+  if (/\/api\/v1\/services\/aigc\/multimodal-generation\/generation$/i.test(base)) return base;
+  if (/\/api\/v1$/i.test(base)) return `${base}/services/aigc/multimodal-generation/generation`;
+  if (/dashscope-intl\.aliyuncs\.com/i.test(base)) {
+    return "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+  }
+  return "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation";
+}
+
+function extractDashScopeImageUrl(response) {
+  const choices = response?.output?.choices;
+  if (Array.isArray(choices)) {
+    for (const choice of choices) {
+      const content = choice?.message?.content;
+      if (!Array.isArray(content)) continue;
+      const item = content.find((part) => typeof part?.image === "string" && part.image);
+      if (item) return item.image;
+    }
+  }
+  const results = response?.output?.results || response?.results || response?.data;
+  if (Array.isArray(results)) {
+    const item = results.find((part) => typeof part?.url === "string" || typeof part?.image === "string");
+    if (item) return item.url || item.image;
+  }
+  return "";
 }
 
 async function tokenHubImageRequest(url, payload) {

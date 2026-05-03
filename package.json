@@ -9,6 +9,7 @@
     "start": "node server.js",
     "test": "node scripts/test-integration.js",
     "test:db": "node scripts/test-db.js",
+    "test:rag": "node scripts/test-rag.js",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:studio": "prisma studio"
@@ -18,6 +19,8 @@
   },
   "dependencies": {
     "@prisma/client": "^6.0.0",
+    "jszip": "^3.10.1",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.13.0",
     "ws": "^8.20.0"
   },

@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector(version: "0.8.1.2")]
 }
 
 model Session {
@@ -71,6 +73,8 @@ model ChatMessage {
   session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   role      String  // "user" | "assistant"
   content   String
+  thinkingContent String? // assistant chain-of-thought trace
+  references Json?  // [{ title, url, description, type }]
   createdAt DateTime @default(now())
 
   @@index([sessionId])
@@ -96,6 +100,7 @@ model Settings {
   model       String   @default("")
   apiKey      String   @default("")
   temperature Float    @default(0.7)
+  options     Json     @default("{}")
   theme       String   @default("light")
   language    String   @default("zh")
   createdAt   DateTime @default(now())
@@ -109,10 +114,50 @@ model MaterialItem {
   fileSize  Int
   hash      String   // SHA-256 content hash
   filePath  String   // relative path in storage/material/
+  favorited Boolean  @default(false)
   addedAt   DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([hash])
   @@index([fileName])
   @@index([addedAt])
+  @@index([favorited])
+}
+
+model FileUnderstanding {
+  id                   String   @id @default(uuid())
+  hash                 String   @unique // SHA-256 content hash
+  fileName             String
+  mimeType             String
+  summary              String   @default("")
+  abstract             String   @default("")
+  structure            Json?    // { totalPages, outline, sections }
+  keyMaterials         Json?    // { images, tables, charts }
+  actionableDirections Json?    // [{ type, title, description, rationale }]
+  isScanned            Boolean  @default(false)
+  metadata             Json?    // { title, author }
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@index([hash])
+}
+
+/// Session-scoped retrieval chunks (RAG).
+/// embedding column is `vector(1024)` managed via raw SQL — Prisma marks it Unsupported.
+/// Source kinds: "file" | "web" | "card" | "chat" | "generated" | "analysis" | "note"
+model ContextChunk {
+  id          String   @id @default(uuid())
+  sessionId   String
+  kind        String
+  sourceId    String?  // FK-like reference to Node/Asset/ChatMessage etc., free-form
+  sourceMeta  Json?    // { fileName, page, url, nodeId, hash, role, ... }
+  chunkIndex  Int      @default(0)
+  content     String
+  tokens      Int      @default(0)
+  embedding   Unsupported("vector(1024)")?
+  createdAt   DateTime @default(now())
+
+  @@index([sessionId])
+  @@index([sessionId, kind])
+  @@index([sourceId])
 }

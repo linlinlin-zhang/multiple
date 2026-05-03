@@ -84,11 +84,7 @@ export async function findFilePathForHash(hash, { kind = "upload" } = {}) {
     throw error;
   }
 
-  const fileName = entries.find((entry) => {
-    if (!entry.startsWith(prefix)) return false;
-    const ext = entry.slice(prefix.length).toLowerCase();
-    return IMAGE_EXTENSIONS.includes(ext);
-  });
+  const fileName = entries.find((entry) => entry.startsWith(prefix) && entry.length > prefix.length);
 
   if (!fileName) {
     const error = new Error(`Stored asset not found for hash ${hash}`);

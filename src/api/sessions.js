@@ -1,5 +1,5 @@
 import { prisma } from "../lib/prisma.js";
-import { storeDataUrl, readFile } from "../lib/storage.js";
+import { storeDataUrl, readFile, parseDataUrl, storeFile } from "../lib/storage.js";
 
 function sendJson(res, status, data) {
   res.writeHead(status, {
@@ -33,7 +33,13 @@ function serializeState(state) {
       n.sourceCard
         ? {
             sourceCard: n.sourceCard,
-            imageHash: n.sourceCard?.imageHash || n.imageHash || null
+            imageHash: n.sourceCard?.imageHash || n.imageHash || null,
+            imageUrl: n.sourceCard?.imageUrl || null,
+            sourceUrl: n.sourceCard?.sourceUrl || null,
+            fileName: n.sourceCard?.fileName || n.sourceCard?.title || null,
+            summary: n.sourceCard?.summary || null,
+            sourceType: n.sourceCard?.sourceType || null,
+            sourceText: n.sourceCard?.sourceText || null
           }
         : n.option
         ? {
@@ -41,7 +47,12 @@ function serializeState(state) {
             imageHash: n.imageHash || null,
             imageDataUrl: n.imageDataUrl || null,
             explanation: n.explanation || null,
-            references: n.option?.references || null
+            references: Array.isArray(n.option?.references) ? n.option.references : [],
+            layoutHint: n.option?.layoutHint || null,
+            deepThinkType: n.option?.deepThinkType || null,
+            tone: n.option?.tone || null,
+            title: n.option?.title || null,
+            description: n.option?.description || null
           }
         : n.id === "source"
           ? {
@@ -68,12 +79,45 @@ function serializeState(state) {
     kind: l.kind || "option"
   }));
 
-  const chatMessages = (Array.isArray(state.chatMessages) ? state.chatMessages : []).map((m) => ({
-    role: m.role === "assistant" ? "assistant" : "user",
-    content: typeof m.content === "string" ? m.content : ""
-  })).filter((m) => m.content);
+  const chatMessages = (Array.isArray(state.chatMessages) ? state.chatMessages : []).map((m) => {
+    const thinking = typeof m.thinkingContent === "string" ? m.thinkingContent : (typeof m.thinking === "string" ? m.thinking : null);
+    const refs = Array.isArray(m.references) ? m.references : null;
+    return {
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: typeof m.content === "string" ? m.content : "",
+      thinkingContent: thinking && thinking.trim() ? thinking : null,
+      references: refs && refs.length ? refs : null
+    };
+  }).filter((m) => m.content);
 
   return { nodes, links, chatMessages };
+}
+
+function buildPersistedViewState(state) {
+  const view = state?.view && typeof state.view === "object" ? state.view : {};
+  const snapshot = {
+    sourceType: state.sourceType || "image",
+    sourceImageHash: state.sourceImageHash || extractAssetHash(state.sourceImage) || null,
+    sourceText: typeof state.sourceText === "string" ? state.sourceText : null,
+    sourceDataUrlHash: state.sourceDataUrlHash || null,
+    sourceDataUrl: typeof state.sourceDataUrl === "string" && state.sourceDataUrl.length < 256000 ? state.sourceDataUrl : null,
+    sourceUrl: state.sourceUrl || null,
+    fileName: state.fileName || "",
+    latestAnalysis: state.latestAnalysis || null,
+    fileUnderstanding: state.fileUnderstanding || null,
+    selectedNodeId: state.selectedNodeId || null,
+    selectedNodeIds: Array.isArray(state.selectedNodeIds) ? state.selectedNodeIds : [],
+    collapsed: Array.isArray(state.collapsed) ? state.collapsed : [],
+    selectiveHidden: Array.isArray(state.selectiveHidden) ? state.selectiveHidden : [],
+    blueprints: state.blueprints || {},
+    groups: state.groups || {},
+    chatThreads: view.chatThreads || state.chatThreads || [],
+    activeChatThreadId: view.activeChatThreadId || state.activeChatThreadId || null
+  };
+  return {
+    ...view,
+    stateSnapshot: snapshot
+  };
 }
 
 function normalizeNodeEntries(nodes) {
@@ -100,6 +144,26 @@ function addAssetRecord(assetRecords, record) {
 
 async function collectSourceAsset(state, assetRecords) {
   const fileName = state.fileName || null;
+  if (typeof state.sourceDataUrl === "string" && state.sourceDataUrl.startsWith("data:")) {
+    const parsed = parseDataUrl(state.sourceDataUrl);
+    const stored = await storeFile(parsed.buffer, { kind: "upload", ext: parsed.ext || "bin" });
+    addAssetRecord(assetRecords, {
+      hash: stored.hash,
+      kind: "upload",
+      mimeType: parsed.mimeType,
+      fileSize: stored.size,
+      fileName
+    });
+    state.sourceDataUrlHash = stored.hash;
+    return;
+  }
+
+  if (state.sourceDataUrlHash) {
+    const record = await assetRecordFromStoredHash(state.sourceDataUrlHash, { kind: "upload", fileName });
+    addAssetRecord(assetRecords, record);
+    return;
+  }
+
   if (typeof state.sourceImage === "string" && state.sourceImage.startsWith("data:")) {
     const stored = await storeDataUrl(state.sourceImage, { kind: "upload" });
     addAssetRecord(assetRecords, {
@@ -188,6 +252,8 @@ function detectMimeType(buffer) {
     if (header.startsWith("ffd8ff")) return "image/jpeg";
     if (header.startsWith("52494646")) return "image/webp";
     if (header.startsWith("47494638")) return "image/gif";
+    if (header.startsWith("25504446")) return "application/pdf";
+    if (header.startsWith("504b0304")) return "application/vnd.openxmlformats-officedocument";
   }
   const textPrefix = buffer.slice(0, 128).toString("utf8").trimStart();
   if (textPrefix.startsWith("<svg") || textPrefix.startsWith("<?xml")) return "image/svg+xml";
@@ -206,7 +272,7 @@ export async function handleCreateSession(body, res) {
 
     const title = typeof body?.title === "string" ? body.title.trim() : "";
     const isDemo = body?.isDemo === true;
-    const viewState = state.view || { x: 0, y: 0, scale: 0.86 };
+    const viewState = buildPersistedViewState(state);
 
     const { nodes, links, chatMessages } = serializeState(state);
     const assetRecords = [];
@@ -260,7 +326,9 @@ export async function handleCreateSession(body, res) {
           data: chatMessages.map((m) => ({
             sessionId: session.id,
             role: m.role,
-            content: m.content
+            content: m.content,
+            thinkingContent: m.thinkingContent,
+            references: m.references
           }))
         });
       }
@@ -302,7 +370,10 @@ export async function handleGetSession(sessionId, res) {
       return sendJson(res, 404, { error: "Session not found" });
     }
 
-    return sendJson(res, 200, session);
+    return sendJson(res, 200, {
+      ...session,
+      state: session.viewState?.stateSnapshot || null
+    });
   } catch (error) {
     console.error("[handleGetSession]", error);
     return sendJson(res, 500, { error: error.message || "Failed to get session" });
@@ -324,7 +395,7 @@ export async function handleUpdateSession(sessionId, body, res) {
     }
 
     const title = typeof body?.title === "string" ? body.title.trim() : undefined;
-    const viewState = state.view || { x: 0, y: 0, scale: 0.86 };
+    const viewState = buildPersistedViewState(state);
 
     const { nodes, links, chatMessages } = serializeState(state);
     const assetRecords = [];
@@ -375,7 +446,9 @@ export async function handleUpdateSession(sessionId, body, res) {
           data: chatMessages.map((m) => ({
             sessionId,
             role: m.role,
-            content: m.content
+            content: m.content,
+            thinkingContent: m.thinkingContent,
+            references: m.references
           }))
         });
       }
@@ -431,6 +504,7 @@ export async function handleExportSession(sessionId, res) {
         title: session.title,
         isDemo: session.isDemo,
         viewState: session.viewState,
+        state: session.viewState?.stateSnapshot || null,
         nodes: session.nodes.map((n) => ({
           nodeId: n.nodeId,
           type: n.type,
@@ -448,7 +522,9 @@ export async function handleExportSession(sessionId, res) {
         })),
         chatMessages: session.chatMessages.map((m) => ({
           role: m.role,
-          content: m.content
+          content: m.content,
+          thinkingContent: m.thinkingContent || null,
+          references: Array.isArray(m.references) ? m.references : null
         }))
       },
       assets: []
