@@ -4803,3 +4803,48 @@ html[data-theme="dark"] .blueprint-card.dragging {
   border-radius: 12px;
   box-shadow: var(--shadow-16);
 }
+
+/* ── Task-type badges on direction cards ── */
+.card-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.badge-visual {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+}
+
+.badge-research {
+  background: linear-gradient(135deg, #3b82f6, #06b6d4);
+  color: white;
+}
+
+.badge-planning {
+  background: linear-gradient(135deg, #22c55e, #10b981);
+  color: white;
+}
+
+.badge-creative {
+  background: linear-gradient(135deg, #f472b6, #fb923c);
+  color: white;
+}
+
+.badge-general {
+  background: #6b7280;
+  color: white;
+}
+
+html[data-theme="dark"] .badge-general {
+  background: #9ca3af;
+  color: #1f1f1f;
+}

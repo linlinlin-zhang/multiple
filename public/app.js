@@ -576,7 +576,12 @@ const i18n = {
     "node.cannotDeleteSource": "初始卡片不可删除",
     "node.cannotDeleteWithChildren": "该卡片有子节点，不可删除",
     "reference.title": "参考资料",
-    "reference.empty": "暂无参考资料"
+    "reference.empty": "暂无参考资料",
+    "badge.image_generation": "成图",
+    "badge.research": "研究",
+    "badge.planning": "规划",
+    "badge.creative": "创意",
+    "badge.general": "通用"
   },
   en: {
     "nav.workbench": "Workbench",
@@ -827,7 +832,12 @@ const i18n = {
     "node.cannotDeleteSource": "Source card cannot be deleted",
     "node.cannotDeleteWithChildren": "Cannot delete a card with children",
     "reference.title": "References",
-    "reference.empty": "No references available"
+    "reference.empty": "No references available",
+    "badge.image_generation": "Visual",
+    "badge.research": "Research",
+    "badge.planning": "Planning",
+    "badge.creative": "Creative",
+    "badge.general": "General"
   }
 };
 
@@ -3083,7 +3093,7 @@ async function exploreSource() {
     }
 
     renderAnalysis(data);
-    renderExploreOptions(data.options || [], data.references || []);
+    renderExploreOptions(data.options || [], data.references || [], data.taskType || "general");
     state.latestAnalysis = data;
     setStatus(data.warningCode === "explore_fallback" ? t("research.fallbackComplete") : t("research.exploreComplete"), "ready");
     autoSave();
@@ -3137,7 +3147,7 @@ async function analyzeSource(mode = "analyze") {
     }
 
     renderAnalysis(data);
-    renderOptions(data.options || []);
+    renderOptions(data.options || [], data.taskType || "general");
     state.latestAnalysis = data;
     setStatus(t("status.ready"), "ready");
     autoSave();
@@ -3164,7 +3174,7 @@ async function analyzeUrl() {
     // Render source preview as a link card
     renderUrlSource(url, data.title);
     renderAnalysis(data);
-    renderOptions(data.options || []);
+    renderOptions(data.options || [], data.taskType || "general");
     setStatus(t("status.ready"), "ready");
     autoSave();
   } catch (error) {
@@ -4724,7 +4734,7 @@ function pcmChunksToBase64(chunks) {
   return btoa(binary);
 }
 
-function createOptionNode(option, parentNodeId) {
+function createOptionNode(option, parentNodeId, taskType = "general") {
   const parentNode = state.nodes.get(parentNodeId);
   if (!parentNode) return null;
 
@@ -4754,6 +4764,7 @@ function createOptionNode(option, parentNodeId) {
   element.style.left = `${newX}px`;
   element.style.top = `${newY}px`;
   element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
+  applyTaskTypeBadge(element, taskType);
   element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
   element.querySelector(".option-title").textContent = option.title || t("generated.result");
   element.querySelector(".option-description").textContent = option.description || "";
@@ -5125,7 +5136,7 @@ async function analyzeStandaloneSourceCard(nodeId) {
     }
 
     if (data.options?.length) {
-      renderStandaloneOptions(data.options, nodeId);
+      renderStandaloneOptions(data.options, nodeId, data.taskType || "general");
     } else {
       const option = {
         id: `analysis-${Date.now()}`,
@@ -5726,7 +5737,17 @@ function renderAnalysis(data) {
   applyCollapseState();
 }
 
-function renderOptions(options) {
+function applyTaskTypeBadge(element, taskType) {
+  const badge = element.querySelector(".card-badge");
+  if (!badge) return;
+  const type = taskType || "general";
+  const cssType = type === "image_generation" ? "visual" : type;
+  badge.className = `card-badge badge-${cssType}`;
+  badge.textContent = t(`badge.${type}`) || type;
+  element.dataset.taskType = type;
+}
+
+function renderOptions(options, taskType = "general") {
   clearOptions();
 
   options.forEach((option, index) => {
@@ -5739,6 +5760,7 @@ function renderOptions(options) {
     element.style.left = `${position.x}px`;
     element.style.top = `${position.y}px`;
     element.style.setProperty("--tilt", `${position.tilt}deg`);
+    applyTaskTypeBadge(element, taskType);
     element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
     element.querySelector(".option-title").textContent = option.title || t("generated.result");
     element.querySelector(".option-description").textContent = option.description || "";
@@ -5765,7 +5787,7 @@ function renderOptions(options) {
   updateCounts();
 }
 
-function renderStandaloneOptions(options, parentNodeId) {
+function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
   const parentNode = state.nodes.get(parentNodeId);
   if (!parentNode) return;
 
@@ -5806,6 +5828,7 @@ function renderStandaloneOptions(options, parentNodeId) {
     element.style.left = `${newX}px`;
     element.style.top = `${newY}px`;
     element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
+    applyTaskTypeBadge(element, taskType);
     element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
     element.querySelector(".option-title").textContent = option.title || t("generated.result");
     element.querySelector(".option-description").textContent = option.description || "";
@@ -5840,7 +5863,7 @@ function renderStandaloneOptions(options, parentNodeId) {
   drawLinks();
 }
 
-function renderExploreOptions(options, references) {
+function renderExploreOptions(options, references, taskType = "general") {
   clearOptions();
 
   options.forEach((option, index) => {
@@ -5853,6 +5876,7 @@ function renderExploreOptions(options, references) {
     element.style.left = `${position.x}px`;
     element.style.top = `${position.y}px`;
     element.style.setProperty("--tilt", `${position.tilt}deg`);
+    applyTaskTypeBadge(element, taskType);
     element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
     element.querySelector(".option-title").textContent = option.title || t("generated.result");
     element.querySelector(".option-description").textContent = option.description || "";

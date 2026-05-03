@@ -1,5 +1,29 @@
 import { SAFETY_DIRECTIVES, FORMAT_JSON_STRICT, THINKING_FRAMEWORKS, META_DIRECTIVES } from './shared.js';
 
+function getTaskTypeBias(taskType, lang) {
+  if (taskType === 'research') {
+    return lang === 'en'
+      ? '# Task-Type Bias\nThe system has classified this content as RESEARCH-oriented. Prioritize "research" and "content" purpose options over "visual" options. Offer investigative, analytical, and informational directions.'
+      : '# 任务类型偏向\n系统已将此内容分类为研究导向。优先提供 "research" 和 "content" 类型的方案，减少 "visual" 方案。提供调查性、分析性和信息性的方向。';
+  }
+  if (taskType === 'planning') {
+    return lang === 'en'
+      ? '# Task-Type Bias\nThe system has classified this content as PLANNING-oriented. Prioritize "plan" and "tool" purpose options. Offer structured plans, schedules, workflows, and actionable roadmaps.'
+      : '# 任务类型偏向\n系统已将此内容分类为规划导向。优先提供 "plan" 和 "tool" 类型的方案。提供结构化计划、日程、工作流和可执行的路线图。';
+  }
+  if (taskType === 'creative') {
+    return lang === 'en'
+      ? '# Task-Type Bias\nThe system has classified this content as CREATIVE-oriented. Prioritize "visual" and "exploration" purpose options. Offer artistic, imaginative, and visually-driven directions.'
+      : '# 任务类型偏向\n系统已将此内容分类为创意导向。优先提供 "visual" 和 "exploration" 类型的方案。提供艺术性、想象力和视觉驱动的方向。';
+  }
+  if (taskType === 'image_generation') {
+    return lang === 'en'
+      ? '# Task-Type Bias\nThe system has classified this content as IMAGE-GENERATION-oriented. Prioritize "visual" purpose options. Offer image generation, visual design, and style exploration directions.'
+      : '# 任务类型偏向\n系统已将此内容分类为图片生成导向。优先提供 "visual" 类型的方案。提供图片生成、视觉设计和风格探索的方向。';
+  }
+  return '';
+}
+
 export function buildAnalysisPrompt(lang, taskType = 'general') {
   return lang === "en"
     ? [
@@ -31,6 +55,8 @@ export function buildAnalysisPrompt(lang, taskType = 'general') {
         "10. User explicitly asks for images → prioritize visual options.",
         "11. User explicitly asks for a plan / schedule / itinerary → prioritize plan options.",
         "12. NEVER force image generation when the content does not call for it.",
+        "",
+        getTaskTypeBias(taskType, "en"),
         "",
         "# Purpose Guide (set purpose per option)",
         '- "visual" — leads to image generation or visual design',
@@ -101,6 +127,8 @@ export function buildAnalysisPrompt(lang, taskType = 'general') {
         "11. 用户明确要求计划 / 日程 / 行程 → 优先 plan 方案。",
         "12. 绝对不要在内容不适合时强行提供图片生成方案。",
         "",
+        getTaskTypeBias(taskType, "zh"),
+        "",
         "# Purpose 说明（每个 option 设置 purpose）",
         '- "visual" — 导向图片生成或视觉设计',
         '- "exploration" — 扩展思路、收集参考、头脑风暴',
@@ -156,6 +184,8 @@ export function buildExplorePrompt(lang, taskType = 'general') {
         "",
         "# Thinking Framework",
         THINKING_FRAMEWORKS.en,
+        "",
+        getTaskTypeBias(taskType, "en"),
         "",
         "# Purpose Guide",
         '- "visual" — image generation or visual design',
@@ -216,6 +246,8 @@ export function buildExplorePrompt(lang, taskType = 'general') {
         "",
         "# 思维框架",
         THINKING_FRAMEWORKS.zh,
+        "",
+        getTaskTypeBias(taskType, "zh"),
         "",
         "# Purpose 说明",
         '- "visual" — 图片生成或视觉设计',

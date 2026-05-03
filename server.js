@@ -1563,6 +1563,16 @@ async function handleAnalyzeUrl(body, res) {
     return sendJson(res, 200, demo);
   }
 
+  const lang = body?.language === "en" ? "en" : "zh";
+  const { taskType, confidence, wasFallback } = await routeContent({
+    content: url,
+    contentType: "url",
+    fileName: domain,
+    lang,
+    config: runtimeConfigs.chat
+  });
+  console.log(`[route] ${taskType} (confidence: ${confidence}, fallback: ${wasFallback})`);
+
   const pageText = await fetchPublicPageText(url).catch(() => "");
   const prompt = buildUrlAnalysisPrompt({ url, domain, pageText });
 
@@ -1585,6 +1595,7 @@ async function handleAnalyzeUrl(body, res) {
     const normalized = normalizeAnalysis(parsed, domain);
     normalized.provider = "api";
     normalized.model = response?.model || runtimeConfigs.analysis.model;
+    normalized.taskType = taskType;
     normalized.domain = domain;
 
     // Fire-and-forget: ingest the page body so future chat turns can recall
@@ -1647,6 +1658,16 @@ async function handleAnalyzeText(body, res) {
     return sendJson(res, 200, demo);
   }
 
+  const lang = body?.language === "en" ? "en" : "zh";
+  const { taskType, confidence, wasFallback } = await routeContent({
+    content: extractedText,
+    contentType: body?.contentType || "text",
+    fileName,
+    lang,
+    config: runtimeConfigs.chat
+  });
+  console.log(`[route] ${taskType} (confidence: ${confidence}, fallback: ${wasFallback})`);
+
   const prompt = buildTextAnalysisPrompt({ extractedText });
 
   const analysisPayload = {
@@ -1666,6 +1687,7 @@ async function handleAnalyzeText(body, res) {
   const normalized = normalizeAnalysis(parsed, safeFileName);
   normalized.provider = "api";
   normalized.model = response?.model || runtimeConfigs.analysis.model;
+  normalized.taskType = taskType;
   if (storedHash) normalized.sourceHash = storedHash;
 
   // Fire-and-forget: ingest the extracted text into the session pool so
