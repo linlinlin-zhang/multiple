@@ -771,7 +771,7 @@ function applyWebSearchMode(payload, config, enabled = true, options = {}) {
       enable_citation: true,
       citation_format: "[ref_<number>]",
       forced_search: true,
-      search_strategy: options.strategy || "agent_max"
+      search_strategy: options.strategy || "max"
     };
   }
   return payload;
