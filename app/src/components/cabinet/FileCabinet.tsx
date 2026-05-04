@@ -4,7 +4,7 @@ import { useHistory } from "../../hooks/useHistory";
 import HistoryPage from "./HistoryPage";
 import AppNavigation from "@/components/AppNavigation";
 import { useI18n } from "@/lib/i18n";
-import { Clock, FileText, Globe2, Image, Menu, MessageSquare, Search, X } from "lucide-react";
+import { Clock, FileText, Globe2, Image, Menu, MessageSquare, Search, Trash2, X } from "lucide-react";
 import type { HistorySession, OutputKind } from "@/types";
 
 const OUTPUT_TABS: { kind: OutputKind; labelKey: string; icon: ReactNode }[] = [
@@ -34,6 +34,7 @@ interface SessionListProps {
   onOpenNavigation: () => void;
   onSelect: (id: string) => void;
   onRename: (id: string, title: string) => Promise<void> | void;
+  onDelete: (id: string, title: string) => Promise<void> | void;
 }
 
 function SessionList({
@@ -48,6 +49,7 @@ function SessionList({
   onOpenNavigation,
   onSelect,
   onRename,
+  onDelete,
 }: SessionListProps) {
   const { t } = useI18n();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -142,10 +144,30 @@ function SessionList({
               <button
                 key={session.id}
                 onClick={() => onSelect(session.id)}
-                className={`relative w-full text-left px-6 py-4 transition-colors ${
+                className={`group relative w-full text-left px-6 py-4 transition-colors ${
                   active ? "bg-cabinet-paper" : "hover:bg-cabinet-paper/70"
                 }`}
               >
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void onDelete(session.id, session.title || t("session.unnamed"));
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      void onDelete(session.id, session.title || t("session.unnamed"));
+                    }
+                  }}
+                  className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-cabinet-paper text-cabinet-inkMuted opacity-0 shadow-sm ring-1 ring-cabinet-border transition hover:text-[#d53b00] group-hover:opacity-100 focus:opacity-100"
+                  aria-label={t("history.delete")}
+                  title={t("history.delete")}
+                >
+                  <Trash2 size={14} />
+                </span>
                 {active && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-cabinet-ink" />}
                 <div className="flex items-start gap-3">
                   <Clock size={17} className="mt-[2px] text-cabinet-inkMuted flex-shrink-0" />
@@ -249,6 +271,21 @@ export default function FileCabinet() {
     }
   };
 
+  const handleSessionDelete = async (id: string) => {
+    try {
+      const response = await fetch(`/api/sessions/${id}`, { method: "DELETE" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || response.statusText);
+      }
+      if (activeSessionId === id) setActiveSessionId(null);
+      await refetch();
+    } catch (deleteError) {
+      console.error("Failed to delete session", deleteError);
+      alert(t("history.deleteFailed"));
+    }
+  };
+
   return (
     <div className="h-screen overflow-hidden bg-cabinet-bg p-3 md:p-7">
       <AppNavigation activePage="history" open={navigationOpen} onClose={() => setNavigationOpen(false)} />
@@ -281,6 +318,7 @@ export default function FileCabinet() {
               onOpenNavigation={() => setNavigationOpen(true)}
               onSelect={handleSessionSelect}
               onRename={handleSessionRename}
+              onDelete={handleSessionDelete}
             />
           </div>
         </div>
@@ -300,6 +338,7 @@ export default function FileCabinet() {
             onOpenNavigation={() => setNavigationOpen(true)}
             onSelect={handleSessionSelect}
             onRename={handleSessionRename}
+            onDelete={handleSessionDelete}
           />
         </aside>
 

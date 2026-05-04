@@ -7,4 +7,6 @@ const source = path.join(root, "app", "dist");
 const target = path.join(root, "public", "history");
 
 await fs.mkdir(target, { recursive: true });
+await fs.rm(target, { recursive: true, force: true });
+await fs.mkdir(target, { recursive: true });
 await fs.cp(source, target, { recursive: true, force: true });

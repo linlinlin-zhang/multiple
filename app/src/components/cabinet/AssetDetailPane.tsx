@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { File, ExternalLink, Sparkles, Image as ImageIcon } from "lucide-react";
 import { buildAssetUrl } from "../../hooks/useHistory";
 import { useI18n } from "@/lib/i18n";
+import MarkdownContent from "./MarkdownContent";
 import type { SessionDetail, Asset, Node, ChatMessage } from "@/types";
 
 interface AssetDetailPaneProps {
@@ -31,6 +32,42 @@ function MetadataGrid({ rows }: { rows: { label: string; value: string }[] }) {
   );
 }
 
+function firstText(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function looksLikeUrl(value: string) {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+function urlHost(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function readableTitle(...values: unknown[]) {
+  const candidates = values.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map((value) => value.trim());
+  const title = candidates.find((value) => !looksLikeUrl(value));
+  if (title) return title;
+  return candidates[0] ? urlHost(candidates[0]) : "";
+}
+
+function webReferences(node: Node) {
+  const refs = node.data?.option?.references || node.data?.references || node.data?.sourceCard?.references;
+  return Array.isArray(refs) ? refs : [];
+}
+
+function webContentText(content: any) {
+  if (!content || typeof content !== "object") return "";
+  return firstText(content.mainContent, content.markdown, content.text, content.body, content.content, content.summary, content.description);
+}
+
 function ImageAssetDetail({ asset, nodes }: { asset: Asset; nodes?: Node[] }) {
   const { t } = useI18n();
   const url = buildAssetUrl(asset.hash, asset.kind);
@@ -57,7 +94,7 @@ function ImageAssetDetail({ asset, nodes }: { asset: Asset; nodes?: Node[] }) {
       {explanation && (
         <div className="mt-4 p-4 bg-cabinet-bg rounded-3xl border border-cabinet-border">
           <p className="text-xs font-medium text-cabinet-inkMuted mb-1">{t("detail.explanation")}</p>
-          <p className="text-sm text-cabinet-ink leading-relaxed">{explanation}</p>
+          <MarkdownContent content={explanation} className="text-sm" />
         </div>
       )}
     </div>
@@ -105,9 +142,9 @@ function FileAssetDetail({ asset }: { asset: Asset }) {
       {preview !== null && (
         <div className="mt-4">
           <div className="text-[13px] text-cabinet-inkMuted mb-1">{t("detail.preview")}</div>
-          <pre className="text-[13px] text-cabinet-ink bg-cabinet-bg rounded-2xl border border-cabinet-border p-4 max-h-[300px] overflow-auto whitespace-pre-wrap break-all">
-            {preview}
-          </pre>
+          <div className="max-h-[360px] overflow-auto rounded-2xl border border-cabinet-border bg-cabinet-bg p-4">
+            <MarkdownContent content={preview} />
+          </div>
         </div>
       )}
     </div>
@@ -116,41 +153,49 @@ function FileAssetDetail({ asset }: { asset: Asset }) {
 
 function LinkAssetDetail({ node }: { node: Node }) {
   const { t } = useI18n();
-  const url = node.data?.sourceUrl as string | undefined;
-  const description = node.data?.option?.description as string | undefined;
-  const title = node.data?.fileName as string | undefined;
-  const summary = node.data?.summary as string | undefined;
+  const refs = webReferences(node);
+  const firstRef = refs.find((ref: { url?: string }) => typeof ref?.url === "string" && ref.url);
+  const content = node.data?.option?.content && typeof node.data.option.content === "object" ? node.data.option.content : {};
+  const url = firstText(content.url, node.data?.sourceUrl, node.data?.sourceCard?.sourceUrl, firstRef?.url);
+  const title = readableTitle(content.title, node.data?.option?.title, node.data?.sourceCard?.title, node.data?.fileName, firstRef?.title, url);
+  const description = firstText(content.description, node.data?.option?.description, node.data?.sourceCard?.summary, firstRef?.description, node.data?.summary);
+  const mainContent = firstText(webContentText(content), node.data?.sourceCard?.sourceText, node.data?.sourceText, description);
   return (
     <div className="flex flex-col px-8 pb-12">
-      <div className="flex flex-col items-center justify-center py-12">
-        <ExternalLink size={64} className="text-cabinet-inkMuted" />
-        {url && (
-          <a
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[15px] text-cabinet-blue mt-4 font-medium hover:underline break-all text-center"
-          >
-            {url}
-          </a>
-        )}
+      <div className="flex items-start gap-4 pt-2">
+        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-cabinet-blue/10">
+          <ExternalLink size={22} className="text-cabinet-blue" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[22px] font-medium text-cabinet-ink leading-tight break-words">{title || t("asset.webLink")}</h2>
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 block text-[14px] text-cabinet-blue hover:underline break-all"
+            >
+              {url}
+            </a>
+          )}
+        </div>
       </div>
-      {title && (
-        <div className="mt-4">
-          <div className="text-[13px] text-cabinet-inkMuted">{t("detail.title")}</div>
-          <div className="text-[14px] text-cabinet-ink mt-1">{title}</div>
+      {description && description !== mainContent && (
+        <div className="mt-6 rounded-3xl border border-cabinet-border bg-cabinet-bg px-5 py-4">
+          <div className="text-[13px] font-medium text-cabinet-inkMuted mb-2">{t("detail.webSummary")}</div>
+          <MarkdownContent content={description} />
         </div>
       )}
-      {description && (
-        <div className="mt-4">
-          <div className="text-[13px] text-cabinet-inkMuted">{t("detail.description")}</div>
-          <div className="text-[14px] text-cabinet-ink mt-1">{description}</div>
+      {mainContent && (
+        <div className="mt-6">
+          <div className="text-[13px] font-medium text-cabinet-inkMuted mb-2">{t("detail.webMainContent")}</div>
+          <MarkdownContent content={mainContent} maxLength={12000} className="rounded-3xl border border-cabinet-border bg-cabinet-paper p-5" />
         </div>
       )}
-      {summary && (
-        <div className="mt-4 p-4 bg-cabinet-bg rounded-3xl border border-cabinet-border">
-          <p className="text-xs font-medium text-cabinet-inkMuted mb-1">{t("detail.aiSummary")}</p>
-          <p className="text-sm text-cabinet-ink leading-relaxed">{summary}</p>
+      <ReferenceList references={refs} label={t("history.references")} />
+      {!mainContent && !description && url && (
+        <div className="mt-6 rounded-3xl border border-cabinet-border bg-cabinet-bg px-5 py-4">
+          <MarkdownContent content={url} />
         </div>
       )}
     </div>
@@ -172,9 +217,9 @@ function TextNodeDetail({ node }: { node: Node }) {
       {sourceText && (
         <div className="mt-2">
           <div className="text-[13px] text-cabinet-inkMuted mb-1">{t("detail.preview")}</div>
-          <pre className="text-[14px] text-cabinet-ink bg-cabinet-bg rounded-2xl border border-cabinet-border p-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words">
-            {sourceText.slice(0, 6000)}
-          </pre>
+          <div className="max-h-[520px] overflow-auto rounded-2xl border border-cabinet-border bg-cabinet-bg p-4">
+            <MarkdownContent content={sourceText} maxLength={12000} />
+          </div>
         </div>
       )}
     </div>
@@ -214,7 +259,7 @@ function ReferenceList({ references, label }: { references: Array<{ title?: stri
                     <div className="text-[14px] font-medium text-cabinet-ink break-all">{title}</div>
                   )}
                   {description && (
-                    <div className="text-[13px] text-cabinet-inkMuted mt-1 break-words">{description}</div>
+                    <MarkdownContent content={description} className="mt-1 text-[13px] text-cabinet-inkMuted" />
                   )}
                 </div>
               </div>
@@ -226,15 +271,73 @@ function ReferenceList({ references, label }: { references: Array<{ title?: stri
   );
 }
 
+function optionContentPreview(content: any): string {
+  if (!content || typeof content !== "object") return "";
+  const direct = String(content.mainContent || content.markdown || content.text || content.body || content.content || content.summary || content.description || "").trim();
+  if (direct) return direct;
+  if (Array.isArray(content.sections)) {
+    return content.sections
+      .map((section: any) => [`## ${section?.title || ""}`.trim(), String(section?.body || section?.text || "").trim()].filter(Boolean).join("\n\n"))
+      .filter(Boolean)
+      .join("\n\n");
+  }
+  if (Array.isArray(content.steps)) {
+    return content.steps
+      .map((step: any, index: number) => `${index + 1}. ${String(step?.title || step?.name || step || "").trim()}${step?.description ? `\n   ${String(step.description).trim()}` : ""}`)
+      .join("\n");
+  }
+  if (Array.isArray(content.items)) {
+    return content.items
+      .map((item: any) => `- ${String(item?.text || item?.title || item?.label || item || "").trim()}${item?.description ? ` — ${String(item.description).trim()}` : ""}`)
+      .join("\n");
+  }
+  if (Array.isArray(content.metrics)) {
+    return content.metrics
+      .map((item: any) => `- ${String(item?.label || "").trim()}: ${String(item?.value || "").trim()}${item?.note ? ` — ${String(item.note).trim()}` : ""}`)
+      .join("\n");
+  }
+  if (Array.isArray(content.quotes)) {
+    return content.quotes
+      .map((item: any) => `> ${String(item?.text || item?.quote || item || "").trim()}${item?.source ? `\n— ${String(item.source).trim()}` : ""}`)
+      .join("\n\n");
+  }
+  if (Array.isArray(content.columns) && Array.isArray(content.rows)) {
+    const columns = content.columns.map((column: any) => String(column || "").trim());
+    const rows = content.rows.slice(0, 80).map((row: any) => {
+      if (Array.isArray(row)) return row.map((cell) => String(cell ?? "").trim());
+      return columns.map((column: string) => String(row?.[column] ?? row?.[column.toLowerCase()] ?? "").trim());
+    });
+    return [
+      `| ${columns.join(" | ")} |`,
+      `| ${columns.map(() => "---").join(" | ")} |`,
+      ...rows.map((row: string[]) => `| ${row.join(" | ")} |`)
+    ].join("\n");
+  }
+  try {
+    return JSON.stringify(content, null, 2);
+  } catch {
+    return "";
+  }
+}
+
 function OptionNodeDetail({ node }: { node: Node }) {
   const { t } = useI18n();
   const option = node.data?.option || {};
-  const title = String(option.title || node.data?.title || t("history.deepThinkGroup"));
-  const description = String(option.description || node.data?.description || "");
+  const references = Array.isArray(option.references) ? option.references : (Array.isArray(node.data?.references) ? node.data.references : []);
+  const firstWebRef = references.find((ref: { url?: string }) => typeof ref?.url === "string" && ref.url);
+  const content = option.content && typeof option.content === "object" ? option.content : null;
+  const isWeb = Boolean(firstWebRef || content?.url || option.nodeType === "link");
+  const title = isWeb
+    ? readableTitle(content?.title, option.title, node.data?.title, firstWebRef?.title, content?.url, firstWebRef?.url, t("asset.webLink"))
+    : String(option.title || node.data?.title || t("history.deepThinkGroup"));
+  const description = isWeb
+    ? firstText(content?.description, option.description, node.data?.description, firstWebRef?.description)
+    : String(option.description || node.data?.description || "");
   const tone = option.tone ? String(option.tone) : null;
   const prompt = option.prompt ? String(option.prompt) : "";
-  const references = Array.isArray(option.references) ? option.references : (Array.isArray(node.data?.references) ? node.data.references : []);
+  const contentText = firstText(optionContentPreview(content), isWeb ? description : "");
   const isDeepThink = option.layoutHint === "deep-think";
+  const webUrl = firstText(content?.url, firstWebRef?.url);
 
   return (
     <div className="flex flex-col px-8 pb-12">
@@ -252,17 +355,36 @@ function OptionNodeDetail({ node }: { node: Node }) {
         </div>
       </div>
       {description && (
-        <p className="mt-5 text-[15px] text-cabinet-ink leading-[1.7] whitespace-pre-wrap break-words">
-          {description}
-        </p>
+        <MarkdownContent content={description} className="mt-5" />
+      )}
+      {isWeb && webUrl && (
+        <div className="mt-4 flex items-start gap-2">
+          <ExternalLink size={16} className="text-cabinet-blue mt-1 flex-shrink-0" />
+          <a
+            href={webUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[14px] text-cabinet-blue hover:underline break-all"
+          >
+            {webUrl}
+          </a>
+        </div>
       )}
       <ReferenceList references={references} label={t("history.references")} />
+      {contentText && contentText !== description && contentText !== prompt && (
+        <div className="mt-6">
+          <div className="text-[13px] font-medium text-cabinet-inkMuted mb-2">{isWeb ? t("detail.webMainContent") : t("detail.preview")}</div>
+          <div className="max-h-[620px] overflow-auto rounded-2xl border border-cabinet-border bg-cabinet-bg p-4">
+            <MarkdownContent content={contentText} maxLength={12000} />
+          </div>
+        </div>
+      )}
       {prompt && prompt !== description && (
         <div className="mt-6">
           <div className="text-[13px] font-medium text-cabinet-inkMuted mb-2">{t("detail.prompt")}</div>
-          <pre className="text-[14px] text-cabinet-ink bg-cabinet-bg rounded-2xl border border-cabinet-border p-4 whitespace-pre-wrap break-words">
-            {prompt}
-          </pre>
+          <div className="rounded-2xl border border-cabinet-border bg-cabinet-bg p-4">
+            <MarkdownContent content={prompt} />
+          </div>
         </div>
       )}
     </div>
@@ -272,14 +394,15 @@ function OptionNodeDetail({ node }: { node: Node }) {
 function SourceCardDetail({ node }: { node: Node }) {
   const { t } = useI18n();
   const card = node.data?.sourceCard || {};
-  const title = String(card.title || card.fileName || node.data?.fileName || t("asset.uploadedFile"));
-  const summary = String(card.summary || node.data?.summary || "");
-  const sourceUrl = String(card.sourceUrl || node.data?.sourceUrl || "");
+  const sourceUrl = firstText(card.sourceUrl, node.data?.sourceUrl);
+  const title = readableTitle(card.title, card.fileName, node.data?.fileName, sourceUrl, t("asset.uploadedFile"));
+  const summary = firstText(card.summary, node.data?.summary);
   const remoteImageUrl = typeof card.imageUrl === "string" ? card.imageUrl : (typeof node.data?.imageUrl === "string" ? node.data.imageUrl : "");
   const imageHash = typeof card.imageHash === "string" ? card.imageHash : (typeof node.data?.imageHash === "string" ? node.data.imageHash : "");
   const localImageUrl = imageHash && /^[a-f0-9]{64}$/i.test(imageHash) ? `/api/assets/${imageHash}?kind=upload` : "";
   const imageUrl = localImageUrl || remoteImageUrl;
-  const sourceText = String(card.sourceText || node.data?.sourceText || "");
+  const sourceText = firstText(card.mainContent, card.markdown, card.sourceText, node.data?.sourceText);
+  const refs = webReferences(node);
 
   return (
     <div className="flex flex-col px-8 pb-12">
@@ -297,9 +420,7 @@ function SourceCardDetail({ node }: { node: Node }) {
       )}
       <h2 className="text-[18px] font-medium text-cabinet-ink leading-tight mt-5 break-words">{title}</h2>
       {summary && (
-        <p className="mt-2 text-[14px] text-cabinet-ink leading-[1.7] whitespace-pre-wrap break-words">
-          {summary}
-        </p>
+        <MarkdownContent content={summary} className="mt-2 text-[14px]" />
       )}
       {sourceUrl && (
         <div className="mt-4 flex items-start gap-2">
@@ -316,12 +437,13 @@ function SourceCardDetail({ node }: { node: Node }) {
       )}
       {sourceText && (
         <div className="mt-4">
-          <div className="text-[13px] text-cabinet-inkMuted mb-1">{t("detail.preview")}</div>
-          <pre className="text-[14px] text-cabinet-ink bg-cabinet-bg rounded-2xl border border-cabinet-border p-4 max-h-[420px] overflow-auto whitespace-pre-wrap break-words">
-            {sourceText.slice(0, 6000)}
-          </pre>
+          <div className="text-[13px] text-cabinet-inkMuted mb-1">{sourceUrl ? t("detail.webMainContent") : t("detail.preview")}</div>
+          <div className="max-h-[620px] overflow-auto rounded-2xl border border-cabinet-border bg-cabinet-bg p-4">
+            <MarkdownContent content={sourceText} maxLength={12000} />
+          </div>
         </div>
       )}
+      <ReferenceList references={refs} label={t("history.references")} />
     </div>
   );
 }
@@ -352,14 +474,10 @@ function ChatAssetDetail({ msg }: { msg: ChatMessage }) {
             <Sparkles size={14} className="text-cabinet-blue" />
             {t("history.thinkingTrace")}
           </summary>
-          <pre className="text-[13px] text-cabinet-ink leading-relaxed mt-3 whitespace-pre-wrap break-words font-sans">
-            {thinkingContent}
-          </pre>
+          <MarkdownContent content={thinkingContent} className="mt-3 text-[13px]" />
         </details>
       )}
-      <div className="text-[15px] text-cabinet-ink leading-[1.7] whitespace-pre-wrap mt-4">
-        {msg.content}
-      </div>
+      <MarkdownContent content={msg.content} className="mt-4" />
       <ReferenceList references={references} label={t("history.references")} />
     </div>
   );

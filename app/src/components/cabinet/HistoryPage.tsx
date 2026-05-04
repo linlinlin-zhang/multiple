@@ -43,39 +43,80 @@ function isImageAsset(asset: Asset) {
   return asset.kind === "generated" || asset.mimeType.startsWith("image/");
 }
 
-function getFirstOutputId(session: SessionDetail | null, outputKind: OutputKind) {
+function isDocumentAsset(asset: Asset) {
+  return asset.kind === "upload" && !isImageAsset(asset);
+}
+
+function nodeImageUrl(node: SessionDetail["nodes"][number]): string | null {
+  const direct = node.data?.imageUrl;
+  if (typeof direct === "string" && direct) return direct;
+  const card = node.data?.sourceCard?.imageUrl;
+  if (typeof card === "string" && card) return card;
+  const hash = node.data?.imageHash || node.data?.sourceCard?.imageHash;
+  return typeof hash === "string" && hash ? hash : null;
+}
+
+function nodeWebUrl(node: SessionDetail["nodes"][number]): string | null {
+  const contentUrl = node.data?.option?.content?.url;
+  if (typeof contentUrl === "string" && contentUrl) return contentUrl;
+  const direct = node.data?.sourceUrl;
+  if (typeof direct === "string" && direct) return direct;
+  const card = node.data?.sourceCard?.sourceUrl;
+  if (typeof card === "string" && card) return card;
+  const refs = node.data?.option?.references || node.data?.references || node.data?.sourceCard?.references;
+  if (Array.isArray(refs)) {
+    const first = refs.find((ref: { url?: string }) => typeof ref?.url === "string" && ref.url);
+    if (first?.url) return first.url;
+  }
+  return null;
+}
+
+function isDeepThinkDocumentNode(node: SessionDetail["nodes"][number]) {
+  if (node.type !== "option") return false;
+  if (node.data?.option?.layoutHint !== "deep-think") return false;
+  const refs = node.data?.option?.references || node.data?.references || [];
+  return !Array.isArray(refs) || refs.length === 0 || !refs.some((ref: { url?: string }) => ref?.url);
+}
+
+function outputIdsForKind(session: SessionDetail | null, outputKind: OutputKind) {
   if (!session) return null;
   if (outputKind === "image") {
-    return session.assets.find(isImageAsset)?.id ?? null;
+    const referencedHashes = new Set(session.assets.map((asset) => asset.hash));
+    return [
+      ...session.assets.filter(isImageAsset).map((asset) => asset.id),
+      ...session.nodes
+        .filter((node) => {
+          if (node.type !== "source-card") return false;
+          if (!nodeImageUrl(node)) return false;
+          const hash = node.data?.imageHash || node.data?.sourceCard?.imageHash;
+          return !(typeof hash === "string" && referencedHashes.has(hash));
+        })
+        .map((node) => node.id)
+    ];
   }
   if (outputKind === "web") {
-    return session.nodes.find((node) => typeof node.data?.sourceUrl === "string" && node.data.sourceUrl)?.id ?? null;
+    return session.nodes.filter((node) => nodeWebUrl(node)).map((node) => node.id);
   }
   if (outputKind === "chat") {
-    return session.chatMessages[0]?.id ?? null;
+    return session.chatMessages.map((message) => message.id);
   }
   return (
-    session.assets.find((asset) => asset.kind === "upload" && !isImageAsset(asset))?.id ??
-    session.nodes.find((node) => node.type === "source" && node.data?.sourceType === "text")?.id ??
-    null
+    [
+      ...session.assets.filter(isDocumentAsset).map((asset) => asset.id),
+      ...session.nodes
+        .filter((node) => (node.type === "source" && node.data?.sourceType === "text") || isDeepThinkDocumentNode(node))
+        .map((node) => node.id)
+    ]
   );
 }
 
+function getFirstOutputId(session: SessionDetail | null, outputKind: OutputKind) {
+  return outputIdsForKind(session, outputKind)?.[0] ?? null;
+}
+
 function isOutputIdForKind(session: SessionDetail | null, outputKind: OutputKind, id: string | null) {
-  if (!session || !id) return false;
-  if (outputKind === "image") {
-    return session.assets.some((asset) => asset.id === id && isImageAsset(asset));
-  }
-  if (outputKind === "web") {
-    return session.nodes.some((node) => node.id === id && typeof node.data?.sourceUrl === "string" && node.data.sourceUrl);
-  }
-  if (outputKind === "chat") {
-    return session.chatMessages.some((message) => message.id === id);
-  }
-  return (
-    session.assets.some((asset) => asset.id === id && asset.kind === "upload" && !isImageAsset(asset)) ||
-    session.nodes.some((node) => node.id === id && node.type === "source" && node.data?.sourceType === "text")
-  );
+  if (!id) return false;
+  return Boolean(outputIdsForKind(session, outputKind)?.includes(id));
 }
 
 export default function HistoryPage({ sessionId, outputKind }: HistoryPageProps) {
@@ -90,6 +131,7 @@ export default function HistoryPage({ sessionId, outputKind }: HistoryPageProps)
   const selectedAssetId = isOutputIdForKind(session, outputKind, selectedAssetIdIntent)
     ? selectedAssetIdIntent
     : firstOutputId;
+  const showBlueprint = Boolean(session && selectedAssetId && selectedAssetId === firstOutputId);
 
   if (loading && !session) {
     return <SkeletonHistoryPage />;
@@ -185,7 +227,7 @@ export default function HistoryPage({ sessionId, outputKind }: HistoryPageProps)
           </div>
         )}
 
-        {session && (
+        {showBlueprint && session && (
           <div className="px-5 md:px-9 py-4">
             <div className="h-[180px] md:h-[245px] rounded-[24px] overflow-hidden bg-cabinet-bg">
               <NodeGraphThumbnail nodes={session.nodes} links={session.links} />

@@ -48,6 +48,29 @@ function summarizeText(value: string, max = 82) {
   return clean.length > max ? `${clean.slice(0, max)}...` : clean;
 }
 
+function firstText(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function isUrl(value: string) {
+  return /^https?:\/\//i.test(value.trim());
+}
+
+function readableTitle(fallback: string, ...values: unknown[]) {
+  const candidates = values.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map((value) => value.trim());
+  const title = candidates.find((value) => !isUrl(value));
+  if (title) return title;
+  return candidates[0] ? titleFromUrl(candidates[0], fallback) : fallback;
+}
+
+function nodeWebReferences(node: Node) {
+  const refs = node.data?.option?.references || node.data?.references || node.data?.sourceCard?.references;
+  return Array.isArray(refs) ? refs : [];
+}
+
 function nodeImageUrl(node: Node): string | null {
   const direct = node.data?.imageUrl;
   if (typeof direct === "string" && direct) return direct;
@@ -61,15 +84,14 @@ function nodeImageUrl(node: Node): string | null {
 }
 
 function nodeWebUrl(node: Node): string | null {
+  const contentUrl = node.data?.option?.content?.url;
+  if (typeof contentUrl === "string" && contentUrl) return contentUrl;
   const direct = node.data?.sourceUrl;
   if (typeof direct === "string" && direct) return direct;
   const card = node.data?.sourceCard?.sourceUrl;
   if (typeof card === "string" && card) return card;
-  const refs = node.data?.option?.references || node.data?.references;
-  if (Array.isArray(refs)) {
-    const first = refs.find((r: { url?: string }) => typeof r?.url === "string" && r.url);
-    if (first) return first.url as string;
-  }
+  const first = nodeWebReferences(node).find((r: { url?: string }) => typeof r?.url === "string" && r.url);
+  if (first) return first.url as string;
   return null;
 }
 
@@ -113,15 +135,27 @@ function webItems(session: SessionDetail, t: (key: string) => string): OutputSid
   for (const node of session.nodes) {
     const url = nodeWebUrl(node);
     if (!url) continue;
-    const title =
-      (node.data?.sourceCard?.title as string | undefined) ||
-      (node.data?.option?.title as string | undefined) ||
-      (node.data?.title as string | undefined) ||
-      titleFromUrl(url, t("asset.webLink"));
-    const description =
-      (node.data?.sourceCard?.summary as string | undefined) ||
-      (node.data?.option?.description as string | undefined) ||
-      url;
+    const content = node.data?.option?.content && typeof node.data.option.content === "object" ? node.data.option.content : {};
+    const firstRef = nodeWebReferences(node).find((r: { url?: string }) => typeof r?.url === "string" && r.url);
+    const title = readableTitle(
+      t("asset.webLink"),
+      content.title,
+      node.data?.sourceCard?.title,
+      node.data?.option?.title,
+      node.data?.title,
+      firstRef?.title,
+      url
+    );
+    const description = firstText(
+      content.description,
+      content.mainContent,
+      content.markdown,
+      content.text,
+      node.data?.sourceCard?.summary,
+      node.data?.option?.description,
+      firstRef?.description,
+      url
+    );
     const isDeepThink = node.data?.option?.layoutHint === "deep-think";
     items.push({
       id: node.id,
