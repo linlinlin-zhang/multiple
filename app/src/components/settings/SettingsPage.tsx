@@ -43,10 +43,17 @@ const optionFields: Record<ApiRole, OptionField[]> = {
   analysis: [
     { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
     { key: "max_tokens", type: "number", min: 1, step: 1 },
+    { key: "enableWebSearch", type: "checkbox" },
+    { key: "jsonObjectResponse", type: "checkbox" },
   ],
   chat: [
     { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
     { key: "max_tokens", type: "number", min: 1, step: 1 },
+    { key: "enableWebSearch", type: "checkbox" },
+    { key: "enableWebExtractor", type: "checkbox" },
+    { key: "enableCodeInterpreter", type: "checkbox" },
+    { key: "enableCanvasTools", type: "checkbox" },
+    { key: "enablePreviousResponse", type: "checkbox" },
   ],
   image: [
     { key: "size", type: "text", placeholder: "2048*2048" },
@@ -59,17 +66,27 @@ const optionFields: Record<ApiRole, OptionField[]> = {
   ],
   asr: [
     { key: "targetLanguage", type: "select", options: [["auto", "Auto"], ["zh", "中文"], ["en", "English"]] },
+    { key: "chunkMs", type: "number", min: 600, max: 6000, step: 100 },
   ],
   realtime: [
     { key: "voice", type: "text", placeholder: "Ethan" },
     { key: "outputAudio", type: "checkbox" },
     { key: "enableSearch", type: "checkbox" },
     { key: "smoothOutput", type: "select", options: [["auto", "Auto"], ["true", "On"], ["false", "Off"]] },
+    { key: "transcriptionModel", type: "text", placeholder: "qwen3-asr-flash-realtime" },
+    { key: "chunkMs", type: "number", min: 800, max: 8000, step: 100 },
+    { key: "silenceThreshold", type: "number", min: 0.001, max: 0.08, step: 0.001 },
     { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
   ],
   deepthink: [
     { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
     { key: "max_tokens", type: "number", min: 1, step: 1 },
+    { key: "sourceCardMode", type: "select", options: [["list", "List"], ["cards", "Cards"], ["off", "Off"]] },
+    { key: "maxCanvasCards", type: "number", min: 1, max: 20, step: 1 },
+    { key: "maxReferenceCards", type: "number", min: 0, max: 20, step: 1 },
+    { key: "liveCanvasCards", type: "number", min: 0, max: 20, step: 1 },
+    { key: "outputFormat", type: "text", placeholder: "model_summary_report" },
+    { key: "incrementalOutput", type: "checkbox" },
   ],
 };
 
@@ -170,6 +187,12 @@ export default function SettingsPage() {
       if (value === true) return "true";
       if (value === false) return "false";
       return "auto";
+    }
+    if (field.key === "sourceCardMode") {
+      return ["list", "cards", "off"].includes(String(value)) ? String(value) : "list";
+    }
+    if (field.key === "targetLanguage") {
+      return ["auto", "zh", "en"].includes(String(value)) ? String(value) : "auto";
     }
     return value === undefined || value === null ? "" : String(value);
   };

@@ -2,8 +2,8 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 const DEFAULTS = {
-  analysis: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7 },
-  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7 },
+  analysis: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: { enableWebSearch: true, jsonObjectResponse: false } },
+  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: { enableWebSearch: true, enableWebExtractor: true, enableCodeInterpreter: true, enableCanvasTools: true, enablePreviousResponse: true } },
   image: {
     endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
     model: "qwen-image-2.0-pro",
@@ -23,7 +23,7 @@ const DEFAULTS = {
     model: "qwen3-livetranslate-flash-2025-12-01",
     apiKey: "",
     temperature: 0,
-    options: { targetLanguage: "auto" }
+    options: { targetLanguage: "auto", chunkMs: 1800 }
   },
   realtime: {
     endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
@@ -34,10 +34,26 @@ const DEFAULTS = {
       voice: "Ethan",
       outputAudio: false,
       enableSearch: false,
-      smoothOutput: "auto"
+      smoothOutput: "auto",
+      transcriptionModel: "qwen3-asr-flash-realtime",
+      chunkMs: 3200,
+      silenceThreshold: 0.012
     }
   },
-  deepthink: { endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation", model: "qwen-deep-research", apiKey: "", temperature: 0.7 }
+  deepthink: {
+    endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
+    model: "qwen-deep-research",
+    apiKey: "",
+    temperature: 0.7,
+    options: {
+      sourceCardMode: "cards",
+      maxCanvasCards: 20,
+      maxReferenceCards: 20,
+      liveCanvasCards: 6,
+      outputFormat: "model_summary_report",
+      incrementalOutput: true
+    }
+  }
 };
 
 const ROLES = ["analysis", "chat", "image", "asr", "realtime", "deepthink"];
@@ -138,9 +154,33 @@ function normalizeOptions(role, value) {
     });
   }
 
+  if (role === "analysis") {
+    return dropUndefined({
+      top_p: cleanOptionalNumber(merged.top_p, 0.01, 1),
+      max_tokens: cleanOptionalInteger(merged.max_tokens, 1, 200000),
+      enableWebSearch: cleanBoolean(merged.enableWebSearch, true),
+      jsonObjectResponse: cleanBoolean(merged.jsonObjectResponse, false)
+    });
+  }
+
+  if (role === "chat") {
+    return dropUndefined({
+      top_p: cleanOptionalNumber(merged.top_p, 0.01, 1),
+      max_tokens: cleanOptionalInteger(merged.max_tokens, 1, 200000),
+      enableWebSearch: cleanBoolean(merged.enableWebSearch, true),
+      enableWebExtractor: cleanBoolean(merged.enableWebExtractor, true),
+      enableCodeInterpreter: cleanBoolean(merged.enableCodeInterpreter, true),
+      enableCanvasTools: cleanBoolean(merged.enableCanvasTools, true),
+      enablePreviousResponse: cleanBoolean(merged.enablePreviousResponse, true)
+    });
+  }
+
   if (role === "asr") {
     const targetLanguage = ["auto", "zh", "en"].includes(merged.targetLanguage) ? merged.targetLanguage : "auto";
-    return { targetLanguage };
+    return {
+      targetLanguage,
+      chunkMs: cleanInteger(merged.chunkMs, 600, 6000, 1800)
+    };
   }
 
   if (role === "realtime") {
@@ -150,7 +190,29 @@ function normalizeOptions(role, value) {
       outputAudio: cleanBoolean(merged.outputAudio, false),
       enableSearch: cleanBoolean(merged.enableSearch, false),
       smoothOutput,
+      transcriptionModel: cleanString(merged.transcriptionModel, 120) || "qwen3-asr-flash-realtime",
+      chunkMs: cleanInteger(merged.chunkMs, 800, 8000, 3200),
+      silenceThreshold: cleanOptionalNumber(merged.silenceThreshold, 0.001, 0.08) ?? 0.012,
       top_p: cleanOptionalNumber(merged.top_p, 0.01, 1)
+    });
+  }
+
+  if (role === "deepthink") {
+    const isPreviousDefault =
+      raw.sourceCardMode === "list" &&
+      Number(raw.maxCanvasCards) === 5 &&
+      Number(raw.maxReferenceCards) === 8 &&
+      Number(raw.liveCanvasCards) === 3;
+    const source = isPreviousDefault ? { ...merged, sourceCardMode: "cards", maxCanvasCards: 20, maxReferenceCards: 20, liveCanvasCards: 6 } : merged;
+    return dropUndefined({
+      top_p: cleanOptionalNumber(source.top_p, 0.01, 1),
+      max_tokens: cleanOptionalInteger(source.max_tokens, 1, 200000),
+      sourceCardMode: ["list", "cards", "off"].includes(source.sourceCardMode) ? source.sourceCardMode : "cards",
+      maxCanvasCards: cleanInteger(source.maxCanvasCards, 1, 20, 20),
+      maxReferenceCards: cleanInteger(source.maxReferenceCards, 0, 20, 20),
+      liveCanvasCards: cleanInteger(source.liveCanvasCards, 0, 20, 6),
+      outputFormat: cleanString(source.outputFormat, 80) || "model_summary_report",
+      incrementalOutput: cleanBoolean(source.incrementalOutput, true)
     });
   }
 

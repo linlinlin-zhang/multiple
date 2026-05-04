@@ -37,14 +37,23 @@ let runtimeConfigs = {
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     apiKeyEnv: ["DASHSCOPE_API_KEY", "CHAT_API_KEY"],
     options: {
-      max_tokens: 65536
+      max_tokens: 65536,
+      enableWebSearch: true,
+      enableWebExtractor: true,
+      enableCodeInterpreter: true,
+      enableCanvasTools: true,
+      enablePreviousResponse: true
     }
   }),
   analysis: buildModelConfig("ANALYSIS", {
     provider: "dashscope-qwen",
     model: "qwen3.6-plus",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    apiKeyEnv: ["DASHSCOPE_API_KEY", "ANALYSIS_API_KEY"]
+    apiKeyEnv: ["DASHSCOPE_API_KEY", "ANALYSIS_API_KEY"],
+    options: {
+      enableWebSearch: true,
+      jsonObjectResponse: false
+    }
   }),
   image: buildModelConfig("IMAGE", {
     provider: "dashscope-qwen-image",
@@ -65,7 +74,7 @@ let runtimeConfigs = {
     model: "qwen3-livetranslate-flash-2025-12-01",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     apiKeyEnv: ["DASHSCOPE_API_KEY", "ASR_API_KEY"],
-    options: { targetLanguage: "auto" }
+    options: { targetLanguage: "auto", chunkMs: 1800 }
   }),
   realtime: buildModelConfig("REALTIME", {
     provider: "dashscope-realtime",
@@ -76,14 +85,25 @@ let runtimeConfigs = {
       voice: "Ethan",
       outputAudio: false,
       enableSearch: false,
-      smoothOutput: "auto"
+      smoothOutput: "auto",
+      transcriptionModel: "qwen3-asr-flash-realtime",
+      chunkMs: 3200,
+      silenceThreshold: 0.012
     }
   }),
   deepthink: buildModelConfig("DEEPTHINK", {
     provider: "dashscope-deep-research",
     model: "qwen-deep-research",
     baseUrl: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
-    apiKeyEnv: ["DASHSCOPE_API_KEY", "DEEPTHINK_API_KEY"]
+    apiKeyEnv: ["DASHSCOPE_API_KEY", "DEEPTHINK_API_KEY"],
+    options: {
+      sourceCardMode: "cards",
+      maxCanvasCards: 20,
+      maxReferenceCards: 20,
+      liveCanvasCards: 6,
+      outputFormat: "model_summary_report",
+      incrementalOutput: true
+    }
   })
 };
 
@@ -687,14 +707,26 @@ async function refreshConfigs() {
       provider: "dashscope-qwen",
       model: "qwen3.6-plus",
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      apiKeyEnv: ["DASHSCOPE_API_KEY", "CHAT_API_KEY"]
+      apiKeyEnv: ["DASHSCOPE_API_KEY", "CHAT_API_KEY"],
+      options: {
+        max_tokens: 65536,
+        enableWebSearch: true,
+        enableWebExtractor: true,
+        enableCodeInterpreter: true,
+        enableCanvasTools: true,
+        enablePreviousResponse: true
+      }
     }, dbMap.chat);
 
     runtimeConfigs.analysis = buildModelConfig("ANALYSIS", {
       provider: "dashscope-qwen",
       model: "qwen3.6-plus",
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      apiKeyEnv: ["DASHSCOPE_API_KEY", "ANALYSIS_API_KEY"]
+      apiKeyEnv: ["DASHSCOPE_API_KEY", "ANALYSIS_API_KEY"],
+      options: {
+        enableWebSearch: true,
+        jsonObjectResponse: false
+      }
     }, dbMap.analysis);
 
     runtimeConfigs.image = buildModelConfig("IMAGE", {
@@ -717,7 +749,7 @@ async function refreshConfigs() {
       model: "qwen3-livetranslate-flash-2025-12-01",
       baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
       apiKeyEnv: ["DASHSCOPE_API_KEY", "ASR_API_KEY"],
-      options: { targetLanguage: "auto" }
+      options: { targetLanguage: "auto", chunkMs: 1800 }
     }, dbMap.asr);
 
     runtimeConfigs.realtime = buildModelConfig("REALTIME", {
@@ -729,7 +761,10 @@ async function refreshConfigs() {
         voice: "Ethan",
         outputAudio: false,
         enableSearch: false,
-        smoothOutput: "auto"
+        smoothOutput: "auto",
+        transcriptionModel: "qwen3-asr-flash-realtime",
+        chunkMs: 3200,
+        silenceThreshold: 0.012
       }
     }, dbMap.realtime);
 
@@ -737,7 +772,15 @@ async function refreshConfigs() {
       provider: "dashscope-deep-research",
       model: "qwen-deep-research",
       baseUrl: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation",
-      apiKeyEnv: ["DASHSCOPE_API_KEY", "DEEPTHINK_API_KEY"]
+      apiKeyEnv: ["DASHSCOPE_API_KEY", "DEEPTHINK_API_KEY"],
+      options: {
+        sourceCardMode: "cards",
+        maxCanvasCards: 20,
+        maxReferenceCards: 20,
+        liveCanvasCards: 6,
+        outputFormat: "model_summary_report",
+        incrementalOutput: true
+      }
     }, dbMap.deepthink);
   } catch (err) {
     console.warn("[refreshConfigs] Database unavailable, using env defaults:", err.message);
@@ -878,9 +921,29 @@ function normalizeModelOptions(role, value) {
       useReferenceImage: cleanBoolean(raw.useReferenceImage, true)
     });
   }
+  if (role === "analysis") {
+    return dropUndefined({
+      top_p: cleanOptionalNumber(raw.top_p, 0.01, 1),
+      max_tokens: cleanOptionalInteger(raw.max_tokens, 1, 200000),
+      enableWebSearch: cleanBoolean(raw.enableWebSearch, true),
+      jsonObjectResponse: cleanBoolean(raw.jsonObjectResponse, false)
+    });
+  }
+  if (role === "chat") {
+    return dropUndefined({
+      top_p: cleanOptionalNumber(raw.top_p, 0.01, 1),
+      max_tokens: cleanOptionalInteger(raw.max_tokens, 1, 200000),
+      enableWebSearch: cleanBoolean(raw.enableWebSearch, true),
+      enableWebExtractor: cleanBoolean(raw.enableWebExtractor, true),
+      enableCodeInterpreter: cleanBoolean(raw.enableCodeInterpreter, true),
+      enableCanvasTools: cleanBoolean(raw.enableCanvasTools, true),
+      enablePreviousResponse: cleanBoolean(raw.enablePreviousResponse, true)
+    });
+  }
   if (role === "asr") {
     return {
-      targetLanguage: ["auto", "zh", "en"].includes(raw.targetLanguage) ? raw.targetLanguage : "auto"
+      targetLanguage: ["auto", "zh", "en"].includes(raw.targetLanguage) ? raw.targetLanguage : "auto",
+      chunkMs: cleanInteger(raw.chunkMs, 600, 6000, 1800)
     };
   }
   if (role === "realtime") {
@@ -889,7 +952,28 @@ function normalizeModelOptions(role, value) {
       outputAudio: cleanBoolean(raw.outputAudio, false),
       enableSearch: cleanBoolean(raw.enableSearch, false),
       smoothOutput: raw.smoothOutput === true || raw.smoothOutput === false ? raw.smoothOutput : "auto",
+      transcriptionModel: cleanString(raw.transcriptionModel, 120) || "qwen3-asr-flash-realtime",
+      chunkMs: cleanInteger(raw.chunkMs, 800, 8000, 3200),
+      silenceThreshold: cleanOptionalNumber(raw.silenceThreshold, 0.001, 0.08) ?? 0.012,
       top_p: cleanOptionalNumber(raw.top_p, 0.01, 1)
+    });
+  }
+  if (role === "deepthink") {
+    const isPreviousDefault =
+      raw.sourceCardMode === "list" &&
+      Number(raw.maxCanvasCards) === 5 &&
+      Number(raw.maxReferenceCards) === 8 &&
+      Number(raw.liveCanvasCards) === 3;
+    const source = isPreviousDefault ? { ...raw, sourceCardMode: "cards", maxCanvasCards: 20, maxReferenceCards: 20, liveCanvasCards: 6 } : raw;
+    return dropUndefined({
+      top_p: cleanOptionalNumber(source.top_p, 0.01, 1),
+      max_tokens: cleanOptionalInteger(source.max_tokens, 1, 200000),
+      sourceCardMode: ["list", "cards", "off"].includes(source.sourceCardMode) ? source.sourceCardMode : "cards",
+      maxCanvasCards: cleanInteger(source.maxCanvasCards, 1, 20, 20),
+      maxReferenceCards: cleanInteger(source.maxReferenceCards, 0, 20, 20),
+      liveCanvasCards: cleanInteger(source.liveCanvasCards, 0, 20, 6),
+      outputFormat: cleanString(source.outputFormat, 80) || "model_summary_report",
+      incrementalOutput: cleanBoolean(source.incrementalOutput, true)
     });
   }
   return dropUndefined({
@@ -990,7 +1074,7 @@ function isDashScopeDeepResearchConfig(config) {
 }
 
 function applyWebSearchMode(payload, config, enabled = true, options = {}) {
-  if (enabled && isDashScopeQwenConfig(config)) {
+  if (enabled && config?.options?.enableWebSearch !== false && isDashScopeQwenConfig(config)) {
     payload.enable_search = true;
     payload.search_options = {
       ...(payload.search_options || {}),
@@ -1009,6 +1093,10 @@ function applyJsonObjectResponseMode(payload, config, enabled = true) {
     payload.response_format = { type: "json_object" };
   }
   return payload;
+}
+
+function applyAnalysisJsonObjectResponseMode(payload) {
+  return applyJsonObjectResponseMode(payload, runtimeConfigs.analysis, runtimeConfigs.analysis.options?.jsonObjectResponse === true);
 }
 
 function applyRequestOptions(payload, config) {
@@ -1365,11 +1453,13 @@ async function handleChat(body, res) {
     }
   }
 
-  const webSearchEnabled = shouldUseWebSearchReadable(message, canvas, selectedContext);
-  const webSearchForced = shouldForceWebSearchReadable(message);
+  const chatOptions = runtimeConfigs.chat.options || {};
+  const webSearchEnabled = chatOptions.enableWebSearch !== false && shouldUseWebSearchReadable(message, canvas, selectedContext);
+  const webSearchForced = chatOptions.enableWebSearch !== false && shouldForceWebSearchReadable(message);
   const subagentsEnabled = body?.subagentsEnabled === true;
   const agentMode = subagentsEnabled && (body?.agentMode === true || shouldUseAgentModeReadable(message));
-  const promptMessages = previousResponseId ? [] : messages;
+  const effectivePreviousResponseId = chatOptions.enablePreviousResponse === false ? "" : previousResponseId;
+  const promptMessages = effectivePreviousResponseId ? [] : messages;
   const context = buildChatSystemContext(lang, analysis, promptMessages);
 
   const content = [
@@ -1397,7 +1487,7 @@ async function handleChat(body, res) {
     instructions: buildChatSystemContext(lang, analysis, promptMessages),
     content,
     message,
-    previousResponseId,
+    previousResponseId: effectivePreviousResponseId,
     webSearchEnabled: webSearchEnabled || webSearchForced,
     thinkingMode
   });
@@ -1493,10 +1583,12 @@ function buildChatResponsesPayload({ instructions, content, message, previousRes
         role: "user",
         content
       }
-    ],
-    tools,
-    tool_choice: "auto"
+    ]
   };
+  if (tools.length) {
+    payload.tools = tools;
+    payload.tool_choice = "auto";
+  }
   if (previousResponseId) payload.previous_response_id = previousResponseId;
   applyReasoningMode(payload, runtimeConfigs.chat, thinkingMode);
   if (tools.some((tool) => tool.type === "web_search" || tool.type === "web_extractor" || tool.type === "code_interpreter")) {
@@ -1507,10 +1599,11 @@ function buildChatResponsesPayload({ instructions, content, message, previousRes
 
 function buildResponsesTools(message, webSearchEnabled = false, options = {}) {
   const tools = [];
-  if (webSearchEnabled) tools.push({ type: "web_search" });
-  if (shouldUseWebExtractor(message)) tools.push({ type: "web_extractor" });
-  if (shouldUseCodeInterpreter(message)) tools.push({ type: "code_interpreter" });
-  if (!shouldSkipCanvasToolForCodeOnlyRequest(message)) {
+  const chatOptions = runtimeConfigs.chat.options || {};
+  if (webSearchEnabled && chatOptions.enableWebSearch !== false) tools.push({ type: "web_search" });
+  if (chatOptions.enableWebExtractor !== false && shouldUseWebExtractor(message)) tools.push({ type: "web_extractor" });
+  if (chatOptions.enableCodeInterpreter !== false && shouldUseCodeInterpreter(message)) tools.push({ type: "code_interpreter" });
+  if (chatOptions.enableCanvasTools !== false && !shouldSkipCanvasToolForCodeOnlyRequest(message)) {
     tools.push(options.wrappedCanvasTool ? RESPONSES_CANVAS_TOOL_SCHEMA_WRAPPED : RESPONSES_CANVAS_TOOL_SCHEMA);
   }
   return tools;
@@ -2224,6 +2317,7 @@ async function handleAnalyze(body, res) {
   };
 
   applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
+  applyAnalysisJsonObjectResponseMode(analysisPayload);
 
   const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
   const text = collectChatContent(response);
@@ -2370,6 +2464,7 @@ async function handleAnalyzeExplore(body, res) {
 
   applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
   applyWebSearchMode(analysisPayload, runtimeConfigs.analysis, Boolean(url));
+  applyAnalysisJsonObjectResponseMode(analysisPayload);
 
   // Fire-and-forget: ingest whatever explorable text we have so subsequent
   // chats can recall what the user dropped on the canvas.
@@ -2429,6 +2524,7 @@ async function handleAnalyzeExplore(body, res) {
           runtimeConfigs.analysis,
           Boolean(url)
         );
+        applyAnalysisJsonObjectResponseMode(fallbackPayload);
         const response = await chatCompletions(runtimeConfigs.analysis, fallbackPayload, {
           timeoutMs: EXPLORE_FALLBACK_TIMEOUT_MS
         });
@@ -2496,6 +2592,7 @@ async function handleAnalyzeUrl(body, res) {
 
   applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
   applyWebSearchMode(analysisPayload, runtimeConfigs.analysis, true);
+  applyAnalysisJsonObjectResponseMode(analysisPayload);
 
   try {
     const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
@@ -2589,6 +2686,7 @@ async function handleAnalyzeText(body, res) {
   };
 
   applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
+  applyAnalysisJsonObjectResponseMode(analysisPayload);
 
   const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
   const text = collectChatContent(response);
@@ -2814,7 +2912,8 @@ function isDashScopeLiveTranslateConfig(config) {
 
 async function dashScopeLiveTranslateTranscription(config, audioDataUrl, language) {
   const audio = dashScopeInputAudioFromDataUrl(audioDataUrl);
-  const targetLang = language === "en" ? "en" : "zh";
+  const configuredTargetLang = ["zh", "en"].includes(config.options?.targetLanguage) ? config.options.targetLanguage : "";
+  const targetLang = configuredTargetLang || (language === "en" ? "en" : "zh");
   const response = await fetch(`${config.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -3207,7 +3306,7 @@ function runDashScopeRealtimeTurn(config, pcmBase64, instruction) {
         instructions: instruction,
         input_audio_format: "pcm",
         output_audio_format: "pcm",
-        input_audio_transcription: { model: "qwen3-asr-flash-realtime" },
+        input_audio_transcription: { model: cleanString(config.options?.transcriptionModel, 120) || "qwen3-asr-flash-realtime" },
         turn_detection: null
       };
       if (outputAudio) {
@@ -3502,9 +3601,9 @@ function buildDeepResearchPayload(context, includeImage = true) {
       ]
     },
     parameters: {
-      incremental_output: true,
+      incremental_output: runtimeConfigs.deepthink.options?.incrementalOutput !== false,
       enable_feedback: false,
-      output_format: "model_summary_report"
+      output_format: cleanString(runtimeConfigs.deepthink.options?.outputFormat, 80) || "model_summary_report"
     }
   };
 }
@@ -3731,8 +3830,13 @@ function humanDeepResearchStage(stage) {
 
 function buildDeepResearchResult(collected, context) {
   const references = dedupeReferences(collected.references);
-  const eventCards = buildDeepResearchEventCards(collected.events, context.lang);
-  const referenceCards = references.slice(0, 6).map((reference, index) => ({
+  const options = runtimeConfigs.deepthink.options || {};
+  const sourceCardMode = ["list", "cards", "off"].includes(options.sourceCardMode) ? options.sourceCardMode : "cards";
+  const maxCanvasCards = cleanInteger(options.maxCanvasCards, 1, 20, 20);
+  const maxReferenceCards = cleanInteger(options.maxReferenceCards, 0, 20, 20);
+  const rankedReferences = rankDeepResearchReferences(references).slice(0, maxReferenceCards);
+  const eventCards = buildDeepResearchEventCards(collected.events, context.lang).slice(0, Math.max(0, maxCanvasCards - 2));
+  const referenceCards = sourceCardMode === "cards" ? rankedReferences.slice(0, Math.max(0, maxCanvasCards - eventCards.length - 1)).map((reference, index) => ({
     id: `deep-reference-${index + 1}-${slug(reference.title || reference.url || "reference")}`,
     type: reference.type === "image" ? "image" : "web",
     title: stringOr(reference.title, reference.url || "Reference").slice(0, 48),
@@ -3740,7 +3844,8 @@ function buildDeepResearchResult(collected, context) {
     prompt: stringOr(reference.description || reference.title, context.prompt).slice(0, 1200),
     query: context.prompt,
     url: stringOr(reference.url || reference.sourceUrl, "").slice(0, 512)
-  }));
+  })) : [];
+  const referenceListCard = sourceCardMode === "list" && rankedReferences.length ? [buildDeepResearchReferenceListCard(rankedReferences, context.lang)] : [];
   const finalText = (collected.text || collected.thinkingContent || "").trim();
   const reply = finalText
     ? finalText.slice(0, 1800)
@@ -3751,9 +3856,10 @@ function buildDeepResearchResult(collected, context) {
     title: context.lang === "en" ? "Research report" : "研究报告",
     summary: reply.slice(0, 240),
     prompt: finalText || context.prompt,
-    query: context.prompt
+    query: context.prompt,
+    content: { text: finalText || reply }
   };
-  const cards = [...eventCards, ...referenceCards, reportCard].slice(0, 8);
+  const cards = [reportCard, ...eventCards, ...referenceListCard, ...referenceCards].slice(0, maxCanvasCards);
   const links = cards.slice(1).map((_, index) => ({ from: 0, to: index + 1, label: "" }));
   return {
     provider: "api",
@@ -3761,10 +3867,46 @@ function buildDeepResearchResult(collected, context) {
     reply,
     cards,
     links,
-    references,
+    references: rankedReferences,
     researchEvents: collected.events.slice(-40),
     thinkingContent: collected.thinkingContent,
     actions: []
+  };
+}
+
+function rankDeepResearchReferences(references) {
+  return [...references].sort((a, b) => deepResearchReferenceScore(b) - deepResearchReferenceScore(a));
+}
+
+function deepResearchReferenceScore(reference) {
+  const title = stringOr(reference?.title, "");
+  const description = stringOr(reference?.description || reference?.summary, "");
+  const url = stringOr(reference?.url || reference?.sourceUrl || reference?.imageUrl, "");
+  let score = 0;
+  if (title && title !== url) score += 4;
+  if (description.length >= 40) score += 3;
+  if (/\.edu|\.gov|arxiv|nature|science|who\.int|worldbank|oecd|官方|报告|论文|数据/i.test(`${url} ${title}`)) score += 3;
+  if (reference?.type === "image") score -= 1;
+  return score;
+}
+
+function buildDeepResearchReferenceListCard(references, lang) {
+  const title = lang === "en" ? "Selected sources" : "精选来源列表";
+  const lines = references.map((reference, index) => {
+    const name = stringOr(reference.title, reference.url || `Source ${index + 1}`).replace(/\s+/g, " ").slice(0, 120);
+    const url = stringOr(reference.url || reference.sourceUrl || reference.imageUrl, "");
+    const description = stringOr(reference.description || reference.summary, "").replace(/\s+/g, " ").slice(0, 180);
+    return `- ${url ? `[${name}](${url})` : name}${description ? ` — ${description}` : ""}`;
+  });
+  const text = lines.join("\n");
+  return {
+    id: `deep-sources-${Date.now().toString(36)}`,
+    type: "note",
+    title,
+    summary: lang === "en" ? `${references.length} selected sources grouped into one list.` : `已将 ${references.length} 个精选来源合并为一个列表。`,
+    prompt: text,
+    query: "",
+    content: { text }
   };
 }
 

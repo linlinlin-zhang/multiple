@@ -152,8 +152,8 @@ const state = {
 
 const settingsCache = {
   currentRole: "analysis",
-  analysis: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: {} },
-  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: {} },
+  analysis: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: { enableWebSearch: true, jsonObjectResponse: false } },
+  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: { enableWebSearch: true, enableWebExtractor: true, enableCodeInterpreter: true, enableCanvasTools: true, enablePreviousResponse: true } },
   image: {
     endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
     model: "qwen-image-2.0-pro",
@@ -161,25 +161,32 @@ const settingsCache = {
     temperature: 0.7,
     options: { size: "2048*2048", n: 1, prompt_extend: true, watermark: false, negative_prompt: "", useReferenceImage: true }
   },
-  asr: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3-livetranslate-flash-2025-12-01", apiKey: "", temperature: 0, options: { targetLanguage: "auto" } },
+  asr: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3-livetranslate-flash-2025-12-01", apiKey: "", temperature: 0, options: { targetLanguage: "auto", chunkMs: 1800 } },
   realtime: {
     endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/realtime",
     model: "qwen3.5-omni-plus-realtime",
     apiKey: "",
     temperature: 0.7,
-    options: { voice: "Ethan", outputAudio: false, enableSearch: false, smoothOutput: "auto" }
+    options: { voice: "Ethan", outputAudio: false, enableSearch: false, smoothOutput: "auto", transcriptionModel: "qwen3-asr-flash-realtime", chunkMs: 3200, silenceThreshold: 0.012 }
   },
-  deepthink: { endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation", model: "qwen-deep-research", apiKey: "", temperature: 0.7, options: {} }
+  deepthink: { endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation", model: "qwen-deep-research", apiKey: "", temperature: 0.7, options: { sourceCardMode: "cards", maxCanvasCards: 20, maxReferenceCards: 20, liveCanvasCards: 6, outputFormat: "model_summary_report", incrementalOutput: true } }
 };
 
 const MODEL_OPTION_FIELDS = {
   analysis: [
     { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
-    { key: "max_tokens", type: "number", min: 1, step: 1 }
+    { key: "max_tokens", type: "number", min: 1, step: 1 },
+    { key: "enableWebSearch", type: "checkbox" },
+    { key: "jsonObjectResponse", type: "checkbox" }
   ],
   chat: [
     { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
-    { key: "max_tokens", type: "number", min: 1, step: 1 }
+    { key: "max_tokens", type: "number", min: 1, step: 1 },
+    { key: "enableWebSearch", type: "checkbox" },
+    { key: "enableWebExtractor", type: "checkbox" },
+    { key: "enableCodeInterpreter", type: "checkbox" },
+    { key: "enableCanvasTools", type: "checkbox" },
+    { key: "enablePreviousResponse", type: "checkbox" }
   ],
   image: [
     { key: "size", type: "text", placeholder: "2048*2048" },
@@ -191,18 +198,28 @@ const MODEL_OPTION_FIELDS = {
     { key: "useReferenceImage", type: "checkbox" }
   ],
   asr: [
-    { key: "targetLanguage", type: "select", options: [["auto", "Auto"], ["zh", "中文"], ["en", "English"]] }
+    { key: "targetLanguage", type: "select", options: [["auto", "Auto"], ["zh", "中文"], ["en", "English"]] },
+    { key: "chunkMs", type: "number", min: 600, max: 6000, step: 100 }
   ],
   realtime: [
     { key: "voice", type: "text", placeholder: "Ethan" },
     { key: "outputAudio", type: "checkbox" },
     { key: "enableSearch", type: "checkbox" },
     { key: "smoothOutput", type: "select", options: [["auto", "Auto"], ["true", "On"], ["false", "Off"]] },
+    { key: "transcriptionModel", type: "text", placeholder: "qwen3-asr-flash-realtime" },
+    { key: "chunkMs", type: "number", min: 800, max: 8000, step: 100 },
+    { key: "silenceThreshold", type: "number", min: 0.001, max: 0.08, step: 0.001 },
     { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 }
   ],
   deepthink: [
     { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
-    { key: "max_tokens", type: "number", min: 1, step: 1 }
+    { key: "max_tokens", type: "number", min: 1, step: 1 },
+    { key: "sourceCardMode", type: "select", options: [["list", "List"], ["cards", "Cards"], ["off", "Off"]] },
+    { key: "maxCanvasCards", type: "number", min: 1, max: 20, step: 1 },
+    { key: "maxReferenceCards", type: "number", min: 0, max: 20, step: 1 },
+    { key: "liveCanvasCards", type: "number", min: 0, max: 20, step: 1 },
+    { key: "outputFormat", type: "text", placeholder: "model_summary_report" },
+    { key: "incrementalOutput", type: "checkbox" }
   ]
 };
 
@@ -416,10 +433,25 @@ const i18n = {
     "settings.option.seed": "随机种子",
     "settings.option.useReferenceImage": "使用当前图片作为参考",
     "settings.option.targetLanguage": "转写目标语言",
+    "settings.option.chunkMs": "音频分段时长",
+    "settings.option.enableWebSearch": "启用联网搜索",
+    "settings.option.jsonObjectResponse": "JSON 对象响应",
+    "settings.option.enableWebExtractor": "启用网页提取",
+    "settings.option.enableCodeInterpreter": "启用代码解释器",
+    "settings.option.enableCanvasTools": "启用画布工具",
+    "settings.option.enablePreviousResponse": "启用多轮响应 ID",
     "settings.option.voice": "音色",
     "settings.option.outputAudio": "返回语音回复",
     "settings.option.enableSearch": "实时语音联网搜索",
     "settings.option.smoothOutput": "口语化输出",
+    "settings.option.transcriptionModel": "实时转写模型",
+    "settings.option.silenceThreshold": "静音阈值",
+    "settings.option.sourceCardMode": "来源上画布方式",
+    "settings.option.maxCanvasCards": "最大画布卡片数",
+    "settings.option.maxReferenceCards": "最大来源数量",
+    "settings.option.liveCanvasCards": "流式实时卡片数",
+    "settings.option.outputFormat": "研究输出格式",
+    "settings.option.incrementalOutput": "增量输出",
     "settings.hint.top_p": "留空使用模型默认值。",
     "settings.hint.max_tokens": "留空不限制，由模型默认控制。",
     "settings.hint.size": "Qwen Image 2.0 Pro 支持自由宽高，推荐使用 2K 预设。",
@@ -427,10 +459,25 @@ const i18n = {
     "settings.hint.negative_prompt": "不希望出现在画面里的内容，最多 500 字符。",
     "settings.hint.prompt_extend": "开启后模型会优化正向提示词，画面更丰富。",
     "settings.hint.seed": "留空随机；相同 seed 可提高复现概率。",
+    "settings.hint.enableWebSearch": "控制 Qwen 对话/分析是否允许触发内置联网搜索能力。",
+    "settings.hint.jsonObjectResponse": "分析模型需要严格结构化输出时可开启；如果模型不兼容请关闭。",
+    "settings.hint.enableWebExtractor": "允许 Qwen Responses 在用户提供网页链接时提取网页正文。",
+    "settings.hint.enableCodeInterpreter": "允许 Qwen Responses 在计算、数据分析、绘图请求中调用代码解释器。",
+    "settings.hint.enableCanvasTools": "允许对话模型返回 canvas_action，用于创建或控制画布卡片。",
+    "settings.hint.enablePreviousResponse": "开启后同一聊天线程会复用 Qwen Responses previous_response_id。",
+    "settings.hint.chunkMs": "ASR 或实时语音每次发送的音频长度；越短越实时，越长越稳定。",
     "settings.hint.voice": "例如 Ethan、Cherry、Chelsie；自定义复刻音色可填音色 ID。",
     "settings.hint.outputAudio": "开启后实时语音会播放模型原生音频。",
     "settings.hint.enableSearch": "仅 Qwen3.5 Omni Realtime 支持，且不能与工具调用同时开启。",
     "settings.hint.smoothOutput": "自动时由模型决定口语或书面风格。",
+    "settings.hint.transcriptionModel": "用于 Qwen Realtime input_audio_transcription 的 ASR 模型。",
+    "settings.hint.silenceThreshold": "前端静音过滤阈值；环境噪声大时可略微调高。",
+    "settings.hint.sourceCardMode": "list 会把研究来源合并为一个列表卡；cards 才会逐条生成来源卡；off 不上画布。",
+    "settings.hint.maxCanvasCards": "深入研究最终最多落到画布上的卡片数量，最多 20 张。",
+    "settings.hint.maxReferenceCards": "深入研究保留并展示的精选来源数量。",
+    "settings.hint.liveCanvasCards": "流式研究过程中最多创建的临时画布卡片数量，最多 20 张。",
+    "settings.hint.outputFormat": "传给 Qwen Deep Research 的 output_format，例如 model_summary_report。",
+    "settings.hint.incrementalOutput": "开启后 Deep Research 使用流式增量输出。",
     "settings.save": "保存",
     "settings.reset": "重置",
     "settings.darkMode": "深色模式",
@@ -763,10 +810,25 @@ const i18n = {
     "settings.option.seed": "Seed",
     "settings.option.useReferenceImage": "Use current image as reference",
     "settings.option.targetLanguage": "Transcript language",
+    "settings.option.chunkMs": "Audio chunk duration",
+    "settings.option.enableWebSearch": "Enable web search",
+    "settings.option.jsonObjectResponse": "JSON object response",
+    "settings.option.enableWebExtractor": "Enable web extractor",
+    "settings.option.enableCodeInterpreter": "Enable code interpreter",
+    "settings.option.enableCanvasTools": "Enable canvas tools",
+    "settings.option.enablePreviousResponse": "Enable previous response ID",
     "settings.option.voice": "Voice",
     "settings.option.outputAudio": "Play voice reply",
     "settings.option.enableSearch": "Realtime web search",
     "settings.option.smoothOutput": "Conversational output",
+    "settings.option.transcriptionModel": "Realtime transcription model",
+    "settings.option.silenceThreshold": "Silence threshold",
+    "settings.option.sourceCardMode": "Source canvas mode",
+    "settings.option.maxCanvasCards": "Max canvas cards",
+    "settings.option.maxReferenceCards": "Max references",
+    "settings.option.liveCanvasCards": "Live canvas cards",
+    "settings.option.outputFormat": "Research output format",
+    "settings.option.incrementalOutput": "Incremental output",
     "settings.hint.top_p": "Leave blank to use the model default.",
     "settings.hint.max_tokens": "Leave blank for the provider default.",
     "settings.hint.size": "Qwen Image 2.0 Pro supports custom width and height; 2K presets are recommended.",
@@ -774,10 +836,25 @@ const i18n = {
     "settings.hint.negative_prompt": "Things to avoid in the generated image, up to 500 characters.",
     "settings.hint.prompt_extend": "Let the model expand and polish the prompt for richer images.",
     "settings.hint.seed": "Leave blank for random generation; same seed improves repeatability.",
+    "settings.hint.enableWebSearch": "Controls whether Qwen chat/analysis may trigger built-in web search.",
+    "settings.hint.jsonObjectResponse": "Enable when the analysis model should prefer strict JSON; turn it off if the model is incompatible.",
+    "settings.hint.enableWebExtractor": "Allow Qwen Responses to extract page text when the user provides URLs.",
+    "settings.hint.enableCodeInterpreter": "Allow Qwen Responses to use code interpreter for calculations, data analysis, and charts.",
+    "settings.hint.enableCanvasTools": "Allow the chat model to return canvas_action calls that create or control canvas cards.",
+    "settings.hint.enablePreviousResponse": "Reuse Qwen Responses previous_response_id inside the same chat thread.",
+    "settings.hint.chunkMs": "Audio duration sent per request; shorter is more realtime, longer is more stable.",
     "settings.hint.voice": "For example Ethan, Cherry, or Chelsie; custom cloned voice IDs also work.",
     "settings.hint.outputAudio": "When enabled, realtime voice plays the model's native audio.",
     "settings.hint.enableSearch": "Only supported by Qwen3.5 Omni Realtime and incompatible with tool calling.",
     "settings.hint.smoothOutput": "Auto lets the model choose conversational or formal style.",
+    "settings.hint.transcriptionModel": "ASR model used by Qwen Realtime input_audio_transcription.",
+    "settings.hint.silenceThreshold": "Frontend silence filter threshold; raise it slightly in noisy environments.",
+    "settings.hint.sourceCardMode": "list groups sources into one list card; cards creates individual source cards; off keeps sources out of the canvas.",
+    "settings.hint.maxCanvasCards": "Maximum final Deep Research cards placed on the canvas, up to 20.",
+    "settings.hint.maxReferenceCards": "Number of selected references kept and shown by Deep Research.",
+    "settings.hint.liveCanvasCards": "Maximum temporary canvas cards created while streaming research, up to 20.",
+    "settings.hint.outputFormat": "output_format passed to Qwen Deep Research, such as model_summary_report.",
+    "settings.hint.incrementalOutput": "Use incremental streaming output for Deep Research.",
     "settings.save": "Save",
     "settings.reset": "Reset",
     "settings.darkMode": "Dark Mode",
@@ -3189,6 +3266,12 @@ function normalizeOptionControlValue(key, value) {
     if (value === false) return "false";
     return "auto";
   }
+  if (key === "sourceCardMode") {
+    return ["list", "cards", "off"].includes(value) ? value : "cards";
+  }
+  if (key === "targetLanguage") {
+    return ["auto", "zh", "en"].includes(value) ? value : "auto";
+  }
   return value === undefined || value === null ? "auto" : String(value);
 }
 
@@ -3867,7 +3950,7 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
       thinkingContent: data.thinkingContent || data.reasoningContent || data.reasoning,
       artifacts: buildDeepThinkArtifacts(data)
     });
-    const created = applyDeepThinkPlan(data, parentNodeId);
+    const created = applyDeepThinkPlan({ ...data, message: prompt, query: prompt }, parentNodeId);
     if (Array.isArray(data?.actions) && data.actions.length) {
       await applyVoiceActions(data.actions);
     } else if (created[0]) {
@@ -3892,12 +3975,13 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
 function applyDeepThinkPlan(plan, parentNodeId) {
   const parentNode = state.nodes.get(parentNodeId);
   if (!parentNode) return [];
-  const cards = Array.isArray(plan?.cards) ? plan.cards.slice(0, 8) : [];
+  const cards = Array.isArray(plan?.cards) ? plan.cards.slice(0, getDeepThinkMaxCanvasCards()) : [];
   const createdIds = [];
   const visibleRows = Math.min(cards.length || 1, 4);
 
   cards.forEach((card, index) => {
     const type = normalizeDeepThinkCardType(card?.type);
+    const nodeType = deepThinkNodeType(card, type, plan);
     const row = index % 4;
     const col = Math.floor(index / 4);
     const x = (parentNode.x || 0) + 410 + col * 360;
@@ -3912,10 +3996,13 @@ function applyDeepThinkPlan(plan, parentNodeId) {
       tone: deepThinkTypeLabel(type),
       layoutHint: "deep-think",
       deepThinkType: type,
+      nodeType,
       references: buildDeepThinkReferences(card),
+      content: deepThinkCardContent(card, type, nodeType),
       x,
       y
     };
+    normalizeDeepThinkOption(option, plan);
     const nodeId = createOptionNode(option, parentNodeId);
     if (nodeId) createdIds.push(nodeId);
   });
@@ -3957,7 +4044,60 @@ function buildDeepThinkArtifacts(plan) {
 }
 
 function normalizeDeepThinkCardType(type) {
-  return ["direction", "web", "image", "file", "api", "note"].includes(type) ? type : "note";
+  const value = String(type || "note").toLowerCase();
+  return ["direction", "web", "image", "file", "api", "note", "plan", "todo", "weather", "map", "link", "code", "table", "timeline", "comparison", "metric", "quote"].includes(value) ? value : "note";
+}
+
+function normalizeDeepThinkOption(option, plan = {}) {
+  if (!option?.deepThinkType) return option;
+  const type = normalizeDeepThinkCardType(option.deepThinkType);
+  if (!option.nodeType) option.nodeType = deepThinkNodeType(option, type, plan);
+  if (!option.content) option.content = deepThinkCardContent(option, type, option.nodeType);
+  return option;
+}
+
+function deepThinkNodeType(card, type, plan = {}) {
+  const explicit = String(card?.nodeType || "").toLowerCase();
+  if (explicit === "image" || RICH_CARD_NODE_TYPES.includes(explicit)) return explicit;
+  if (type === "image") return "image";
+  if (type === "direction") return deepThinkImageRelevant(card, plan) ? "image" : "note";
+  return {
+    web: "link",
+    link: "link",
+    file: "note",
+    api: "note"
+  }[type] || type;
+}
+
+function deepThinkImageRelevant(card, plan = {}) {
+  const text = [
+    card?.title,
+    card?.summary,
+    card?.description,
+    card?.prompt,
+    card?.query,
+    card?.content?.text,
+    plan?.message,
+    plan?.query,
+    plan?.reply
+  ].filter(Boolean).join(" ");
+  return /图片|照片|图像|成图|生成图|画面|视觉|海报|插画|绘制|设计稿|参考图|构图|image|picture|photo|visual|poster|illustration|artwork|render|mockup|logo|icon/i.test(text);
+}
+
+function deepThinkCardContent(card, type, nodeType) {
+  if (card?.content && typeof card.content === "object") return card.content;
+  if (nodeType === "note") {
+    const text = String(card?.prompt || card?.summary || card?.query || "").trim();
+    return text ? { text } : undefined;
+  }
+  if (nodeType === "link" && card?.url) {
+    return {
+      url: String(card.url),
+      title: String(card.title || card.url),
+      description: String(card.summary || card.description || "")
+    };
+  }
+  return undefined;
 }
 
 function deepThinkTypeLabel(type) {
@@ -3967,7 +4107,18 @@ function deepThinkTypeLabel(type) {
     image: "图片",
     file: "文件",
     api: "动作",
-    note: "笔记"
+    note: "笔记",
+    plan: "计划",
+    todo: "待办",
+    weather: "天气",
+    map: "地图",
+    link: "链接",
+    code: "代码",
+    table: "表格",
+    timeline: "时间线",
+    comparison: "对比",
+    metric: "指标",
+    quote: "引用"
   };
   const en = {
     direction: "direction",
@@ -3975,7 +4126,18 @@ function deepThinkTypeLabel(type) {
     image: "image",
     file: "file",
     api: "action",
-    note: "note"
+    note: "note",
+    plan: "plan",
+    todo: "todo",
+    weather: "weather",
+    map: "map",
+    link: "link",
+    code: "code",
+    table: "table",
+    timeline: "timeline",
+    comparison: "comparison",
+    metric: "metric",
+    quote: "quote"
   };
   return (currentLang === "en" ? en : zh)[type] || type;
 }
@@ -3999,6 +4161,23 @@ function buildDeepThinkReferences(card) {
     });
   }
   return references;
+}
+
+function getDeepThinkMaxCanvasCards() {
+  return Math.round(getNumericModelOption("deepthink", "maxCanvasCards", 20, 1, 20));
+}
+
+function getDeepThinkLiveCanvasCards() {
+  return Math.round(getNumericModelOption("deepthink", "liveCanvasCards", 6, 0, 20));
+}
+
+function getDeepThinkMaxReferenceCards() {
+  return Math.round(getNumericModelOption("deepthink", "maxReferenceCards", 20, 0, 20));
+}
+
+function getDeepThinkSourceCardMode() {
+  const value = settingsCache.deepthink?.options?.sourceCardMode;
+  return ["list", "cards", "off"].includes(value) ? value : "cards";
 }
 
 function safeNodeSlug(value) {
@@ -4067,7 +4246,7 @@ async function startAsrDictation(targetInput, { silent = false } = {}) {
       voiceState.asrRecorder = null;
       chatAsrButton?.classList.remove("is-recording");
     });
-    recorder.start(1800);
+    recorder.start(getAsrChunkMs());
   } catch (error) {
     cleanupAsrDraft({ restore: true });
     if (!silent) setStatus(t("voice.permissionDenied"), "error");
@@ -4144,6 +4323,31 @@ function rejectAsrTranscript() {
   chatInput?.focus();
 }
 
+function getModelOption(role, key, fallback) {
+  const options = settingsCache[role]?.options;
+  if (!options || typeof options !== "object") return fallback;
+  const value = options[key];
+  return value === undefined || value === null || value === "" ? fallback : value;
+}
+
+function getNumericModelOption(role, key, fallback, min, max) {
+  const number = Number(getModelOption(role, key, fallback));
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
+}
+
+function getAsrChunkMs() {
+  return Math.round(getNumericModelOption("asr", "chunkMs", 1800, 600, 6000));
+}
+
+function getRealtimeChunkMs() {
+  return Math.round(getNumericModelOption("realtime", "chunkMs", 3200, 800, 8000));
+}
+
+function getRealtimeSilenceThreshold() {
+  return getNumericModelOption("realtime", "silenceThreshold", 0.012, 0.001, 0.08);
+}
+
 function stopAsrRecorder() {
   if (voiceState.asrRecorder && voiceState.asrRecorder.state !== "inactive") {
     voiceState.asrRecorder.stop();
@@ -4217,7 +4421,7 @@ async function startRealtimeVoice() {
       if (voiceState.realtimePlaybackActive) return;
       const input = event.inputBuffer.getChannelData(0);
       const pcm = floatToPcm16(input, audioContext.sampleRate, 16000);
-      if (hasAudiblePcm(pcm)) voiceState.realtimeSpeechDetected = true;
+      if (hasAudiblePcm(pcm, getRealtimeSilenceThreshold())) voiceState.realtimeSpeechDetected = true;
       voiceState.realtimePcmChunks.push(pcm);
     };
     source.connect(processor);
@@ -4233,7 +4437,7 @@ async function startRealtimeVoice() {
     voiceState.realtimeSpeechDetected = false;
     voiceState.realtimeFlushTimer = window.setInterval(() => {
       flushRealtimePcmChunk(sessionId);
-    }, 3200);
+    }, getRealtimeChunkMs());
     chatRealtimeButton?.classList.add("is-listening");
     renderAllText();
     setStatus(t("voice.realtimeListening"), "busy");
@@ -5835,6 +6039,7 @@ function renderRichNodeContent(element, option) {
 function createOptionNode(option, parentNodeId, taskType = "general") {
   const parentNode = state.nodes.get(parentNodeId);
   if (!parentNode) return null;
+  normalizeDeepThinkOption(option);
 
   // Compute position offset from parent
   const offsetX = 380;
@@ -7403,6 +7608,7 @@ function highlightCode(code, language) {
 function restoreOptionNode(element, option) {
   const nodeId = element.dataset.nodeId;
   const node = state.nodes.get(nodeId);
+  normalizeDeepThinkOption(option);
   const taskType = taskTypeForOption(option, element.dataset.taskType || "general");
   const fragment = optionTemplate.content.cloneNode(true);
   const fresh = fragment.querySelector(".option-node");
@@ -10207,15 +10413,18 @@ function handleLiveResearchCanvasEvent(eventData = {}, pendingMessage = null) {
   const parentNodeId = pendingMessage?.branchNodeId || state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
   if (!state.nodes.has(parentNodeId)) return;
   const parent = state.nodes.get(parentNodeId);
-  const createdCount = liveResearchCards.size;
+  const liveLimit = getDeepThinkLiveCanvasCards();
+  if (liveLimit <= 0) return;
   const stageTitle = String(eventData.title || eventData.stage || (currentLang === "en" ? "Research step" : "研究步骤")).slice(0, 48);
   const delta = String(eventData.delta || eventData.summary || "").trim();
   const query = String(eventData.query || eventData.searchQuery || "").trim();
+  const sourceCardMode = getDeepThinkSourceCardMode();
 
-  if (query) {
+  if (query && sourceCardMode === "cards" && liveResearchCards.size < liveLimit) {
     const key = `query:${query}`;
     if (!liveResearchCards.has(key)) {
       const queryTitle = currentLang === "en" ? "Search query" : "搜索 query";
+      const slotIndex = liveResearchCards.size;
       const nodeId = createOptionNode({
         id: `live-query-${Date.now()}-${safeNodeSlug(query)}`,
         title: queryTitle,
@@ -10224,17 +10433,21 @@ function handleLiveResearchCanvasEvent(eventData = {}, pendingMessage = null) {
         tone: currentLang === "en" ? "search" : "搜索",
         layoutHint: "query",
         deepThinkType: "web",
-        x: (parent.x || 0) + 410 + Math.floor(createdCount / 4) * 360,
-        y: (parent.y || 0) + (createdCount % 4) * 210
+        nodeType: "note",
+        content: { text: query.slice(0, 1200) },
+        x: (parent.x || 0) + 410 + Math.floor(slotIndex / 4) * 360,
+        y: (parent.y || 0) + (slotIndex % 4) * 210
       }, parentNodeId);
       if (nodeId) liveResearchCards.set(key, nodeId);
     }
   }
 
+  const reserveSourceListSlot = sourceCardMode === "list" ? 1 : 0;
   if (delta.length >= 18) {
     const key = `stage:${stageTitle}`;
     let nodeId = liveResearchCards.get(key);
-    if (!nodeId) {
+    if (!nodeId && liveResearchCards.size < Math.max(0, liveLimit - reserveSourceListSlot)) {
+      const slotIndex = liveResearchCards.size;
       nodeId = createOptionNode({
         id: `live-research-${Date.now()}-${safeNodeSlug(stageTitle)}`,
         title: stageTitle,
@@ -10243,8 +10456,10 @@ function handleLiveResearchCanvasEvent(eventData = {}, pendingMessage = null) {
         tone: currentLang === "en" ? "research" : "研究",
         layoutHint: "live",
         deepThinkType: "note",
-        x: (parent.x || 0) + 410 + Math.floor(createdCount / 4) * 360,
-        y: (parent.y || 0) + (createdCount % 4) * 210
+        nodeType: "note",
+        content: { text: delta.slice(0, 1200) },
+        x: (parent.x || 0) + 410 + Math.floor(slotIndex / 4) * 360,
+        y: (parent.y || 0) + (slotIndex % 4) * 210
       }, parentNodeId);
       if (nodeId) liveResearchCards.set(key, nodeId);
     } else {
@@ -10258,26 +10473,96 @@ function handleLiveResearchCanvasEvent(eventData = {}, pendingMessage = null) {
   }
 
   const references = Array.isArray(eventData.references) ? eventData.references : [];
-  references.slice(0, 4).forEach((reference, index) => {
+  if (!references.length || sourceCardMode === "off") return;
+  if (sourceCardMode === "list") {
+    const listKey = "sources:list";
+    let listNodeId = liveResearchCards.get(listKey);
+    const currentSources = normalizeDeepThinkLiveSources(listNodeId ? state.nodes.get(listNodeId)?.option?.references : []);
+    const nextSources = mergeDeepThinkLiveSources(currentSources, references).slice(0, getDeepThinkMaxReferenceCards());
+    if (!nextSources.length) return;
+    const listText = deepThinkSourcesMarkdown(nextSources);
+    if (!listNodeId && liveResearchCards.size < liveLimit) {
+      listNodeId = createOptionNode({
+        id: `live-sources-${Date.now()}`,
+        title: currentLang === "en" ? "Selected sources" : "精选来源列表",
+        description: currentLang === "en" ? `${nextSources.length} sources collected so far.` : `已收集 ${nextSources.length} 个精选来源。`,
+        prompt: listText.slice(0, 1600),
+        tone: currentLang === "en" ? "sources" : "来源",
+        layoutHint: "evidence-list",
+        deepThinkType: "note",
+        nodeType: "note",
+        references: nextSources,
+        content: { text: listText },
+        x: (parent.x || 0) + 410 + Math.floor(liveResearchCards.size / 4) * 360,
+        y: (parent.y || 0) + (liveResearchCards.size % 4) * 210
+      }, parentNodeId);
+      if (listNodeId) liveResearchCards.set(listKey, listNodeId);
+    } else if (listNodeId) {
+      const node = state.nodes.get(listNodeId);
+      if (node?.option) {
+        node.option.references = nextSources;
+        node.option.description = currentLang === "en" ? `${nextSources.length} sources collected so far.` : `已收集 ${nextSources.length} 个精选来源。`;
+        node.option.prompt = listText.slice(0, 1600);
+        node.option.content = { text: listText };
+        node.element?.querySelector(".option-description")?.replaceChildren(document.createTextNode(node.option.description));
+      }
+    }
+    return;
+  }
+  references.slice(0, Math.max(0, liveLimit - liveResearchCards.size)).forEach((reference, index) => {
     const url = reference.url || reference.sourceUrl || reference.imageUrl || "";
     if (!url) return;
     const key = `ref:${url}`;
     if (liveResearchCards.has(key)) return;
     const title = String(reference.title || url).slice(0, 48);
+    const slotIndex = liveResearchCards.size;
+    const referenceType = reference.type === "image" ? "image" : "web";
+    const nodeType = referenceType === "image" ? "image" : "link";
     const nodeId = createOptionNode({
       id: `live-ref-${Date.now()}-${index}-${safeNodeSlug(title)}`,
       title,
       description: String(reference.description || reference.summary || url).slice(0, 260),
       prompt: String(reference.description || reference.summary || title).slice(0, 1200),
-      tone: reference.type === "image" ? (currentLang === "en" ? "image" : "图片") : (currentLang === "en" ? "web" : "网页"),
+      tone: referenceType === "image" ? (currentLang === "en" ? "image" : "图片") : (currentLang === "en" ? "web" : "网页"),
       layoutHint: "evidence",
-      deepThinkType: reference.type === "image" ? "image" : "web",
-      references: [{ title, url, description: reference.description || "", type: reference.type || "web" }],
-      x: (parent.x || 0) + 410 + Math.floor((createdCount + index + 1) / 4) * 360,
-      y: (parent.y || 0) + ((createdCount + index + 1) % 4) * 210
+      deepThinkType: referenceType,
+      nodeType,
+      content: nodeType === "link" ? { url, title, description: String(reference.description || reference.summary || "") } : undefined,
+      references: [{ title, url, description: reference.description || "", type: referenceType }],
+      x: (parent.x || 0) + 410 + Math.floor(slotIndex / 4) * 360,
+      y: (parent.y || 0) + (slotIndex % 4) * 210
     }, parentNodeId);
     if (nodeId) liveResearchCards.set(key, nodeId);
   });
+}
+
+function normalizeDeepThinkLiveSources(value) {
+  return Array.isArray(value) ? value.filter((item) => item && typeof item === "object") : [];
+}
+
+function mergeDeepThinkLiveSources(existing, incoming) {
+  const map = new Map();
+  for (const source of [...existing, ...incoming]) {
+    const url = source?.url || source?.sourceUrl || source?.imageUrl || "";
+    if (!url) continue;
+    const key = `ref:${url}`;
+    if (map.has(key)) continue;
+    map.set(key, {
+      title: String(source.title || url).slice(0, 120),
+      url,
+      description: String(source.description || source.summary || "").slice(0, 260),
+      type: source.type || (source.imageUrl ? "image" : "web")
+    });
+  }
+  return Array.from(map.values());
+}
+
+function deepThinkSourcesMarkdown(sources) {
+  return sources.map((source) => {
+    const title = String(source.title || source.url || "Source").replace(/\s+/g, " ").slice(0, 120);
+    const description = String(source.description || "").replace(/\s+/g, " ").slice(0, 180);
+    return `- ${source.url ? `[${title}](${source.url})` : title}${description ? ` — ${description}` : ""}`;
+  }).join("\n");
 }
 
 async function putJson(url, payload) {
@@ -10777,6 +11062,7 @@ async function loadSession(sessionId) {
     const optionNodes = data.nodes.filter(n => n.type === "option" || n.type === "generated");
     for (const n of optionNodes) {
       const option = n.data?.option || { title: t("generated.result"), description: "", tone: "cinematic", layoutHint: "square" };
+      normalizeDeepThinkOption(option);
       // Restore references from persisted data
       if (n.data?.references) {
         option.references = n.data.references;
