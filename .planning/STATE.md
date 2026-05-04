@@ -18,7 +18,7 @@ progress:
 **Milestone:** Qwen Web Parity v3.2
 **Core Value:** 让应用体验对标官方 Qwen Web 应用 —— 内置搜索、代码解释器与自定义画布工具并存，支持文档长文本聊天、图像/视频/语音生成、深度研究可视化、现代嵌入检索。
 **Project Reference:** [PROJECT.md](./PROJECT.md)
-**Last Updated:** 2026-05-04
+**Last Updated:** 2026-05-04 (Phase 21 shipped; v3.2 Phase 26 ready to plan)
 
 ---
 
@@ -27,10 +27,10 @@ progress:
 | Field | Value |
 |-------|-------|
 | Milestone | v3.2 — Qwen Web Parity |
-| Phase | Not started (roadmap defined) |
+| Phase | Pre-26 (v3.2 not yet started; Phase 26 ready to plan) |
 | Plans | — |
-| Status | Roadmap defined, awaiting plan |
-| Progress | 0% |
+| Status | v3.1 Phase 21 shipped 2026-05-04; v3.2 milestone ready to launch |
+| Progress | 0% (v3.2 milestone) |
 
 ```
 [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 0%
@@ -93,6 +93,9 @@ progress:
 | 30 | v3.0 ships as infrastructure + experience upgrade before v3.1 AI features | 2026-05-03 | Model migration, homepage redesign, and library preview are foundational and ready now |
 | 31 | Default model stack unified on Qwen/DashScope | 2026-05-03 | Simpler key management, better Chinese support, consistent API surface |
 | 32 | Three.js homepage as separate entry from workbench | 2026-05-03 | Marketing/showcase surface distinct from daily-use canvas; /app.html for workbench |
+| 33 | Path-B fix: search_strategy agent_max → max for Phase 21 chat 400 | 2026-05-04 | DashScope agent_max triggers Agent mode mutually exclusive with custom `tools`; max keeps multi-round search without agent orchestration |
+| 34 | Defer Plan 06 E2E harness to v3.2 Phase 26 | 2026-05-04 | Phase 26 replaces the chat backend (Chat Completions → Responses API); writing the harness now is single-use throwaway work |
+| 35 | v3.1 Phases 22-25 superseded by v3.2 milestone | 2026-05-04 | User pivot to Qwen Web Parity; remaining v3.1 phases may be revisited or absorbed into v3.2 phases as work unfolds |
 
 ### TODOs
 
@@ -102,7 +105,8 @@ progress:
 - [x] v1.3 Material Library — shipped 2026-05-01
 - [x] v2.0 Multi-Card Canvas Interaction — shipped 2026-05-02
 - [x] v3.0 Infrastructure & Experience Upgrade — shipped 2026-05-03
-- [ ] v3.1 Multi-Scenario Intelligence — Phase 21 planned, ready to execute
+- [x] v3.1 Phase 21 Chat-to-Canvas Reliability — shipped 2026-05-04 (Plan 06 deferred to Phase 26)
+- [ ] v3.1 Phases 22-25 — superseded by v3.2 milestone (may be revisited or absorbed)
 - [ ] v3.2 Qwen Web Parity — roadmap defined, Phase 26 ready to plan
 
 ### Blockers
@@ -117,5 +121,5 @@ progress:
 
 **Current session started:** 2026-05-04
 **Last session resumed:** 2026-05-04
-**Stopped at:** roadmap creation
-**Next expected action:** `/gsd-plan-phase 26` to begin planning the first v3.2 phase
+**Stopped at:** Phase 21 shipped (path-B fix + Plan 06 deferred); v3.2 Phase 26 ready to plan
+**Next expected action:** `/gsd-new-milestone v3.2 "Qwen Web Parity"` then `/gsd-plan-phase 26`

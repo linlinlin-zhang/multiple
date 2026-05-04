@@ -100,7 +100,7 @@
 
 ## v3.1 Multi-Scenario Intelligence — Active Phases
 
-- [ ] **Phase 21: Chat-to-Canvas Reliability & Conversational UX** — Fix chat→canvas action whitelist, switch to OpenAI tool calling, default streaming, markdown rendering
+- [ ] **Phase 21: Chat-to-Canvas Reliability & Conversational UX** — Fix chat→canvas action whitelist, switch to OpenAI tool calling, default streaming, markdown rendering ✅ shipped 2026-05-04 (Plan 06 deferred to Phase 26)
 - [ ] **Phase 22: Dynamic Directions** — Variable 5-8 direction count driven by content complexity score
 - [ ] **Phase 23: File Rendering** — PDF preview with pdf.js, PPTX preview, large file streaming
 - [ ] **Phase 24: Context Management** — Shared context pool organized by topic/card, injected into LLM prompts
@@ -292,7 +292,7 @@
 | 18. Blueprint Modal | v2.0 | 3/3 | Done | 2026-05-02 |
 | 19. Prompt Extraction | v3.1 | 2/2 | Done | 2026-05-02 |
 | 20. Task Routing | v3.1 | 2/2 | Done | 2026-05-03 |
-| 21. Chat-to-Canvas Reliability & UX | v3.1 | 5/6 | In Progress | |
+| 21. Chat-to-Canvas Reliability & UX | v3.1 | 5/6 | Done (Plan 06 deferred to Phase 26) | 2026-05-04 |
 | 22. Dynamic Directions | v3.1 | 0/? | Not started | - |
 | 23. File Rendering | v3.1 | 0/? | Not started | - |
 | 24. Context Management | v3.1 | 0/? | Not started | - |
@@ -308,4 +308,4 @@
 ---
 
 *Created: 2026-04-25*
-*Last updated: 2026-05-04 — v3.2 roadmap defined (Phases 26-32)*
+*Last updated: 2026-05-04 — Phase 21 shipped, Plan 06 deferred to Phase 26 (Responses API rewrite)*
