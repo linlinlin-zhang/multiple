@@ -92,6 +92,7 @@ const IMAGE_POLL_ATTEMPTS = Number(process.env.IMAGE_POLL_ATTEMPTS || 30);
 const IMAGE_INCLUDE_DATA_URL = process.env.IMAGE_INCLUDE_DATA_URL === "true";
 const MAX_BODY_BYTES = 22 * 1024 * 1024;
 const CHAT_COMPLETION_TIMEOUT_MS = Number(process.env.CHAT_COMPLETION_TIMEOUT_MS || 120000);
+const CHAT_STREAM_IDLE_TIMEOUT_MS = Number(process.env.CHAT_STREAM_IDLE_TIMEOUT_MS || process.env.CHAT_STREAM_TIMEOUT_MS || 240000);
 const DEEP_RESEARCH_TIMEOUT_MS = Number(process.env.DEEP_RESEARCH_TIMEOUT_MS || 600000);
 const EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.EXPLORE_THINKING_TIMEOUT_MS || 120000);
 const EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.EXPLORE_FALLBACK_TIMEOUT_MS || 60000);
@@ -101,7 +102,7 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
   type: "function",
   function: {
     name: "canvas_action",
-    description: "Execute a canvas action such as creating a card, zooming, searching, or manipulating the view. You may invoke this tool MULTIPLE times in a single turn — e.g., for a trip request, call create_plan, create_weather, and create_map together so the canvas holds the full deliverable instead of just a title card.",
+    description: "Execute a canvas action such as creating a reusable card, zooming, searching, or manipulating the view. Use this to augment the chat answer, not replace it. You may invoke this tool MULTIPLE times in a single turn when multiple reusable artifacts are genuinely useful.",
     parameters: {
       type: "object",
       properties: {
@@ -115,14 +116,14 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
         content: {
           type: "object",
           description: [
-            "Structured payload that fills the rich node. REQUIRED for create_plan/create_todo/create_note/create_weather/create_map/create_link/create_code — without it the card renders empty. Shape per type:",
-            "- create_plan: { steps: [{ title: string, description?: string }, ...] } — populate with the FULL itinerary, not a placeholder",
-            "- create_todo: { items: [{ text: string, done: boolean }, ...] }",
-            "- create_note: { text: string } — the full note body (markdown allowed)",
+            "Structured payload that fills the rich node. REQUIRED for create_plan/create_todo/create_note/create_weather/create_map/create_link/create_code — without it the card renders empty. The chat answer must still summarize the useful result. Shape per type:",
+            "- create_plan: { summary?: string, assumptions?: string[], steps: [{ title: string, description: string, time?: string, priority?: string, tips?: string[] }, ...], tips?: string[], budget?: string } — use this as a compact overview plan. Each description should cover sequence/order, rationale, resources/cost/time constraints, dependencies, risks, and cautions where relevant, but do not make one oversized plan card. For complex learning/exam/research/project tasks, create multiple artifacts: overview plan + resources/logistics note + todo checklist + web/reference cards when useful",
+            "- create_todo: { items: [{ text: string, done: boolean, priority?: string, rationale?: string }, ...] }",
+            "- create_note: { text: string, sections?: [{ title: string, body: string }] } — the full note body in markdown",
             "- create_weather: { location: string, temp: string, forecast: string }",
             "- create_map: { address: string, lat?: number, lng?: number }",
-            "- create_link: { title: string, url: string, description?: string }",
-            "- create_code: { language: string, code: string }"
+            "- create_link/create_web_card: { title: string, url: string, description?: string, source?: string }",
+            "- create_code: { language: string, code: string, explanation?: string, usage?: string }"
           ].join("\n")
         },
         position: { type: "string", description: "Position hint: left, right, above, below, center, etc." },
@@ -142,6 +143,20 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
 };
 
 const CANVAS_TOOLS = [CANVAS_ACTION_TOOL_SCHEMA];
+const RESPONSES_CANVAS_TOOL_SCHEMA = {
+  type: "function",
+  name: CANVAS_ACTION_TOOL_SCHEMA.function.name,
+  description: CANVAS_ACTION_TOOL_SCHEMA.function.description,
+  parameters: CANVAS_ACTION_TOOL_SCHEMA.function.parameters
+};
+const RESPONSES_CANVAS_TOOL_SCHEMA_WRAPPED = {
+  type: "function",
+  function: {
+    name: CANVAS_ACTION_TOOL_SCHEMA.function.name,
+    description: CANVAS_ACTION_TOOL_SCHEMA.function.description,
+    parameters: CANVAS_ACTION_TOOL_SCHEMA.function.parameters
+  }
+};
 
 function extractToolCallActions(response) {
   const toolCalls = response?.choices?.[0]?.message?.tool_calls || [];
@@ -194,8 +209,10 @@ const ACTION_REPLY_TEMPLATES = {
   }
 };
 
-function synthesizeReplyFromActions(actions, lang) {
+function synthesizeReplyFromActions(actions, lang, references = []) {
   if (!Array.isArray(actions) || actions.length === 0) return "";
+  const rich = synthesizeRichActionReply(actions, lang, references);
+  if (rich) return rich;
   const templates = ACTION_REPLY_TEMPLATES[lang === "en" ? "en" : "zh"];
   const lines = [];
   for (const action of actions.slice(0, 3)) {
@@ -203,6 +220,189 @@ function synthesizeReplyFromActions(actions, lang) {
     if (tpl) lines.push(tpl(action));
   }
   return lines.join(" ").slice(0, 400);
+}
+
+function synthesizeRichActionReply(actions, lang, references = []) {
+  const action = actions.find((item) => ["create_plan", "create_todo", "create_note", "create_code", "create_web_card", "create_link"].includes(item?.type));
+  if (!action) return "";
+  if (action.type === "create_plan") return [synthesizePlanActionReply(action, lang, references), formatActionBundleSection(actions, lang)].filter(Boolean).join("\n\n");
+  if (action.type === "create_todo") return synthesizeTodoActionReply(action, lang);
+  if (action.type === "create_note") return synthesizeNoteActionReply(action, lang);
+  if (action.type === "create_code") return synthesizeCodeActionReply(action, lang);
+  return synthesizeReferenceActionReply(action, lang);
+}
+
+function synthesizePlanActionReply(action, lang, references = []) {
+  const content = action?.content && typeof action.content === "object" ? action.content : {};
+  const steps = Array.isArray(content.steps) ? content.steps : [];
+  if (!steps.length) return "";
+  const title = action.title || (lang === "en" ? "Plan" : "计划");
+  const summary = stringOr(content.summary || action.description || action.prompt, "").trim();
+  const stepLines = steps.slice(0, 10).map((step, index) => {
+    const stepTitle = stringOr(step?.title, `${lang === "en" ? "Step" : "步骤"} ${index + 1}`);
+    const detail = stringOr(step?.description || step?.body || step?.text, "").replace(/\s+/g, " ").slice(0, 520);
+    return { title: stepTitle, detail, time: stringOr(step?.time, ""), priority: stringOr(step?.priority, "") };
+  });
+  const tips = Array.isArray(content.tips) ? content.tips.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 3) : [];
+  if (lang === "en") {
+    return [
+      `# ${title}`,
+      "",
+      summary || "I created a reusable plan card and summarized the structured deliverable below.",
+      "",
+      "| Section | Focus | Notes |",
+      "|---|---|---|",
+      ...stepLines.slice(0, 6).map((step, index) => `| ${index + 1} | ${escapeMarkdownTableCell(step.title)} | ${escapeMarkdownTableCell(step.detail || step.time || step.priority)} |`),
+      "",
+      ...stepLines.map((step, index) => `## ${index + 1}. ${step.title}\n\n${step.detail || "Details are available in the canvas card."}`),
+      content.budget ? `\n## Budget\n\n${content.budget}` : "",
+      tips.length ? `\n## Practical tips\n\n${tips.map((tip) => `- ${tip}`).join("\n")}` : "",
+      formatReferenceSection(references, lang),
+      "\nI also created the canvas plan card so you can inspect, rearrange, and iterate each step visually."
+    ].filter(Boolean).join("\n");
+  }
+  return [
+    `# ${title}`,
+    "",
+    summary || "我已创建可复用的 plan 卡片,并把可直接阅读的结构化交付物整理在下面。",
+    "",
+    "| 阶段/步骤 | 主题 | 核心内容 |",
+    "|---|---|---|",
+    ...stepLines.slice(0, 6).map((step, index) => `| ${index + 1} | ${escapeMarkdownTableCell(step.title)} | ${escapeMarkdownTableCell(step.detail || step.time || step.priority)} |`),
+    "",
+    ...stepLines.map((step, index) => `## ${index + 1}. ${step.title}\n\n${step.detail || "详细内容已写入画布卡片。"}`),
+    content.budget ? `\n## 资源/成本参考\n\n${content.budget}` : "",
+    tips.length ? `\n## 实用提醒\n\n${tips.map((tip) => `- ${tip}`).join("\n")}` : "",
+    formatReferenceSection(references, lang),
+    "\n我也已同步创建画布 plan 卡片,方便你继续在画布上按阶段/步骤细化、重排和迭代。"
+  ].filter(Boolean).join("\n");
+}
+
+function escapeMarkdownTableCell(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\|/g, "\\|")
+    .slice(0, 180);
+}
+
+function synthesizeTodoActionReply(action, lang) {
+  const items = Array.isArray(action?.content?.items) ? action.content.items : [];
+  if (!items.length) return "";
+  const lines = items.slice(0, 12).map((item) => {
+    const text = stringOr(item?.text || item?.title, "").slice(0, 220);
+    const rationale = stringOr(item?.rationale, "").slice(0, 220);
+    const priority = stringOr(item?.priority, "");
+    return text ? `- **${text}**${priority ? ` (${priority})` : ""}${rationale ? `：${rationale}` : ""}` : "";
+  }).filter(Boolean);
+  return lang === "en"
+    ? [`# ${action.title || "Todo"}`, "", "I created a reusable todo card. Here are the actionable items:", "", ...lines].join("\n")
+    : [`# ${action.title || "待办"}`, "", "我已创建可复用的 todo 卡片。下面是可执行事项:", "", ...lines].join("\n");
+}
+
+function synthesizeNoteActionReply(action, lang) {
+  const sections = Array.isArray(action?.content?.sections) ? action.content.sections : [];
+  const text = stringOr(action?.content?.text || action.description || action.prompt, "").trim();
+  if (!text && !sections.length) return "";
+  const sectionText = sections.slice(0, 8)
+    .map((section) => {
+      const title = stringOr(section?.title, "");
+      const body = stringOr(section?.body || section?.text || section?.description, "");
+      return title || body ? `## ${title || (lang === "en" ? "Section" : "小节")}\n\n${body}` : "";
+    })
+    .filter(Boolean)
+    .join("\n\n");
+  const body = sectionText || text;
+  return lang === "en"
+    ? `# ${action.title || "Note"}\n\n${body.slice(0, 2400)}${body.length > 2400 ? "\n\nOpen the card to continue reading or editing." : ""}`
+    : `# ${action.title || "笔记"}\n\n${body.slice(0, 2400)}${body.length > 2400 ? "\n\n可打开卡片继续阅读或编辑。" : ""}`;
+}
+
+function synthesizeCodeActionReply(action, lang) {
+  const content = action?.content && typeof action.content === "object" ? action.content : {};
+  const explanation = stringOr(content.explanation || action.description || action.prompt, "").trim();
+  if (!explanation && !content.code) return "";
+  return lang === "en"
+    ? [`Created a code card **${action.title || "Code"}**.`, explanation || "The runnable code is available in the canvas card.", content.usage ? `Usage: ${content.usage}` : ""].filter(Boolean).join("\n\n")
+    : [`已创建 code 卡片 **${action.title || "代码"}**。`, explanation || "可运行代码已放在画布卡片中。", content.usage ? `用法: ${content.usage}` : ""].filter(Boolean).join("\n\n");
+}
+
+function synthesizeReferenceActionReply(action, lang) {
+  const title = action.title || action.url || (lang === "en" ? "Reference" : "参考资料");
+  const description = stringOr(action.description || action.prompt || action.query, "").trim();
+  return lang === "en"
+    ? [`Created a reference card **${title}**.`, description].filter(Boolean).join("\n\n")
+    : [`已创建参考卡片 **${title}**。`, description].filter(Boolean).join("\n\n");
+}
+
+function finalizeChatReply(reply, actions, lang, references = []) {
+  const text = String(reply || "").trim();
+  if (!Array.isArray(actions) || actions.length === 0) return appendReferencesIfMissing(text, references, lang);
+  const planAction = actions.find((action) => action?.type === "create_plan" && Array.isArray(action?.content?.steps) && action.content.steps.length);
+  if (planAction && shouldUpgradePlanReply(text, lang)) {
+    return appendReferencesIfMissing([synthesizePlanActionReply(planAction, lang, references), formatActionBundleSection(actions, lang)].filter(Boolean).join("\n\n"), references, lang);
+  }
+  if (isSubstantiveActionReply(text, lang)) return text;
+  return appendReferencesIfMissing(synthesizeReplyFromActions(actions, lang, references) || text, references, lang);
+}
+
+function formatActionBundleSection(actions, lang) {
+  const reusable = Array.isArray(actions)
+    ? actions.filter((action) => ["create_plan", "create_todo", "create_note", "create_code", "create_web_card", "create_link"].includes(action?.type))
+    : [];
+  if (reusable.length <= 1) return "";
+  const lines = reusable.slice(0, 8).map((action) => {
+    const type = String(action.type || "").replace(/^create_/, "");
+    const title = stringOr(action.title || action.url || action.query, type);
+    return `- **${type}**: ${title}`;
+  });
+  return lang === "en"
+    ? ["## Canvas card split", "", "I split the reusable work into multiple cards instead of one oversized card:", "", ...lines].join("\n")
+    : ["## 画布卡片拆分", "", "我把可复用内容拆成多张卡片,避免塞进一张超长卡:", "", ...lines].join("\n");
+}
+
+function isSubstantiveActionReply(reply, lang) {
+  if (!reply) return false;
+  const text = String(reply).trim();
+  if (text.length >= 220) return true;
+  if (/^#{1,3}\s|\n[-*]\s|\n\d+[.)]\s/.test(text)) return true;
+  if (lang === "en") {
+    return !/^created\s+(a|an|the)?.{0,80}(card|node)/i.test(text);
+  }
+  return !/^(已为你创建|已创建|已经创建|已添加).{0,80}(卡片|节点|plan|todo|note|code|web)/i.test(text);
+}
+
+function shouldUpgradePlanReply(reply, lang) {
+  const text = String(reply || "").trim();
+  if (!text) return true;
+  const hasMarkdownTable = /(^|\n)\|.+\|\s*\n\|[\s:|,-]+\|/m.test(text);
+  const sectionCount = (text.match(/^#{1,3}\s+/gm) || []).length;
+  const structuredSectionCount = (text.match(/(^|\n)(Step\s*\d+|Phase\s*\d+|Milestone\s*\d+|步骤\s*\d+|阶段\s*\d+|里程碑|目标|假设|风险|下一步|验证|资源|成本)/gi) || []).length;
+  const ackPattern = lang === "en"
+    ? /^(sure|okay|done|i('|’)ve|i have).{0,260}(created|canvas|card|plan|weather|map)/is
+    : /^(好的|好|可以|已|我已|我已经|我来|没问题).{0,260}(创建|画布|卡片|计划|行程|天气|地图)/is;
+  if (ackPattern.test(text)) return true;
+  if (text.length < 700) return true;
+  if (text.length < 1200 && !hasMarkdownTable) return true;
+  return !(hasMarkdownTable && (sectionCount >= 2 || structuredSectionCount >= 2 || text.length >= 1200));
+}
+
+function appendReferencesIfMissing(reply, references = [], lang) {
+  const text = String(reply || "").trim();
+  if (!text || !Array.isArray(references) || references.length === 0) return text;
+  if (/\[ref_\d+\]|\[\d+\]/i.test(text)) return text;
+  const section = formatReferenceSection(references, lang);
+  return section ? `${text}\n\n${section}` : text;
+}
+
+function formatReferenceSection(references = [], lang) {
+  const usable = Array.isArray(references) ? references.filter((reference) => reference?.url).slice(0, 5) : [];
+  if (!usable.length) return "";
+  const title = lang === "en" ? "## References" : "## 参考来源";
+  const lines = usable.map((reference, index) => {
+    const label = stringOr(reference.title || reference.description, reference.url).replace(/\s+/g, " ").slice(0, 120);
+    return `- [ref_${index + 1}] ${label}`;
+  });
+  return [title, "", ...lines].join("\n");
 }
 
 const server = http.createServer(async (req, res) => {
@@ -786,6 +986,9 @@ function applyJsonObjectResponseMode(payload, config, enabled = true) {
 
 function applyRequestOptions(payload, config) {
   const options = config?.options || {};
+  if (payload.temperature === undefined && typeof config?.temperature === "number") {
+    payload.temperature = config.temperature;
+  }
   if (payload.top_p === undefined && typeof options.top_p === "number") {
     payload.top_p = options.top_p;
   }
@@ -793,6 +996,27 @@ function applyRequestOptions(payload, config) {
     payload.max_tokens = options.max_tokens;
   }
   return payload;
+}
+
+function applyChatQualityRequestOptions(payload, config, message, options = {}) {
+  const target = inferChatMaxTokens(message, options);
+  const configured = Number.isInteger(config?.options?.max_tokens) ? config.options.max_tokens : 0;
+  const current = Number.isInteger(payload.max_tokens) ? payload.max_tokens : 0;
+  const maxTokens = Math.max(current, configured, target);
+  if (maxTokens > 0) payload.max_tokens = maxTokens;
+  return payload;
+}
+
+function inferChatMaxTokens(message, options = {}) {
+  const text = String(message || "").normalize("NFKC");
+  if (/(只给出|只输出|一句话|简短|不要展开|brief|concise|one sentence|answer only|result only)/i.test(text)) return 2048;
+  if (options.agentMode) return 32768;
+  if (options.webSearchEnabled || /(研究|调研|资料|论文|文献|来源|引用|最新|官方|新闻|research|source|citation|latest|official|news)/i.test(text)) return 32768;
+  if (/(计划|规划|方案|步骤|流程|路线图|日程|行程|学习路径|执行|落地|roadmap|workflow|schedule|itinerary|plan|milestone|implementation)/i.test(text)) return 24576;
+  if (/(分析|对比|比较|评估|优缺点|选择|决策|复盘|诊断|analysis|compare|evaluate|pros|cons|decision|diagnose|audit|review)/i.test(text)) return 24576;
+  if (/(教程|指南|策略|写一篇|创作|文案|报告|提纲|润色|代码|程序|python|javascript|数据|表格|csv|tutorial|guide|strategy|writing|draft|report|outline|code|debug|data|chart|plot)/i.test(text)) return 24576;
+  if (text.length > 800 || /详细|深入|全面|系统|完整|展开|具体|多角度|深度|广度|thorough|detailed|comprehensive|in depth|deep dive/i.test(text)) return 24576;
+  return 12288;
 }
 
 function shouldUseWebSearchReadable(message, canvas = {}, selectedContext = null) {
@@ -822,7 +1046,12 @@ function shouldUseWebSearchReadable(message, canvas = {}, selectedContext = null
   const pureCode = /^(解释一下这段|帮我看看(这段|这个)?(代码|程序|报错|bug)|debug|fix\s+this|why\s+does\s+this\s+(code|fn|function))/i.test(text);
   if (pureCode) return false;
 
-  return true;
+  if (shouldForceWebSearchReadable(text)) return true;
+  if (selectedContext?.type === "url" || selectedContext?.url) return true;
+  if (/https?:\/\/[^\s)）\]】"'<>]+/i.test(text)) return true;
+  const nodes = Array.isArray(canvas?.nodes) ? canvas.nodes : (Array.isArray(canvas?.visibleNodes) ? canvas.visibleNodes : []);
+  if (nodes.some((node) => node?.type === "url" || node?.url || node?.sourceType === "url")) return true;
+  return /(新闻|实时|今天|昨日|本周|今年|价格|股价|汇率|天气|政策|论文|文献|来源|资料|报名|考试时间|考点|考场|考位|证书|雅思|托福|四六级|考研|公务员|对比.*版本|最新|current|latest|news|price|weather|citation|reference|source|exam|test|ielts|toefl|certification|registration|test center)/i.test(text);
 }
 
 function shouldForceWebSearchReadable(message) {
@@ -843,7 +1072,7 @@ function shouldUseWebSearch(message, canvas = {}, selectedContext = null) {
     return true;
   }
   if (selectedContext?.type === "url" || selectedContext?.url) return true;
-  const nodes = Array.isArray(canvas?.nodes) ? canvas.nodes : [];
+  const nodes = Array.isArray(canvas?.nodes) ? canvas.nodes : (Array.isArray(canvas?.visibleNodes) ? canvas.visibleNodes : []);
   return nodes.some((node) => node?.type === "url" || node?.url || node?.sourceType === "url");
 }
 
@@ -1060,6 +1289,9 @@ async function handleChat(body, res) {
   const messages = normalizeChatMessages(body?.messages);
   const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
   const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
+  const previousResponseId = typeof body?.previousResponseId === "string"
+    ? body.previousResponseId.trim()
+    : (typeof body?.previous_response_id === "string" ? body.previous_response_id.trim() : "");
 
   if (!message) {
     return sendJson(res, 400, { error: "message is required" });
@@ -1087,9 +1319,9 @@ async function handleChat(body, res) {
   let retrieved = [];
   if (sessionId && isEmbeddingConfigured()) {
     try {
-      retrieved = await retrieveContext({ sessionId, query: message, topK: 6, minScore: 0.22 });
+      retrieved = await retrieveContext({ sessionId, query: message, topK: 10, minScore: 0.18 });
       if (retrieved.length) {
-        const ragBlock = formatContextForPrompt(retrieved, { maxChars: 2400, lang });
+        const ragBlock = formatContextForPrompt(retrieved, { maxChars: 5200, itemMaxChars: 900, lang });
         systemContext = systemContext
           ? `${systemContext}\n\n${ragBlock}`
           : ragBlock;
@@ -1103,10 +1335,11 @@ async function handleChat(body, res) {
   const webSearchForced = shouldForceWebSearchReadable(message);
   const subagentsEnabled = body?.subagentsEnabled === true;
   const agentMode = subagentsEnabled && (body?.agentMode === true || shouldUseAgentModeReadable(message));
-  const context = buildChatSystemContext(lang, analysis, messages);
+  const promptMessages = previousResponseId ? [] : messages;
+  const context = buildChatSystemContext(lang, analysis, promptMessages);
 
   const content = [
-    { type: "text", text: `${context}\n\n用户最新消息：${message}` }
+    { type: "input_text", text: `${context}\n\n用户最新消息：${message}` }
   ];
   if (content[0]) {
     content[0].text = buildChatUserPrompt({
@@ -1114,7 +1347,7 @@ async function handleChat(body, res) {
       analysis,
       selectedContext,
       canvas,
-      messages,
+      messages: promptMessages,
       systemContext,
       thinkingMode,
       webSearchEnabled,
@@ -1123,27 +1356,21 @@ async function handleChat(body, res) {
     });
   }
   if (imageDataUrl) {
-    content.push({ type: "image_url", image_url: { url: imageDataUrl } });
+    content.push({ type: "input_image", image_url: imageDataUrl });
   }
 
-  const chatPayload = {
-    messages: [
-      {
-        role: "system",
-        content: buildChatSystemContext(lang, analysis, messages)
-      },
-      {
-        role: "user",
-        content
-      }
-    ]
-  };
-
-  chatPayload.tools = CANVAS_TOOLS;
-  chatPayload.tool_choice = "auto";
-
-  applyReasoningMode(chatPayload, runtimeConfigs.chat, thinkingMode);
-  applyWebSearchMode(chatPayload, runtimeConfigs.chat, webSearchEnabled, { forced: webSearchForced });
+  const chatPayload = buildChatResponsesPayload({
+    instructions: buildChatSystemContext(lang, analysis, promptMessages),
+    content,
+    message,
+    previousResponseId,
+    webSearchEnabled: webSearchEnabled || webSearchForced,
+    thinkingMode
+  });
+  applyChatQualityRequestOptions(chatPayload, runtimeConfigs.chat, message, {
+    webSearchEnabled: webSearchEnabled || webSearchForced,
+    agentMode
+  });
 
   if (body?.stream === true) {
     return await handleChatStream({
@@ -1158,51 +1385,184 @@ async function handleChat(body, res) {
     }, res);
   }
 
-  const response = await chatCompletions(runtimeConfigs.chat, chatPayload);
+  const response = responsesToChatCompletion(
+    await qwenResponsesRequest(runtimeConfigs.chat, applyRequestOptions({
+      model: runtimeConfigs.chat.model,
+      ...chatPayload
+    }, runtimeConfigs.chat)),
+    runtimeConfigs.chat
+  );
 
-  const reply = collectChatContent(response).trim();
+  const references = extractResponseReferences(response);
+  const reply = normalizeCitationMarkers(collectChatContent(response).trim(), references);
   let actions = normalizeVoiceActions(extractToolCallActions(response));
   actions = ensureChatFallbackActionsClean(message, actions, reply);
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled || webSearchForced);
+  actions = enrichCanvasActions(actions, message, reply, lang);
   if (!agentMode) {
     actions = actions.filter((action) => action.type !== "create_agent");
   }
   const thinkingContent = thinkingMode === "thinking" ? collectReasoningContent(response) : "";
+  const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
 
   // Fire-and-forget: persist this turn into the session context pool.
-  ingestChatTurn(sessionId, message, reply).catch((e) =>
+  ingestChatTurn(sessionId, message, finalReply).catch((e) =>
     console.warn("[handleChat] chat turn ingest failed:", e.message)
   );
 
   return sendJson(res, 200, {
     provider: "api",
     model: runtimeConfigs.chat.model,
-    reply: reply || synthesizeReplyFromActions(actions, lang) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。"),
+    reply: finalReply,
     actions,
-    artifacts: buildAgentArtifacts(actions, agentMode),
+    artifacts: buildChatArtifacts(response, actions, agentMode),
     thinkingContent,
     thinkingTrace: [],
+    responseId: response.id || undefined,
+    previousResponseId: response.id || undefined,
+    references,
     retrievedContext: retrieved.length ? retrieved.length : undefined
   });
 }
 
 function buildChatResultFromResponse({ response, message, thinkingMode, agentMode, lang, streamedReasoning = "", webSearchEnabled = false }) {
-  const reply = collectChatContent(response).trim();
+  const references = extractResponseReferences(response);
+  const reply = normalizeCitationMarkers(collectChatContent(response).trim(), references);
   let actions = normalizeVoiceActions(extractToolCallActions(response));
   actions = ensureChatFallbackActionsClean(message, actions, reply);
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled);
+  actions = enrichCanvasActions(actions, message, reply, lang);
   if (!agentMode) {
     actions = actions.filter((action) => action.type !== "create_agent");
   }
+  const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
   return {
     provider: "api",
     model: runtimeConfigs.chat.model,
-    reply: reply || synthesizeReplyFromActions(actions, lang) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。"),
+    reply: finalReply,
     actions,
-    artifacts: buildAgentArtifacts(actions, agentMode),
+    artifacts: buildChatArtifacts(response, actions, agentMode),
     thinkingContent: thinkingMode === "thinking" ? (streamedReasoning || collectReasoningContent(response)) : "",
-    thinkingTrace: []
+    thinkingTrace: [],
+    responseId: response?.id || undefined,
+    previousResponseId: response?.id || undefined,
+    references
   };
+}
+
+function buildChatResponsesPayload({ instructions, content, message, previousResponseId, webSearchEnabled, thinkingMode, wrappedCanvasTool = false }) {
+  const tools = buildResponsesTools(message, webSearchEnabled, { wrappedCanvasTool });
+  const payload = {
+    instructions,
+    input: [
+      {
+        role: "user",
+        content
+      }
+    ],
+    tools,
+    tool_choice: "auto"
+  };
+  if (previousResponseId) payload.previous_response_id = previousResponseId;
+  applyReasoningMode(payload, runtimeConfigs.chat, thinkingMode);
+  if (tools.some((tool) => tool.type === "web_search" || tool.type === "web_extractor" || tool.type === "code_interpreter")) {
+    payload.enable_thinking = true;
+  }
+  return payload;
+}
+
+function buildResponsesTools(message, webSearchEnabled = false, options = {}) {
+  const tools = [];
+  if (webSearchEnabled) tools.push({ type: "web_search" });
+  if (shouldUseWebExtractor(message)) tools.push({ type: "web_extractor" });
+  if (shouldUseCodeInterpreter(message)) tools.push({ type: "code_interpreter" });
+  if (!shouldSkipCanvasToolForCodeOnlyRequest(message)) {
+    tools.push(options.wrappedCanvasTool ? RESPONSES_CANVAS_TOOL_SCHEMA_WRAPPED : RESPONSES_CANVAS_TOOL_SCHEMA);
+  }
+  return tools;
+}
+
+function shouldUseWebExtractor(message) {
+  const text = String(message || "");
+  return /https?:\/\/[^\s)）\]】"'<>]+/i.test(text) || /网页提取|提取网页|读取网页|网页内容|web\s*extract|extract\s+web|summari[sz]e\s+this\s+page/i.test(text);
+}
+
+function shouldUseCodeInterpreter(message) {
+  const text = String(message || "");
+  return /代码解释器|code\s*interpreter|python|数据分析|计算|统计|图表|表格|csv|xlsx|绘图|画图|plot|chart|calculate|analy[sz]e\s+data/i.test(text);
+}
+
+function shouldSkipCanvasToolForCodeOnlyRequest(message) {
+  const text = String(message || "").normalize("NFKC");
+  return shouldUseCodeInterpreter(text) && /(只给出结果|只输出结果|只回复结果|不要.*(画布|卡片|节点)|不需要.*(画布|卡片|节点)|不要调用画布|answer\s+only|result\s+only|no\s+canvas)/i.test(text);
+}
+
+function buildChatArtifacts(response, actions, agentMode = false) {
+  const artifacts = buildAgentArtifacts(actions, agentMode);
+  const references = extractResponseReferences(response);
+  for (const reference of references.slice(0, 8)) {
+    artifacts.push({
+      type: reference.type || "web",
+      title: reference.title || reference.url,
+      summary: reference.description || "",
+      url: reference.url,
+      status: "reference"
+    });
+  }
+  artifacts.push(...extractResponseArtifacts(response));
+  const seen = new Set();
+  return artifacts.filter((artifact) => {
+    const key = `${artifact.type}:${artifact.url || artifact.title || artifact.summary}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 12);
+}
+
+function extractResponseReferences(response) {
+  return dedupeReferences([
+    ...extractReferencesFromObject(response),
+    ...extractReferencesFromText(collectChatContent(response) || extractResponsesText(response))
+  ]).filter((reference) => reference.url);
+}
+
+function normalizeCitationMarkers(reply, references = []) {
+  if (!reply || !references.length) return reply;
+  return String(reply).replace(/\[(\d{1,2})\]/g, (match, rawIndex) => {
+    const index = Number(rawIndex);
+    if (!Number.isInteger(index) || index < 1) return match;
+    return `[ref_${index}]`;
+  });
+}
+
+function extractResponseArtifacts(response) {
+  const artifacts = [];
+  walkJson(response, (item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return;
+    const type = String(item.type || item.kind || item.name || "");
+    const text = stringOr(item.output || item.text || item.content || item.logs || item.result || item.summary, "");
+    if (/code_interpreter|python|execution|sandbox/i.test(type)) {
+      artifacts.push({
+        type: "code",
+        title: stringOr(item.title || item.name, "Code Interpreter"),
+        summary: text.slice(0, 420),
+        url: stringOr(item.url || item.download_url || item.downloadUrl, ""),
+        status: stringOr(item.status || type, "artifact")
+      });
+    }
+    const fileName = stringOr(item.filename || item.file_name || item.fileName || item.name, "");
+    const fileUrl = stringOr(item.url || item.download_url || item.downloadUrl || item.preview_url || item.previewUrl, "");
+    if ((fileName || fileUrl) && /file|artifact|image|csv|chart|table/i.test(type)) {
+      artifacts.push({
+        type: /\.(png|jpe?g|webp|gif|svg)$/i.test(fileName || fileUrl) ? "image" : "file",
+        title: fileName || stringOr(item.title, "Artifact"),
+        summary: text.slice(0, 420),
+        url: fileUrl,
+        status: stringOr(item.status || type, "artifact")
+      });
+    }
+  });
+  return artifacts.filter((artifact) => artifact.summary || artifact.url).slice(0, 8);
 }
 
 function mergeReferenceActions(actions, response, message, webSearchEnabled = false) {
@@ -1228,20 +1588,188 @@ function mergeReferenceActions(actions, response, message, webSearchEnabled = fa
     });
   }
 
-  if (!references.length && !normalized.some((action) => action.type === "create_web_card")) {
-    const query = deriveSearchQueryClean(message) || String(message || "").slice(0, 120);
-    if (query) {
-      normalized.push({
-        type: "web_search",
-        title: query.slice(0, 48),
-        description: query,
-        query,
-        url: `https://www.google.com/search?q=${encodeURIComponent(query)}`
-      });
-    }
-  }
-
   return normalized;
+}
+
+function enrichCanvasActions(actions, message, reply = "", lang = "zh") {
+  if (!Array.isArray(actions) || !actions.length) return actions;
+  const planAction = actions.find((action) => action?.type === "create_plan" && Array.isArray(action?.content?.steps));
+  if (!planAction) return actions;
+
+  const splitPlan = shouldSplitPlanAction(planAction);
+  const examOrLearning = isExamOrLearningRequest(message);
+  if (!splitPlan && !examOrLearning) return actions;
+
+  const hasNote = actions.some((action) => action?.type === "create_note");
+  const hasTodo = actions.some((action) => action?.type === "create_todo");
+  const expanded = [];
+  for (const action of actions) {
+    if (action !== planAction) {
+      expanded.push(action);
+      continue;
+    }
+    expanded.push(splitPlan ? buildCompactPlanAction(action, lang) : action);
+    if (splitPlan && !hasNote) expanded.push(buildPlanDetailsNoteAction(action, lang));
+    if ((splitPlan || examOrLearning) && !hasTodo) expanded.push(buildPlanTodoAction(action, lang));
+  }
+  if (examOrLearning && !hasNote) {
+    expanded.push(buildExamSupportNoteAction(message, reply, lang));
+  }
+  return dedupeCanvasActions(expanded).slice(0, 10);
+}
+
+function shouldSplitPlanAction(action) {
+  const steps = Array.isArray(action?.content?.steps) ? action.content.steps : [];
+  if (steps.length > 8) return true;
+  const details = steps.map((step) => stringOr(step?.description || step?.body || step?.text, ""));
+  const totalDetailLength = details.reduce((sum, detail) => sum + detail.length, 0);
+  const maxDetailLength = details.reduce((max, detail) => Math.max(max, detail.length), 0);
+  return totalDetailLength > 3600 || maxDetailLength > 900;
+}
+
+function isExamOrLearningRequest(message) {
+  return /(考试|备考|学习|证书|报名|考点|考场|考位|成绩|分数|雅思|托福|四六级|考研|公务员|certification|exam|test|ielts|toefl|gre|gmat|sat|act|registration|test center|study plan|learning path)/i.test(String(message || "").normalize("NFKC"));
+}
+
+function buildCompactPlanAction(action, lang) {
+  const content = action.content && typeof action.content === "object" ? action.content : {};
+  const steps = Array.isArray(content.steps) ? content.steps : [];
+  const groups = groupPlanSteps(steps, 6);
+  const compactSteps = groups.map((group) => {
+    const start = group.start + 1;
+    const end = group.end + 1;
+    const firstTitle = stringOr(group.steps[0]?.title, lang === "en" ? "Phase" : "阶段");
+    const details = group.steps.map((step, index) => {
+      const title = stringOr(step?.title || step?.text, `${start + index}`);
+      const time = stringOr(step?.time, "");
+      const priority = stringOr(step?.priority, "");
+      return [time ? `${time} ` : "", title, priority ? ` (${priority})` : ""].join("");
+    }).join("; ");
+    return {
+      title: lang === "en" ? `${start}-${end}. ${firstTitle}` : `${start}-${end}. ${firstTitle}`,
+      description: [
+        details,
+        lang === "en" ? "Detailed step notes are split into supporting cards." : "详细拆解已拆到支撑卡片中。"
+      ].join("\n").slice(0, 900),
+      time: stringOr(group.steps[0]?.time, ""),
+      priority: stringOr(group.steps[0]?.priority, "")
+    };
+  });
+  return {
+    ...action,
+    description: stringOr(action.description, content.summary || action.title || "").slice(0, 700),
+    content: {
+      ...content,
+      summary: [
+        stringOr(content.summary || action.description || action.prompt, ""),
+        lang === "en" ? "This is a compact overview card; detailed resources/checklists are split into supporting cards." : "这是紧凑总览卡;详细资料、清单和说明已拆分到支撑卡片。"
+      ].filter(Boolean).join("\n\n").slice(0, 1200),
+      steps: compactSteps.length ? compactSteps : steps
+    }
+  };
+}
+
+function buildPlanDetailsNoteAction(action, lang) {
+  const content = action.content && typeof action.content === "object" ? action.content : {};
+  const steps = Array.isArray(content.steps) ? content.steps : [];
+  const groups = groupPlanSteps(steps, 6);
+  const sections = groups.map((group) => ({
+    title: lang === "en"
+      ? `Steps ${group.start + 1}-${group.end + 1}`
+      : `步骤 ${group.start + 1}-${group.end + 1}`,
+    body: group.steps.map((step, index) => {
+      const number = group.start + index + 1;
+      const title = stringOr(step?.title || step?.text, `${number}`);
+      const time = stringOr(step?.time, "");
+      const priority = stringOr(step?.priority, "");
+      const description = stringOr(step?.description || step?.body || step?.text, "").slice(0, 700);
+      const tips = Array.isArray(step?.tips) ? step.tips.map((tip) => String(tip || "").trim()).filter(Boolean).slice(0, 3) : [];
+      return [
+        `### ${number}. ${title}`,
+        time ? `- ${lang === "en" ? "Time" : "时间"}: ${time}` : "",
+        priority ? `- ${lang === "en" ? "Priority" : "优先级"}: ${priority}` : "",
+        description,
+        tips.length ? tips.map((tip) => `- ${tip}`).join("\n") : ""
+      ].filter(Boolean).join("\n");
+    }).join("\n\n")
+  }));
+  return {
+    type: "create_note",
+    title: lang === "en" ? `${action.title || "Plan"} details` : `${action.title || "计划"}｜详细拆解`,
+    description: lang === "en" ? "Detailed notes split out from the oversized plan card." : "从超长计划卡中拆出的详细说明。",
+    content: {
+      sections,
+      text: sections.map((section) => `## ${section.title}\n\n${section.body}`).join("\n\n").slice(0, 8000)
+    }
+  };
+}
+
+function buildPlanTodoAction(action, lang) {
+  const steps = Array.isArray(action?.content?.steps) ? action.content.steps : [];
+  const items = steps.slice(0, 16).map((step) => ({
+    text: stringOr(step?.title || step?.text, "").slice(0, 180),
+    done: false,
+    priority: stringOr(step?.priority, ""),
+    rationale: stringOr(step?.time || step?.description, "").slice(0, 220)
+  })).filter((item) => item.text);
+  return {
+    type: "create_todo",
+    title: lang === "en" ? `${action.title || "Plan"} checklist` : `${action.title || "计划"}｜执行清单`,
+    description: lang === "en" ? "Operational checklist extracted from the plan." : "从计划中抽取的执行清单。",
+    content: { items }
+  };
+}
+
+function buildExamSupportNoteAction(message, reply, lang) {
+  const source = [message, reply].map((item) => String(item || "").trim()).filter(Boolean).join("\n\n").slice(0, 1600);
+  const sections = lang === "en"
+    ? [
+        { title: "Official information to verify", body: "Check the official registration portal, available test dates, test centers/seats, fees, score release timing, ID requirements, and cancellation/rescheduling rules. Treat dates, centers, prices, and policies as time-sensitive." },
+        { title: "Materials and practice resources", body: "Prioritize official sample tests, recent authentic practice books, scoring descriptors, vocabulary/error logs, listening/reading timed sets, speaking question banks, writing samples, and mock-test review templates." },
+        { title: "Trend/risk signals", body: "Track recent changes in availability, scoring expectations, common weak sections, target-score gap, burnout risk, and whether the plan needs more diagnostic testing before committing to the exam date." },
+        { title: "Context from this turn", body: source }
+      ]
+    : [
+        { title: "官方信息核实", body: "核实官方报名入口、可选考试日期、考点/考位、费用、出分时间、证件要求、退改规则。考试时间、地点、价格和政策都属于时效信息,需要以官网为准。" },
+        { title: "资料与练习资源", body: "优先准备官方样题、近期真题/剑桥雅思类资料、评分标准、词汇/错题本、听读限时训练、口语题库、写作范文与批改模板、模考复盘表。" },
+        { title: "趋势与风险信号", body: "关注近期考位供给、目标分差距、薄弱科目、口语/写作评分预期、备考疲劳和是否需要先做诊断测试再锁定考试日期。" },
+        { title: "本轮上下文", body: source }
+      ];
+  return {
+    type: "create_note",
+    title: lang === "en" ? "Exam resources and logistics" : "考试资料与后勤核实",
+    description: lang === "en" ? "Supporting card for resources, official logistics, and verification points." : "用于补充资料、官方后勤信息和核实点的支撑卡。",
+    content: {
+      sections,
+      text: sections.map((section) => `## ${section.title}\n\n${section.body}`).join("\n\n")
+    }
+  };
+}
+
+function groupPlanSteps(steps, maxGroups = 6) {
+  const usable = Array.isArray(steps) ? steps : [];
+  if (!usable.length) return [];
+  const groupCount = Math.min(maxGroups, usable.length);
+  const groupSize = Math.ceil(usable.length / groupCount);
+  const groups = [];
+  for (let start = 0; start < usable.length; start += groupSize) {
+    const chunk = usable.slice(start, start + groupSize);
+    groups.push({ start, end: start + chunk.length - 1, steps: chunk });
+  }
+  return groups;
+}
+
+function dedupeCanvasActions(actions) {
+  const seen = new Set();
+  const result = [];
+  for (const action of actions) {
+    if (!action?.type) continue;
+    const key = `${action.type}:${action.url || action.title || action.query || JSON.stringify(action.content || {}).slice(0, 120)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(action);
+  }
+  return result;
 }
 
 async function handleChatStream({ payload, message, thinkingMode, agentMode, lang, sessionId = "", retrievedCount = 0, webSearchEnabled = false }, res) {
@@ -1253,9 +1781,12 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
   });
   res.write("\n");
   try {
-    const response = await streamChatCompletions(runtimeConfigs.chat, payload, {
+    const response = await streamQwenResponses(runtimeConfigs.chat, payload, {
       onReasoning(delta) {
-        writeSse(res, "thinking", { delta });
+        if (thinkingMode === "thinking") writeSse(res, "thinking", { delta });
+      },
+      onText(delta) {
+        writeSse(res, "reply", { delta });
       }
     });
     const finalPayload = buildChatResultFromResponse({
@@ -2100,15 +2631,74 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
 
   const requestText = String(message || "").normalize("NFKC");
   const combinedText = requestText + " " + String(reply || "").normalize("NFKC");
+  const wantsArtifact = /(画布|卡片|节点|创建|新建|生成.*(卡片|节点)|保存成|放到画布|整理到画布|canvas|card|node|create|add|save.*card)/i.test(requestText);
 
   for (const [actionType, regex] of Object.entries(FALLBACK_KEYWORDS)) {
     if (regex.test(combinedText)) {
+      if (!isViewOnlyFallbackAction(actionType) && !wantsArtifact) break;
       const title = requestText.slice(0, 48);
-      normalized.push({ type: actionType, title, description: reply || title });
+      normalized.push({
+        type: actionType,
+        title,
+        description: reply || title,
+        content: buildFallbackActionContent(actionType, title, reply || requestText)
+      });
       break; // only one fallback action per message
     }
   }
   return normalized;
+}
+
+function isViewOnlyFallbackAction(actionType) {
+  return ["zoom_in", "zoom_out", "reset_view"].includes(actionType);
+}
+
+function buildFallbackActionContent(actionType, title, text) {
+  const body = String(text || title || "").trim();
+  if (!body) return undefined;
+  if (actionType === "create_plan") {
+    const steps = extractFallbackListItems(body)
+      .slice(0, 8)
+      .map((item, index) => ({
+        title: item.title || `${index + 1}`,
+        description: item.description || item.title || body.slice(0, 600)
+      }));
+    return {
+      summary: body.slice(0, 900),
+      steps: steps.length ? steps : [{ title: title || "Step 1", description: body.slice(0, 1200) }]
+    };
+  }
+  if (actionType === "create_todo") {
+    const items = extractFallbackListItems(body)
+      .slice(0, 12)
+      .map((item) => ({ text: item.description || item.title, done: false }));
+    return { items: items.length ? items : [{ text: body.slice(0, 300), done: false }] };
+  }
+  if (actionType === "create_note") return { text: body.slice(0, 4000) };
+  if (actionType === "create_code") {
+    const code = body.match(/```[a-z0-9_-]*\n([\s\S]*?)```/i)?.[1] || body;
+    return { language: "text", code: code.slice(0, 6000), explanation: body.slice(0, 1200) };
+  }
+  return undefined;
+}
+
+function extractFallbackListItems(text) {
+  const lines = String(text || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const items = [];
+  for (const line of lines) {
+    const cleaned = line.replace(/^#{1,6}\s+/, "").replace(/^[-*•]\s+/, "").replace(/^\d+[.)、]\s+/, "").trim();
+    if (!cleaned || cleaned.length < 3) continue;
+    const [rawTitle, ...rest] = cleaned.split(/[:：]\s*/);
+    const description = rest.join("：").trim();
+    items.push({
+      title: rawTitle.slice(0, 80),
+      description: (description || cleaned).slice(0, 700)
+    });
+  }
+  return items;
 }
 
 function deriveSearchQueryClean(message) {
@@ -2898,9 +3488,279 @@ async function qwenResponsesRequest(config, payload) {
   }
   if (!response.ok) {
     const detail = json?.error?.message || json?.message || text || response.statusText;
-    throw new Error(`${config.role} image search API ${response.status}: ${detail}`);
+    throw new Error(`${config.role} Responses API ${response.status}: ${detail}`);
   }
   return json;
+}
+
+async function streamQwenResponses(config, payload, options = {}) {
+  const requestPayload = applyRequestOptions({
+    model: config.model,
+    ...payload,
+    stream: true
+  }, config);
+  const timeoutMs = Number(options.timeoutMs || CHAT_STREAM_IDLE_TIMEOUT_MS || CHAT_COMPLETION_TIMEOUT_MS);
+  const controller = new AbortController();
+  let timer = null;
+  const refreshTimeout = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+  };
+  refreshTimeout();
+
+  let response;
+  try {
+    response = await fetch(`${qwenResponsesBaseUrl(config)}/responses`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(requestPayload),
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (timer) clearTimeout(timer);
+    if (error?.name === "AbortError") {
+      throw new Error(`${config.role} stream timed out after ${Math.round(timeoutMs / 1000)}s without new output`);
+    }
+    throw error;
+  }
+
+  if (!response.ok) {
+    if (timer) clearTimeout(timer);
+    const detail = await response.text().catch(() => response.statusText);
+    throw new Error(`${config.role} Responses API ${response.status}: ${detail || response.statusText}`);
+  }
+
+  try {
+    const collected = await collectStreamingResponsesPayload(response, {
+      ...options,
+      onActivity() {
+        refreshTimeout();
+        options.onActivity?.();
+      }
+    });
+    return responsesToChatCompletion(collected.response || {}, config, collected);
+  } catch (error) {
+    if (error?.name === "AbortError" || /abort/i.test(String(error?.message || ""))) {
+      throw new Error(`${config.role} stream timed out after ${Math.round(timeoutMs / 1000)}s without new output`);
+    }
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function collectStreamingResponsesPayload(response, options = {}) {
+  if (!response.body) return { content: "", reasoning: "", model: "", toolCalls: [], response: null };
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let reasoning = "";
+  let model = "";
+  let completedResponse = null;
+  const toolCalls = new Map();
+
+  function getToolCall(key) {
+    const normalizedKey = key || "0";
+    if (!toolCalls.has(normalizedKey)) {
+      toolCalls.set(normalizedKey, {
+        id: normalizedKey,
+        type: "function",
+        function: { name: "", arguments: "" }
+      });
+    }
+    return toolCalls.get(normalizedKey);
+  }
+
+  function captureFunctionCall(item, fallbackKey = "") {
+    if (!item || typeof item !== "object") return;
+    const name = item.name || item.function?.name || "";
+    const args = item.arguments ?? item.function?.arguments;
+    if (name !== "canvas_action") return;
+    const key = item.call_id || item.callId || item.id || fallbackKey || String(toolCalls.size);
+    const call = getToolCall(key);
+    call.id = key;
+    call.function.name = name;
+    if (args !== undefined) {
+      call.function.arguments = typeof args === "string" ? args : JSON.stringify(args || {});
+    }
+  }
+
+  function consumeData(eventName, data) {
+    if (!data || data === "[DONE]") return;
+    let chunk;
+    try {
+      chunk = JSON.parse(data);
+    } catch {
+      return;
+    }
+    options.onActivity?.();
+    if (chunk?.model) model = chunk.model;
+    if (chunk?.response) {
+      completedResponse = chunk.response;
+      if (chunk.response?.model) model = chunk.response.model;
+    }
+    if (/response\.completed|completed|done/i.test(eventName) && chunk?.id && chunk?.output) {
+      completedResponse = chunk;
+    }
+
+    const reasoningDelta = extractResponsesReasoningDelta(eventName, chunk) || extractStreamingReasoningDelta(chunk);
+    const textDelta = reasoningDelta ? "" : (extractResponsesTextDelta(eventName, chunk) || extractStreamingTextDelta(chunk));
+    if (textDelta) {
+      content += textDelta;
+      options.onText?.(textDelta);
+    }
+    if (reasoningDelta) {
+      reasoning += reasoningDelta;
+      options.onReasoning?.(reasoningDelta);
+    }
+
+    const item = chunk.item || chunk.output_item || chunk.response?.output_item;
+    captureFunctionCall(item, chunk.item_id || chunk.output_index);
+    captureFunctionCall(chunk, chunk.item_id || chunk.output_index);
+
+    if (/function_call_arguments\.delta/i.test(eventName)) {
+      const key = chunk.item_id || chunk.call_id || chunk.id || String(chunk.output_index ?? chunk.index ?? 0);
+      const call = getToolCall(key);
+      if (chunk.name && !call.function.name) call.function.name = chunk.name;
+      call.function.arguments += chunk.delta || chunk.arguments_delta || "";
+    }
+    if (/function_call_arguments\.done/i.test(eventName)) {
+      const key = chunk.item_id || chunk.call_id || chunk.id || String(chunk.output_index ?? chunk.index ?? 0);
+      const call = getToolCall(key);
+      if (chunk.name && !call.function.name) call.function.name = chunk.name;
+      if (typeof chunk.arguments === "string") call.function.arguments = chunk.arguments;
+    }
+  }
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (value) buffer += decoder.decode(value, { stream: !done });
+    const events = buffer.split(/\r?\n\r?\n/);
+    buffer = events.pop() || "";
+
+    for (const event of events) {
+      const lines = event.split(/\r?\n/).map((line) => line.trim());
+      const eventName = lines.find((line) => line.startsWith("event:"))?.slice(6).trim() || "message";
+      const dataLines = lines
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trim());
+      for (const data of dataLines) consumeData(eventName, data);
+    }
+
+    if (done) break;
+  }
+
+  if (buffer.trim()) {
+    const lines = buffer.split(/\r?\n/).map((line) => line.trim());
+    const eventName = lines.find((line) => line.startsWith("event:"))?.slice(6).trim() || "message";
+    const dataLines = lines
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trim());
+    for (const data of dataLines) consumeData(eventName, data);
+  }
+
+  const normalizedToolCalls = Array.from(toolCalls.values())
+    .filter((call) => call.function.name === "canvas_action" && call.function.arguments);
+  return { content, reasoning, model, toolCalls: normalizedToolCalls, response: completedResponse };
+}
+
+function responsesToChatCompletion(response, config, collected = {}) {
+  const raw = response?.response || response || {};
+  const content = collected.content || extractResponsesText(raw);
+  const reasoning = collected.reasoning || extractResponsesReasoning(raw);
+  const toolCalls = mergeResponsesToolCalls(collected.toolCalls || [], extractResponsesToolCallsAsChat(raw));
+  const message = {
+    role: "assistant",
+    content,
+    reasoning_content: reasoning
+  };
+  if (toolCalls.length) message.tool_calls = toolCalls;
+  return {
+    id: raw.id || response?.id || "",
+    object: "response",
+    model: collected.model || raw.model || config.model,
+    rawResponse: raw,
+    choices: [
+      {
+        index: 0,
+        message,
+        finish_reason: toolCalls.length ? "tool_calls" : "stop"
+      }
+    ]
+  };
+}
+
+function mergeResponsesToolCalls(...groups) {
+  const seen = new Set();
+  const merged = [];
+  for (const group of groups) {
+    for (const call of group || []) {
+      if (!call?.function?.name || !call.function.arguments) continue;
+      const key = `${call.function.name}:${call.function.arguments}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(call);
+    }
+  }
+  return merged;
+}
+
+function extractResponsesTextDelta(eventName, chunk) {
+  if (/output_text\.delta|text\.delta|message\.delta/i.test(eventName)) {
+    return stringOr(chunk?.delta || chunk?.text || chunk?.content, "");
+  }
+  if (typeof chunk?.delta === "string" && /text|message|output/i.test(String(chunk?.type || eventName))) {
+    return chunk.delta;
+  }
+  return "";
+}
+
+function extractResponsesReasoningDelta(eventName, chunk) {
+  if (/reasoning|thinking/i.test(eventName)) {
+    return stringOr(chunk?.delta || chunk?.text || chunk?.content, "");
+  }
+  if (typeof chunk?.delta === "string" && /reasoning|thinking/i.test(String(chunk?.type || ""))) {
+    return chunk.delta;
+  }
+  return "";
+}
+
+function extractResponsesReasoning(value) {
+  const parts = [];
+  walkJson(value, (item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return;
+    const type = String(item.type || item.kind || "");
+    const text = item.reasoning || item.reasoning_content || item.thinking || item.thinking_content;
+    if (typeof text === "string") parts.push(text);
+    if (/reasoning|thinking/i.test(type) && typeof item.text === "string") parts.push(item.text);
+  });
+  return parts.join("\n\n").trim();
+}
+
+function extractResponsesToolCallsAsChat(value) {
+  const calls = [];
+  walkJson(value, (item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return;
+    const name = item.name || item.function?.name || "";
+    const args = item.arguments ?? item.function?.arguments;
+    if (name !== "canvas_action" || args === undefined || item.parameters) return;
+    calls.push({
+      id: String(item.call_id || item.callId || item.id || `responses-call-${calls.length + 1}`),
+      type: "function",
+      function: {
+        name,
+        arguments: typeof args === "string" ? args : JSON.stringify(args || {})
+      }
+    });
+  });
+  return calls;
 }
 
 function qwenResponsesBaseUrl(config) {
@@ -2919,17 +3779,19 @@ function extractResponsesText(value) {
   walkJson(value, (item) => {
     if (!item || typeof item !== "object") return;
     if (item.type === "output_text" && typeof item.text === "string") texts.push(item.text);
+    if ((item.type === "text" || item.type === "message") && typeof item.text === "string") texts.push(item.text);
     if (typeof item.output_text === "string") texts.push(item.output_text);
+    if (typeof item.content === "string" && /message|output_text|text/i.test(String(item.type || ""))) texts.push(item.content);
     if (typeof item.text === "string" && /search|image|图片|来源|http/i.test(item.text)) texts.push(item.text);
   });
-  return texts.join("\n").trim();
+  return [...new Set(texts.map((text) => text.trim()).filter(Boolean))].join("\n").trim();
 }
 
 function extractReferencesFromObject(value) {
   const references = [];
   walkJson(value, (item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return;
-    if (typeof item.output === "string" && /image_search|web_search_image/i.test(String(item.type || ""))) {
+    if (typeof item.output === "string" && /image_search|web_search_image|web_search|web_extractor|search|extractor/i.test(String(item.type || ""))) {
       try {
         const parsedOutput = JSON.parse(item.output);
         references.push(...extractReferencesFromObject(parsedOutput));
@@ -3082,11 +3944,16 @@ async function streamChatCompletions(config, payload, options = {}) {
       include_usage: false
     }
   }, config);
-  const timeoutMs = Number(options.timeoutMs || CHAT_COMPLETION_TIMEOUT_MS);
+  const timeoutMs = Number(options.timeoutMs || CHAT_STREAM_IDLE_TIMEOUT_MS || CHAT_COMPLETION_TIMEOUT_MS);
   const controller = new AbortController();
-  const timer = setTimeout(() => {
-    controller.abort();
-  }, timeoutMs);
+  let timer = null;
+  const refreshTimeout = () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => {
+      controller.abort();
+    }, timeoutMs);
+  };
+  refreshTimeout();
 
   let response;
   try {
@@ -3100,21 +3967,27 @@ async function streamChatCompletions(config, payload, options = {}) {
       signal: controller.signal
     });
   } catch (error) {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     if (error?.name === "AbortError") {
-      throw new Error(`${config.role} API timeout after ${Math.round(timeoutMs / 1000)}s`);
+      throw new Error(`${config.role} stream timed out after ${Math.round(timeoutMs / 1000)}s without new output`);
     }
     throw error;
   }
 
   if (!response.ok) {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
     const detail = await response.text().catch(() => response.statusText);
     throw new Error(`${config.role} API ${response.status}: ${detail || response.statusText}`);
   }
 
   try {
-    const { content, reasoning, model, toolCalls } = await collectStreamingChatPayload(response, options);
+    const { content, reasoning, model, toolCalls } = await collectStreamingChatPayload(response, {
+      ...options,
+      onActivity() {
+        refreshTimeout();
+        options.onActivity?.();
+      }
+    });
     const message = {
       role: "assistant",
       content,
@@ -3199,6 +4072,7 @@ async function collectStreamingChatPayload(response, options = {}) {
     if (!data || data === "[DONE]") return;
     try {
       const chunk = JSON.parse(data);
+      options.onActivity?.();
       if (chunk?.model) model = chunk.model;
       const textDelta = extractStreamingTextDelta(chunk);
       const reasoningDelta = extractStreamingReasoningDelta(chunk);

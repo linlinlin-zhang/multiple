@@ -1844,29 +1844,33 @@ body.chat-sidebar-closed .statusbar > * {
 
 .chat-line.assistant {
   align-self: flex-start;
+  min-width: 0;
   max-width: 100%;
   color: var(--ink);
   background: transparent;
 }
 
 .chat-line.pending .chat-text {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  display: block;
 }
 
 .chat-line.pending .chat-text::after {
   content: "";
+  display: inline-block;
   width: 13px;
   height: 13px;
+  margin-left: 8px;
   border-radius: 999px;
   border: 2px solid rgba(0, 112, 204, 0.18);
   border-top-color: var(--ps-blue);
   animation: spin 0.8s linear infinite;
+  vertical-align: -2px;
 }
 
 .chat-text {
   min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .chat-thinking {
@@ -5448,12 +5452,17 @@ html[data-theme="dark"] .rich-inline-code {
   border-collapse: collapse;
   margin: 8px 0;
   font-size: 13px;
+  width: max-content;
 }
 .chat-text.markdown-body th,
 .chat-text.markdown-body td {
   border: 1px solid #ddd;
   padding: 6px 10px;
   text-align: left;
+  max-width: 240px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 .chat-text.markdown-body th {
   background: #f0f0f0;
@@ -5473,6 +5482,7 @@ html[data-theme="dark"] .rich-inline-code {
   display: block;
   max-width: 100%;
   overflow-x: auto;
+  scrollbar-width: thin;
 }
 .chat-text.markdown-body li.task-list-item {
   list-style: none;

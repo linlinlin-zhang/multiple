@@ -2368,7 +2368,7 @@ function getCurrentChatSidebarWidth() {
 
 function clampChatSidebarWidth(width) {
   const min = 320;
-  const max = Math.max(min, Math.floor(window.innerWidth * 0.4));
+  const max = Math.max(min, Math.floor(window.innerWidth * 0.7));
   return Math.min(max, Math.max(min, Math.round(width)));
 }
 
@@ -2441,6 +2441,7 @@ function createChatThread(messages = [], title = "") {
     id: `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
     title,
     createdAt: new Date().toISOString(),
+    previousResponseId: "",
     messages: messages.map(normalizeChatThreadMessage)
   };
 }
@@ -2455,6 +2456,8 @@ function normalizeChatThreadMessage(message) {
     thinkingRequested: Boolean(message?.thinkingRequested || message?.thinkingContent || message?.reasoningContent),
     actions: normalizeChatMessageActions(message?.actions),
     artifacts: normalizeChatArtifacts(message?.artifacts || message?.materials || message?.cards),
+    references: normalizeChatReferences(message?.references),
+    responseId: typeof message?.responseId === "string" ? message.responseId : "",
     pending: Boolean(message?.pending),
     createdAt: message?.createdAt || new Date().toISOString()
   };
@@ -2532,15 +2535,34 @@ function normalizeChatArtifacts(value) {
   const raw = Array.isArray(value) ? value : (value ? [value] : []);
   return raw
     .filter((item) => item && typeof item === "object")
-    .slice(0, 12)
+    .slice(0, 16)
     .map((item) => ({
       type: String(item.type || item.kind || "note").slice(0, 24),
       title: String(item.title || item.name || item.query || item.url || "Material").slice(0, 80),
-      summary: String(item.summary || item.description || item.content || item.prompt || "").slice(0, 420),
+      summary: String(item.summary || item.description || item.content || item.prompt || "").slice(0, 900),
       url: String(item.url || "").slice(0, 512),
       query: String(item.query || "").slice(0, 240),
       status: String(item.status || "").slice(0, 40)
     }));
+}
+
+function normalizeChatReferences(value) {
+  const raw = Array.isArray(value) ? value : (value ? [value] : []);
+  const seen = new Set();
+  return raw
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      title: String(item.title || item.url || "Reference").slice(0, 120),
+      description: String(item.description || item.summary || "").slice(0, 500),
+      url: String(item.url || item.sourceUrl || "").slice(0, 512),
+      type: String(item.type || "web").slice(0, 24)
+    }))
+    .filter((item) => {
+      if (!item.url || seen.has(item.url)) return false;
+      seen.add(item.url);
+      return true;
+    })
+    .slice(0, 12);
 }
 
 function normalizeChatThinkingContent(value) {
@@ -2567,6 +2589,7 @@ function normalizeChatThread(thread, index = 0) {
     id: typeof thread.id === "string" && thread.id ? thread.id : fallback.id,
     title: typeof thread.title === "string" ? thread.title : "",
     createdAt: thread.createdAt || fallback.createdAt,
+    previousResponseId: typeof thread.previousResponseId === "string" ? thread.previousResponseId : "",
     messages
   };
 }
@@ -2623,6 +2646,7 @@ function serializeChatThreads() {
     id: thread.id,
     title: thread.title || "",
     createdAt: thread.createdAt || new Date().toISOString(),
+    previousResponseId: thread.previousResponseId || "",
     messages: thread.messages.map((message) => ({
       role: message.role,
       content: message.content,
@@ -2632,6 +2656,8 @@ function serializeChatThreads() {
       thinkingRequested: Boolean(message.thinkingRequested),
       actions: normalizeChatMessageActions(message.actions),
       artifacts: normalizeChatArtifacts(message.artifacts),
+      references: normalizeChatReferences(message.references),
+      responseId: message.responseId || "",
       pending: Boolean(message.pending),
       createdAt: message.createdAt || null
     }))
@@ -3427,8 +3453,8 @@ function buildSelectedNodeContext() {
   else if (node.option) type = "option";
 
   const title = node.sourceCard?.title || node.option?.title || node.id;
-  const summary = node.explanation || node.sourceCard?.summary || node.option?.description || state.latestAnalysis?.summary || "";
-  const prompt = node.option?.prompt || node.sourceCard?.summary || "";
+  const summary = node.explanation || node.sourceCard?.summary || node.sourceCard?.sourceText || node.option?.description || state.latestAnalysis?.summary || "";
+  const prompt = node.option?.prompt || node.sourceCard?.summary || node.sourceCard?.sourceText || "";
 
   const context = {
     id: nodeId,
@@ -3514,10 +3540,10 @@ async function submitChatMessage(message, options = {}) {
       systemContext += "\n\n" + t("chat.selectedCardContext", {
         type: selectedContext.type,
         title: selectedContext.title,
-        summary: selectedContext.summary.slice(0, 200)
+        summary: selectedContext.summary.slice(0, 1200)
       });
       if (selectedContext.prompt) {
-        systemContext += "\n" + t("chat.selectedCardPrompt", { prompt: selectedContext.prompt.slice(0, 300) });
+        systemContext += "\n" + t("chat.selectedCardPrompt", { prompt: selectedContext.prompt.slice(0, 1600) });
       }
       if (selectedContext.blueprint?.relationships?.length > 0) {
         const relDescriptions = selectedContext.blueprint.relationships.map(r => {
@@ -3537,7 +3563,7 @@ async function submitChatMessage(message, options = {}) {
       message: text,
       imageDataUrl: sourceImageDataUrl,
       analysis: state.latestAnalysis,
-      messages: state.chatMessages.slice(-8),
+      messages: state.chatMessages.slice(-20),
       systemContext,
       selectedContext,
       canvas: buildVoiceCanvasContext(),
@@ -3546,7 +3572,8 @@ async function submitChatMessage(message, options = {}) {
       thinkingMode: effectiveThinkingMode,
       agentMode,
       subagentsEnabled,
-      sessionId: currentSessionId || ""
+      sessionId: currentSessionId || "",
+      previousResponseId: ensureActiveChatThread().previousResponseId || ""
     };
     const data = await postStreamingChat("/api/chat", chatPayload, pendingAssistant);
     const assistantMeta = {
@@ -3555,8 +3582,13 @@ async function submitChatMessage(message, options = {}) {
       thinkingContent: data.thinkingContent || data.reasoningContent || data.reasoning,
       thinkingRequested: effectiveThinkingMode === "thinking",
       actions: data.actions || data.action,
-      artifacts: data.artifacts || data.agentPlan || []
+      artifacts: data.artifacts || data.agentPlan || [],
+      references: data.references || [],
+      responseId: data.responseId || data.previousResponseId || ""
     };
+    if (data.responseId || data.previousResponseId) {
+      ensureActiveChatThread().previousResponseId = data.responseId || data.previousResponseId;
+    }
     const returnedActions = data?.actions || data?.action;
     let actionResults = [];
     if (returnedActions) {
@@ -3571,7 +3603,19 @@ async function submitChatMessage(message, options = {}) {
     autoSave();
   } catch (error) {
     const errorText = error.message || (currentLang === "en" ? "Chat request failed." : "对话请求失败。");
-    updateChatMessage(pendingAssistant, { content: errorText, pending: false });
+    if (error.partialHandled) {
+      updateChatMessage(pendingAssistant, { pending: false });
+      setStatus(t("status.error"), "error");
+      return;
+    }
+    const partial = String(pendingAssistant?.content || "").trim();
+    const suffix = currentLang === "en"
+      ? `\n\n> The stream was interrupted before completion: ${errorText}`
+      : `\n\n> 本次流式回复在完成前中断：${errorText}`;
+    updateChatMessage(pendingAssistant, {
+      content: partial ? `${partial}${suffix}` : errorText,
+      pending: false
+    });
     setStatus(t("status.error"), "error");
   } finally {
     if (chatRealtimeButton) chatRealtimeButton.disabled = false;
@@ -3682,7 +3726,7 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
       selectedContext,
       selectedNodeId: parentNodeId,
       analysis: state.latestAnalysis,
-      messages: state.chatMessages.slice(-8),
+      messages: state.chatMessages.slice(-20),
       canvas: buildVoiceCanvasContext(),
       imageDataUrl
     }, pendingAssistant);
@@ -4073,7 +4117,7 @@ async function handleRealtimeVoiceChunk(pcmBase64, sessionId) {
       language: currentLang,
       selectedContext: buildSelectedNodeContext(),
       analysis: state.latestAnalysis,
-      messages: state.chatMessages.slice(-8),
+      messages: state.chatMessages.slice(-20),
       canvas: buildVoiceCanvasContext()
     });
     if (sessionId !== voiceState.realtimeSessionId) return;
@@ -4100,8 +4144,8 @@ function buildVoiceCanvasContext() {
     id: node.id,
     title: getNodeTitle(node),
     type: getNodeType(node),
-    summary: getNodeSummary(node).slice(0, 220),
-    prompt: String(node.option?.prompt || "").slice(0, 260),
+    summary: getNodeSummary(node).slice(0, 600),
+    prompt: String(node.option?.prompt || node.sourceCard?.sourceText || "").slice(0, 900),
     x: Math.round(node.x || 0),
     y: Math.round(node.y || 0),
     width: Math.round(node.width || node.element?.offsetWidth || 0),
@@ -4774,23 +4818,27 @@ async function runSubagentAction(action) {
       message: prompt,
       imageDataUrl,
       analysis: state.latestAnalysis,
-      messages: state.chatMessages.slice(-6),
+      messages: state.chatMessages.slice(-20),
       systemContext: currentLang === "en"
-        ? "Run this as a concise no-thinking subagent. Return only the useful result and safe canvas actions."
-        : "请作为一个简洁的 no-thinking 子任务执行者，只返回有用结果和安全的画布动作。",
-      selectedContext: buildSelectedNodeContext(),
-      canvas: buildVoiceCanvasContext(),
+        ? "Run this as a focused no-thinking subagent. Return a complete useful result and safe canvas actions; avoid unnecessary chatter, but do not omit important details."
+        : "请作为一个聚焦的 no-thinking 子任务执行者，返回完整有用的结果和安全的画布动作；避免无关寒暄，但不要省略重要细节。",
       language: currentLang,
       thinkingMode: "no-thinking",
+      selectedContext: buildSelectedNodeContext(),
+      canvas: buildVoiceCanvasContext(),
       agentMode: false,
-      subagentsEnabled: false
+      subagentsEnabled: false,
+      previousResponseId: ensureActiveChatThread().previousResponseId || ""
     };
     const data = await postStreamingChat("/api/chat", subagentPayload, null);
+    if (data.responseId || data.previousResponseId) {
+      ensureActiveChatThread().previousResponseId = data.responseId || data.previousResponseId;
+    }
 
     const reply = String(data.reply || "").trim() || (currentLang === "en" ? "Agent task completed." : "Agent 任务已完成。");
     if (node?.option) {
-      node.option.description = reply.slice(0, 360);
-      node.option.prompt = `${prompt}\n\n${reply}`.slice(0, 1600);
+      node.option.description = reply.slice(0, 900);
+      node.option.prompt = `${prompt}\n\n${reply}`.slice(0, 4000);
       const descEl = node.element.querySelector(".option-description");
       if (descEl) descEl.textContent = node.option.description;
     }
@@ -4803,7 +4851,7 @@ async function runSubagentAction(action) {
       artifacts: [{
         type: "agent",
         title,
-        summary: reply.slice(0, 240),
+        summary: reply.slice(0, 900),
         status: "done"
       }]
     });
@@ -5088,8 +5136,22 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
   // Compute position offset from parent
   const offsetX = 380;
   const offsetY = 40;
-  const newX = Number.isFinite(option.x) ? option.x : (parentNode.x || 0) + offsetX;
-  const newY = Number.isFinite(option.y) ? option.y : (parentNode.y || 0) + offsetY;
+  let newX = Number.isFinite(option.x) ? option.x : (parentNode.x || 0) + offsetX;
+  let newY = Number.isFinite(option.y) ? option.y : (parentNode.y || 0) + offsetY;
+  if (!Number.isFinite(option.x) && !Number.isFinite(option.y)) {
+    let attempts = 0;
+    while (attempts < 16) {
+      const collision = [...state.nodes.values()].some((node) =>
+        Math.abs((node.x || 0) - newX) < 330 && Math.abs((node.y || 0) - newY) < 240
+      );
+      if (!collision) break;
+      const column = Math.floor(attempts / 4);
+      const row = attempts % 4;
+      newX = (parentNode.x || 0) + offsetX + column * 360;
+      newY = (parentNode.y || 0) + offsetY + row * 260;
+      attempts++;
+    }
+  }
 
   const id = `option-${option.id}`;
 
@@ -5865,6 +5927,8 @@ function appendChatMessage(role, content, metadata = {}) {
     actions: normalizeChatMessageActions(metadata.actions),
     actionResults: normalizeChatActionResults(metadata.actionResults),
     artifacts: normalizeChatArtifacts(metadata.artifacts || metadata.materials || metadata.cards),
+    references: normalizeChatReferences(metadata.references),
+    responseId: typeof metadata.responseId === "string" ? metadata.responseId : "",
     pending: Boolean(metadata.pending),
     createdAt: new Date().toISOString()
   };
@@ -5893,6 +5957,12 @@ function updateChatMessage(message, updates = {}) {
   }
   if ("artifacts" in updates || "materials" in updates || "cards" in updates) {
     message.artifacts = normalizeChatArtifacts(updates.artifacts || updates.materials || updates.cards);
+  }
+  if ("references" in updates) {
+    message.references = normalizeChatReferences(updates.references);
+  }
+  if ("responseId" in updates) {
+    message.responseId = typeof updates.responseId === "string" ? updates.responseId : "";
   }
   if ("pending" in updates) message.pending = Boolean(updates.pending);
   renderChatMessages({ scrollToBottom: true });
@@ -5985,7 +6055,7 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       const text = document.createElement("span");
       text.className = "chat-text markdown-body";
       if (message.role === "assistant") {
-        text.innerHTML = renderMarkdownToHtml(message.content);
+        text.innerHTML = renderMarkdownToHtml(applyCitationLinks(message.content, message.references));
         addCopyButtons(text);
       } else {
         text.textContent = message.content;
@@ -6075,6 +6145,16 @@ function renderChatArtifacts(artifacts) {
     list.appendChild(card);
   });
   return list;
+}
+
+function applyCitationLinks(markdown, references = []) {
+  const refs = normalizeChatReferences(references);
+  if (!refs.length || typeof markdown !== "string") return markdown;
+  return markdown.replace(/\[ref_(\d+)\]/g, (match, rawIndex) => {
+    const reference = refs[Number(rawIndex) - 1];
+    if (!reference?.url) return match;
+    return `[${match}](${reference.url})`;
+  });
 }
 
 function renderChatContextIndicator() {
@@ -9246,8 +9326,38 @@ async function postStreamingChat(url, payload, pendingMessage) {
     if (done) break;
   }
   if (buffer.trim()) consumeEvent(buffer);
-  if (streamError) throw streamError;
-  if (!finalData) throw new Error("Chat stream ended without a final response");
+  if (streamError) {
+    if (pendingMessage && replyBuffer.trim()) {
+      updateChatMessage(pendingMessage, {
+        content: `${replyBuffer.trim()}\n\n> ${currentLang === "en" ? "The stream was interrupted before completion." : "本次流式回复在完成前中断。"}`,
+        pending: false,
+        thinkingContent: thinkingContent || pendingMessage.thinkingContent || ""
+      });
+      streamError.partialHandled = true;
+    }
+    throw streamError;
+  }
+  if (!finalData) {
+    const error = new Error("Chat stream ended without a final response");
+    if (pendingMessage && replyBuffer.trim()) {
+      updateChatMessage(pendingMessage, {
+        content: `${replyBuffer.trim()}\n\n> ${currentLang === "en" ? "The stream ended before finalizing canvas actions." : "流式回复结束时未收到最终结果，画布动作可能没有执行。"}`,
+        pending: false,
+        thinkingContent: thinkingContent || pendingMessage.thinkingContent || ""
+      });
+      error.partialHandled = true;
+    }
+    throw error;
+  }
+  if (pendingMessage && typeof finalData.reply === "string" && finalData.reply.trim()) {
+    updateChatMessage(pendingMessage, {
+      content: finalData.reply,
+      pending: false,
+      thinkingContent: finalData.thinkingContent || thinkingContent || pendingMessage.thinkingContent || "",
+      artifacts: finalData.artifacts || pendingMessage.artifacts || [],
+      references: finalData.references || pendingMessage.references || []
+    });
+  }
   return finalData;
 }
 

@@ -113,7 +113,7 @@ export async function retrieveContext({
   return searchSimilar({ sessionId, queryEmbedding, topK, kinds, minScore });
 }
 
-export function formatContextForPrompt(rows, { maxChars = 3000, lang = "zh" } = {}) {
+export function formatContextForPrompt(rows, { maxChars = 3000, itemMaxChars = 600, lang = "zh" } = {}) {
   if (!Array.isArray(rows) || rows.length === 0) return "";
 
   const header = lang === "en"
@@ -126,7 +126,7 @@ export function formatContextForPrompt(rows, { maxChars = 3000, lang = "zh" } = 
     const row = rows[i];
     const label = describeSource(row.kind, row?.sourceMeta || {}, lang);
     const score = Number.isFinite(row.score) ? `(score=${row.score.toFixed(2)})` : "";
-    const body = String(row.content || "").trim().replace(/\s+/g, " ").slice(0, 600);
+    const body = String(row.content || "").trim().replace(/\s+/g, " ").slice(0, Math.max(300, itemMaxChars));
     const block = `[${i + 1}] ${label} ${score}\n${body}`;
     if (used + block.length + 2 > maxChars) break;
     lines.push(block);
