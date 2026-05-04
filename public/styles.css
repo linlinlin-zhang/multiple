@@ -252,13 +252,14 @@ body.nav-collapsed .rail {
   padding: 0;
   background: transparent;
   overflow: visible;
+  box-shadow: none;
 }
 
 body.nav-collapsed .nav-toggle {
   color: var(--charcoal);
   background: var(--paper);
   border: 0;
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12), 0 2px 5px rgba(0, 0, 0, 0.08);
+  box-shadow: none;
 }
 
 body.nav-collapsed .nav-toggle span {
@@ -2016,6 +2017,41 @@ body.chat-sidebar-closed .statusbar > * {
   font-weight: 700;
 }
 
+.chat-message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: min(100%, 640px);
+}
+
+.chat-message-attachment {
+  display: grid;
+  gap: 6px;
+  max-width: 220px;
+  padding: 8px;
+  border: 1px solid rgba(0, 112, 204, 0.18);
+  border-radius: 12px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  text-decoration: none;
+}
+
+.chat-message-attachment img {
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--ice);
+}
+
+.chat-message-attachment span {
+  color: var(--inkMuted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chat-artifacts {
   display: grid;
   gap: 8px;
@@ -2036,6 +2072,14 @@ body.chat-sidebar-closed .statusbar > * {
 .chat-artifact-card:hover {
   border-color: rgba(0, 112, 204, 0.36);
   background: rgba(0, 112, 204, 0.08);
+}
+
+.chat-artifact-image {
+  width: 100%;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--ice);
 }
 
 .chat-artifact-type {
@@ -5847,6 +5891,17 @@ html[data-theme="dark"] .rich-inline-code {
 .chat-action-feedback:hover {
   background: var(--surface-3, #eaeaea);
   transform: translateY(-1px);
+}
+.chat-action-feedback.failed {
+  cursor: default;
+  background: rgba(213, 59, 0, 0.08);
+  border-color: rgba(213, 59, 0, 0.24);
+}
+.chat-action-feedback.failed:hover {
+  transform: none;
+}
+.chat-action-feedback.failed .chat-action-icon {
+  background: var(--danger);
 }
 .chat-action-feedback:focus {
   outline: 2px solid var(--accent, #1F1F1B);

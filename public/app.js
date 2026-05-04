@@ -264,6 +264,7 @@ let currentHealthMode = "checking";
 let liveResearchCards = new Map();
 let deepThinkBusy = false;
 let deepThinkModeActive = false;
+let pendingChatAttachment = null;
 
 const VIEWER_ASPECT_OPTIONS = {
   auto: { label: { zh: "宽高比", en: "Aspect" }, size: "" },
@@ -2096,7 +2097,11 @@ function wireControls() {
   });
   chatImageSearchAction?.addEventListener("click", async () => {
     closeChatActionMenu();
-    await searchImagesFromAction({ type: "image_search", query: chatInput?.value.trim() || "" });
+    await searchImagesFromAction({
+      type: "image_search",
+      query: chatInput?.value.trim() || "",
+      imageDataUrl: pendingChatAttachment?.kind === "image" ? pendingChatAttachment.dataUrl : ""
+    });
   });
   chatSubagentsAction?.addEventListener("click", () => {
     closeChatActionMenu();
@@ -2356,7 +2361,8 @@ function wireControls() {
     }
   });
   document.addEventListener("click", (event) => {
-    if (cardSearchBar && !cardSearchBar.classList.contains("hidden")&& !cardSearchBar.contains(event.target)) {
+    const chatCompose = document.querySelector(".chat-compose");
+    if (cardSearchBar && !cardSearchBar.classList.contains("hidden") && !cardSearchBar.contains(event.target) && !chatCompose?.contains(event.target)) {
       closeCardSearchBar();
     }
   });
@@ -2632,6 +2638,7 @@ function normalizeChatThreadMessage(message) {
   return {
     role: message?.role === "assistant" ? "assistant" : "user",
     content: typeof message?.content === "string" ? message.content : "",
+    attachments: normalizeChatAttachments(message?.attachments),
     branchNodeId: message?.branchNodeId ?? null,
     thinkingTrace: normalizeChatThinkingTrace(message?.thinkingTrace || message?.trace),
     thinkingContent: normalizeChatThinkingContent(message?.thinkingContent || message?.reasoningContent || message?.reasoning),
@@ -2643,6 +2650,27 @@ function normalizeChatThreadMessage(message) {
     pending: Boolean(message?.pending),
     createdAt: message?.createdAt || new Date().toISOString()
   };
+}
+
+function normalizeChatAttachments(value) {
+  const raw = Array.isArray(value) ? value : (value ? [value] : []);
+  return raw
+    .filter((item) => item && typeof item === "object")
+    .slice(0, 4)
+    .map((item) => {
+      const type = String(item.type || item.kind || "").startsWith("image") ? "image" : "file";
+      const rawUrl = String(item.imageUrl || item.url || "");
+      const imageUrl = type === "image" && rawUrl.startsWith("data:image/")
+        ? rawUrl
+        : rawUrl.slice(0, 1024);
+      return {
+        type,
+        name: String(item.name || item.fileName || item.title || "").slice(0, 120),
+        imageUrl,
+        url: String(item.url || "").slice(0, 1024)
+      };
+    })
+    .filter((item) => item.name || item.imageUrl || item.url);
 }
 
 function normalizeChatThinkingTrace(value) {
@@ -2730,13 +2758,30 @@ function normalizeChatActionResults(value) {
     .map((entry) => {
       const result = entry.result;
       const nodeId = (typeof result === "string" ? result : result?.nodeId) || entry.nodeId || "";
+      const hasExplicitSuccess = result && typeof result === "object" && "success" in result;
+      const success = hasExplicitSuccess ? Boolean(result.success) : result !== null;
       return {
         type: String(entry.type),
         title: String(entry.title || entry.nodeName || result?.title || "").slice(0, 80),
         nodeId: String(nodeId).slice(0, 96),
-        success: result === null || result === undefined ? false : true
+        success,
+        error: String(result?.error || entry.error || "").slice(0, 240)
       };
     });
+}
+
+function formatActionFailureNote(actionResults = []) {
+  const failures = normalizeChatActionResults(actionResults).filter((item) => item.success === false && item.error);
+  if (!failures.length) return "";
+  const lines = failures.map((item) => {
+    const label = item.type === "generate_image"
+      ? (currentLang === "en" ? "Image generation" : "成图")
+      : (item.title || item.type);
+    return item.error ? `- ${label}: ${item.error}` : `- ${label}`;
+  });
+  return currentLang === "en"
+    ? `\n\n> Some requested canvas actions did not complete:\n${lines.join("\n")}`
+    : `\n\n> 有些画布操作没有真正完成：\n${lines.join("\n")}`;
 }
 
 function normalizeChatArtifacts(value) {
@@ -2749,6 +2794,7 @@ function normalizeChatArtifacts(value) {
       title: String(item.title || item.name || item.query || item.url || "Material").slice(0, 80),
       summary: String(item.summary || item.description || item.content || item.prompt || "").slice(0, 900),
       url: String(item.url || "").slice(0, 512),
+      imageUrl: String(item.imageUrl || item.localImageUrl || item.thumbnailUrl || item.thumbnail_url || "").slice(0, 512),
       query: String(item.query || "").slice(0, 240),
       status: String(item.status || "").slice(0, 40)
     }));
@@ -2858,6 +2904,7 @@ function serializeChatThreads() {
     messages: thread.messages.map((message) => ({
       role: message.role,
       content: message.content,
+      attachments: normalizeChatAttachments(message.attachments),
       branchNodeId: message.branchNodeId ?? null,
       thinkingTrace: normalizeChatThinkingTrace(message.thinkingTrace),
       thinkingContent: normalizeChatThinkingContent(message.thinkingContent),
@@ -2967,7 +3014,7 @@ function toggleChatConversationPanel() {
 
 function updateChatPrimaryButtonMode() {
   if (!chatRealtimeButton) return;
-  const hasText = Boolean(chatInput?.value.trim());
+  const hasText = Boolean(chatInput?.value.trim() || pendingChatAttachment);
   const active = Boolean(voiceState.realtimeStream);
   chatRealtimeButton.classList.toggle("has-text", hasText);
   const label = hasText ? t("chat.send") : active ? t("voice.realtimeStop") : t("voice.realtime");
@@ -2976,7 +3023,7 @@ function updateChatPrimaryButtonMode() {
 }
 
 function handleChatPrimaryAction() {
-  if (chatInput?.value.trim()) {
+  if (chatInput?.value.trim() || pendingChatAttachment) {
     chatForm?.requestSubmit();
     return;
   }
@@ -3653,8 +3700,7 @@ function findJunctionForCard(cardId) {
   return null;
 }
 
-function buildSelectedNodeContext() {
-  const nodeId = state.selectedNodeId;
+function buildSelectedNodeContext(nodeId = state.selectedNodeId) {
   if (!nodeId) return null;
   const node = state.nodes.get(nodeId);
   if (!node) return null;
@@ -3703,7 +3749,10 @@ function buildSelectedNodeContext() {
 
 async function handleChatSubmit(event) {
   event.preventDefault();
-  const message = chatInput.value.trim();
+  let message = chatInput.value.trim();
+  if (!message && pendingChatAttachment?.kind === "image") {
+    message = currentLang === "en" ? "Please look at this image and help me understand it." : "请先看看这张图片，并帮我理解它。";
+  }
   if (!message) return;
   if (message.startsWith("/")) {
     const resolved = resolveWorkbenchCommandFromInput(message);
@@ -3732,12 +3781,19 @@ async function submitChatMessage(message, options = {}) {
   const inferredAgentMode = subagentsEnabled && shouldUseClientAgentMode(text);
   const agentMode = Boolean(options.agentMode || inferredAgentMode);
   const effectiveThinkingMode = options.forcedThinkingMode || (agentMode ? "no-thinking" : state.thinkingMode);
+  const chatAttachment = pendingChatAttachment;
+  const attachmentImageDataUrl = chatAttachment?.kind === "image" ? chatAttachment.dataUrl : "";
 
   chatInput.value = "";
   clearChatAttachmentPreview();
   updateChatPrimaryButtonMode();
   updateActiveChatThreadTitle(text);
-  appendChatMessage("user", text);
+  const userAttachments = attachmentImageDataUrl ? [{
+    type: "image",
+    name: chatAttachment?.fileName || "",
+    imageUrl: attachmentImageDataUrl
+  }] : [];
+  appendChatMessage("user", text, { attachments: userAttachments });
   const pendingAssistant = appendChatMessage("assistant", "", {
     pending: true,
     thinkingRequested: effectiveThinkingMode === "thinking"
@@ -3746,7 +3802,7 @@ async function submitChatMessage(message, options = {}) {
   if (chatRealtimeButton) chatRealtimeButton.disabled = true;
 
   try {
-    const sourceImageDataUrl = await getSourceImageDataUrl();
+    const sourceImageDataUrl = attachmentImageDataUrl || await getSourceImageDataUrl();
     const selectedContext = buildSelectedNodeContext();
 
     let systemContext = t("chat.systemContext");
@@ -3777,7 +3833,7 @@ async function submitChatMessage(message, options = {}) {
       message: text,
       imageDataUrl: sourceImageDataUrl,
       analysis: state.latestAnalysis,
-      messages: state.chatMessages.slice(-20),
+      messages: getChatHistoryPayload(),
       systemContext,
       selectedContext,
       canvas: buildVoiceCanvasContext(),
@@ -3806,11 +3862,13 @@ async function submitChatMessage(message, options = {}) {
     const returnedActions = data?.actions || data?.action;
     let actionResults = [];
     if (returnedActions) {
-      actionResults = await applyVoiceActions(returnedActions);
+      actionResults = await applyVoiceActions(returnedActions, { imageDataUrl: attachmentImageDataUrl });
     }
     assistantMeta.actionResults = actionResults;
+    const failureNote = formatActionFailureNote(actionResults);
+    const replyContent = `${data.reply || t("chat.systemContext")}${failureNote}`;
     updateChatMessage(pendingAssistant, {
-      content: data.reply || t("chat.systemContext"),
+      content: replyContent,
       ...assistantMeta
     });
     setStatus(t("status.ready"), "ready");
@@ -4592,10 +4650,11 @@ function buildVoiceCanvasContext() {
   };
 }
 
-async function applyVoiceActions(value) {
+async function applyVoiceActions(value, context = {}) {
   const actions = Array.isArray(value) ? value : (value ? [value] : []);
   const results = [];
-  const creationTypes = new Set([...RICH_CARD_ACTION_TYPES, "create_direction", "create_web_card", "web_search"]);
+  const pendingAgents = [];
+  const creationTypes = new Set([...RICH_CARD_ACTION_TYPES, "create_direction", "create_web_card", "web_search", "create_agent"]);
   const batchParentId = state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
   const creationCount = actions.filter((action) => {
     const type = typeof action === "string" ? action : action?.type || action?.name;
@@ -4612,9 +4671,20 @@ async function applyVoiceActions(value) {
       normalized.batchSize = Number.isFinite(normalized.batchSize) ? normalized.batchSize : creationCount;
       creationIndex += 1;
     }
+    if (String(type) === "create_agent" && state.subagentsEnabled) normalized.userConfirmed = true;
+    if ((String(type) === "image_search" || String(type) === "reverse_image_search" || String(type) === "text_image_search") && context.imageDataUrl && !normalized.imageDataUrl) {
+      normalized.imageDataUrl = context.imageDataUrl;
+    }
+    if (String(type) === "create_agent") {
+      pendingAgents.push(executeCanvasAction(normalized).then((result) => {
+        results.push({ ...normalized, result });
+      }));
+      continue;
+    }
     const result = await executeCanvasAction(normalized);
     results.push({ ...normalized, result });
   }
+  if (pendingAgents.length) await Promise.all(pendingAgents);
   autoSave();
   return results;
 }
@@ -4622,7 +4692,6 @@ async function applyVoiceActions(value) {
 async function executeCanvasAction(action) {
   const type = String(action?.type || "").trim();
   if (!type) return;
-  if (!confirmRiskyCanvasAction(action)) return;
 
   if (type === "zoom_in") { zoomBy(0.08); return { type, success: true }; }
   if (type === "zoom_out") { zoomBy(-0.08); return { type, success: true }; }
@@ -4672,27 +4741,6 @@ async function executeCanvasAction(action) {
   if (type === "set_deep_think_mode") return setDeepThinkModeFromAction(action);
   if (type === "open_upload") return handleAttachClick();
   if (type === "delete_node") return deleteNodeFromAction(action);
-}
-
-function confirmRiskyCanvasAction(action) {
-  const type = String(action?.type || "").trim();
-  const labels = {
-    delete_node: currentLang === "en" ? "delete this card" : "删除这张卡片",
-    generate_image: currentLang === "en" ? "call the image generation API" : "调用成图 API",
-    web_search: currentLang === "en" ? "run web search" : "运行联网搜索",
-    create_agent: currentLang === "en" ? "start a no-thinking subagent task" : "启动一个 no-thinking 子任务",
-    image_search: currentLang === "en" ? "search the web for images" : "联网搜图",
-    reverse_image_search: currentLang === "en" ? "upload the selected image for reverse image search" : "上传选中图片进行以图搜图",
-    text_image_search: currentLang === "en" ? "search the web for images" : "联网搜图",
-    research_node: currentLang === "en" ? "run web/deep research" : "运行联网/深入研究",
-    research_source: currentLang === "en" ? "run web/deep research" : "运行联网/深入研究"
-  };
-  if (!labels[type]) return true;
-  const autoConfirmed = action.confirmed === true || action.userConfirmed === true;
-  if (autoConfirmed) return true;
-  return window.confirm(currentLang === "en"
-    ? `ORYZAE is about to ${labels[type]}. Continue?`
-    : `ORYZAE 即将${labels[type]}，是否继续？`);
 }
 
 function getNodeType(node) {
@@ -5069,10 +5117,10 @@ async function searchImagesFromAction(action = {}) {
     state.fileName ||
     ""
   ).trim();
-  let imageDataUrl = "";
+  let imageDataUrl = typeof action.imageDataUrl === "string" ? action.imageDataUrl.trim() : "";
   const actionType = String(action.type || "");
   const targetNodeId = resolveActionNodeId(action, state.selectedNodeId || "source");
-  if (actionType === "reverse_image_search" || targetNodeId) {
+  if (!imageDataUrl && (actionType === "reverse_image_search" || targetNodeId)) {
     try {
       imageDataUrl = await getImageDataUrlForNode(targetNodeId || "source");
     } catch {
@@ -5106,14 +5154,14 @@ async function searchImagesFromAction(action = {}) {
     const x = baseX + Math.floor(index / 3) * 360;
     const y = baseY + (index % 3) * 230;
     const title = String(result.title || result.sourceUrl || result.url || "Image reference").slice(0, 48);
+    const localUrl = result.localImageUrl || (result.imageHash ? `/api/assets/${result.imageHash}?kind=upload` : "");
     let nodeId = null;
-    if (result.imageUrl) {
-      const localUrl = result.localImageUrl || (result.imageHash ? `/api/assets/${result.imageHash}?kind=upload` : "");
+    if (localUrl) {
       nodeId = createStandaloneSourceCard({
         id: `image-search-${Date.now().toString(36)}-${index}`,
         title,
         fileName: title,
-        imageUrl: localUrl || result.imageUrl,
+        imageUrl: localUrl,
         imageHash: result.imageHash || "",
         x,
         y
@@ -5149,9 +5197,17 @@ async function searchImagesFromAction(action = {}) {
       }
     }
   });
+  const artifacts = results.slice(0, 6).map((result) => ({
+    type: "image",
+    title: String(result.title || result.sourceUrl || result.url || "Image reference").slice(0, 80),
+    summary: String(result.description || data.summary || "").slice(0, 420),
+    url: String(result.sourceUrl || result.url || result.imageUrl || ""),
+    imageUrl: String(result.localImageUrl || (result.imageHash ? `/api/assets/${result.imageHash}?kind=upload` : "")),
+    status: currentLang === "en" ? "visual reference" : "视觉参考"
+  }));
   appendChatMessage("assistant", currentLang === "en"
     ? `Found ${createdIds.length} visual reference cards.`
-    : `已找到 ${createdIds.length} 张视觉参考卡片。`);
+    : `已找到 ${createdIds.length} 张视觉参考卡片。`, { artifacts });
   if (createdIds[0]) focusNodeById(createdIds[0], "center");
   drawLinks();
   updateCounts();
@@ -5169,17 +5225,19 @@ async function generateImageFromAction(action) {
 
   const node = nodeId ? state.nodes.get(nodeId) : null;
   if (!node?.option) {
-    showSelectionToast("Select a direction card before generating.");
-    return;
+    const error = currentLang === "en" ? "Select a direction card before generating." : "请先选择一个方向卡片再成图。";
+    showSelectionToast(error);
+    return { success: false, error };
   }
   if (node.generated) {
     focusNodeById(nodeId, "center");
-    return;
+    return { success: true, nodeId, title: node.option?.title || "" };
   }
   revealNode(nodeId);
   forceSelectNode(nodeId);
-  await generateOption(nodeId, node.option);
-  focusNodeInViewport(nodeId, "center");
+  const result = await generateOption(nodeId, node.option);
+  if (result?.success !== false) focusNodeInViewport(nodeId, "center");
+  return result;
 }
 
 async function researchNodeFromAction(action) {
@@ -5247,6 +5305,24 @@ async function exportCanvasReportFromAction(action = {}) {
   return true;
 }
 
+function agentActionMarkdown({ title, role, prompt, deliverable, successCriteria, priority, dependencies, status, result }) {
+  const label = currentLang === "en";
+  const lines = [
+    `## ${title}`,
+    `**${label ? "Status" : "状态"}**: ${status}`,
+    role ? `**${label ? "Role" : "角色"}**: ${role}` : "",
+    priority ? `**${label ? "Priority" : "优先级"}**: ${priority}` : "",
+    deliverable ? `**${label ? "Deliverable" : "交付物"}**: ${deliverable}` : "",
+    successCriteria ? `**${label ? "Success criteria" : "成功标准"}**: ${successCriteria}` : "",
+    dependencies?.length ? `**${label ? "Dependencies" : "依赖"}**: ${dependencies.join("; ")}` : "",
+    "",
+    `### ${label ? "Task" : "任务"}`,
+    prompt,
+    result ? `\n### ${label ? "Result" : "结果"}\n${result}` : ""
+  ];
+  return lines.filter((line) => line !== "").join("\n\n").slice(0, 8000);
+}
+
 async function runSubagentAction(action) {
   if (!state.subagentsEnabled) {
     showToast(currentLang === "en" ? "Enable Subagents before starting agent tasks." : "请先启用 Subagents，再启动 Agent 任务。");
@@ -5260,17 +5336,36 @@ async function runSubagentAction(action) {
   if (!parentNodeId || !state.nodes.has(parentNodeId)) return null;
 
   const title = String(action.title || action.nodeName || "Subagent").slice(0, 48);
-  const prompt = String(action.prompt || action.description || action.query || title).trim();
+  const role = String(action.role || action.mode || "worker").slice(0, 60);
+  const deliverable = String(action.deliverable || action.description || (currentLang === "en" ? "Focused subagent result" : "聚焦子任务结果")).slice(0, 360);
+  const successCriteria = String(action.successCriteria || (currentLang === "en" ? "Specific, actionable, bounded, and uncertainty-aware." : "具体、可执行、有边界，并说明不确定性。")).slice(0, 500);
+  const priority = String(action.priority || "medium").slice(0, 40);
+  const dependencies = Array.isArray(action.dependencies) ? action.dependencies.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 6) : [];
+  const basePrompt = String(action.prompt || action.description || action.query || title).trim();
+  const prompt = [
+    basePrompt,
+    "",
+    currentLang === "en" ? `Role: ${role}` : `角色：${role}`,
+    currentLang === "en" ? `Deliverable: ${deliverable}` : `交付物：${deliverable}`,
+    currentLang === "en" ? `Success criteria: ${successCriteria}` : `成功标准：${successCriteria}`,
+    dependencies.length ? (currentLang === "en" ? `Dependencies: ${dependencies.join("; ")}` : `依赖：${dependencies.join("; ")}`) : ""
+  ].filter(Boolean).join("\n");
   if (!prompt) return null;
 
   const nodeId = createOptionNode({
-    id: `agent-${Date.now()}-${safeNodeSlug(title)}`,
+    id: `agent-${Date.now()}-${Number.isFinite(action.batchIndex) ? `${action.batchIndex}-` : ""}${safeNodeSlug(title)}`,
     title,
-    description: currentLang === "en" ? "Running a no-thinking subtask..." : "正在执行 no-thinking 子任务...",
+    description: currentLang === "en" ? `${role} subagent is running: ${deliverable}` : `${role} 子 Agent 执行中：${deliverable}`,
     prompt,
-    tone: "agent",
-    layoutHint: "no-thinking",
-    deepThinkType: "agent"
+    tone: role,
+    layoutHint: "agent",
+    deepThinkType: "agent",
+    nodeType: "note",
+    content: {
+      text: agentActionMarkdown({ title, role, prompt, deliverable, successCriteria, priority, dependencies, status: currentLang === "en" ? "running" : "执行中" })
+    },
+    batchIndex: action.batchIndex,
+    batchSize: action.batchSize
   }, parentNodeId);
 
   const node = nodeId ? state.nodes.get(nodeId) : null;
@@ -5279,7 +5374,7 @@ async function runSubagentAction(action) {
     button.disabled = true;
     button.textContent = currentLang === "en" ? "Running" : "执行中";
   }
-  if (nodeId) focusNodeById(nodeId, "right");
+  if (nodeId && !Number.isFinite(action.batchIndex)) focusNodeById(nodeId, "right");
   setStatus(currentLang === "en" ? "Agent task running..." : "Agent 任务执行中...", "busy");
 
   try {
@@ -5295,27 +5390,40 @@ async function runSubagentAction(action) {
       analysis: state.latestAnalysis,
       messages: state.chatMessages.slice(-20),
       systemContext: currentLang === "en"
-        ? "Run this as a focused no-thinking subagent. Return a complete useful result and safe canvas actions; avoid unnecessary chatter, but do not omit important details."
-        : "请作为一个聚焦的 no-thinking 子任务执行者，返回完整有用的结果和安全的画布动作；避免无关寒暄，但不要省略重要细节。",
+        ? [
+            "Run this as an isolated no-thinking subagent for an ORYZAE controller.",
+            `Worker role: ${role}`,
+            `Deliverable: ${deliverable}`,
+            `Success criteria: ${successCriteria}`,
+            "Return a complete useful result and safe canvas actions when they help preserve reusable findings. Do not create further subagents."
+          ].join("\n")
+        : [
+            "请作为 ORYZAE 控制器下的隔离 no-thinking 子 Agent 执行任务。",
+            `工作角色：${role}`,
+            `交付物：${deliverable}`,
+            `成功标准：${successCriteria}`,
+            "返回完整有用的结果；如果有助于沉淀可复用发现，可以返回安全的画布动作。不要继续创建新的子 Agent。"
+          ].join("\n"),
       language: currentLang,
       thinkingMode: "no-thinking",
-      selectedContext: buildSelectedNodeContext(),
+      selectedContext: buildSelectedNodeContext(parentNodeId),
       canvas: buildVoiceCanvasContext(),
       agentMode: false,
       subagentsEnabled: false,
-      previousResponseId: ensureActiveChatThread().previousResponseId || ""
+      previousResponseId: ""
     };
     const data = await postStreamingChat("/api/chat", subagentPayload, null);
-    if (data.responseId || data.previousResponseId) {
-      ensureActiveChatThread().previousResponseId = data.responseId || data.previousResponseId;
-    }
 
     const reply = String(data.reply || "").trim() || (currentLang === "en" ? "Agent task completed." : "Agent 任务已完成。");
     if (node?.option) {
       node.option.description = reply.slice(0, 900);
       node.option.prompt = `${prompt}\n\n${reply}`.slice(0, 4000);
+      node.option.content = {
+        text: agentActionMarkdown({ title, role, prompt, deliverable, successCriteria, priority, dependencies, status: currentLang === "en" ? "done" : "已完成", result: reply })
+      };
       const descEl = node.element.querySelector(".option-description");
       if (descEl) descEl.textContent = node.option.description;
+      renderRichNodeContent(node.element, node.option);
     }
     if (button) {
       button.disabled = false;
@@ -5327,12 +5435,20 @@ async function runSubagentAction(action) {
         type: "agent",
         title,
         summary: reply.slice(0, 900),
-        status: "done"
+        status: role,
+        role,
+        deliverable,
+        successCriteria
       }]
     });
 
     const followupActions = (Array.isArray(data.actions) ? data.actions : (data.action ? [data.action] : []))
-      .filter((nextAction) => nextAction?.type !== "create_agent");
+      .filter((nextAction) => nextAction?.type !== "create_agent")
+      .map((nextAction) => ({
+        ...nextAction,
+        parentNodeId: nextAction.parentNodeId || nodeId,
+        anchorNodeId: nextAction.anchorNodeId || nodeId
+      }));
     if (followupActions.length) {
       await applyVoiceActions(followupActions);
     }
@@ -5343,8 +5459,12 @@ async function runSubagentAction(action) {
     const message = error?.message || (currentLang === "en" ? "Agent task failed." : "Agent 任务失败。");
     if (node?.option) {
       node.option.description = message.slice(0, 280);
+      node.option.content = {
+        text: agentActionMarkdown({ title, role, prompt, deliverable, successCriteria, priority, dependencies, status: currentLang === "en" ? "failed" : "失败", result: message })
+      };
       const descEl = node.element.querySelector(".option-description");
       if (descEl) descEl.textContent = node.option.description;
+      renderRichNodeContent(node.element, node.option);
     }
     if (button) {
       button.disabled = false;
@@ -6176,6 +6296,29 @@ function createNewCanvas() {
   window.location.href = url.pathname + url.search;
 }
 
+function sourceCardLocalImageUrl(imageHash) {
+  return imageHash ? `/api/assets/${imageHash}?kind=upload` : "";
+}
+
+function sourceCardDisplayImageUrl(sourceCard = {}) {
+  return sourceCardLocalImageUrl(sourceCard.imageHash) || sourceCard.imageUrl || "";
+}
+
+function bindSourcePreviewFallback(img, empty, upload, imageHash = "") {
+  if (!img) return;
+  img.onerror = () => {
+    const localUrl = sourceCardLocalImageUrl(imageHash);
+    if (localUrl && !String(img.src || "").includes(imageHash)) {
+      img.src = localUrl;
+      return;
+    }
+    img.removeAttribute("src");
+    img.classList.remove("has-image");
+    upload?.classList.remove("has-source-image");
+    empty?.classList.remove("hidden");
+  };
+}
+
 function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash = "", fileName = "" }) {
   const nodeId = id || `source-card-${Date.now().toString(36)}`;
   if (state.nodes.has(nodeId)) return nodeId;
@@ -6211,6 +6354,7 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   const img = document.createElement("img");
   img.className = `source-preview${imageUrl ? " has-image" : ""}`;
   img.alt = title || "Source card";
+  bindSourcePreviewFallback(img, empty, upload, imageHash);
   if (imageUrl) img.src = imageUrl;
   upload.append(input, empty, img);
   attachImageCardActions(upload, nodeId);
@@ -6840,6 +6984,7 @@ function appendChatMessage(role, content, metadata = {}) {
   const message = {
     role: role === "assistant" ? "assistant" : "user",
     content,
+    attachments: normalizeChatAttachments(metadata.attachments),
     branchNodeId: state.selectedNodeId,
     thinkingTrace: normalizeChatThinkingTrace(metadata.thinkingTrace || metadata.trace),
     thinkingContent: normalizeChatThinkingContent(metadata.thinkingContent || metadata.reasoningContent || metadata.reasoning),
@@ -6869,6 +7014,7 @@ function updateChatMessage(message, updates = {}) {
     message.thinkingContent = normalizeChatThinkingContent(updates.thinkingContent || updates.reasoningContent || updates.reasoning);
   }
   if ("thinkingRequested" in updates) message.thinkingRequested = Boolean(updates.thinkingRequested);
+  if ("attachments" in updates) message.attachments = normalizeChatAttachments(updates.attachments);
   if ("actions" in updates) {
     message.actions = normalizeChatMessageActions(updates.actions);
   }
@@ -6892,6 +7038,13 @@ function updateChatMessage(message, updates = {}) {
 function getBranchMessages() {
   syncActiveChatMessages();
   return state.chatMessages;
+}
+
+function getChatHistoryPayload() {
+  return state.chatMessages.slice(-20).map((message) => ({
+    role: message.role,
+    content: message.content
+  }));
 }
 
 function isChatNearBottom() {
@@ -6994,6 +7147,9 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       text.appendChild(cursor);
       line.appendChild(text);
     }
+    if (message.attachments?.length) {
+      line.appendChild(renderChatAttachments(message.attachments));
+    }
     if (message.role === "assistant" && message.artifacts?.length) {
       line.appendChild(renderChatArtifacts(message.artifacts));
     }
@@ -7001,17 +7157,22 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       message.actionResults.forEach((ar) => {
         const card = document.createElement("div");
         card.className = "chat-action-feedback";
+        const failed = ar.success === false && Boolean(ar.error);
+        card.classList.toggle("failed", failed);
         card.setAttribute("role", "button");
         card.setAttribute("tabindex", "0");
         const icon = ACTION_FEEDBACK_ICONS[ar.type] || "⚡";
         const labelKey = `chat.actionFeedback.${ar.type}`;
-        const label = t(labelKey) || t("chat.actionApplied") || "已执行";
+        const label = failed
+          ? (currentLang === "en" ? "Action failed" : "执行失败")
+          : (t(labelKey) || t("chat.actionApplied") || "已执行");
+        const title = failed ? ar.error : (ar.title || "");
         card.innerHTML = `
           <span class="chat-action-icon">${escapeHtml(icon)}</span>
           <span class="chat-action-label">${escapeHtml(label)}</span>
-          <span class="chat-action-title">${escapeHtml(ar.title || "")}</span>
+          <span class="chat-action-title">${escapeHtml(title)}</span>
         `;
-        if (ar.nodeId) {
+        if (ar.nodeId && !failed) {
           card.title = t("chat.clickToFocus") || "点击跳转到画布节点";
           card.onclick = () => focusNodeById(ar.nodeId);
           card.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); focusNodeById(ar.nodeId); } };
@@ -7033,16 +7194,54 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
   }
 }
 
+function renderChatAttachments(attachments) {
+  const list = document.createElement("div");
+  list.className = "chat-message-attachments";
+  attachments.forEach((attachment) => {
+    const href = attachment.url || attachment.imageUrl || "";
+    const item = document.createElement(href ? "a" : "div");
+    item.className = `chat-message-attachment type-${attachment.type || "file"}`;
+    if (href) {
+      item.href = href;
+      item.target = "_blank";
+      item.rel = "noopener noreferrer";
+    }
+    if (attachment.type === "image" && attachment.imageUrl) {
+      const image = document.createElement("img");
+      image.src = attachment.imageUrl;
+      image.alt = attachment.name || "";
+      image.loading = "lazy";
+      item.appendChild(image);
+    }
+    if (attachment.name) {
+      const name = document.createElement("span");
+      name.textContent = attachment.name;
+      item.appendChild(name);
+    }
+    list.appendChild(item);
+  });
+  return list;
+}
+
 function renderChatArtifacts(artifacts) {
   const list = document.createElement("div");
   list.className = "chat-artifacts";
   artifacts.forEach((artifact) => {
-    const card = document.createElement(artifact.url ? "a" : "div");
+    const href = artifact.url || (artifact.type === "image" ? artifact.imageUrl : "");
+    const card = document.createElement(href ? "a" : "div");
     card.className = `chat-artifact-card type-${artifact.type || "note"}`;
-    if (artifact.url) {
-      card.href = artifact.url;
+    if (href) {
+      card.href = href;
       card.target = "_blank";
       card.rel = "noopener noreferrer";
+    }
+    if (artifact.type === "image" && artifact.imageUrl) {
+      const image = document.createElement("img");
+      image.className = "chat-artifact-image";
+      image.src = artifact.imageUrl;
+      image.alt = artifact.title || "";
+      image.loading = "lazy";
+      card.appendChild(image);
     }
     const meta = document.createElement("span");
     meta.className = "chat-artifact-type";
@@ -7330,7 +7529,7 @@ function renderExploreOptions(options, references, taskType = "general") {
 
 async function generateOption(id, option) {
   const referenceImageDataUrl = await getSourceImageDataUrl();
-  await generateOptionWithReference(id, option, referenceImageDataUrl);
+  return await generateOptionWithReference(id, option, referenceImageDataUrl);
 }
 
 async function generateOptionWithReference(id, option, referenceImageDataUrl, editOptions = {}) {
@@ -7357,16 +7556,17 @@ async function generateOptionWithReference(id, option, referenceImageDataUrl, ed
       updateCounts();
       autoSave();
       setStatus(t("status.ready"), "ready");
+      return { success: true, nodeId: id, title: option.title || "" };
     } finally {
       element.classList.remove("loading");
       if (button) button.disabled = false;
     }
-    return;
   }
 
   if (!referenceImageDataUrl) {
-    showSelectionToast(t("chat.noSourceForGenerate"));
-    return;
+    const error = t("chat.noSourceForGenerate");
+    showSelectionToast(error);
+    return { success: false, nodeId: id, title: option.title || "", error };
   }
 
   element.classList.add("loading");
@@ -7394,6 +7594,14 @@ async function generateOptionWithReference(id, option, referenceImageDataUrl, ed
     } else if (data.hash) {
       node.imageHash = data.hash;
       imageUrl = `/api/assets/${data.hash}?kind=generated`;
+    }
+    if (!imageUrl) {
+      throw new Error(currentLang === "en" ? "Image generation did not return a displayable image." : "成图接口没有返回可显示的图片。");
+    }
+    try {
+      await loadImage(imageUrl);
+    } catch {
+      throw new Error(currentLang === "en" ? "The generated image could not be displayed." : "生成图片无法正确显示。");
     }
 
     // Generate explanation
@@ -7464,10 +7672,12 @@ async function generateOptionWithReference(id, option, referenceImageDataUrl, ed
     updateCounts();
     setStatus(t("status.ready"), "ready");
     autoSave();
+    return { success: true, nodeId: id, title: option.title || "", imageUrl, imageHash: node.imageHash || "" };
   } catch (error) {
     element.classList.remove("loading");
     if (button) button.disabled = false;
     setStatus(error.message || t("status.error"), "error");
+    return { success: false, nodeId: id, title: option.title || "", error: error.message || t("status.error") };
   }
 }
 
@@ -7953,7 +8163,7 @@ function getImageNodeInfo(nodeId) {
 
   const node = state.nodes.get(nodeId);
   if (node?.sourceCard) {
-    const imageUrl = node.sourceCard.imageUrl || (node.sourceCard.imageHash ? `/api/assets/${node.sourceCard.imageHash}?kind=upload` : "");
+    const imageUrl = sourceCardDisplayImageUrl(node.sourceCard);
     if (!imageUrl) return null;
     return {
       nodeId,
@@ -10103,15 +10313,34 @@ function handleAttachClick() {
 
 async function handleAttachment(file) {
   const isDocumentFile = /\.(docx|pdf|pptx)$/i.test(file.name);
-  if (file.type.startsWith("image/") || isDocumentFile) {
-    await handleFile({ target: { files: [file] } });
-    showChatAttachmentPreview(file);
+  if (file.type.startsWith("image/")) {
+    try {
+      const image = await resizeImage(file, 1600, 0.88);
+      pendingChatAttachment = {
+        kind: "image",
+        fileName: file.name,
+        mimeType: image.mimeType || file.type || "image/jpeg",
+        dataUrl: image.dataUrl,
+        width: image.width,
+        height: image.height
+      };
+      showChatAttachmentPreview(file, pendingChatAttachment);
+      updateChatPrimaryButtonMode();
+      chatInput?.focus();
+    } catch (err) {
+      alert(t("file.readError") + (err instanceof Error ? err.message : String(err)));
+    }
+  } else if (isDocumentFile) {
+    pendingChatAttachment = null;
+    alert(currentLang === "en" ? "Document chat attachments are not supported yet. Import the file from the canvas card instead." : "暂不支持把文档作为对话附件发送。请从画布卡片导入文档。");
   } else if (file.type.startsWith("text/") || file.name.endsWith(".txt") || file.name.endsWith(".md") || file.name.endsWith(".json")) {
     try {
+      pendingChatAttachment = null;
       const text = await file.text();
       chatInput.value = text.slice(0, 32000);
       chatInput.focus();
       showChatAttachmentPreview(file);
+      updateChatPrimaryButtonMode();
     } catch (err) {
       alert(t("file.readError") + (err instanceof Error ? err.message : String(err)));
     }
@@ -10120,7 +10349,7 @@ async function handleAttachment(file) {
   }
 }
 
-function showChatAttachmentPreview(file) {
+function showChatAttachmentPreview(file, attachment = null) {
   if (!chatAttachmentPreview) return;
   chatAttachmentPreview.innerHTML = "";
   chatAttachmentPreview.classList.remove("hidden");
@@ -10130,7 +10359,7 @@ function showChatAttachmentPreview(file) {
 
   if (file.type.startsWith("image/")) {
     const img = document.createElement("img");
-    img.src = URL.createObjectURL(file);
+    img.src = attachment?.dataUrl || URL.createObjectURL(file);
     img.alt = file.name;
     img.className = "chat-attachment-thumb";
     chip.appendChild(img);
@@ -10152,8 +10381,8 @@ function showChatAttachmentPreview(file) {
   remove.textContent = "×";
   remove.addEventListener("click", (e) => {
     e.stopPropagation();
-    chatAttachmentPreview.innerHTML = "";
-    chatAttachmentPreview.classList.add("hidden");
+    clearChatAttachmentPreview();
+    updateChatPrimaryButtonMode();
   });
   chip.appendChild(remove);
 
@@ -10167,7 +10396,9 @@ function showChatAttachmentPreview(file) {
 }
 
 function openAttachmentPreviewModal(file) {
-  const url = URL.createObjectURL(file);
+  const url = pendingChatAttachment?.fileName === file.name && pendingChatAttachment?.kind === "image"
+    ? pendingChatAttachment.dataUrl
+    : URL.createObjectURL(file);
   const modal = document.createElement("div");
   modal.className = "attachment-preview-modal";
   modal.innerHTML = `
@@ -10183,6 +10414,7 @@ function openAttachmentPreviewModal(file) {
 }
 
 function clearChatAttachmentPreview() {
+  pendingChatAttachment = null;
   if (chatAttachmentPreview) {
     chatAttachmentPreview.innerHTML = "";
     chatAttachmentPreview.classList.add("hidden");
@@ -10841,9 +11073,10 @@ async function saveSession({ isAuto = false } = {}) {
 
     const payloadState = await prepareStateForSave();
     const aiTitle = state.latestAnalysis?.title?.trim();
+    const hasChatTitleSource = Array.isArray(payloadState.chatMessages) && payloadState.chatMessages.some((message) => message?.role === "user" && String(message?.content || "").trim());
     const body = {
       state: payloadState,
-      title: aiTitle || (state.fileName ? `${state.fileName}${t("session.exploration")}` : t("session.unnamed")),
+      title: hasChatTitleSource ? t("session.unnamed") : (aiTitle || (state.fileName ? `${state.fileName}${t("session.exploration")}` : t("session.unnamed"))),
       isDemo: currentHealthMode === "demo"
     };
 
@@ -11029,7 +11262,8 @@ async function loadSession(sessionId) {
     for (const n of sourceCardNodes) {
       const sourceCard = n.data?.sourceCard || {};
       const imageHash = sourceCard.imageHash || n.data?.imageHash || "";
-      const imageUrl = sourceCard.imageUrl || (imageHash ? `/api/assets/${imageHash}?kind=upload` : "");
+      const remoteImageUrl = sourceCard.remoteImageUrl || (sourceCard.imageUrl && !String(sourceCard.imageUrl).startsWith("/api/assets/") ? sourceCard.imageUrl : "");
+      const imageUrl = sourceCardDisplayImageUrl({ ...sourceCard, imageHash });
       createStandaloneSourceCard({
         id: n.nodeId,
         title: sourceCard.title || sourceCard.fileName || (currentLang === "en" ? "Source card" : "源卡片"),
@@ -11041,7 +11275,7 @@ async function loadSession(sessionId) {
       });
       const restored = state.nodes.get(n.nodeId);
       if (restored?.sourceCard) {
-        restored.sourceCard = { ...restored.sourceCard, ...sourceCard, imageHash, imageUrl };
+        restored.sourceCard = { ...restored.sourceCard, ...sourceCard, imageHash, imageUrl, remoteImageUrl };
         const hasContent = Boolean(restored.sourceCard.imageUrl || restored.sourceCard.imageHash || restored.sourceCard.sourceText || restored.sourceCard.sourceDataUrl || restored.sourceCard.sourceDataUrlHash || restored.sourceCard.sourceUrl);
         restored.element.querySelector(".empty-state")?.classList.toggle("hidden", hasContent);
         const research = restored.element.querySelector(".research-button");
