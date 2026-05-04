@@ -53,7 +53,8 @@ export const CANVAS_ACTION_TYPES = [
   "set_thinking_mode", "set_deep_think_mode",
   "zoom_in", "zoom_out", "set_zoom", "reset_view",
   "create_note", "create_plan", "create_todo", "create_weather",
-  "create_map", "create_link", "create_code"
+  "create_map", "create_link", "create_code", "create_table",
+  "create_timeline", "create_comparison", "create_metric", "create_quote"
 ];
 
 export const CANVAS_ACTION_TYPES_TEXT = CANVAS_ACTION_TYPES.join(", ");

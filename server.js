@@ -112,18 +112,23 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
         prompt: { type: "string", description: "Prompt for image generation or detailed instruction" },
         query: { type: "string", description: "Search query" },
         url: { type: "string", description: "URL for link or web card" },
-        nodeType: { type: "string", enum: ["note", "plan", "todo", "weather", "map", "link", "code"], description: "Rich node type" },
+        nodeType: { type: "string", enum: ["note", "plan", "todo", "weather", "map", "link", "code", "table", "timeline", "comparison", "metric", "quote"], description: "Rich node type" },
         content: {
           type: "object",
           description: [
-            "Structured payload that fills the rich node. REQUIRED for create_plan/create_todo/create_note/create_weather/create_map/create_link/create_code — without it the card renders empty. The chat answer must still summarize the useful result. Shape per type:",
+            "Structured payload that fills the rich node. REQUIRED for create_plan/create_todo/create_note/create_weather/create_map/create_link/create_code/create_table/create_timeline/create_comparison/create_metric/create_quote — without it the card renders empty. The chat answer must still summarize the useful result. Shape per type:",
             "- create_plan: { summary?: string, assumptions?: string[], steps: [{ title: string, description: string, time?: string, priority?: string, tips?: string[] }, ...], tips?: string[], budget?: string } — use this as a compact overview plan. Each description should cover sequence/order, rationale, resources/cost/time constraints, dependencies, risks, and cautions where relevant, but do not make one oversized plan card. For complex learning/exam/research/project tasks, create multiple artifacts: overview plan + resources/logistics note + todo checklist + web/reference cards when useful",
             "- create_todo: { items: [{ text: string, done: boolean, priority?: string, rationale?: string }, ...] }",
             "- create_note: { text: string, sections?: [{ title: string, body: string }] } — the full note body in markdown",
             "- create_weather: { location: string, temp: string, forecast: string }",
             "- create_map: { address: string, lat?: number, lng?: number }",
-            "- create_link/create_web_card: { title: string, url: string, description?: string, source?: string }",
-            "- create_code: { language: string, code: string, explanation?: string, usage?: string }"
+            "- create_link/create_web_card: { title: string, url: string, description?: string, source?: string, faviconUrl?: string } — title must be the readable page/site name, not a raw URL; description should summarize what the page is for or why it matters",
+            "- create_code: { language: string, code: string, explanation?: string, usage?: string }",
+            "- create_table: { columns: string[], rows: object[] | string[][], caption?: string } — structured facts, matrices, datasets, schedules, resource lists",
+            "- create_timeline: { items: [{ time?: string, date?: string, phase?: string, title: string, description?: string }, ...] } — chronological plans, history, milestones, processes",
+            "- create_comparison: { items: [{ title: string, summary?: string, pros?: string[], cons?: string[], score?: string }], criteria?: string[], recommendation?: string } — decision support and option tradeoffs",
+            "- create_metric: { metrics: [{ label: string, value: string, delta?: string, trend?: string, note?: string }], summary?: string } — KPIs, benchmarks, measurements, progress snapshots",
+            "- create_quote: { quotes: [{ text: string, source?: string, author?: string, url?: string }], context?: string } — excerpts, citations, source-backed claims"
           ].join("\n")
         },
         position: { type: "string", description: "Position hint: left, right, above, below, center, etc." },
@@ -182,6 +187,11 @@ const ACTION_REPLY_TEMPLATES = {
     create_link: (a) => `已为你创建 link 卡片${a.title ? `「${a.title}」` : ""}。`,
     create_code: (a) => `已为你创建 code 卡片${a.title ? `「${a.title}」` : ""}。`,
     create_web_card: (a) => `已为你创建 web 卡片${a.title ? `「${a.title}」` : ""}。`,
+    create_table: (a) => `已为你创建 table 卡片${a.title ? `「${a.title}」` : ""}。`,
+    create_timeline: (a) => `已为你创建 timeline 卡片${a.title ? `「${a.title}」` : ""}。`,
+    create_comparison: (a) => `已为你创建 comparison 卡片${a.title ? `「${a.title}」` : ""}。`,
+    create_metric: (a) => `已为你创建 metric 卡片${a.title ? `「${a.title}」` : ""}。`,
+    create_quote: (a) => `已为你创建 quote 卡片${a.title ? `「${a.title}」` : ""}。`,
     create_card: (a) => `已为你创建卡片${a.title ? `「${a.title}」` : ""}。`,
     new_card: (a) => `已为你创建卡片${a.title ? `「${a.title}」` : ""}。`,
     create_direction: (a) => `已添加方向卡片${a.title ? `「${a.title}」` : ""}。`,
@@ -199,6 +209,11 @@ const ACTION_REPLY_TEMPLATES = {
     create_link: (a) => `Created a link card${a.title ? ` "${a.title}"` : ""}.`,
     create_code: (a) => `Created a code card${a.title ? ` "${a.title}"` : ""}.`,
     create_web_card: (a) => `Created a web card${a.title ? ` "${a.title}"` : ""}.`,
+    create_table: (a) => `Created a table card${a.title ? ` "${a.title}"` : ""}.`,
+    create_timeline: (a) => `Created a timeline card${a.title ? ` "${a.title}"` : ""}.`,
+    create_comparison: (a) => `Created a comparison card${a.title ? ` "${a.title}"` : ""}.`,
+    create_metric: (a) => `Created a metric card${a.title ? ` "${a.title}"` : ""}.`,
+    create_quote: (a) => `Created a quote card${a.title ? ` "${a.title}"` : ""}.`,
     create_card: (a) => `Created a card${a.title ? ` "${a.title}"` : ""}.`,
     new_card: (a) => `Created a card${a.title ? ` "${a.title}"` : ""}.`,
     create_direction: (a) => `Added a direction card${a.title ? ` "${a.title}"` : ""}.`,
@@ -208,6 +223,8 @@ const ACTION_REPLY_TEMPLATES = {
     reset_view: () => "View reset."
   }
 };
+
+const REUSABLE_CARD_ACTION_TYPES = ["create_plan", "create_todo", "create_note", "create_code", "create_web_card", "create_link", "create_table", "create_timeline", "create_comparison", "create_metric", "create_quote"];
 
 function synthesizeReplyFromActions(actions, lang, references = []) {
   if (!Array.isArray(actions) || actions.length === 0) return "";
@@ -223,12 +240,13 @@ function synthesizeReplyFromActions(actions, lang, references = []) {
 }
 
 function synthesizeRichActionReply(actions, lang, references = []) {
-  const action = actions.find((item) => ["create_plan", "create_todo", "create_note", "create_code", "create_web_card", "create_link"].includes(item?.type));
+  const action = actions.find((item) => REUSABLE_CARD_ACTION_TYPES.includes(item?.type));
   if (!action) return "";
   if (action.type === "create_plan") return [synthesizePlanActionReply(action, lang, references), formatActionBundleSection(actions, lang)].filter(Boolean).join("\n\n");
   if (action.type === "create_todo") return synthesizeTodoActionReply(action, lang);
   if (action.type === "create_note") return synthesizeNoteActionReply(action, lang);
   if (action.type === "create_code") return synthesizeCodeActionReply(action, lang);
+  if (["create_table", "create_timeline", "create_comparison", "create_metric", "create_quote"].includes(action.type)) return synthesizeStructuredCardReply(action, lang);
   return synthesizeReferenceActionReply(action, lang);
 }
 
@@ -334,6 +352,15 @@ function synthesizeReferenceActionReply(action, lang) {
     : [`已创建参考卡片 **${title}**。`, description].filter(Boolean).join("\n\n");
 }
 
+function synthesizeStructuredCardReply(action, lang) {
+  const type = String(action?.type || "").replace(/^create_/, "");
+  const title = action.title || type;
+  const description = stringOr(action.description || action.prompt, "").trim();
+  return lang === "en"
+    ? [`Created a reusable ${type} card **${title}**.`, description || "Open the canvas card to inspect the structured content and continue editing."].join("\n\n")
+    : [`已创建可复用的 ${type} 卡片 **${title}**。`, description || "可打开画布卡片查看结构化内容并继续编辑。"].join("\n\n");
+}
+
 function finalizeChatReply(reply, actions, lang, references = []) {
   const text = String(reply || "").trim();
   if (!Array.isArray(actions) || actions.length === 0) return appendReferencesIfMissing(text, references, lang);
@@ -347,7 +374,7 @@ function finalizeChatReply(reply, actions, lang, references = []) {
 
 function formatActionBundleSection(actions, lang) {
   const reusable = Array.isArray(actions)
-    ? actions.filter((action) => ["create_plan", "create_todo", "create_note", "create_code", "create_web_card", "create_link"].includes(action?.type))
+    ? actions.filter((action) => REUSABLE_CARD_ACTION_TYPES.includes(action?.type))
     : [];
   if (reusable.length <= 1) return "";
   const lines = reusable.slice(0, 8).map((action) => {
@@ -1565,8 +1592,83 @@ function extractResponseArtifacts(response) {
   return artifacts.filter((artifact) => artifact.summary || artifact.url).slice(0, 8);
 }
 
+function webSourceName(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./i, "");
+  } catch {
+    return "";
+  }
+}
+
+function isUrlLikeText(value) {
+  return /^https?:\/\//i.test(String(value || "").trim());
+}
+
+function titleFromWebUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.replace(/^www\./i, "");
+    const known = {
+      "chinaielts.org": "雅思官方报名与评分信息",
+      "ielts.org": "IELTS Official",
+      "ielts.neea.edu.cn": "教育部教育考试院 IELTS",
+      "zhuanlan.zhihu.com": "知乎专栏",
+      "zhihu.com": "知乎"
+    };
+    const pathTitle = decodeURIComponent(parsed.pathname || "")
+      .replace(/\.[a-z0-9]+$/i, "")
+      .split(/[\/_-]+/)
+      .map((part) => part.trim())
+      .filter((part) => part && !/^\d+$/.test(part))
+      .slice(-3)
+      .join(" ");
+    if (known[host]) return pathTitle ? `${known[host]}｜${pathTitle}` : known[host];
+    return pathTitle || host;
+  } catch {
+    return "";
+  }
+}
+
+function readableWebTitle(url, ...candidates) {
+  const readable = candidates
+    .map((item) => String(item || "").trim())
+    .find((item) => item && !isUrlLikeText(item));
+  return readable || titleFromWebUrl(url) || webSourceName(url) || "Web reference";
+}
+
+function webFaviconUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}/favicon.ico`;
+  } catch {
+    return "";
+  }
+}
+
+function enrichWebCardAction(action, message = "") {
+  if (!action || !["create_web_card", "create_link"].includes(action.type) || !action.url) return action;
+  const source = stringOr(action.content?.source, webSourceName(action.url));
+  const title = readableWebTitle(action.url, action.content?.title, action.title).slice(0, 96);
+  const candidateDescription = stringOr(action.content?.description || action.description || action.prompt || action.query, "");
+  const description = stringOr(isUrlLikeText(candidateDescription) ? "" : candidateDescription, `参考来源：${source || action.url}。用于核实网页内容、来源背景和后续阅读。`).slice(0, 420);
+  return {
+    ...action,
+    title,
+    description,
+    prompt: stringOr(action.prompt, description || message).slice(0, 1200),
+    content: {
+      ...(action.content && typeof action.content === "object" ? action.content : {}),
+      title,
+      url: action.url,
+      description,
+      source,
+      faviconUrl: stringOr(action.content?.faviconUrl, webFaviconUrl(action.url))
+    }
+  };
+}
+
 function mergeReferenceActions(actions, response, message, webSearchEnabled = false) {
-  const normalized = Array.isArray(actions) ? [...actions] : [];
+  const normalized = Array.isArray(actions) ? actions.map((action) => enrichWebCardAction(action, message)) : [];
   if (!webSearchEnabled) return normalized;
 
   const existingUrls = new Set(normalized.map((action) => stringOr(action?.url, "")).filter(Boolean));
@@ -1578,14 +1680,14 @@ function mergeReferenceActions(actions, response, message, webSearchEnabled = fa
   for (const reference of references.slice(0, 4)) {
     if (existingUrls.has(reference.url)) continue;
     existingUrls.add(reference.url);
-    normalized.push({
+    normalized.push(enrichWebCardAction({
       type: "create_web_card",
       title: stringOr(reference.title, reference.url).slice(0, 48),
       description: stringOr(reference.description, reference.url).slice(0, 260),
       prompt: stringOr(reference.description || reference.title, message).slice(0, 1200),
       query: deriveSearchQueryClean(message) || String(message || "").slice(0, 120),
       url: reference.url
-    });
+    }, message));
   }
 
   return normalized;
@@ -1593,28 +1695,35 @@ function mergeReferenceActions(actions, response, message, webSearchEnabled = fa
 
 function enrichCanvasActions(actions, message, reply = "", lang = "zh") {
   if (!Array.isArray(actions) || !actions.length) return actions;
+  let expanded = [...actions];
   const planAction = actions.find((action) => action?.type === "create_plan" && Array.isArray(action?.content?.steps));
-  if (!planAction) return actions;
-
-  const splitPlan = shouldSplitPlanAction(planAction);
-  const examOrLearning = isExamOrLearningRequest(message);
-  if (!splitPlan && !examOrLearning) return actions;
-
-  const hasNote = actions.some((action) => action?.type === "create_note");
-  const hasTodo = actions.some((action) => action?.type === "create_todo");
-  const expanded = [];
-  for (const action of actions) {
-    if (action !== planAction) {
-      expanded.push(action);
-      continue;
+  if (planAction) {
+    const splitPlan = shouldSplitPlanAction(planAction);
+    const examOrLearning = isExamOrLearningRequest(message);
+    const planningRequest = isPlanningRequest(message);
+    if (splitPlan || examOrLearning || planningRequest) {
+      const hasNote = actions.some((action) => action?.type === "create_note");
+      const hasTodo = actions.some((action) => action?.type === "create_todo");
+      const hasTimeline = actions.some((action) => action?.type === "create_timeline");
+      const hasTable = actions.some((action) => action?.type === "create_table");
+      expanded = [];
+      for (const action of actions) {
+        if (action !== planAction) {
+          expanded.push(action);
+          continue;
+        }
+        expanded.push(splitPlan ? buildCompactPlanAction(action, lang) : action);
+        if (splitPlan && !hasNote) expanded.push(buildPlanDetailsNoteAction(action, lang));
+        if ((splitPlan || examOrLearning || planningRequest) && !hasTodo) expanded.push(buildPlanTodoAction(action, lang));
+        if ((planningRequest || splitPlan) && !hasTimeline) expanded.push(buildPlanTimelineAction(action, lang));
+        if ((planningRequest || examOrLearning) && !hasTable) expanded.push(buildPlanTableAction(action, lang));
+      }
+      if (examOrLearning && !hasNote) {
+        expanded.push(buildExamSupportNoteAction(message, reply, lang));
+      }
     }
-    expanded.push(splitPlan ? buildCompactPlanAction(action, lang) : action);
-    if (splitPlan && !hasNote) expanded.push(buildPlanDetailsNoteAction(action, lang));
-    if ((splitPlan || examOrLearning) && !hasTodo) expanded.push(buildPlanTodoAction(action, lang));
   }
-  if (examOrLearning && !hasNote) {
-    expanded.push(buildExamSupportNoteAction(message, reply, lang));
-  }
+  expanded = expandGeneralCanvasActions(expanded, message, reply, lang);
   return dedupeCanvasActions(expanded).slice(0, 10);
 }
 
@@ -1629,6 +1738,10 @@ function shouldSplitPlanAction(action) {
 
 function isExamOrLearningRequest(message) {
   return /(考试|备考|学习|证书|报名|考点|考场|考位|成绩|分数|雅思|托福|四六级|考研|公务员|certification|exam|test|ielts|toefl|gre|gmat|sat|act|registration|test center|study plan|learning path)/i.test(String(message || "").normalize("NFKC"));
+}
+
+function isPlanningRequest(message) {
+  return /(计划|规划|方案|步骤|流程|路线图|日程|行程|旅行|旅游|攻略|安排|执行|落地|roadmap|workflow|schedule|itinerary|travel|trip|plan|milestone|implementation)/i.test(String(message || "").normalize("NFKC"));
 }
 
 function buildCompactPlanAction(action, lang) {
@@ -1717,6 +1830,204 @@ function buildPlanTodoAction(action, lang) {
     title: lang === "en" ? `${action.title || "Plan"} checklist` : `${action.title || "计划"}｜执行清单`,
     description: lang === "en" ? "Operational checklist extracted from the plan." : "从计划中抽取的执行清单。",
     content: { items }
+  };
+}
+
+function buildPlanTimelineAction(action, lang) {
+  const steps = Array.isArray(action?.content?.steps) ? action.content.steps : [];
+  const items = steps.slice(0, 16).map((step, index) => ({
+    phase: stringOr(step?.time || step?.phase, `${index + 1}`),
+    title: stringOr(step?.title || step?.text, `${index + 1}`).slice(0, 160),
+    description: stringOr(step?.description || step?.body || step?.text, "").slice(0, 360)
+  })).filter((item) => item.title);
+  return {
+    type: "create_timeline",
+    title: lang === "en" ? `${action.title || "Plan"} timeline` : `${action.title || "计划"}｜时间线`,
+    description: lang === "en" ? "Sequential timeline extracted from the plan." : "从计划中抽取的阶段/时间线。",
+    content: { items }
+  };
+}
+
+function buildPlanTableAction(action, lang) {
+  const steps = Array.isArray(action?.content?.steps) ? action.content.steps : [];
+  const columns = lang === "en" ? ["Stage", "Focus", "Details"] : ["阶段", "重点", "细节"];
+  const rows = steps.slice(0, 12).map((step, index) => ({
+    [columns[0]]: stringOr(step?.time || step?.phase, `${index + 1}`),
+    [columns[1]]: stringOr(step?.title || step?.text, "").slice(0, 140),
+    [columns[2]]: stringOr(step?.description || step?.body || step?.text, "").slice(0, 260)
+  })).filter((row) => row[columns[1]] || row[columns[2]]);
+  return {
+    type: "create_table",
+    title: lang === "en" ? `${action.title || "Plan"} overview table` : `${action.title || "计划"}｜概览表`,
+    description: lang === "en" ? "Structured table extracted from the plan." : "从计划中抽取的结构化概览表。",
+    content: { columns, rows }
+  };
+}
+
+function expandGeneralCanvasActions(actions, message, reply, lang) {
+  const reusable = actions.filter((action) => REUSABLE_CARD_ACTION_TYPES.includes(action?.type));
+  if (!reusable.length) return actions;
+  const requestText = String(message || "").normalize("NFKC");
+  const body = [reply, message].map((item) => String(item || "").trim()).filter(Boolean).join("\n\n");
+  const wantsArtifact = wantsCanvasArtifact(requestText);
+  const typeNeedsBundle = isPlanningRequest(requestText) || isComparisonRequest(requestText) || isResearchRequest(requestText) || isDataOrCodeRequest(requestText) || isGeneralMultiCardRequest(requestText);
+  const complex = body.length > 1200 || typeNeedsBundle || (wantsArtifact && (body.length > 900 || typeNeedsBundle));
+  if (!complex || reusable.length >= 4) return actions;
+  const has = (type) => actions.some((action) => action?.type === type);
+  const additions = [];
+  if (isPlanningRequest(requestText)) {
+    if (!has("create_timeline")) additions.push(buildGenericTimelineAction(message, body, lang));
+    if (!has("create_todo")) additions.push(buildGenericTodoAction(message, body, lang));
+    if (!has("create_table")) additions.push(buildGenericTableAction(message, body, lang));
+  } else if (isComparisonRequest(requestText)) {
+    if (!has("create_comparison")) additions.push(buildGenericComparisonAction(message, body, lang));
+    if (!has("create_metric")) additions.push(buildGenericMetricAction(message, body, lang));
+    if (!has("create_todo")) additions.push(buildGenericTodoAction(message, body, lang));
+  } else if (isResearchRequest(requestText)) {
+    if (!has("create_quote")) additions.push(buildGenericQuoteAction(message, body, lang));
+    if (!has("create_note")) additions.push(buildGenericNoteAction(message, body, lang));
+    if (!has("create_table")) additions.push(buildGenericTableAction(message, body, lang));
+  } else if (isDataOrCodeRequest(requestText)) {
+    if (!has("create_table")) additions.push(buildGenericTableAction(message, body, lang));
+    if (!has("create_note")) additions.push(buildGenericNoteAction(message, body, lang));
+    if (!has("create_todo")) additions.push(buildGenericTodoAction(message, body, lang));
+  } else {
+    if (!has("create_note")) additions.push(buildGenericNoteAction(message, body, lang));
+    if (!has("create_table")) additions.push(buildGenericTableAction(message, body, lang));
+    if (!has("create_todo")) additions.push(buildGenericTodoAction(message, body, lang));
+  }
+  return [...actions, ...additions.filter(Boolean).slice(0, Math.max(0, 4 - reusable.length))];
+}
+
+function wantsCanvasArtifact(text) {
+  return /(画布|卡片|节点|创建|新建|生成.*(卡片|节点)|保存成|放到画布|整理到画布|canvas|card|node|create|add|save.*card)/i.test(String(text || ""));
+}
+
+function isGeneralMultiCardRequest(text) {
+  return /(详细|完整|系统|全面|深入|整理|总结|方案|攻略|研究|分析|对比|评估|写作|报告|数据|表格|资料|资源|风险|执行|落地|comprehensive|detailed|full|guide|research|analysis|compare|evaluate|report|resources|risks)/i.test(String(text || "").normalize("NFKC"));
+}
+
+function isComparisonRequest(text) {
+  return /(分析|对比|比较|评估|优缺点|选择|决策|取舍|analysis|compare|comparison|evaluate|pros|cons|decision|tradeoff)/i.test(String(text || "").normalize("NFKC"));
+}
+
+function isResearchRequest(text) {
+  return /(研究|资料|论文|文献|来源|引用|最新|官方|新闻|调研|research|source|citation|latest|official|news|literature)/i.test(String(text || "").normalize("NFKC"));
+}
+
+function isDataOrCodeRequest(text) {
+  return /(代码|程序|bug|python|javascript|数据|表格|csv|图表|指标|code|debug|data|table|chart|metric|benchmark)/i.test(String(text || "").normalize("NFKC"));
+}
+
+function genericCardTitle(message, suffix, lang) {
+  const base = deriveSearchQueryClean(message) || String(message || "").normalize("NFKC").slice(0, 36) || (lang === "en" ? "Result" : "结果");
+  return `${base}｜${suffix}`.slice(0, 64);
+}
+
+function genericItemsFromText(text, limit = 8) {
+  const items = extractFallbackListItems(text).slice(0, limit);
+  if (items.length) return items;
+  return String(text || "")
+    .split(/[。！？.!?]\s*/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 8)
+    .slice(0, limit)
+    .map((part, index) => ({ title: `${index + 1}`, description: part.slice(0, 700) }));
+}
+
+function buildGenericNoteAction(message, text, lang) {
+  const items = genericItemsFromText(text, 4);
+  const sections = items.map((item) => ({ title: item.title, body: item.description || item.title }));
+  return {
+    type: "create_note",
+    title: genericCardTitle(message, lang === "en" ? "notes" : "要点笔记", lang),
+    description: lang === "en" ? "Supporting notes extracted from the answer." : "从回答中抽取的支撑笔记。",
+    content: {
+      sections,
+      text: sections.map((section) => `## ${section.title}\n\n${section.body}`).join("\n\n").slice(0, 5000)
+    }
+  };
+}
+
+function buildGenericTodoAction(message, text, lang) {
+  const items = genericItemsFromText(text, 10).map((item) => ({
+    text: String(item.description || item.title).slice(0, 180),
+    done: false,
+    rationale: String(item.title || "").slice(0, 160)
+  })).filter((item) => item.text);
+  return {
+    type: "create_todo",
+    title: genericCardTitle(message, lang === "en" ? "checklist" : "执行清单", lang),
+    description: lang === "en" ? "Follow-up checklist extracted from the answer." : "从回答中抽取的后续执行清单。",
+    content: { items }
+  };
+}
+
+function buildGenericTableAction(message, text, lang) {
+  const columns = lang === "en" ? ["Item", "Details"] : ["项目", "细节"];
+  const rows = genericItemsFromText(text, 8).map((item) => ({
+    [columns[0]]: item.title,
+    [columns[1]]: item.description || item.title
+  }));
+  return {
+    type: "create_table",
+    title: genericCardTitle(message, lang === "en" ? "table" : "结构化表格", lang),
+    description: lang === "en" ? "Structured table extracted from the answer." : "从回答中抽取的结构化表格。",
+    content: { columns, rows }
+  };
+}
+
+function buildGenericTimelineAction(message, text, lang) {
+  const items = genericItemsFromText(text, 10).map((item, index) => ({
+    phase: `${index + 1}`,
+    title: item.title,
+    description: item.description || item.title
+  }));
+  return {
+    type: "create_timeline",
+    title: genericCardTitle(message, lang === "en" ? "timeline" : "时间线", lang),
+    description: lang === "en" ? "Sequence/timeline extracted from the answer." : "从回答中抽取的顺序/阶段时间线。",
+    content: { items }
+  };
+}
+
+function buildGenericComparisonAction(message, text, lang) {
+  const items = genericItemsFromText(text, 6).map((item) => ({
+    title: item.title,
+    summary: item.description || item.title
+  }));
+  return {
+    type: "create_comparison",
+    title: genericCardTitle(message, lang === "en" ? "comparison" : "对比", lang),
+    description: lang === "en" ? "Comparison card extracted from the answer." : "从回答中抽取的比较/取舍卡。",
+    content: { items }
+  };
+}
+
+function buildGenericMetricAction(message, text, lang) {
+  const metrics = genericItemsFromText(text, 6).map((item, index) => ({
+    label: item.title || `${index + 1}`,
+    value: String(item.description || item.title).slice(0, 80),
+    note: String(item.description || "").slice(0, 220)
+  }));
+  return {
+    type: "create_metric",
+    title: genericCardTitle(message, lang === "en" ? "metrics" : "指标", lang),
+    description: lang === "en" ? "Metric/benchmark card extracted from the answer." : "从回答中抽取的指标/基准卡。",
+    content: { metrics }
+  };
+}
+
+function buildGenericQuoteAction(message, text, lang) {
+  const quotes = genericItemsFromText(text, 4).map((item) => ({
+    text: String(item.description || item.title).slice(0, 700),
+    source: String(item.title || "").slice(0, 120)
+  }));
+  return {
+    type: "create_quote",
+    title: genericCardTitle(message, lang === "en" ? "quotes" : "引用摘录", lang),
+    description: lang === "en" ? "Quote/excerpt card extracted from the answer." : "从回答中抽取的引用/摘录卡。",
+    content: { quotes }
   };
 }
 
@@ -2619,7 +2930,12 @@ const FALLBACK_KEYWORDS = {
   create_map: /地图|位置|地址|导航|map|location/i,
   create_link: /链接|收藏|书签|link|bookmark/i,
   create_code: /代码|脚本|程序|snippet|code/i,
-  create_web_card: /卡片|网页|资料|搜索|web|search/i,
+  create_web_card: /网页|网站|联网|搜索|检索|web|search|reference/i,
+  create_table: /表格|矩阵|清单表|数据表|table|matrix|spreadsheet/i,
+  create_timeline: /时间线|里程碑|阶段|进度|timeline|milestone|chronology/i,
+  create_comparison: /对比|比较|取舍|决策|comparison|compare|tradeoff|decision/i,
+  create_metric: /指标|KPI|数据看板|度量|metric|kpi|dashboard|benchmark/i,
+  create_quote: /引用|摘录|金句|原文|quote|excerpt|citation/i,
   zoom_in: /放大|zoom in|enlarge/i,
   zoom_out: /缩小|zoom out|shrink/i,
   reset_view: /重置视图|reset view|恢复默认视图/i
@@ -2632,21 +2948,49 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
   const requestText = String(message || "").normalize("NFKC");
   const combinedText = requestText + " " + String(reply || "").normalize("NFKC");
   const wantsArtifact = /(画布|卡片|节点|创建|新建|生成.*(卡片|节点)|保存成|放到画布|整理到画布|canvas|card|node|create|add|save.*card)/i.test(requestText);
+  const matchedTypes = [];
 
   for (const [actionType, regex] of Object.entries(FALLBACK_KEYWORDS)) {
     if (regex.test(combinedText)) {
-      if (!isViewOnlyFallbackAction(actionType) && !wantsArtifact) break;
-      const title = requestText.slice(0, 48);
-      normalized.push({
-        type: actionType,
-        title,
-        description: reply || title,
-        content: buildFallbackActionContent(actionType, title, reply || requestText)
-      });
-      break; // only one fallback action per message
+      if (isViewOnlyFallbackAction(actionType)) return [{ type: actionType }];
+      if (!wantsArtifact) break;
+      matchedTypes.push(actionType);
     }
   }
+  if (!wantsArtifact) return normalized;
+  const fallbackTypes = fallbackActionTypesForRequest(requestText, matchedTypes);
+  const title = requestText.slice(0, 48);
+  const url = extractFirstUrl(requestText);
+  for (const actionType of fallbackTypes.slice(0, 4)) {
+    const safeType = (actionType === "create_web_card" || actionType === "create_link") && !url ? "create_note" : actionType;
+    const action = {
+      type: safeType,
+      title,
+      description: reply || title,
+      content: buildFallbackActionContent(safeType, title, reply || requestText)
+    };
+    if ((safeType === "create_web_card" || safeType === "create_link") && url) action.url = url;
+    normalized.push(action);
+  }
   return normalized;
+}
+
+function fallbackActionTypesForRequest(text, matchedTypes = []) {
+  const primary = matchedTypes.find((type) => !isViewOnlyFallbackAction(type));
+  if (isPlanningRequest(text)) return uniqueActionTypes([primary || "create_plan", "create_timeline", "create_todo", "create_table"]);
+  if (isComparisonRequest(text)) return uniqueActionTypes([primary || "create_comparison", "create_metric", "create_todo"]);
+  if (isResearchRequest(text)) return uniqueActionTypes([primary || "create_note", "create_quote", "create_table"]);
+  if (isDataOrCodeRequest(text)) return uniqueActionTypes([primary || "create_table", "create_note", "create_todo"]);
+  if (isGeneralMultiCardRequest(text)) return uniqueActionTypes([primary || "create_note", "create_table", "create_todo"]);
+  return uniqueActionTypes([primary || "create_note"]);
+}
+
+function uniqueActionTypes(types) {
+  return Array.from(new Set(types.filter(Boolean)));
+}
+
+function extractFirstUrl(text) {
+  return String(text || "").match(/https?:\/\/[^\s"'<>，。]+/i)?.[0] || "";
 }
 
 function isViewOnlyFallbackAction(actionType) {
@@ -2679,6 +3023,23 @@ function buildFallbackActionContent(actionType, title, text) {
     const code = body.match(/```[a-z0-9_-]*\n([\s\S]*?)```/i)?.[1] || body;
     return { language: "text", code: code.slice(0, 6000), explanation: body.slice(0, 1200) };
   }
+  if (actionType === "create_table") {
+    const items = extractFallbackListItems(body).slice(0, 8);
+    return {
+      columns: ["Item", "Details"],
+      rows: (items.length ? items : [{ title, description: body.slice(0, 700) }]).map((item) => ({ Item: item.title, Details: item.description || item.title }))
+    };
+  }
+  if (actionType === "create_timeline") {
+    const items = extractFallbackListItems(body).slice(0, 8);
+    return { items: (items.length ? items : [{ title, description: body.slice(0, 700) }]).map((item, index) => ({ phase: `${index + 1}`, title: item.title, description: item.description || item.title })) };
+  }
+  if (actionType === "create_comparison") {
+    const items = extractFallbackListItems(body).slice(0, 6);
+    return { items: (items.length ? items : [{ title, description: body.slice(0, 700) }]).map((item) => ({ title: item.title, summary: item.description || item.title })) };
+  }
+  if (actionType === "create_metric") return { metrics: [{ label: title || "Metric", value: body.slice(0, 80), note: body.slice(0, 400) }] };
+  if (actionType === "create_quote") return { quotes: [{ text: body.slice(0, 900) }] };
   return undefined;
 }
 

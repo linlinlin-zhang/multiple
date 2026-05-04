@@ -25,7 +25,7 @@ export function buildRealtimeInstruction(context) {
     "# Action Types",
     "Navigation: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas.",
     "Selection: deselect, select_source, select_analysis, select_node, move_node.",
-    "Creation: create_direction, create_web_card, create_note, create_plan, create_todo, generate_image.",
+    "Creation: create_direction, create_web_card, create_note, create_plan, create_todo, create_table, create_timeline, create_comparison, create_metric, create_quote, generate_image.",
     "Search: image_search, reverse_image_search, text_image_search.",
     "Analysis: analyze_source, explore_source, research_source, research_node.",
     "UI: new_chat, open_chat, close_chat, open_chat_history, open_history, open_settings, open_upload, save_session.",

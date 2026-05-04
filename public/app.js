@@ -1,4 +1,4 @@
-﻿import { micromark } from "https://esm.sh/micromark@4";
+import { micromark } from "https://esm.sh/micromark@4";
 import { gfm, gfmHtml } from "https://esm.sh/micromark-extension-gfm@3";
 
 const viewport = document.querySelector("#viewport");
@@ -294,6 +294,11 @@ const CANVAS_TOOL_DEFINITIONS = [
   { type: "new_card" },
   { type: "create_direction" },
   { type: "create_web_card" },
+  { type: "create_table" },
+  { type: "create_timeline" },
+  { type: "create_comparison" },
+  { type: "create_metric" },
+  { type: "create_quote" },
   { type: "web_search", risk: "network" },
   { type: "create_agent", risk: "agent" },
   { type: "generate_image", risk: "api_cost" },
@@ -319,6 +324,8 @@ const CANVAS_TOOL_DEFINITIONS = [
 ];
 const CANVAS_TOOL_TYPES = CANVAS_TOOL_DEFINITIONS.map((tool) => tool.type);
 const CANVAS_RISKY_TOOL_TYPES = new Set(CANVAS_TOOL_DEFINITIONS.filter((tool) => tool.risk).map((tool) => tool.type));
+const RICH_CARD_ACTION_TYPES = ["create_note", "create_plan", "create_todo", "create_weather", "create_map", "create_link", "create_code", "create_table", "create_timeline", "create_comparison", "create_metric", "create_quote"];
+const RICH_CARD_NODE_TYPES = ["note", "plan", "todo", "weather", "map", "link", "code", "table", "timeline", "comparison", "metric", "quote"];
 
 const optionPositions = [
   { x: 850, y: 112, tilt: -1.5 },
@@ -462,6 +469,11 @@ const i18n = {
     "chat.actionFeedback.create_link": "已创建 link 卡片",
     "chat.actionFeedback.create_code": "已创建 code 卡片",
     "chat.actionFeedback.create_web_card": "已创建 web 卡片",
+    "chat.actionFeedback.create_table": "已创建 table 卡片",
+    "chat.actionFeedback.create_timeline": "已创建 timeline 卡片",
+    "chat.actionFeedback.create_comparison": "已创建 comparison 卡片",
+    "chat.actionFeedback.create_metric": "已创建 metric 卡片",
+    "chat.actionFeedback.create_quote": "已创建 quote 卡片",
     "chat.actionFeedback.create_direction": "已创建方向卡片",
     "chat.actionFeedback.create_card": "已创建卡片",
     "chat.actionFeedback.new_card": "已创建卡片",
@@ -617,6 +629,11 @@ const i18n = {
     "badge.map": "地图",
     "badge.link": "链接",
     "badge.code": "代码",
+    "badge.table": "表格",
+    "badge.timeline": "时间线",
+    "badge.comparison": "对比",
+    "badge.metric": "指标",
+    "badge.quote": "引用",
     "nodeType.view": "查看",
     "nodeType.open": "打开",
     "nodeType.copy": "复制",
@@ -769,6 +786,11 @@ const i18n = {
     "chat.actionFeedback.create_link": "Created link card",
     "chat.actionFeedback.create_code": "Created code card",
     "chat.actionFeedback.create_web_card": "Created web card",
+    "chat.actionFeedback.create_table": "Created table card",
+    "chat.actionFeedback.create_timeline": "Created timeline card",
+    "chat.actionFeedback.create_comparison": "Created comparison card",
+    "chat.actionFeedback.create_metric": "Created metric card",
+    "chat.actionFeedback.create_quote": "Created quote card",
     "chat.actionFeedback.create_direction": "Created direction card",
     "chat.actionFeedback.create_card": "Created card",
     "chat.actionFeedback.new_card": "Created card",
@@ -924,6 +946,11 @@ const i18n = {
     "badge.map": "Map",
     "badge.link": "Link",
     "badge.code": "Code",
+    "badge.table": "Table",
+    "badge.timeline": "Timeline",
+    "badge.comparison": "Compare",
+    "badge.metric": "Metric",
+    "badge.quote": "Quote",
     "nodeType.view": "View",
     "nodeType.open": "Open",
     "nodeType.copy": "Copy",
@@ -2490,6 +2517,11 @@ const ACTION_FEEDBACK_ICONS = {
   create_link: "🔗",
   create_code: "💻",
   create_web_card: "🌐",
+  create_table: "▦",
+  create_timeline: "⏱",
+  create_comparison: "⚖",
+  create_metric: "📊",
+  create_quote: "❝",
   create_direction: "🎨",
   create_card: "➕",
   new_card: "➕",
@@ -4177,10 +4209,23 @@ function buildVoiceCanvasContext() {
 async function applyVoiceActions(value) {
   const actions = Array.isArray(value) ? value : (value ? [value] : []);
   const results = [];
+  const creationTypes = new Set([...RICH_CARD_ACTION_TYPES, "create_direction", "create_web_card", "web_search"]);
+  const batchParentId = state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
+  const creationCount = actions.filter((action) => {
+    const type = typeof action === "string" ? action : action?.type || action?.name;
+    return creationTypes.has(String(type || ""));
+  }).length;
+  let creationIndex = 0;
   for (const action of actions) {
     const type = typeof action === "string" ? action : action?.type || action?.name;
     if (!type) continue;
     const normalized = typeof action === "string" ? { type } : { ...action, type };
+    if (creationTypes.has(String(type)) && creationCount > 1) {
+      normalized.parentNodeId = normalized.parentNodeId || batchParentId;
+      normalized.batchIndex = Number.isFinite(normalized.batchIndex) ? normalized.batchIndex : creationIndex;
+      normalized.batchSize = Number.isFinite(normalized.batchSize) ? normalized.batchSize : creationCount;
+      creationIndex += 1;
+    }
     const result = await executeCanvasAction(normalized);
     results.push({ ...normalized, result });
   }
@@ -4214,7 +4259,7 @@ async function executeCanvasAction(action) {
   if (type === "create_web_card") return createDirectionFromAction({ ...action, mode: action.mode || "web" });
   if (type === "web_search") return createDirectionFromAction({ ...action, type: "create_web_card", mode: "web" });
   // Rich node types
-  if (["create_note", "create_plan", "create_todo", "create_weather", "create_map", "create_link", "create_code"].includes(type)) {
+  if (RICH_CARD_ACTION_TYPES.includes(type)) {
     return createDirectionFromAction({ ...action, type });
   }
   if (type === "create_agent") return runSubagentAction(action);
@@ -4297,6 +4342,11 @@ function getNodeSummary(node) {
     if (nt === "map") return c.address || `${c.lat || ""},${c.lng || ""}`;
     if (nt === "link") return c.title || c.url || node.option.description || "";
     if (nt === "code") return c.code || node.option.description || "";
+    if (nt === "table") return (c.rows || []).slice(0, 4).map(tableRowSearchText).join("; ") || node.option.description || "";
+    if (nt === "timeline") return (c.items || []).slice(0, 6).map((item) => `${item.time || item.date || ""} ${item.title || item.name || item}`).join("; ");
+    if (nt === "comparison") return (c.items || []).slice(0, 6).map((item) => item.title || item.name || item.option || item).join("; ");
+    if (nt === "metric") return (c.metrics || []).slice(0, 6).map((metric) => `${metric.label || metric.name || ""}: ${metric.value || metric.current || ""}`).join("; ");
+    if (nt === "quote") return (c.quotes || []).slice(0, 4).map((quote) => quote.text || quote.quote || quote).join("; ");
   }
   return node.explanation || node.option?.description || node.option?.prompt || "";
 }
@@ -4528,12 +4578,28 @@ function moveNodeByAction(action) {
   focusNodeById(nodeId, action.position || "center");
 }
 
+function actionContentText(action = {}) {
+  const content = action.content && typeof action.content === "object" ? action.content : null;
+  if (!content) return "";
+  if (content.text || content.body || content.summary || content.caption || content.context) {
+    return String(content.text || content.body || content.summary || content.caption || content.context);
+  }
+  if (Array.isArray(content.steps)) return content.steps.map((step) => step?.title || step?.description || step).filter(Boolean).join("\n");
+  if (Array.isArray(content.items)) return content.items.map((item) => item?.title || item?.text || item?.description || item).filter(Boolean).join("\n");
+  if (Array.isArray(content.events)) return content.events.map((item) => item?.title || item?.name || item?.description || item).filter(Boolean).join("\n");
+  if (Array.isArray(content.options)) return content.options.map((item) => item?.title || item?.name || item?.summary || item?.description || item).filter(Boolean).join("\n");
+  if (Array.isArray(content.rows)) return content.rows.map(tableRowSearchText).filter(Boolean).join("\n");
+  if (Array.isArray(content.metrics)) return content.metrics.map((metric) => `${metric?.label || metric?.name || ""} ${metric?.value || metric?.current || ""}`.trim()).filter(Boolean).join("\n");
+  if (Array.isArray(content.quotes)) return content.quotes.map((quote) => quote?.text || quote?.quote || quote).filter(Boolean).join("\n");
+  return "";
+}
+
 function createDirectionFromAction(action) {
   const fallbackParent = state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
   const parentId = resolveParentNodeId(action, fallbackParent);
   if (!parentId || !state.nodes.has(parentId)) return null;
 
-  const text = String(action.prompt || action.query || action.description || action.title || "").trim();
+  const text = String(action.prompt || action.query || action.description || action.title || actionContentText(action) || "").trim();
   if (!text) return null;
   const isWebCard = action.type === "create_web_card" || Boolean(action.url);
   const references = isWebCard && action.url
@@ -4554,26 +4620,49 @@ function createDirectionFromAction(action) {
     create_map: "map",
     create_link: "link",
     create_code: "code",
+    create_table: "table",
+    create_timeline: "timeline",
+    create_comparison: "comparison",
+    create_metric: "metric",
+    create_quote: "quote",
     create_web_card: "link"
   };
   const nodeType = action.nodeType || nodeTypeMap[action.type] || (isWebCard ? "link" : "image");
+  let normalizedContent = action.content && typeof action.content === "object" ? { ...action.content } : undefined;
+  if (nodeType === "link") {
+    const url = safeUrl(normalizedContent?.url || action.url || (isUrlLikeText(text) ? text : ""));
+    if (url) {
+      normalizedContent = normalizedContent || {};
+      normalizedContent.url = url;
+      normalizedContent.title = readableLinkTitle(normalizedContent.title, url, action.title);
+      normalizedContent.description = defaultLinkDescription(url, normalizedContent.description || action.description || action.query);
+      normalizedContent.source = normalizedContent.source || urlHost(url);
+      normalizedContent.faviconUrl = normalizedContent.faviconUrl || faviconUrl(url);
+    }
+  }
+  const displayTitle = nodeType === "link"
+    ? readableLinkTitle(normalizedContent?.title, normalizedContent?.url || action.url || text, action.title)
+    : String(action.title || text);
+  const batchSlug = Number.isFinite(action.batchIndex) ? `${action.batchIndex}-` : "";
 
   const nodeId = createOptionNode({
-    id: `voice-${Date.now()}-${safeNodeSlug(action.title || text)}`,
-    title: String(action.title || text).slice(0, 48),
+    id: `voice-${Date.now()}-${batchSlug}${safeNodeSlug(displayTitle || text)}`,
+    title: displayTitle.slice(0, 48),
     description: String(action.description || text),
     prompt: text,
     tone: String(action.mode || (isWebCard ? "web" : "voice")),
     layoutHint: isWebCard ? "reference" : "voice",
     references,
     nodeType,
-    content: action.content || undefined
+    content: normalizedContent,
+    batchIndex: action.batchIndex,
+    batchSize: action.batchSize
   }, parentId);
   if (!nodeId) return null;
 
   if (action.position || action.anchorNodeId || action.anchorNodeName) {
     moveNodeByAction({ ...action, type: "move_node", nodeId, anchorNodeId: action.anchorNodeId || parentId });
-  } else {
+  } else if (!Number.isFinite(action.batchIndex)) {
     focusNodeById(nodeId, "center");
   }
   return nodeId;
@@ -5006,13 +5095,400 @@ function pcmChunksToBase64(chunks) {
   return btoa(binary);
 }
 
+function safeUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    return /^https?:$/i.test(url.protocol) ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
+function urlHost(value) {
+  try {
+    return new URL(value).hostname.replace(/^www\./i, "");
+  } catch {
+    return "";
+  }
+}
+
+function readableSiteTitle(value) {
+  let parsed = null;
+  try {
+    parsed = new URL(value);
+  } catch {
+    parsed = null;
+  }
+  const host = parsed?.hostname?.replace(/^www\./i, "") || urlHost(value);
+  if (!host) return currentLang === "en" ? "Web reference" : "网页参考";
+  const known = {
+    "chinaielts.org": "雅思官方报名与评分信息",
+    "ielts.org": "IELTS Official",
+    "ielts.neea.edu.cn": "教育部教育考试院 IELTS",
+    "zhihu.com": "知乎专栏",
+    "zhuanlan.zhihu.com": "知乎专栏",
+    "koolearn.com": "新东方在线"
+  };
+  const pathTitle = parsed
+    ? decodeURIComponent(parsed.pathname || "")
+        .replace(/\.[a-z0-9]+$/i, "")
+        .split(/[\/_-]+/)
+        .map((part) => part.trim())
+        .filter((part) => part && !/^\d+$/.test(part))
+        .slice(-3)
+        .join(" ")
+    : "";
+  if (known[host]) return pathTitle ? `${known[host]}｜${pathTitle}` : known[host];
+  return pathTitle || host.split(".").filter(Boolean).slice(0, -1).join(" ").replace(/(^|\s)\S/g, (m) => m.toUpperCase()) || host;
+}
+
+function isUrlLikeText(value) {
+  return /^https?:\/\//i.test(String(value || "").trim());
+}
+
+function readableLinkTitle(candidate, url, ...fallbackCandidates) {
+  const text = [candidate, ...fallbackCandidates]
+    .map((item) => String(item || "").trim())
+    .find((item) => item && !isUrlLikeText(item));
+  if (text && !isUrlLikeText(text)) return text;
+  return readableSiteTitle(url || candidate || "");
+}
+
+function faviconUrl(value) {
+  try {
+    const url = new URL(value);
+    return `${url.origin}/favicon.ico`;
+  } catch {
+    return "";
+  }
+}
+
+function defaultLinkDescription(url, fallback = "") {
+  const text = String(fallback || "").trim();
+  if (text && !isUrlLikeText(text)) return text;
+  const host = urlHost(url);
+  return currentLang === "en"
+    ? `Reference page from ${host || "the web"} for checking source details, official information, and follow-up reading.`
+    : `来自 ${host || "网页"} 的参考页面，可用于核实来源信息、官方细节和继续阅读。`;
+}
+
+function normalizeOptionContent(option) {
+  const nodeType = String(option?.nodeType || "").toLowerCase();
+  const current = option?.content && typeof option.content === "object" ? option.content : {};
+  if (nodeType === "table") {
+    const rows = Array.isArray(current.rows) ? current.rows : [];
+    const columns = Array.isArray(current.columns) && current.columns.length
+      ? current.columns.map((column) => String(column?.label || column?.title || column?.key || column || "").trim()).filter(Boolean)
+      : inferTableColumns(rows);
+    const next = {
+      ...current,
+      columns: columns.slice(0, 8),
+      rows: rows.slice(0, 24)
+    };
+    option.content = next;
+    return next;
+  }
+  if (nodeType === "timeline") {
+    const items = Array.isArray(current.items) ? current.items : (Array.isArray(current.events) ? current.events : []);
+    const next = { ...current, items: items.slice(0, 24) };
+    option.content = next;
+    return next;
+  }
+  if (nodeType === "comparison") {
+    const items = Array.isArray(current.items) ? current.items : (Array.isArray(current.options) ? current.options : []);
+    const criteria = Array.isArray(current.criteria) ? current.criteria : [];
+    const next = { ...current, items: items.slice(0, 8), criteria: criteria.slice(0, 8) };
+    option.content = next;
+    return next;
+  }
+  if (nodeType === "metric") {
+    const metrics = Array.isArray(current.metrics) ? current.metrics : (current.label || current.value ? [current] : []);
+    const next = { ...current, metrics: metrics.slice(0, 8) };
+    option.content = next;
+    return next;
+  }
+  if (nodeType === "quote") {
+    const quotes = Array.isArray(current.quotes) ? current.quotes : (current.text || current.quote ? [current] : []);
+    const next = { ...current, quotes: quotes.slice(0, 8) };
+    option.content = next;
+    return next;
+  }
+  if (nodeType !== "link") return current;
+  const url = safeUrl(current.url || option.url || option.references?.[0]?.url || (isUrlLikeText(option.prompt) ? option.prompt : ""));
+  if (!url) return current;
+  const title = readableLinkTitle(current.title, url, option.title, option.references?.[0]?.title);
+  const description = defaultLinkDescription(url, current.description || option.description || option.references?.[0]?.description || option.query);
+  const next = {
+    ...current,
+    url,
+    title: title.slice(0, 96),
+    description: description.slice(0, 360),
+    source: String(current.source || urlHost(url)).slice(0, 80),
+    faviconUrl: current.faviconUrl || faviconUrl(url)
+  };
+  option.content = next;
+  if (!option.title || isUrlLikeText(option.title)) option.title = next.title;
+  if (!option.description || isUrlLikeText(option.description)) option.description = next.description;
+  return next;
+}
+
+function inferTableColumns(rows) {
+  const first = rows.find((row) => row && typeof row === "object");
+  if (Array.isArray(first)) return first.map((_, index) => `${currentLang === "en" ? "Column" : "列"} ${index + 1}`).slice(0, 8);
+  if (first && typeof first === "object") return Object.keys(first).slice(0, 8);
+  return rows.length ? [currentLang === "en" ? "Content" : "内容"] : [];
+}
+
+function tableRowSearchText(row) {
+  if (Array.isArray(row)) return row.join(" ");
+  if (row && typeof row === "object") return Object.values(row).join(" ");
+  return String(row || "");
+}
+
+function tableCellValue(row, column, index) {
+  if (Array.isArray(row)) return row[index] ?? "";
+  if (row && typeof row === "object") return row[column] ?? row[String(column).toLowerCase()] ?? row[String(column).replace(/\s+/g, "_")] ?? "";
+  return index === 0 ? row : "";
+}
+
+function nodeTypeLabel(nodeType) {
+  const type = String(nodeType || "image").toLowerCase();
+  const key = type === "image" ? "badge.general" : `badge.${type}`;
+  const label = t(key);
+  return label === key ? type : label;
+}
+
+function nodeLayoutLabel(option, nodeType) {
+  const type = String(nodeType || "").toLowerCase();
+  if (type === "plan") return currentLang === "en" ? "overview" : "总览";
+  if (type === "todo") return currentLang === "en" ? "checklist" : "清单";
+  if (type === "note") return currentLang === "en" ? "note" : "笔记";
+  if (type === "link") return currentLang === "en" ? "reference" : "参考";
+  if (type === "code") return currentLang === "en" ? "code" : "代码";
+  if (type === "table") return currentLang === "en" ? "structured" : "结构化";
+  if (type === "timeline") return currentLang === "en" ? "sequence" : "过程";
+  if (type === "comparison") return currentLang === "en" ? "decision" : "决策";
+  if (type === "metric") return currentLang === "en" ? "dashboard" : "指标板";
+  if (type === "quote") return currentLang === "en" ? "excerpt" : "摘录";
+  return option?.layoutHint || (currentLang === "en" ? "card" : "卡片");
+}
+
+function optionEyebrow(option, nodeType) {
+  return `${nodeTypeLabel(nodeType)} / ${nodeLayoutLabel(option, nodeType)}`;
+}
+
+function taskTypeForOption(option, fallback = "general") {
+  const type = String(option?.nodeType || "").toLowerCase();
+  if (RICH_CARD_NODE_TYPES.includes(type)) return type;
+  return fallback || "general";
+}
+
+function noteMarkdownText(content = {}, fallback = "") {
+  if (Array.isArray(content.sections) && content.sections.length) {
+    return content.sections.map((section) => {
+      const title = String(section?.title || "").trim();
+      const body = String(section?.body || section?.text || section?.description || "").trim();
+      return [title ? `## ${title}` : "", body].filter(Boolean).join("\n\n");
+    }).filter(Boolean).join("\n\n");
+  }
+  return String(content.text || content.body || fallback || "").trim();
+}
+
+function renderRichMarkdownHtml(value) {
+  try {
+    return renderMarkdownToHtml(String(value || ""));
+  } catch {
+    return simpleMarkdownToHtml(String(value || ""));
+  }
+}
+
+function renderLinkPreview(content = {}, compact = false) {
+  const url = safeUrl(content.url);
+  const wrap = document.createElement(url ? "a" : "div");
+  wrap.className = compact ? "rich-link-wrap option-link-card" : "rich-link-wrap";
+  if (url) {
+    wrap.href = url;
+    wrap.target = "_blank";
+    wrap.rel = "noopener noreferrer";
+    wrap.addEventListener("pointerdown", (event) => event.stopPropagation());
+    wrap.addEventListener("click", (event) => event.stopPropagation());
+  }
+  const icon = document.createElement("img");
+  icon.className = "rich-link-favicon";
+  icon.src = content.faviconUrl || faviconUrl(url);
+  icon.alt = "";
+  icon.onerror = () => { icon.style.display = "none"; };
+  const meta = document.createElement("div");
+  meta.className = "rich-link-meta";
+  const titleEl = document.createElement("div");
+  titleEl.className = "rich-link-title";
+  titleEl.textContent = String(content.title || readableSiteTitle(url)).slice(0, compact ? 72 : 120);
+  const descEl = document.createElement("div");
+  descEl.className = "rich-link-desc";
+  descEl.textContent = String(content.description || defaultLinkDescription(url)).slice(0, compact ? 180 : 360);
+  const urlEl = document.createElement("div");
+  urlEl.className = "rich-link-url";
+  urlEl.textContent = String(content.source || urlHost(url) || url).slice(0, 120);
+  meta.append(titleEl, descEl, urlEl);
+  wrap.append(icon, meta);
+  return wrap;
+}
+
+function renderTableCard(content = {}, compact = false) {
+  const columns = Array.isArray(content.columns) ? content.columns : [];
+  const rows = Array.isArray(content.rows) ? content.rows : [];
+  const wrap = document.createElement("div");
+  wrap.className = compact ? "rich-table-wrap option-table-card" : "rich-table-wrap";
+  const table = document.createElement("table");
+  table.className = "rich-table";
+  if (columns.length) {
+    const thead = document.createElement("thead");
+    const tr = document.createElement("tr");
+    columns.forEach((column) => {
+      const th = document.createElement("th");
+      th.textContent = String(column);
+      tr.appendChild(th);
+    });
+    thead.appendChild(tr);
+    table.appendChild(thead);
+  }
+  const tbody = document.createElement("tbody");
+  rows.slice(0, compact ? 4 : 16).forEach((row) => {
+    const tr = document.createElement("tr");
+    const activeColumns = columns.length ? columns : inferTableColumns([row]);
+    activeColumns.forEach((column, index) => {
+      const td = document.createElement("td");
+      td.textContent = String(tableCellValue(row, column, index)).slice(0, compact ? 80 : 240);
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function renderTimelineCard(content = {}, compact = false) {
+  const items = Array.isArray(content.items) ? content.items : [];
+  const wrap = document.createElement("ol");
+  wrap.className = compact ? "rich-timeline option-timeline-card" : "rich-timeline";
+  items.slice(0, compact ? 4 : 16).forEach((item) => {
+    const li = document.createElement("li");
+    li.className = "rich-timeline-item";
+    const time = document.createElement("span");
+    time.className = "rich-timeline-time";
+    time.textContent = String(item?.time || item?.date || item?.phase || "").slice(0, 60);
+    const body = document.createElement("div");
+    body.className = "rich-timeline-body";
+    const title = document.createElement("strong");
+    title.textContent = String(item?.title || item?.name || item || "").slice(0, 120);
+    body.appendChild(title);
+    const desc = String(item?.description || item?.detail || item?.body || "").trim();
+    if (desc && !compact) {
+      const p = document.createElement("p");
+      p.textContent = desc.slice(0, 360);
+      body.appendChild(p);
+    }
+    li.append(time, body);
+    wrap.appendChild(li);
+  });
+  return wrap;
+}
+
+function renderComparisonCard(content = {}, compact = false) {
+  const items = Array.isArray(content.items) ? content.items : [];
+  const wrap = document.createElement("div");
+  wrap.className = compact ? "rich-comparison option-comparison-card" : "rich-comparison";
+  items.slice(0, compact ? 3 : 6).forEach((item) => {
+    const card = document.createElement("div");
+    card.className = "rich-comparison-item";
+    const title = document.createElement("strong");
+    title.textContent = String(item?.title || item?.name || item?.option || item || "").slice(0, 120);
+    card.appendChild(title);
+    const pros = Array.isArray(item?.pros) ? item.pros : [];
+    const cons = Array.isArray(item?.cons) ? item.cons : [];
+    const detail = String(item?.summary || item?.description || item?.notes || "").trim();
+    if (detail) {
+      const p = document.createElement("p");
+      p.textContent = detail.slice(0, compact ? 140 : 360);
+      card.appendChild(p);
+    }
+    if (!compact && (pros.length || cons.length)) {
+      const dl = document.createElement("dl");
+      if (pros.length) {
+        const dt = document.createElement("dt");
+        dt.textContent = currentLang === "en" ? "Pros" : "优点";
+        const dd = document.createElement("dd");
+        dd.textContent = pros.slice(0, 4).join("；");
+        dl.append(dt, dd);
+      }
+      if (cons.length) {
+        const dt = document.createElement("dt");
+        dt.textContent = currentLang === "en" ? "Cons" : "风险";
+        const dd = document.createElement("dd");
+        dd.textContent = cons.slice(0, 4).join("；");
+        dl.append(dt, dd);
+      }
+      card.appendChild(dl);
+    }
+    wrap.appendChild(card);
+  });
+  return wrap;
+}
+
+function renderMetricCard(content = {}, compact = false) {
+  const metrics = Array.isArray(content.metrics) ? content.metrics : [];
+  const wrap = document.createElement("div");
+  wrap.className = compact ? "rich-metrics option-metric-card" : "rich-metrics";
+  metrics.slice(0, compact ? 4 : 8).forEach((metric) => {
+    const card = document.createElement("div");
+    card.className = "rich-metric";
+    const value = document.createElement("div");
+    value.className = "rich-metric-value";
+    value.textContent = String(metric?.value || metric?.current || "").slice(0, 40);
+    const label = document.createElement("div");
+    label.className = "rich-metric-label";
+    label.textContent = String(metric?.label || metric?.name || metric?.title || "").slice(0, 80);
+    const delta = document.createElement("div");
+    delta.className = "rich-metric-delta";
+    delta.textContent = String(metric?.delta || metric?.trend || metric?.note || "").slice(0, 120);
+    card.append(value, label);
+    if (delta.textContent) card.appendChild(delta);
+    wrap.appendChild(card);
+  });
+  return wrap;
+}
+
+function renderQuoteCard(content = {}, compact = false) {
+  const quotes = Array.isArray(content.quotes) ? content.quotes : [];
+  const wrap = document.createElement("div");
+  wrap.className = compact ? "rich-quotes option-quote-card" : "rich-quotes";
+  quotes.slice(0, compact ? 2 : 6).forEach((quote) => {
+    const block = document.createElement("blockquote");
+    block.className = "rich-quote";
+    const text = document.createElement("p");
+    text.textContent = String(quote?.text || quote?.quote || quote || "").slice(0, compact ? 180 : 900);
+    block.appendChild(text);
+    const source = String(quote?.source || quote?.author || quote?.url || "").trim();
+    if (source) {
+      const cite = document.createElement("cite");
+      cite.textContent = source.slice(0, 160);
+      block.appendChild(cite);
+    }
+    wrap.appendChild(block);
+  });
+  return wrap;
+}
+
 function renderRichNodeContent(element, option) {
   const slot = element?.querySelector?.(".option-rich-content");
   if (!slot) return;
   slot.innerHTML = "";
   slot.hidden = true;
 
-  const c = option?.content;
+  const c = normalizeOptionContent(option);
   if (!c || typeof c !== "object") return;
   const nt = String(option.nodeType || "").toLowerCase();
 
@@ -5040,14 +5516,19 @@ function renderRichNodeContent(element, option) {
   } else if (nt === "todo" && Array.isArray(c.items) && c.items.length) {
     const ul = document.createElement("ul");
     ul.className = "option-todo-items";
-    c.items.forEach((item) => {
+    c.items.forEach((item, index) => {
       const li = document.createElement("li");
       const text = (item && (item.text || item.label)) || (typeof item === "string" ? item : "");
       const done = Boolean(item && item.done);
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.disabled = true;
       cb.checked = done;
+      cb.addEventListener("pointerdown", (event) => event.stopPropagation());
+      cb.addEventListener("change", () => {
+        if (c.items[index] && typeof c.items[index] === "object") c.items[index].done = cb.checked;
+        span.classList.toggle("done", cb.checked);
+        autoSave();
+      });
       li.appendChild(cb);
       const span = document.createElement("span");
       span.textContent = " " + text;
@@ -5057,11 +5538,11 @@ function renderRichNodeContent(element, option) {
     });
     slot.appendChild(ul);
     slot.hidden = false;
-  } else if (nt === "note" && (c.text || c.body)) {
-    const p = document.createElement("p");
-    p.className = "option-note-text";
-    p.textContent = c.text || c.body;
-    slot.appendChild(p);
+  } else if (nt === "note" && (c.text || c.body || c.sections)) {
+    const note = document.createElement("div");
+    note.className = "option-note-text markdown-body";
+    note.innerHTML = renderRichMarkdownHtml(noteMarkdownText(c));
+    slot.appendChild(note);
     slot.hidden = false;
   } else if (nt === "weather") {
     const wrap = document.createElement("div");
@@ -5103,19 +5584,7 @@ function renderRichNodeContent(element, option) {
       slot.hidden = false;
     }
   } else if (nt === "link" && c.url) {
-    const a = document.createElement("a");
-    a.className = "option-link-href";
-    a.href = c.url;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-    a.textContent = c.title || c.url;
-    slot.appendChild(a);
-    if (c.description) {
-      const d = document.createElement("p");
-      d.className = "option-link-desc";
-      d.textContent = c.description;
-      slot.appendChild(d);
-    }
+    slot.appendChild(renderLinkPreview(c, true));
     slot.hidden = false;
   } else if (nt === "code" && c.code) {
     const pre = document.createElement("pre");
@@ -5125,6 +5594,21 @@ function renderRichNodeContent(element, option) {
     code.textContent = c.code;
     pre.appendChild(code);
     slot.appendChild(pre);
+    slot.hidden = false;
+  } else if (nt === "table" && Array.isArray(c.rows) && c.rows.length) {
+    slot.appendChild(renderTableCard(c, true));
+    slot.hidden = false;
+  } else if (nt === "timeline" && Array.isArray(c.items) && c.items.length) {
+    slot.appendChild(renderTimelineCard(c, true));
+    slot.hidden = false;
+  } else if (nt === "comparison" && Array.isArray(c.items) && c.items.length) {
+    slot.appendChild(renderComparisonCard(c, true));
+    slot.hidden = false;
+  } else if (nt === "metric" && Array.isArray(c.metrics) && c.metrics.length) {
+    slot.appendChild(renderMetricCard(c, true));
+    slot.hidden = false;
+  } else if (nt === "quote" && Array.isArray(c.quotes) && c.quotes.length) {
+    slot.appendChild(renderQuoteCard(c, true));
     slot.hidden = false;
   }
 }
@@ -5138,8 +5622,19 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
   const offsetY = 40;
   let newX = Number.isFinite(option.x) ? option.x : (parentNode.x || 0) + offsetX;
   let newY = Number.isFinite(option.y) ? option.y : (parentNode.y || 0) + offsetY;
+  const batchIndex = Number.isFinite(option.batchIndex) ? Math.max(0, option.batchIndex) : -1;
+  const batchSize = Number.isFinite(option.batchSize) ? Math.max(1, option.batchSize) : 1;
+  if (!Number.isFinite(option.x) && !Number.isFinite(option.y) && batchIndex >= 0 && batchSize > 1) {
+    const columns = batchSize <= 3 ? 1 : 2;
+    const column = batchIndex % columns;
+    const row = Math.floor(batchIndex / columns);
+    newX = (parentNode.x || 0) + offsetX + column * 360;
+    newY = (parentNode.y || 0) + offsetY + row * 280;
+  }
   if (!Number.isFinite(option.x) && !Number.isFinite(option.y)) {
     let attempts = 0;
+    const startX = newX;
+    const startY = newY;
     while (attempts < 16) {
       const collision = [...state.nodes.values()].some((node) =>
         Math.abs((node.x || 0) - newX) < 330 && Math.abs((node.y || 0) - newY) < 240
@@ -5147,8 +5642,8 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
       if (!collision) break;
       const column = Math.floor(attempts / 4);
       const row = attempts % 4;
-      newX = (parentNode.x || 0) + offsetX + column * 360;
-      newY = (parentNode.y || 0) + offsetY + row * 260;
+      newX = startX + column * 360;
+      newY = startY + row * 260;
       attempts++;
     }
   }
@@ -5173,8 +5668,9 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
   element.style.left = `${newX}px`;
   element.style.top = `${newY}px`;
   element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
-  applyTaskTypeBadge(element, taskType);
-  element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
+  normalizeOptionContent(option);
+  applyTaskTypeBadge(element, taskTypeForOption(option, taskType));
+  element.querySelector(".option-tone").textContent = optionEyebrow(option, option.nodeType || "image");
   element.querySelector(".option-title").textContent = option.title || t("generated.result");
   element.querySelector(".option-description").textContent = option.description || "";
   renderRichNodeContent(element, option);
@@ -6234,8 +6730,9 @@ function renderOptions(options, taskType = "general") {
     element.style.left = `${position.x}px`;
     element.style.top = `${position.y}px`;
     element.style.setProperty("--tilt", `${position.tilt}deg`);
-    applyTaskTypeBadge(element, taskType);
-    element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
+    normalizeOptionContent(option);
+    applyTaskTypeBadge(element, taskTypeForOption(option, taskType));
+    element.querySelector(".option-tone").textContent = optionEyebrow(option, option.nodeType || "image");
     element.querySelector(".option-title").textContent = option.title || t("generated.result");
     element.querySelector(".option-description").textContent = option.description || "";
     renderRichNodeContent(element, option);
@@ -6307,8 +6804,9 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
     element.style.left = `${newX}px`;
     element.style.top = `${newY}px`;
     element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
-    applyTaskTypeBadge(element, taskType);
-    element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
+    normalizeOptionContent(option);
+    applyTaskTypeBadge(element, taskTypeForOption(option, taskType));
+    element.querySelector(".option-tone").textContent = optionEyebrow(option, option.nodeType || "image");
     element.querySelector(".option-title").textContent = option.title || t("generated.result");
     element.querySelector(".option-description").textContent = option.description || "";
     renderRichNodeContent(element, option);
@@ -6629,7 +7127,7 @@ function simpleMarkdownToHtml(text) {
   html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
   // links
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text, url) => {
-    const safeUrl = String(url).replace(/[" -]/g, "");
+    const safeUrl = String(url).replace(/["\x00-\x1F\x7F]/g, "");
     if (!safeUrl.startsWith("http://") && !safeUrl.startsWith("https://") && !safeUrl.startsWith("mailto:")) {
       return `<span class="rich-md-link-invalid">${text}</span>`;
     }
@@ -6683,12 +7181,79 @@ function highlightCode(code, language) {
   return result;
 }
 
+function restoreOptionNode(element, option) {
+  const nodeId = element.dataset.nodeId;
+  const node = state.nodes.get(nodeId);
+  const taskType = taskTypeForOption(option, element.dataset.taskType || "general");
+  const fragment = optionTemplate.content.cloneNode(true);
+  const fresh = fragment.querySelector(".option-node");
+  if (!nodeId || !fresh) return;
+
+  element.className = fresh.className;
+  element.innerHTML = fresh.innerHTML;
+  element.dataset.nodeId = nodeId;
+  element.dataset.nodeType = option.nodeType || "image";
+  element.classList.toggle("deep-think-node", Boolean(option.deepThinkType));
+  if (option.deepThinkType) element.dataset.deepThinkType = option.deepThinkType;
+  else delete element.dataset.deepThinkType;
+
+  normalizeOptionContent(option);
+  applyTaskTypeBadge(element, taskType);
+  element.querySelector(".option-tone").textContent = optionEyebrow(option, option.nodeType || "image");
+  element.querySelector(".option-title").textContent = option.title || t("generated.result");
+  element.querySelector(".option-description").textContent = option.description || "";
+  renderRichNodeContent(element, option);
+
+  const titleEl = element.querySelector(".option-title");
+  if (titleEl) makeTitleEditable(nodeId, titleEl);
+
+  const button = element.querySelector(".generate-button");
+  if (button) {
+    if (option.nodeType && option.nodeType !== "image") button.textContent = t("generated.viewContent");
+    button.addEventListener("click", () => generateOption(nodeId, option));
+  }
+
+  if (option.references?.length) {
+    const badge = document.createElement("span");
+    badge.className = "reference-badge";
+    badge.textContent = `${option.references.length}`;
+    badge.title = `${option.references.length} reference${option.references.length > 1 ? "s" : ""}`;
+    element.appendChild(badge);
+  }
+
+  if (node) {
+    const wasGenerated = Boolean(node.generated);
+    node.generated = false;
+    node.option = option;
+    node.width = element.offsetWidth;
+    node.height = element.offsetHeight;
+    if (wasGenerated) state.generatedCount = Math.max(0, state.generatedCount - 1);
+  }
+  applyCollapseState();
+  updateCounts();
+  drawLinks();
+  autoSave();
+}
+
 function turnIntoRichNode(element, option) {
+  normalizeOptionContent(option);
   const nodeType = option.nodeType || "note";
   element.className = `node option-node rich-node rich-node-${nodeType}`;
   element.innerHTML = "";
   ensureCollapseControl(element.dataset.nodeId, element);
   const nodeId = element.dataset.nodeId;
+
+  const backButton = document.createElement("button");
+  backButton.type = "button";
+  backButton.className = "rich-back-button";
+  backButton.textContent = currentLang === "en" ? "← Back" : "← 返回";
+  backButton.addEventListener("pointerdown", (event) => event.stopPropagation());
+  backButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    restoreOptionNode(element, option);
+  });
+  element.appendChild(backButton);
 
   const content = document.createElement("div");
   content.className = "rich-content";
@@ -6696,7 +7261,7 @@ function turnIntoRichNode(element, option) {
   // Header
   const eyebrow = document.createElement("p");
   eyebrow.className = "eyebrow rich-eyebrow";
-  eyebrow.textContent = `${option.tone || nodeType} / ${t("generated.result")}`;
+  eyebrow.textContent = optionEyebrow(option, nodeType);
   content.appendChild(eyebrow);
 
   const title = document.createElement("h3");
@@ -6711,7 +7276,8 @@ function turnIntoRichNode(element, option) {
 
   switch (nodeType) {
     case "note": {
-      body.innerHTML = simpleMarkdownToHtml(option.content?.text || option.description || "");
+      body.classList.add("markdown-body");
+      body.innerHTML = renderRichMarkdownHtml(noteMarkdownText(option.content || {}, option.description));
       break;
     }
     case "plan": {
@@ -6721,7 +7287,22 @@ function turnIntoRichNode(element, option) {
       steps.forEach((step, i) => {
         const li = document.createElement("li");
         li.className = "rich-plan-step";
-        li.innerHTML = `<span class="rich-plan-num">${i + 1}</span><div class="rich-plan-text"><strong>${String(step.title || step).slice(0, 80)}</strong>${step.desc ? `<p>${step.desc}</p>` : ""}</div>`;
+        const number = document.createElement("span");
+        number.className = "rich-plan-num";
+        number.textContent = String(i + 1);
+        const textWrap = document.createElement("div");
+        textWrap.className = "rich-plan-text";
+        const stepTitle = document.createElement("strong");
+        stepTitle.textContent = String(step.title || step).slice(0, 120);
+        textWrap.appendChild(stepTitle);
+        const detail = String(step.description || step.desc || step.body || "");
+        if (detail) {
+          const detailEl = document.createElement("div");
+          detailEl.className = "rich-plan-detail markdown-body";
+          detailEl.innerHTML = renderRichMarkdownHtml(detail);
+          textWrap.appendChild(detailEl);
+        }
+        li.append(number, textWrap);
         ol.appendChild(li);
       });
       body.appendChild(ol);
@@ -6738,9 +7319,10 @@ function turnIntoRichNode(element, option) {
         checkbox.type = "checkbox";
         checkbox.className = "rich-todo-check";
         checkbox.checked = Boolean(item.done);
+        checkbox.addEventListener("pointerdown", (event) => event.stopPropagation());
         checkbox.addEventListener("change", () => {
           li.classList.toggle("rich-todo-done", checkbox.checked);
-          if (option.content?.items) option.content.items[i].done = checkbox.checked;
+          if (option.content?.items?.[i] && typeof option.content.items[i] === "object") option.content.items[i].done = checkbox.checked;
           autoSave();
         });
         const span = document.createElement("span");
@@ -6804,30 +7386,7 @@ function turnIntoRichNode(element, option) {
     }
     case "link": {
       const l = option.content || {};
-      const wrap = document.createElement("a");
-      wrap.className = "rich-link-wrap";
-      wrap.href = l.url || "#";
-      wrap.target = "_blank";
-      wrap.rel = "noopener";
-      if (l.imageUrl) {
-        const img = document.createElement("img");
-        img.className = "rich-link-thumb";
-        img.src = l.imageUrl;
-        img.alt = l.title || "";
-        img.onerror = () => { img.style.display = "none"; };
-        wrap.appendChild(img);
-      }
-      const titleEl = document.createElement("div");
-      titleEl.className = "rich-link-title";
-      titleEl.textContent = l.title || option.title || "";
-      const descEl = document.createElement("div");
-      descEl.className = "rich-link-desc";
-      descEl.textContent = l.description || option.description || "";
-      const urlEl = document.createElement("div");
-      urlEl.className = "rich-link-url";
-      urlEl.textContent = l.url || "";
-      wrap.append(titleEl, descEl, urlEl);
-      body.appendChild(wrap);
+      body.appendChild(renderLinkPreview(l, false));
       break;
     }
     case "code": {
@@ -6839,6 +7398,26 @@ function turnIntoRichNode(element, option) {
       code.innerHTML = highlightCode(codeText, lang);
       pre.appendChild(code);
       body.appendChild(pre);
+      break;
+    }
+    case "table": {
+      body.appendChild(renderTableCard(option.content || {}, false));
+      break;
+    }
+    case "timeline": {
+      body.appendChild(renderTimelineCard(option.content || {}, false));
+      break;
+    }
+    case "comparison": {
+      body.appendChild(renderComparisonCard(option.content || {}, false));
+      break;
+    }
+    case "metric": {
+      body.appendChild(renderMetricCard(option.content || {}, false));
+      break;
+    }
+    case "quote": {
+      body.appendChild(renderQuoteCard(option.content || {}, false));
       break;
     }
     default: {
@@ -6863,6 +7442,18 @@ function turnIntoRichNode(element, option) {
       case "note": text = option.content?.text || option.description || ""; break;
       case "plan": text = (option.content?.steps || []).map((s, i) => `${i + 1}. ${s.title || s}`).join("\n"); break;
       case "todo": text = (option.content?.items || []).map((it) => `- [${it.done ? "x" : " "}] ${it.text || it}`).join("\n"); break;
+      case "table": {
+        const columns = option.content?.columns || inferTableColumns(option.content?.rows || []);
+        text = [
+          columns.join("\t"),
+          ...(option.content?.rows || []).map((row) => columns.map((column, index) => tableCellValue(row, column, index)).join("\t"))
+        ].join("\n");
+        break;
+      }
+      case "timeline": text = (option.content?.items || []).map((it) => `- ${it.time || it.date || ""} ${it.title || it.name || it}: ${it.description || it.detail || ""}`).join("\n"); break;
+      case "comparison": text = (option.content?.items || []).map((it) => `- ${it.title || it.name || it.option || it}: ${it.summary || it.description || ""}`).join("\n"); break;
+      case "metric": text = (option.content?.metrics || []).map((it) => `${it.label || it.name || it.title}: ${it.value || it.current || ""} ${it.delta || it.trend || ""}`).join("\n"); break;
+      case "quote": text = (option.content?.quotes || []).map((it) => `> ${it.text || it.quote || it}\n${it.source || it.author || ""}`).join("\n\n"); break;
       default: text = option.description || "";
     }
     try { await navigator.clipboard.writeText(text); showToast(t("nodeType.copy") + " OK"); } catch {}

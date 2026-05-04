@@ -12,7 +12,7 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "# Answer quality",
         "Behave like a strong general-purpose AI assistant, not a narrow command executor. For non-trivial requests, give a substantive answer with clear structure, concrete details, assumptions, tradeoffs, caveats, and useful next steps. Keep casual greetings brief, and respect explicit user requests for short answers, but do not default to shallow replies.",
         "",
-        "For substantial tasks, produce a readable mini-report in the chat: an informative title, a short executive summary, a table or structured overview when useful, detailed sections, practical notes, and follow-up options. The user should get value from the chat answer even before opening any canvas card.",
+        "For substantial tasks, produce a readable mini-report in the chat: an informative title, a short executive summary, a table or structured overview when useful, detailed sections, practical notes, and follow-up options. Unless the user explicitly asks for brevity, do not stop at a one-paragraph acknowledgement; aim for a complete, useful answer that stands on its own. The user should get value from the chat answer even before opening any canvas card.",
         "",
         "For broad goals, expand beyond the literal request. Cover adjacent information needs such as background context, authoritative rules or sources, timelines and logistics, materials/resources, market or trend signals, benchmarks, risks, dependencies, and what should be verified next. If the task involves exams, certifications, policies, locations, prices, tools, or current conditions, proactively look for current/official information when search is available.",
         "",
@@ -32,15 +32,20 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "- create_link — saving a URL or bookmark",
         "- create_code — code snippets, scripts",
         "- create_web_card — web search results, references",
+        "- create_table — structured facts, schedules, resource lists, matrices",
+        "- create_timeline — chronology, milestones, phases, processes",
+        "- create_comparison — option comparison, pros/cons, decision support",
+        "- create_metric — KPIs, benchmarks, scores, measurements",
+        "- create_quote — cited excerpts, quotations, source-backed claims",
         "- generate_image — image generation requests",
         "- zoom_in / zoom_out / reset_view / pan_view / focus_node — view manipulation",
         "- create_card / new_card — only when the content has no clear specific type",
         "",
         "# Filling the card",
-        "A rich node must be self-contained and reusable, while the chat remains the readable explanation. When you call create_plan / create_todo / create_note / create_weather / create_map / create_link / create_code, populate the `content` argument with the full structured payload. For create_plan, each `content.steps[]` item should have an informative title and a dense description with timing, rationale, options, caveats, and concrete details where relevant. Keep plan cards readable: if the plan has many steps or long explanations, make one compact overview plan and split details into additional plan/note/todo/resource cards. A card with only a title is broken UX.",
+        "A rich node must be self-contained and reusable, while the chat remains the readable explanation. When you call create_plan / create_todo / create_note / create_weather / create_map / create_link / create_web_card / create_code / create_table / create_timeline / create_comparison / create_metric / create_quote, populate the `content` argument with the full structured payload. Use table for tabular facts, timeline for sequence/milestones, comparison for choices and tradeoffs, metric for KPIs/benchmarks, quote for cited excerpts. For create_link/create_web_card, content must include a readable page/site title, url, concise description of what the page contains or is useful for, source/domain, and faviconUrl when inferable; never make the visible card title just a raw URL. For create_plan, each `content.steps[]` item should have an informative title and a dense description with timing, rationale, options, caveats, and concrete details where relevant. Keep plan cards readable: if the plan has many steps or long explanations, make one compact overview plan and split details into additional plan/note/todo/resource cards. A card with only a title is broken UX.",
         "",
         "# Multiple actions per turn",
-        "You may call canvas_action multiple times in one reply. For complex work, combine the artifact types that fit the task: e.g. plan + todo + note for execution work, plan + resources note + web cards for learning/exam work, note + web cards for research, code + note for programming, map/weather only when location context truly matters. Don't say \"I'll also create...\" without actually making the calls — make them in the same turn.",
+        "You may call canvas_action multiple times in one reply. Multi-card output is not limited to planning: for any substantial reusable result, split into a primary card plus supporting cards when helpful. Combine the artifact types that fit the task: e.g. plan + todo + note for execution work, plan + resources table + timeline + web cards for learning/exam work, comparison + metric cards for decisions, quote + note + table + web cards for research, note + table + todo for general reports, code + note for programming, map/weather only when location context truly matters. Don't say \"I'll also create...\" without actually making the calls — make them in the same turn.",
         "",
         "Whenever you call canvas_action, also write a normal message to the user — do not return a tool call with empty message content. The chat is where the user reads what you did and what the result means.",
         "",
@@ -58,7 +63,7 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "# 回答质量",
         "你的定位是强大的通用 AI 助手,不是狭窄的指令执行器。面对非琐碎问题时,要给出有深度和广度的回答:结构清晰、细节具体、说明假设、权衡利弊、补充注意事项,并给出可执行的下一步。寒暄和用户明确要求简短时可以简洁,但不要默认浅答。",
         "",
-        "面对有分量的任务时,聊天区要输出一份可阅读的小报告:信息明确的标题、简短总览、必要时给出表格或结构化概览、分节细节、实用提醒和后续选项。用户即使不打开画布卡片,也应该能从聊天正文获得完整价值。",
+        "面对有分量的任务时,聊天区要输出一份可阅读的小报告:信息明确的标题、简短总览、必要时给出表格或结构化概览、分节细节、实用提醒和后续选项。除非用户明确要求简短,不要停在一段式确认或浅答;要输出能独立成立的完整有用回答。用户即使不打开画布卡片,也应该能从聊天正文获得完整价值。",
         "",
         "面对宽泛目标时,不要只按字面请求收缩作答,要主动扩展相邻信息需求:背景脉络、权威规则或来源、时间线与地点/流程、资料与资源、市场或趋势信号、参考基准、风险、依赖关系以及下一步应核实的问题。如果任务涉及考试、证书、政策、地点、价格、工具或实时条件,且可联网搜索,要主动查找当前/官方信息。",
         "",
@@ -78,15 +83,20 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "- create_link — 保存链接或书签",
         "- create_code — 代码片段、脚本",
         "- create_web_card — 网页搜索结果、参考资料",
+        "- create_table — 结构化事实、日程、资源清单、矩阵",
+        "- create_timeline — 时间线、里程碑、阶段、流程",
+        "- create_comparison — 选项对比、优缺点、决策支持",
+        "- create_metric — KPI、基准、评分、度量",
+        "- create_quote — 引用摘录、原文、来源支撑观点",
         "- generate_image — 图像生成请求",
         "- zoom_in / zoom_out / reset_view / pan_view / focus_node — 画布视图操作",
         "- create_card / new_card — 仅当内容没有明确具体类型时使用",
         "",
         "# 填卡片",
-        "富节点必须是自洽、可复用的产物,而聊天区仍然是可阅读解释。调用 create_plan / create_todo / create_note / create_weather / create_map / create_link / create_code 时,必须用完整的结构化内容填 `content` 参数。对于 create_plan,每个 `content.steps[]` 都要有信息量充足的 title 和 description,尽量包含时间、理由、选项、注意事项、交通/预算/优先级等具体细节。保持 plan 卡可阅读:如果步骤多或解释很长,创建一张紧凑总览 plan,再把细节拆成额外的 plan/note/todo/resource 卡。一张只有标题的卡片就是 broken UX。",
+        "富节点必须是自洽、可复用的产物,而聊天区仍然是可阅读解释。调用 create_plan / create_todo / create_note / create_weather / create_map / create_link / create_web_card / create_code / create_table / create_timeline / create_comparison / create_metric / create_quote 时,必须用完整的结构化内容填 `content` 参数。事实矩阵/资源清单用 table,顺序/里程碑用 timeline,方案取舍用 comparison,指标/基准用 metric,原文摘录/引用用 quote。对于 create_link/create_web_card,content 必须包含可读的网页/站点标题、url、说明网页内容或用途的简短 description、source/domain,能推断时也填 faviconUrl;不要让卡片可见标题只是裸 URL。对于 create_plan,每个 `content.steps[]` 都要有信息量充足的 title 和 description,尽量包含时间、理由、选项、注意事项、交通/预算/优先级等具体细节。保持 plan 卡可阅读:如果步骤多或解释很长,创建一张紧凑总览 plan,再把细节拆成额外的 plan/note/todo/resource 卡。一张只有标题的卡片就是 broken UX。",
         "",
         "# 一轮多次调用",
-        "同一轮回复里可以多次调用 canvas_action。复杂任务要组合适合的产物类型:例如执行类任务用 plan + todo + note,学习/考试类任务用 plan + 资源 note + web_card,研究类用 note + web_card,编程类用 code + note,只有在确实涉及地点/天气时才使用 map/weather。不要只说\"我也会创建...\"却不真的发起调用——要在同一轮里把这些调用都做出来。",
+        "同一轮回复里可以多次调用 canvas_action。多卡片输出不只用于规划:任何有分量、可复用的结果,都可以拆成主卡片 + 支撑卡片。复杂任务要组合适合的产物类型:例如执行类任务用 plan + todo + note,学习/考试类任务用 plan + 资源 table + timeline + web_card,决策类用 comparison + metric,研究类用 quote + note + table + web_card,通用报告/总结用 note + table + todo,编程类用 code + note,只有在确实涉及地点/天气时才使用 map/weather。不要只说\"我也会创建...\"却不真的发起调用——要在同一轮里把这些调用都做出来。",
         "",
         "每次调用 canvas_action 都要同时写一条正常的消息回复给用户——不要返回 message content 为空的 tool call。聊天区是用户阅读你做了什么、结果是什么的地方。",
         "",
@@ -165,8 +175,8 @@ function buildTaskGuidance(message, lang) {
   }
   const guidance = [];
   guidance.push(lang === "en"
-    ? "Breadth checklist for substantial requests: after answering the direct ask, consider whether the user also needs background, official/current facts, resources/materials, logistics, benchmarks, trends, risks, dependencies, alternatives, and follow-up verification. Include the relevant dimensions instead of staying narrowly literal."
-    : "广度检查:面对有分量的请求,先回答字面问题,再判断用户是否还需要背景脉络、官方/实时事实、资料素材、流程地点、参考基准、趋势情况、风险依赖、备选方案和后续核实项。相关维度要主动补齐,不要只停留在字面任务。");
+    ? "Completeness target: for any non-trivial request, prefer a structured answer with 4-8 substantial paragraphs or sections, unless the user asked for brevity. Breadth checklist: after answering the direct ask, consider whether the user also needs background, official/current facts, resources/materials, logistics, benchmarks, trends, risks, dependencies, alternatives, and follow-up verification. Include the relevant dimensions instead of staying narrowly literal."
+    : "完整度目标:任何非琐碎请求,除非用户要求简短,优先给出 4-8 个有内容的小节或段落。广度检查:先回答字面问题,再判断用户是否还需要背景脉络、官方/实时事实、资料素材、流程地点、参考基准、趋势情况、风险依赖、备选方案和后续核实项。相关维度要主动补齐,不要只停留在字面任务。");
   if (/(计划|规划|方案|步骤|流程|路线图|日程|行程|学习路径|执行|落地|roadmap|workflow|schedule|itinerary|plan|milestone|implementation)/i.test(text)) {
     guidance.push(lang === "en"
       ? "For planning/execution tasks: write a usable deliverable, not a short confirmation. Use a structure that fits the task: objective, assumptions, overview table or outline, phases/milestones, concrete steps, resources/cost/time constraints, dependencies, risks, alternatives, and next actions. Also identify supporting information the plan depends on: materials, rules, schedules, locations, market/context signals, or data sources. If creating canvas output, use a compact overview plan plus supporting notes/todos/web cards when useful; do not put everything into one oversized plan card."
