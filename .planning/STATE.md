@@ -121,5 +121,6 @@ progress:
 
 **Current session started:** 2026-05-04
 **Last session resumed:** 2026-05-04
-**Stopped at:** Phase 21 shipped (path-B fix + Plan 06 deferred); v3.2 Phase 26 ready to plan
-**Next expected action:** `/gsd-new-milestone v3.2 "Qwen Web Parity"` then `/gsd-plan-phase 26`
+**Stopped at:** Phase 21 shipped + v3.2 milestone setup confirmed (PROJECT/REQUIREMENTS/research/ROADMAP all pre-existing from prior session); /gsd-new-milestone v3.2 re-invocation skipped to avoid overwriting existing artifacts
+**Next expected action:** `/clear` then `/gsd-plan-phase 26` (or `/gsd-discuss-phase 26` for keystone-quality clarification)
+**Resume notes for next session:** Phase 26 directory already pre-created at `.planning/phases/26-responses-api-migration/` (empty). v3.2 has 25 requirements across 6 categories (RESP/DOC/IMG/VID/VOI/RES); Phase 26 maps to RESP-01..07.
