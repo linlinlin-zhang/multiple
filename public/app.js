@@ -231,6 +231,8 @@ const voiceState = {
   realtimeActiveRequestId: 0,
   realtimeClosingSessionId: 0,
   realtimeQueuedFinal: null,
+  realtimePlaybackActive: false,
+  realtimePlaybackTimer: null,
   realtimeBusy: false
 };
 
@@ -303,6 +305,13 @@ const CANVAS_TOOL_DEFINITIONS = [
   { type: "new_card" },
   { type: "create_direction" },
   { type: "create_web_card" },
+  { type: "create_note" },
+  { type: "create_plan" },
+  { type: "create_todo" },
+  { type: "create_weather" },
+  { type: "create_map" },
+  { type: "create_link" },
+  { type: "create_code" },
   { type: "create_table" },
   { type: "create_timeline" },
   { type: "create_comparison" },
@@ -492,10 +501,40 @@ const i18n = {
     "chat.actionFeedback.set_zoom": "已调整缩放",
     "chat.actionFeedback.pan_view": "已平移画布",
     "chat.actionFeedback.focus_node": "已聚焦节点",
+    "chat.actionFeedback.select_node": "已选择节点",
+    "chat.actionFeedback.move_node": "已移动节点",
     "chat.actionFeedback.arrange_canvas": "已整理画布",
+    "chat.actionFeedback.auto_layout": "已自动整理画布",
+    "chat.actionFeedback.tidy_canvas": "已整理画布",
+    "chat.actionFeedback.group_selection": "已编组选中卡片",
+    "chat.actionFeedback.ungroup_selection": "已取消编组",
+    "chat.actionFeedback.search_card": "已搜索卡片",
+    "chat.actionFeedback.export_report": "已导出画布报告",
+    "chat.actionFeedback.deselect": "已取消选择",
+    "chat.actionFeedback.select_source": "已选择源卡片",
+    "chat.actionFeedback.select_analysis": "已选择分析卡片",
     "chat.actionFeedback.delete_node": "已删除卡片",
     "chat.actionFeedback.generate_image": "已生成图片",
+    "chat.actionFeedback.web_search": "已创建联网检索卡片",
+    "chat.actionFeedback.image_search": "已搜索图片",
+    "chat.actionFeedback.reverse_image_search": "已搜索相似图片",
+    "chat.actionFeedback.text_image_search": "已按文本搜图",
+    "chat.actionFeedback.analyze_source": "已分析源内容",
+    "chat.actionFeedback.explore_source": "已探索源内容",
+    "chat.actionFeedback.research_source": "已研究源内容",
     "chat.actionFeedback.research_node": "已开始研究",
+    "chat.actionFeedback.open_references": "已打开参考资料",
+    "chat.actionFeedback.save_session": "已保存会话",
+    "chat.actionFeedback.new_chat": "已新建对话",
+    "chat.actionFeedback.open_chat_history": "已打开对话历史",
+    "chat.actionFeedback.close_chat": "已关闭对话栏",
+    "chat.actionFeedback.open_chat": "已打开对话栏",
+    "chat.actionFeedback.open_history": "已打开历史",
+    "chat.actionFeedback.open_settings": "已打开设置",
+    "chat.actionFeedback.open_upload": "已打开上传",
+    "chat.actionFeedback.set_thinking_mode": "已切换思考模式",
+    "chat.actionFeedback.set_deep_think_mode": "已切换深入研究模式",
+    "chat.actionFeedback.create_agent": "已启动子任务",
     "voice.asr": "语音转文字",
     "voice.asrListening": "正在听写...",
     "voice.asrTranscribing": "正在转写...",
@@ -809,10 +848,40 @@ const i18n = {
     "chat.actionFeedback.set_zoom": "Adjusted zoom",
     "chat.actionFeedback.pan_view": "Panned canvas",
     "chat.actionFeedback.focus_node": "Focused node",
+    "chat.actionFeedback.select_node": "Selected node",
+    "chat.actionFeedback.move_node": "Moved node",
     "chat.actionFeedback.arrange_canvas": "Tidied canvas",
+    "chat.actionFeedback.auto_layout": "Auto-arranged canvas",
+    "chat.actionFeedback.tidy_canvas": "Tidied canvas",
+    "chat.actionFeedback.group_selection": "Grouped selected cards",
+    "chat.actionFeedback.ungroup_selection": "Ungrouped selection",
+    "chat.actionFeedback.search_card": "Searched cards",
+    "chat.actionFeedback.export_report": "Exported canvas report",
+    "chat.actionFeedback.deselect": "Deselected",
+    "chat.actionFeedback.select_source": "Selected source card",
+    "chat.actionFeedback.select_analysis": "Selected analysis card",
     "chat.actionFeedback.delete_node": "Deleted card",
     "chat.actionFeedback.generate_image": "Generated image",
+    "chat.actionFeedback.web_search": "Created web search card",
+    "chat.actionFeedback.image_search": "Searched images",
+    "chat.actionFeedback.reverse_image_search": "Searched similar images",
+    "chat.actionFeedback.text_image_search": "Searched images by text",
+    "chat.actionFeedback.analyze_source": "Analyzed source",
+    "chat.actionFeedback.explore_source": "Explored source",
+    "chat.actionFeedback.research_source": "Researched source",
     "chat.actionFeedback.research_node": "Started research",
+    "chat.actionFeedback.open_references": "Opened references",
+    "chat.actionFeedback.save_session": "Saved session",
+    "chat.actionFeedback.new_chat": "Started new chat",
+    "chat.actionFeedback.open_chat_history": "Opened chat history",
+    "chat.actionFeedback.close_chat": "Closed chat panel",
+    "chat.actionFeedback.open_chat": "Opened chat panel",
+    "chat.actionFeedback.open_history": "Opened history",
+    "chat.actionFeedback.open_settings": "Opened settings",
+    "chat.actionFeedback.open_upload": "Opened upload",
+    "chat.actionFeedback.set_thinking_mode": "Switched thinking mode",
+    "chat.actionFeedback.set_deep_think_mode": "Switched deep research mode",
+    "chat.actionFeedback.create_agent": "Started subtask",
     "voice.asr": "Speech to text",
     "voice.asrListening": "Listening...",
     "voice.asrTranscribing": "Transcribing...",
@@ -2540,11 +2609,21 @@ const ACTION_FEEDBACK_ICONS = {
   set_zoom: "🔍",
   pan_view: "🖐",
   focus_node: "📍",
+  select_node: "📍",
+  move_node: "↔",
   arrange_canvas: "📐",
   auto_layout: "📐",
   tidy_canvas: "📐",
+  group_selection: "🧩",
+  ungroup_selection: "🧩",
+  search_card: "🔎",
+  export_report: "📄",
+  deselect: "✕",
+  select_source: "📌",
+  select_analysis: "📌",
   delete_node: "🗑",
   generate_image: "🖼",
+  web_search: "🌐",
   image_search: "🖼",
   reverse_image_search: "🖼",
   text_image_search: "🖼",
@@ -2552,7 +2631,18 @@ const ACTION_FEEDBACK_ICONS = {
   research_source: "🔬",
   explore_source: "🧭",
   analyze_source: "🧪",
-  open_references: "📚"
+  open_references: "📚",
+  save_session: "💾",
+  new_chat: "💬",
+  open_chat_history: "🕘",
+  close_chat: "▣",
+  open_chat: "▣",
+  open_history: "🗄",
+  open_settings: "⚙",
+  open_upload: "⬆",
+  set_thinking_mode: "🧠",
+  set_deep_think_mode: "🔬",
+  create_agent: "🤖"
 };
 
 function normalizeChatActionResults(value) {
@@ -2801,7 +2891,7 @@ function toggleChatConversationPanel() {
 function updateChatPrimaryButtonMode() {
   if (!chatRealtimeButton) return;
   const hasText = Boolean(chatInput?.value.trim());
-  const active = Boolean(voiceState.realtimeRecorder);
+  const active = Boolean(voiceState.realtimeStream);
   chatRealtimeButton.classList.toggle("has-text", hasText);
   const label = hasText ? t("chat.send") : active ? t("voice.realtimeStop") : t("voice.realtime");
   chatRealtimeButton.title = label;
@@ -4124,6 +4214,7 @@ async function startRealtimeVoice() {
     silentGain.gain.value = 0;
 
     processor.onaudioprocess = (event) => {
+      if (voiceState.realtimePlaybackActive) return;
       const input = event.inputBuffer.getChannelData(0);
       const pcm = floatToPcm16(input, audioContext.sampleRate, 16000);
       if (hasAudiblePcm(pcm)) voiceState.realtimeSpeechDetected = true;
@@ -4182,6 +4273,7 @@ function stopRealtimeVoice({ discard = false } = {}) {
   voiceState.realtimePcmChunks = [];
   voiceState.realtimeSpeechDetected = false;
   if (discard || !voiceState.realtimeActiveRequestId) voiceState.realtimeBusy = false;
+  setRealtimePlaybackActive(false);
   chatRealtimeButton?.classList.remove("is-listening");
   renderAllText();
   setStatus(t("status.ready"), "ready");
@@ -4243,7 +4335,7 @@ async function handleRealtimeVoiceChunk(pcmBase64, sessionId, { requestId = 0, f
     if (data.transcript) appendChatMessage("user", data.transcript);
     if (data.reply) {
       appendChatMessage("assistant", data.reply);
-      playVoiceReply(data);
+      playVoiceReply(data, { suppressMic: Boolean(voiceState.realtimeStream) });
     }
     await applyVoiceActions(data.actions || data.action);
   } catch (error) {
@@ -5104,23 +5196,50 @@ function deleteNodeFromAction(action) {
   deleteNode(nodeId);
 }
 
-function playVoiceReply(data) {
+function playVoiceReply(data, { suppressMic = false } = {}) {
   const audioDataUrl = typeof data?.audioDataUrl === "string" ? data.audioDataUrl : "";
   if (audioDataUrl.startsWith("data:audio/")) {
     const audio = new Audio(audioDataUrl);
-    audio.play().catch(() => speakText(data.reply));
+    if (suppressMic) {
+      setRealtimePlaybackActive(true);
+      audio.addEventListener("ended", () => setRealtimePlaybackActive(false), { once: true });
+      audio.addEventListener("error", () => setRealtimePlaybackActive(false), { once: true });
+    }
+    audio.play().catch(() => {
+      if (suppressMic) setRealtimePlaybackActive(false);
+      speakText(data.reply, { suppressMic });
+    });
     return;
   }
-  speakText(data?.reply);
+  speakText(data?.reply, { suppressMic });
 }
 
-function speakText(text) {
+function speakText(text, { suppressMic = false } = {}) {
   const reply = String(text || "").trim();
   if (!reply || !("speechSynthesis" in window)) return;
   const utterance = new SpeechSynthesisUtterance(reply);
   utterance.lang = currentLang === "en" ? "en-US" : "zh-CN";
+  if (suppressMic) {
+    setRealtimePlaybackActive(true);
+    utterance.onend = () => setRealtimePlaybackActive(false);
+    utterance.onerror = () => setRealtimePlaybackActive(false);
+  }
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utterance);
+}
+
+function setRealtimePlaybackActive(active) {
+  if (voiceState.realtimePlaybackTimer) {
+    window.clearTimeout(voiceState.realtimePlaybackTimer);
+    voiceState.realtimePlaybackTimer = null;
+  }
+  voiceState.realtimePlaybackActive = Boolean(active);
+  if (active) {
+    voiceState.realtimePlaybackTimer = window.setTimeout(() => {
+      voiceState.realtimePlaybackActive = false;
+      voiceState.realtimePlaybackTimer = null;
+    }, 30000);
+  }
 }
 
 function canRecordAudio({ mediaRecorder = false } = {}) {
