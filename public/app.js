@@ -265,6 +265,7 @@ let liveResearchCards = new Map();
 let deepThinkBusy = false;
 let deepThinkModeActive = false;
 let pendingChatAttachment = null;
+let chatOperationBusy = false;
 
 const VIEWER_ASPECT_OPTIONS = {
   auto: { label: { zh: "宽高比", en: "Aspect" }, size: "" },
@@ -2097,11 +2098,11 @@ function wireControls() {
   });
   chatImageSearchAction?.addEventListener("click", async () => {
     closeChatActionMenu();
-    await searchImagesFromAction({
-      type: "image_search",
+    await runChatBoundCanvasAction(() => searchImagesFromAction({
+      type: pendingChatAttachment?.kind === "image" ? "reverse_image_search" : "image_search",
       query: chatInput?.value.trim() || "",
       imageDataUrl: pendingChatAttachment?.kind === "image" ? pendingChatAttachment.dataUrl : ""
-    });
+    }));
   });
   chatSubagentsAction?.addEventListener("click", () => {
     closeChatActionMenu();
@@ -2795,6 +2796,7 @@ function normalizeChatArtifacts(value) {
       summary: String(item.summary || item.description || item.content || item.prompt || "").slice(0, 900),
       url: String(item.url || "").slice(0, 512),
       imageUrl: String(item.imageUrl || item.localImageUrl || item.thumbnailUrl || item.thumbnail_url || "").slice(0, 512),
+      localImageUrl: String(item.localImageUrl || "").slice(0, 512),
       query: String(item.query || "").slice(0, 240),
       status: String(item.status || "").slice(0, 40)
     }));
@@ -3014,20 +3016,43 @@ function toggleChatConversationPanel() {
 
 function updateChatPrimaryButtonMode() {
   if (!chatRealtimeButton) return;
+  const busy = Boolean(chatOperationBusy || deepThinkBusy);
   const hasText = Boolean(chatInput?.value.trim() || pendingChatAttachment);
   const active = Boolean(voiceState.realtimeStream);
+  chatForm?.classList.toggle("chat-busy", busy);
   chatRealtimeButton.classList.toggle("has-text", hasText);
-  const label = hasText ? t("chat.send") : active ? t("voice.realtimeStop") : t("voice.realtime");
+  chatRealtimeButton.classList.toggle("is-busy", busy);
+  chatRealtimeButton.disabled = busy;
+  if (chatInput) chatInput.readOnly = busy;
+  if (chatAttachButton) chatAttachButton.disabled = busy;
+  const label = busy
+    ? (currentLang === "en" ? "Working..." : "执行中...")
+    : hasText ? t("chat.send") : active ? t("voice.realtimeStop") : t("voice.realtime");
   chatRealtimeButton.title = label;
   chatRealtimeButton.setAttribute("aria-label", label);
 }
 
 function handleChatPrimaryAction() {
+  if (chatOperationBusy || deepThinkBusy) return;
   if (chatInput?.value.trim() || pendingChatAttachment) {
     chatForm?.requestSubmit();
     return;
   }
   toggleRealtimeVoice();
+}
+
+async function runChatBoundCanvasAction(task) {
+  if (chatOperationBusy || deepThinkBusy) return null;
+  chatOperationBusy = true;
+  updateChatPrimaryButtonMode();
+  setStatus(t("status.busy"), "busy");
+  try {
+    return await task();
+  } finally {
+    chatOperationBusy = false;
+    updateChatPrimaryButtonMode();
+    chatInput?.focus();
+  }
 }
 
 function setSubagentsMode(enabled, { silent = false } = {}) {
@@ -3749,6 +3774,7 @@ function buildSelectedNodeContext(nodeId = state.selectedNodeId) {
 
 async function handleChatSubmit(event) {
   event.preventDefault();
+  if (chatOperationBusy || deepThinkBusy) return;
   let message = chatInput.value.trim();
   if (!message && pendingChatAttachment?.kind === "image") {
     message = currentLang === "en" ? "Please look at this image and help me understand it." : "请先看看这张图片，并帮我理解它。";
@@ -3777,6 +3803,7 @@ async function handleChatSubmit(event) {
 async function submitChatMessage(message, options = {}) {
   const text = String(message || "").trim();
   if (!text) return;
+  if (chatOperationBusy) return;
   const subagentsEnabled = Boolean(options.subagentsEnabled ?? state.subagentsEnabled);
   const inferredAgentMode = subagentsEnabled && shouldUseClientAgentMode(text);
   const agentMode = Boolean(options.agentMode || inferredAgentMode);
@@ -3798,8 +3825,10 @@ async function submitChatMessage(message, options = {}) {
     pending: true,
     thinkingRequested: effectiveThinkingMode === "thinking"
   });
+  chatOperationBusy = true;
   setStatus(t("status.busy"), "busy");
   if (chatRealtimeButton) chatRealtimeButton.disabled = true;
+  updateChatPrimaryButtonMode();
 
   try {
     const sourceImageDataUrl = attachmentImageDataUrl || await getSourceImageDataUrl();
@@ -3890,6 +3919,7 @@ async function submitChatMessage(message, options = {}) {
     });
     setStatus(t("status.error"), "error");
   } finally {
+    chatOperationBusy = false;
     if (chatRealtimeButton) chatRealtimeButton.disabled = false;
     updateChatPrimaryButtonMode();
     chatInput.focus();
@@ -3967,6 +3997,7 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
   liveResearchCards = new Map();
   if (chatDeepThinkAction) chatDeepThinkAction.disabled = true;
   setStatus(t("deepthink.busy"), "busy");
+  updateChatPrimaryButtonMode();
 
   const shouldAppendUser = options.appendUser !== false;
   if (typedPrompt && shouldAppendUser) {
@@ -4026,6 +4057,7 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
   } finally {
     deepThinkBusy = false;
     if (chatDeepThinkAction) chatDeepThinkAction.disabled = false;
+    updateChatPrimaryButtonMode();
     chatInput?.focus();
   }
 }
@@ -4672,7 +4704,7 @@ async function applyVoiceActions(value, context = {}) {
       creationIndex += 1;
     }
     if (String(type) === "create_agent" && state.subagentsEnabled) normalized.userConfirmed = true;
-    if ((String(type) === "image_search" || String(type) === "reverse_image_search" || String(type) === "text_image_search") && context.imageDataUrl && !normalized.imageDataUrl) {
+    if ((String(type) === "image_search" || String(type) === "reverse_image_search" || String(type) === "text_image_search" || String(type) === "generate_image") && context.imageDataUrl && !normalized.imageDataUrl) {
       normalized.imageDataUrl = context.imageDataUrl;
     }
     if (String(type) === "create_agent") {
@@ -5119,8 +5151,9 @@ async function searchImagesFromAction(action = {}) {
   ).trim();
   let imageDataUrl = typeof action.imageDataUrl === "string" ? action.imageDataUrl.trim() : "";
   const actionType = String(action.type || "");
-  const targetNodeId = resolveActionNodeId(action, state.selectedNodeId || "source");
-  if (!imageDataUrl && (actionType === "reverse_image_search" || targetNodeId)) {
+  const explicitNodeId = resolveActionNodeId(action, "");
+  const targetNodeId = explicitNodeId || (actionType === "reverse_image_search" ? state.selectedNodeId || "source" : "");
+  if (!imageDataUrl && targetNodeId) {
     try {
       imageDataUrl = await getImageDataUrlForNode(targetNodeId || "source");
     } catch {
@@ -5155,13 +5188,15 @@ async function searchImagesFromAction(action = {}) {
     const y = baseY + (index % 3) * 230;
     const title = String(result.title || result.sourceUrl || result.url || "Image reference").slice(0, 48);
     const localUrl = result.localImageUrl || (result.imageHash ? `/api/assets/${result.imageHash}?kind=upload` : "");
+    const remoteUrl = result.imageUrl || result.thumbnailUrl || "";
+    const displayUrl = remoteUrl || localUrl;
     let nodeId = null;
-    if (localUrl) {
+    if (displayUrl) {
       nodeId = createStandaloneSourceCard({
         id: `image-search-${Date.now().toString(36)}-${index}`,
         title,
         fileName: title,
-        imageUrl: localUrl,
+        imageUrl: displayUrl,
         imageHash: result.imageHash || "",
         x,
         y
@@ -5202,7 +5237,8 @@ async function searchImagesFromAction(action = {}) {
     title: String(result.title || result.sourceUrl || result.url || "Image reference").slice(0, 80),
     summary: String(result.description || data.summary || "").slice(0, 420),
     url: String(result.sourceUrl || result.url || result.imageUrl || ""),
-    imageUrl: String(result.localImageUrl || (result.imageHash ? `/api/assets/${result.imageHash}?kind=upload` : "")),
+    imageUrl: String(result.imageUrl || result.thumbnailUrl || result.localImageUrl || (result.imageHash ? `/api/assets/${result.imageHash}?kind=upload` : "")),
+    localImageUrl: String(result.localImageUrl || (result.imageHash ? `/api/assets/${result.imageHash}?kind=upload` : "")),
     status: currentLang === "en" ? "visual reference" : "视觉参考"
   }));
   appendChatMessage("assistant", currentLang === "en"
@@ -5235,7 +5271,10 @@ async function generateImageFromAction(action) {
   }
   revealNode(nodeId);
   forceSelectNode(nodeId);
-  const result = await generateOption(nodeId, node.option);
+  const actionReference = typeof action.imageDataUrl === "string" ? action.imageDataUrl : "";
+  const result = actionReference
+    ? await generateOptionWithReference(nodeId, node.option, actionReference)
+    : await generateOption(nodeId, node.option);
   if (result?.success !== false) focusNodeInViewport(nodeId, "center");
   return result;
 }
@@ -6301,7 +6340,11 @@ function sourceCardLocalImageUrl(imageHash) {
 }
 
 function sourceCardDisplayImageUrl(sourceCard = {}) {
-  return sourceCardLocalImageUrl(sourceCard.imageHash) || sourceCard.imageUrl || "";
+  return sourceCard.imageUrl || sourceCard.remoteImageUrl || sourceCardLocalImageUrl(sourceCard.imageHash) || "";
+}
+
+function sourceCardReferenceImageUrl(sourceCard = {}) {
+  return sourceCardLocalImageUrl(sourceCard.imageHash) || sourceCard.imageUrl || sourceCard.remoteImageUrl || "";
 }
 
 function bindSourcePreviewFallback(img, empty, upload, imageHash = "") {
@@ -7241,6 +7284,12 @@ function renderChatArtifacts(artifacts) {
       image.src = artifact.imageUrl;
       image.alt = artifact.title || "";
       image.loading = "lazy";
+      if (artifact.localImageUrl && artifact.localImageUrl !== artifact.imageUrl) {
+        image.onerror = () => {
+          image.onerror = null;
+          image.src = artifact.localImageUrl;
+        };
+      }
       card.appendChild(image);
     }
     const meta = document.createElement("span");
@@ -7528,7 +7577,12 @@ function renderExploreOptions(options, references, taskType = "general") {
 }
 
 async function generateOption(id, option) {
-  const referenceImageDataUrl = await getSourceImageDataUrl();
+  let referenceImageDataUrl = "";
+  try {
+    referenceImageDataUrl = await getSourceImageDataUrl();
+  } catch {
+    referenceImageDataUrl = "";
+  }
   return await generateOptionWithReference(id, option, referenceImageDataUrl);
 }
 
@@ -7563,19 +7617,14 @@ async function generateOptionWithReference(id, option, referenceImageDataUrl, ed
     }
   }
 
-  if (!referenceImageDataUrl) {
-    const error = t("chat.noSourceForGenerate");
-    showSelectionToast(error);
-    return { success: false, nodeId: id, title: option.title || "", error };
-  }
-
   element.classList.add("loading");
   if (button) button.disabled = true;
   setStatus(t("status.busy"), "busy");
 
   try {
     const data = await postJson("/api/generate", {
-      imageDataUrl: referenceImageDataUrl,
+      imageDataUrl: referenceImageDataUrl || "",
+      mode: referenceImageDataUrl ? "image-to-image" : "text-to-image",
       maskDataUrl: editOptions.maskDataUrl || "",
       size: editOptions.size || "",
       option,
@@ -8163,7 +8212,7 @@ function getImageNodeInfo(nodeId) {
 
   const node = state.nodes.get(nodeId);
   if (node?.sourceCard) {
-    const imageUrl = sourceCardDisplayImageUrl(node.sourceCard);
+    const imageUrl = sourceCardReferenceImageUrl(node.sourceCard);
     if (!imageUrl) return null;
     return {
       nodeId,

@@ -2657,6 +2657,27 @@ html[data-theme="dark"] .chat-scroll-bottom {
   display: block;
 }
 
+.chat-realtime-button.is-busy .chat-primary-voice-icon,
+.chat-realtime-button.is-busy .chat-primary-send-icon {
+  display: none;
+}
+
+.chat-realtime-button.is-busy::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: var(--paper);
+  border-radius: 999px;
+  animation: chatButtonSpin 800ms linear infinite;
+}
+
+@keyframes chatButtonSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .chat-realtime-button:hover:not(:disabled),
 .chat-realtime-button.is-listening {
   background: var(--ps-blue-hover);

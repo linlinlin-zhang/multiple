@@ -129,9 +129,10 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
         type: { type: "string", enum: CANVAS_ACTION_TYPES, description: "The action type to execute" },
         title: { type: "string", description: "Title for the new card or action" },
         description: { type: "string", description: "Description or body text" },
-        prompt: { type: "string", description: "Prompt for image generation or detailed instruction" },
-        query: { type: "string", description: "Search query" },
+        prompt: { type: "string", description: "Prompt for image generation or detailed instruction. Required for generate_image unless title/description already form a complete visual prompt." },
+        query: { type: "string", description: "Search query. For image_search this is the internet image search query; for reverse_image_search it can refine the visual search." },
         url: { type: "string", description: "URL for link or web card" },
+        imageDataUrl: { type: "string", description: "Optional data URL for image-to-image generation or reverse image search. Usually omitted because the app passes attached/selected images automatically." },
         nodeType: { type: "string", enum: ["note", "plan", "todo", "weather", "map", "link", "code", "table", "timeline", "comparison", "metric", "quote"], description: "Rich node type" },
         content: {
           type: "object",
@@ -159,7 +160,7 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
         y: { type: "number" },
         scale: { type: "number" },
         amount: { type: "number" },
-        mode: { type: "string" },
+        mode: { type: "string", description: "Optional mode hint, e.g. text-to-image, image-to-image, reverse-image-search, style, edit, reference." },
         scope: { type: "string" },
         role: { type: "string", description: "For create_agent: the worker role or specialty, such as researcher, critic, planner, data analyst, writer, visual director, or QA." },
         deliverable: { type: "string", description: "For create_agent: the concrete output the worker must return." },
@@ -2785,8 +2786,11 @@ async function handleGenerate(body, res) {
   const maskDataUrl = normalizeDataUrl(body?.maskDataUrl);
   const sizeOverride = cleanSize(body?.size);
   const option = normalizeOption(body?.option);
-  if (!imageDataUrl || !option) {
-    return sendJson(res, 400, { error: "imageDataUrl and option are required" });
+  if (!option) {
+    return sendJson(res, 400, { error: "option is required" });
+  }
+  if (maskDataUrl && !imageDataUrl && !body?.imageUrl) {
+    return sendJson(res, 400, { error: "imageDataUrl or imageUrl is required for masked image editing" });
   }
 
   if (isDemoRole(runtimeConfigs.image)) {
@@ -2799,7 +2803,8 @@ async function handleGenerate(body, res) {
   }
 
   const lang = body?.language === "en" ? "en" : "zh";
-  const prompt = buildGeneratePrompt(lang, option);
+  const hasReferenceImage = Boolean(imageDataUrl || body?.imageUrl);
+  const prompt = buildGeneratePrompt(lang, { ...option, generationMode: hasReferenceImage ? "image-to-image" : "text-to-image" });
 
   // thinkingMode is accepted for consistency but image generation APIs don't support it directly.
   const result = isDashScopeQwenImageConfig(runtimeConfigs.image)

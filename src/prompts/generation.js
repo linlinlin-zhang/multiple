@@ -1,13 +1,16 @@
 import { SAFETY_DIRECTIVES } from './shared.js';
 
 export function buildGeneratePrompt(lang, option) {
+  const textToImage = option?.generationMode === "text-to-image";
   return lang === "en"
     ? [
         "# Role",
         "You are an image generation prompt engineer.",
         "",
         "# Mission",
-        "Generate a new image based on the reference image, preserving the most important subjects, color relationships, or visual memory points, but do not simply copy.",
+        textToImage
+          ? "Generate a new image from the user's text direction. Do not assume a hidden reference image."
+          : "Generate a new image based on the reference image, preserving the most important subjects, color relationships, or visual memory points, but do not simply copy.",
         "",
         "# Direction",
         "Title:",
@@ -29,7 +32,9 @@ export function buildGeneratePrompt(lang, option) {
         "你是图像生成提示词工程师。",
         "",
         "# 使命",
-        "请基于参考图生成一张新图，保留原图最重要的主体、颜色关系或视觉记忆点，但不要只是复制。",
+        textToImage
+          ? "请根据用户的文字方向直接生成一张新图，不要假设存在隐藏参考图。"
+          : "请基于参考图生成一张新图，保留原图最重要的主体、颜色关系或视觉记忆点，但不要只是复制。",
         "",
         "# 方向",
         "标题：",
