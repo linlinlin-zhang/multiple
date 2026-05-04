@@ -1168,21 +1168,28 @@ async function handleRealtimeVoice(body, res) {
     });
   }
 
+  const lang = body?.language === "en" ? "en" : "zh";
   const result = await realtimeVoiceCompletion(runtimeConfigs.realtime, {
     audioDataUrl,
     pcmBase64,
     sampleRate: Number(body?.sampleRate) || 16000,
-    language: body?.language === "en" ? "en" : "zh",
+    language: lang,
     selectedContext: body?.selectedContext || null,
     analysis: normalizeChatAnalysis(body?.analysis),
     messages: normalizeChatMessages(body?.messages),
     canvas: body?.canvas && typeof body.canvas === "object" ? body.canvas : {}
   });
+  const transcript = stringOr(result?.transcript, "");
+  const reply = stringOr(result?.reply, "");
+  let actions = Array.isArray(result?.actions) ? result.actions : [];
+  actions = ensureChatFallbackActionsClean(transcript, actions, reply);
+  actions = enrichCanvasActions(actions, transcript, reply, lang);
 
   return sendJson(res, 200, {
     provider: "api",
     model: runtimeConfigs.realtime.model,
-    ...result
+    ...result,
+    actions
   });
 }
 
@@ -2848,7 +2855,7 @@ async function realtimeVoiceCompletion(config, context) {
     return dashScopeRealtimeVoiceCompletion(config, context);
   }
 
-  const audio = audioInputFromDataUrl(context.audioDataUrl);
+  const audio = audioInputFromRealtimeContext(context);
   const instruction = buildRealtimeInstruction(context);
 
   const response = await chatCompletions(config, {
@@ -3322,6 +3329,14 @@ function audioInputFromDataUrl(audioDataUrl) {
   };
 }
 
+function audioInputFromRealtimeContext(context) {
+  if (isAudioDataUrl(context?.audioDataUrl)) return audioInputFromDataUrl(context.audioDataUrl);
+  if (isBase64Payload(context?.pcmBase64)) {
+    return audioInputFromDataUrl(wavDataUrlFromPcm16Chunks([context.pcmBase64], Number(context.sampleRate) || 16000));
+  }
+  throw new Error("Realtime voice requires audioDataUrl or pcmBase64.");
+}
+
 function dashScopeInputAudioFromDataUrl(audioDataUrl) {
   const match = /^data:([^;,]+)(?:;[^,]*)?;base64,[a-zA-Z0-9+/=]+$/i.exec(audioDataUrl);
   if (!match) {
@@ -3389,6 +3404,8 @@ function normalizeVoiceActions(value) {
         scope: normalizedActionString(action.scope, 80),
         nodeType: normalizedActionString(action.nodeType, 40) || undefined,
         content: action.content || undefined,
+        batchIndex: normalizedActionNumber(action.batchIndex),
+        batchSize: normalizedActionNumber(action.batchSize),
         x: normalizedActionNumber(action.x),
         y: normalizedActionNumber(action.y),
         dx: normalizedActionNumber(action.dx),

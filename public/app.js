@@ -214,14 +214,23 @@ const voiceState = {
   asrTargetInput: null,
   asrTranscript: "",
   asrBusy: false,
+  asrQueue: [],
+  asrLastRequestId: 0,
+  asrActiveRequestId: 0,
   realtimeSessionId: 0,
   realtimeRecorder: null,
   realtimeStream: null,
   realtimeAudioContext: null,
   realtimeSource: null,
   realtimeProcessor: null,
+  realtimeSilentGain: null,
   realtimeFlushTimer: null,
   realtimePcmChunks: [],
+  realtimeSpeechDetected: false,
+  realtimeLastRequestId: 0,
+  realtimeActiveRequestId: 0,
+  realtimeClosingSessionId: 0,
+  realtimeQueuedFinal: null,
   realtimeBusy: false
 };
 
@@ -3939,6 +3948,8 @@ async function startAsrDictation(targetInput, { silent = false } = {}) {
   voiceState.asrBaseText = voiceState.asrTargetInput?.value || "";
   voiceState.asrTranscript = "";
   voiceState.asrBusy = false;
+  voiceState.asrQueue = [];
+  voiceState.asrActiveRequestId = 0;
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -3974,8 +3985,25 @@ async function startAsrDictation(targetInput, { silent = false } = {}) {
   }
 }
 
-async function transcribeAsrChunk(blob, sessionId) {
-  if (voiceState.asrBusy || sessionId !== voiceState.asrSessionId) return;
+function transcribeAsrChunk(blob, sessionId) {
+  if (sessionId !== voiceState.asrSessionId) return;
+  voiceState.asrQueue.push({ blob, sessionId });
+  if (voiceState.asrQueue.length > 4) voiceState.asrQueue.splice(0, voiceState.asrQueue.length - 4);
+  processAsrQueue();
+}
+
+async function processAsrQueue() {
+  if (voiceState.asrBusy) return;
+  const item = voiceState.asrQueue.shift();
+  if (!item) return;
+  const { blob, sessionId } = item;
+  if (sessionId !== voiceState.asrSessionId) {
+    processAsrQueue();
+    return;
+  }
+  const requestId = voiceState.asrLastRequestId + 1;
+  voiceState.asrLastRequestId = requestId;
+  voiceState.asrActiveRequestId = requestId;
   voiceState.asrBusy = true;
   setStatus(t("voice.asrTranscribing"), "busy");
 
@@ -4005,7 +4033,11 @@ async function transcribeAsrChunk(blob, sessionId) {
   } catch (error) {
     setStatus(error?.message || t("status.error"), "error");
   } finally {
-    voiceState.asrBusy = false;
+    if (voiceState.asrActiveRequestId === requestId) {
+      voiceState.asrBusy = false;
+      voiceState.asrActiveRequestId = 0;
+      processAsrQueue();
+    }
   }
 }
 
@@ -4041,6 +4073,8 @@ function cleanupAsrDraft({ restore }) {
   voiceState.asrBaseText = "";
   voiceState.asrTranscript = "";
   voiceState.asrBusy = false;
+  voiceState.asrQueue = [];
+  voiceState.asrActiveRequestId = 0;
   voiceState.asrTargetInput?.classList.remove("has-asr-draft");
   voiceState.asrTargetInput = null;
   chatAsrButton?.classList.remove("is-recording");
@@ -4068,6 +4102,9 @@ async function startRealtimeVoice() {
 
   const sessionId = voiceState.realtimeSessionId + 1;
   voiceState.realtimeSessionId = sessionId;
+  voiceState.realtimeClosingSessionId = 0;
+  voiceState.realtimeQueuedFinal = null;
+  voiceState.realtimeActiveRequestId = 0;
   voiceState.realtimeBusy = false;
 
   try {
@@ -4083,19 +4120,26 @@ async function startRealtimeVoice() {
     const audioContext = new AudioContextCtor();
     const source = audioContext.createMediaStreamSource(stream);
     const processor = audioContext.createScriptProcessor(4096, 1, 1);
+    const silentGain = audioContext.createGain();
+    silentGain.gain.value = 0;
 
     processor.onaudioprocess = (event) => {
       const input = event.inputBuffer.getChannelData(0);
-      voiceState.realtimePcmChunks.push(floatToPcm16(input, audioContext.sampleRate, 16000));
+      const pcm = floatToPcm16(input, audioContext.sampleRate, 16000);
+      if (hasAudiblePcm(pcm)) voiceState.realtimeSpeechDetected = true;
+      voiceState.realtimePcmChunks.push(pcm);
     };
     source.connect(processor);
-    processor.connect(audioContext.destination);
+    processor.connect(silentGain);
+    silentGain.connect(audioContext.destination);
 
     voiceState.realtimeStream = stream;
     voiceState.realtimeAudioContext = audioContext;
     voiceState.realtimeSource = source;
     voiceState.realtimeProcessor = processor;
+    voiceState.realtimeSilentGain = silentGain;
     voiceState.realtimePcmChunks = [];
+    voiceState.realtimeSpeechDetected = false;
     voiceState.realtimeFlushTimer = window.setInterval(() => {
       flushRealtimePcmChunk(sessionId);
     }, 3200);
@@ -4109,13 +4153,23 @@ async function startRealtimeVoice() {
   }
 }
 
-function stopRealtimeVoice() {
+function stopRealtimeVoice({ discard = false } = {}) {
+  const sessionId = voiceState.realtimeSessionId;
+  if (!discard) voiceState.realtimeClosingSessionId = sessionId;
+  if (!discard && voiceState.realtimeSpeechDetected) flushRealtimePcmChunk(sessionId, { force: true });
+  if (discard) {
+    voiceState.realtimeClosingSessionId = 0;
+    voiceState.realtimeQueuedFinal = null;
+    voiceState.realtimeActiveRequestId = 0;
+    voiceState.realtimeBusy = false;
+  }
   voiceState.realtimeSessionId += 1;
   if (voiceState.realtimeFlushTimer) {
     window.clearInterval(voiceState.realtimeFlushTimer);
     voiceState.realtimeFlushTimer = null;
   }
   voiceState.realtimeProcessor?.disconnect();
+  voiceState.realtimeSilentGain?.disconnect();
   voiceState.realtimeSource?.disconnect();
   voiceState.realtimeAudioContext?.close?.().catch(() => {});
   stopMediaStream(voiceState.realtimeStream);
@@ -4124,22 +4178,47 @@ function stopRealtimeVoice() {
   voiceState.realtimeAudioContext = null;
   voiceState.realtimeSource = null;
   voiceState.realtimeProcessor = null;
+  voiceState.realtimeSilentGain = null;
   voiceState.realtimePcmChunks = [];
-  voiceState.realtimeBusy = false;
+  voiceState.realtimeSpeechDetected = false;
+  if (discard || !voiceState.realtimeActiveRequestId) voiceState.realtimeBusy = false;
   chatRealtimeButton?.classList.remove("is-listening");
   renderAllText();
   setStatus(t("status.ready"), "ready");
 }
 
-function flushRealtimePcmChunk(sessionId) {
-  if (!voiceState.realtimePcmChunks.length || voiceState.realtimeBusy || sessionId !== voiceState.realtimeSessionId) return;
+function flushRealtimePcmChunk(sessionId, { force = false } = {}) {
+  const activeSession = sessionId === voiceState.realtimeSessionId;
+  const closingSession = force && sessionId === voiceState.realtimeClosingSessionId;
+  if (!voiceState.realtimePcmChunks.length || (!activeSession && !closingSession)) return;
+  if (!force && !voiceState.realtimeSpeechDetected) {
+    voiceState.realtimePcmChunks = [];
+    return;
+  }
+  if (voiceState.realtimeBusy && !force) return;
   const pcmBase64 = pcmChunksToBase64(voiceState.realtimePcmChunks);
   voiceState.realtimePcmChunks = [];
-  handleRealtimeVoiceChunk(pcmBase64, sessionId);
+  voiceState.realtimeSpeechDetected = false;
+  const requestId = voiceState.realtimeLastRequestId + 1;
+  voiceState.realtimeLastRequestId = requestId;
+  const payload = { pcmBase64, sessionId, requestId, final: force };
+  if (voiceState.realtimeBusy) {
+    voiceState.realtimeQueuedFinal = force ? payload : null;
+    return;
+  }
+  handleRealtimeVoiceChunk(pcmBase64, sessionId, { requestId, final: force });
 }
 
-async function handleRealtimeVoiceChunk(pcmBase64, sessionId) {
-  if (voiceState.realtimeBusy || sessionId !== voiceState.realtimeSessionId) return;
+async function handleRealtimeVoiceChunk(pcmBase64, sessionId, { requestId = 0, final = false } = {}) {
+  if (!pcmBase64 || voiceState.realtimeBusy) return;
+  const activeSession = sessionId === voiceState.realtimeSessionId;
+  const closingSession = final && sessionId === voiceState.realtimeClosingSessionId;
+  if (!activeSession && !closingSession) return;
+  if (!requestId) {
+    requestId = voiceState.realtimeLastRequestId + 1;
+    voiceState.realtimeLastRequestId = requestId;
+  }
+  voiceState.realtimeActiveRequestId = requestId;
   voiceState.realtimeBusy = true;
 
   try {
@@ -4152,10 +4231,13 @@ async function handleRealtimeVoiceChunk(pcmBase64, sessionId) {
       messages: state.chatMessages.slice(-20),
       canvas: buildVoiceCanvasContext()
     });
-    if (sessionId !== voiceState.realtimeSessionId) return;
+    const stale = final
+      ? sessionId !== voiceState.realtimeClosingSessionId
+      : sessionId !== voiceState.realtimeSessionId;
+    if (stale) return;
     if (data.provider === "demo") {
       showToast(t("voice.realtimeNotConfigured"));
-      stopRealtimeVoice();
+      stopRealtimeVoice({ discard: true });
       return;
     }
     if (data.transcript) appendChatMessage("user", data.transcript);
@@ -4167,7 +4249,15 @@ async function handleRealtimeVoiceChunk(pcmBase64, sessionId) {
   } catch (error) {
     setStatus(error?.message || t("status.error"), "error");
   } finally {
-    voiceState.realtimeBusy = false;
+    if (voiceState.realtimeActiveRequestId === requestId) {
+      voiceState.realtimeBusy = false;
+      voiceState.realtimeActiveRequestId = 0;
+      const queued = voiceState.realtimeQueuedFinal;
+      if (queued) {
+        voiceState.realtimeQueuedFinal = null;
+        handleRealtimeVoiceChunk(queued.pcmBase64, queued.sessionId, { requestId: queued.requestId, final: queued.final });
+      }
+    }
   }
 }
 
@@ -5055,6 +5145,16 @@ function pickAudioMimeType() {
 function stopMediaStream(stream) {
   if (!stream) return;
   stream.getTracks().forEach((track) => track.stop());
+}
+
+function hasAudiblePcm(samples, threshold = 0.012) {
+  if (!samples?.length) return false;
+  let sum = 0;
+  for (let i = 0; i < samples.length; i += 1) {
+    const value = samples[i] / 32768;
+    sum += value * value;
+  }
+  return Math.sqrt(sum / samples.length) > threshold;
 }
 
 function blobToDataUrl(blob) {
