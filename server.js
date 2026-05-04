@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleCreateSession, handleGetSession, handleUpdateSession, handleExportSession } from "./src/api/sessions.js";
-import { handleListHistory, handleRenameSession } from "./src/api/history.js";
+import { handleListHistory, handleRenameSession, handleDeleteSession } from "./src/api/history.js";
 import { handleStoreAsset, handleGetAsset } from "./src/api/assets.js";
 import { handleCreateShare, handleGetShare, handleCreateImageShare, handleGetImageShare } from "./src/api/share.js";
 import { handleImportSession } from "./src/api/import.js";
@@ -160,7 +160,16 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
         scale: { type: "number" },
         amount: { type: "number" },
         mode: { type: "string" },
-        scope: { type: "string" }
+        scope: { type: "string" },
+        role: { type: "string", description: "For create_agent: the worker role or specialty, such as researcher, critic, planner, data analyst, writer, visual director, or QA." },
+        deliverable: { type: "string", description: "For create_agent: the concrete output the worker must return." },
+        successCriteria: { type: "string", description: "For create_agent: how the controller should judge whether the subagent result is useful." },
+        priority: { type: "string", description: "For create_agent: optional priority such as high, medium, or low." },
+        dependencies: {
+          type: "array",
+          items: { type: "string" },
+          description: "For create_agent: optional dependency notes or names of other subagent results this task relies on."
+        }
       },
       required: ["type"]
     }
@@ -215,6 +224,7 @@ const ACTION_REPLY_TEMPLATES = {
     create_card: (a) => `已为你创建卡片${a.title ? `「${a.title}」` : ""}。`,
     new_card: (a) => `已为你创建卡片${a.title ? `「${a.title}」` : ""}。`,
     create_direction: (a) => `已添加方向卡片${a.title ? `「${a.title}」` : ""}。`,
+    create_agent: (a) => `已启动子 Agent${a.title ? `「${a.title}」` : ""}，将以 ${a.role || "worker"} 角色执行独立任务。`,
     generate_image: () => "已开始生成图片,稍候请查看画布上的新节点。",
     zoom_in: () => "已放大画布。",
     zoom_out: () => "已缩小画布。",
@@ -237,6 +247,7 @@ const ACTION_REPLY_TEMPLATES = {
     create_card: (a) => `Created a card${a.title ? ` "${a.title}"` : ""}.`,
     new_card: (a) => `Created a card${a.title ? ` "${a.title}"` : ""}.`,
     create_direction: (a) => `Added a direction card${a.title ? ` "${a.title}"` : ""}.`,
+    create_agent: (a) => `Started a subagent${a.title ? ` "${a.title}"` : ""} as ${a.role || "worker"}.`,
     generate_image: () => "Image generation started — check the canvas for the new node.",
     zoom_in: () => "Zoomed in.",
     zoom_out: () => "Zoomed out.",
@@ -566,6 +577,10 @@ const server = http.createServer(async (req, res) => {
       const id = url.pathname.split("/")[3];
       const body = await readJson(req);
       return await handleUpdateSession(id, body, res);
+    }
+    if (req.method === "DELETE" && /^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
+      const id = url.pathname.split("/")[3];
+      return await handleDeleteSession(id, res);
     }
 
     // Import route
@@ -1489,7 +1504,8 @@ async function handleChat(body, res) {
     message,
     previousResponseId: effectivePreviousResponseId,
     webSearchEnabled: webSearchEnabled || webSearchForced,
-    thinkingMode
+    thinkingMode,
+    agentMode
   });
   applyChatQualityRequestOptions(chatPayload, runtimeConfigs.chat, message, {
     webSearchEnabled: webSearchEnabled || webSearchForced,
@@ -1523,9 +1539,7 @@ async function handleChat(body, res) {
   actions = ensureChatFallbackActionsClean(message, actions, reply);
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled || webSearchForced);
   actions = enrichCanvasActions(actions, message, reply, lang);
-  if (!agentMode) {
-    actions = actions.filter((action) => action.type !== "create_agent");
-  }
+  actions = agentMode ? finalizeAgentControllerActions(actions, message, lang) : actions.filter((action) => action.type !== "create_agent");
   const thinkingContent = thinkingMode === "thinking" ? collectReasoningContent(response) : "";
   const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
 
@@ -1556,9 +1570,7 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
   actions = ensureChatFallbackActionsClean(message, actions, reply);
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled);
   actions = enrichCanvasActions(actions, message, reply, lang);
-  if (!agentMode) {
-    actions = actions.filter((action) => action.type !== "create_agent");
-  }
+  actions = agentMode ? finalizeAgentControllerActions(actions, message, lang) : actions.filter((action) => action.type !== "create_agent");
   const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
   return {
     provider: "api",
@@ -1574,8 +1586,8 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
   };
 }
 
-function buildChatResponsesPayload({ instructions, content, message, previousResponseId, webSearchEnabled, thinkingMode, wrappedCanvasTool = false }) {
-  const tools = buildResponsesTools(message, webSearchEnabled, { wrappedCanvasTool });
+function buildChatResponsesPayload({ instructions, content, message, previousResponseId, webSearchEnabled, thinkingMode, agentMode = false, wrappedCanvasTool = false }) {
+  const tools = buildResponsesTools(message, webSearchEnabled, { wrappedCanvasTool, agentMode });
   const payload = {
     instructions,
     input: [
@@ -1603,7 +1615,7 @@ function buildResponsesTools(message, webSearchEnabled = false, options = {}) {
   if (webSearchEnabled && chatOptions.enableWebSearch !== false) tools.push({ type: "web_search" });
   if (chatOptions.enableWebExtractor !== false && shouldUseWebExtractor(message)) tools.push({ type: "web_extractor" });
   if (chatOptions.enableCodeInterpreter !== false && shouldUseCodeInterpreter(message)) tools.push({ type: "code_interpreter" });
-  if (chatOptions.enableCanvasTools !== false && !shouldSkipCanvasToolForCodeOnlyRequest(message)) {
+  if (chatOptions.enableCanvasTools !== false && (options.agentMode || !shouldSkipCanvasToolForCodeOnlyRequest(message))) {
     tools.push(options.wrappedCanvasTool ? RESPONSES_CANVAS_TOOL_SCHEMA_WRAPPED : RESPONSES_CANVAS_TOOL_SCHEMA);
   }
   return tools;
@@ -1825,6 +1837,53 @@ function enrichCanvasActions(actions, message, reply = "", lang = "zh") {
   }
   expanded = expandGeneralCanvasActions(expanded, message, reply, lang);
   return dedupeCanvasActions(expanded).slice(0, 10);
+}
+
+function finalizeAgentControllerActions(actions, message, lang) {
+  const usable = Array.isArray(actions) ? actions : [];
+  const agents = [];
+  const others = [];
+  for (const action of usable) {
+    if (action?.type === "create_agent") agents.push(normalizeAgentAction(action, message, lang, agents.length));
+    else others.push(action);
+  }
+  return [...others, ...agents.filter(Boolean).slice(0, 4)];
+}
+
+function normalizeAgentAction(action, message, lang, index = 0) {
+  const title = stringOr(action.title || action.nodeName, lang === "en" ? `Subagent ${index + 1}` : `子 Agent ${index + 1}`).slice(0, 80);
+  const role = stringOr(action.role, inferAgentRole(title, action.prompt || action.description || message, lang)).slice(0, 80);
+  const deliverable = stringOr(action.deliverable, lang === "en" ? "A concise, evidence-aware result that the controller can synthesize." : "一份可供控制器综合使用的简洁、有依据的结果。").slice(0, 360);
+  const successCriteria = stringOr(action.successCriteria, lang === "en" ? "Result is specific, bounded, actionable, and notes uncertainties." : "结果具体、有边界、可执行，并说明不确定性。").slice(0, 500);
+  const prompt = [
+    stringOr(action.prompt || action.description || action.query, message),
+    "",
+    lang === "en" ? `Role: ${role}` : `角色：${role}`,
+    lang === "en" ? `Deliverable: ${deliverable}` : `交付物：${deliverable}`,
+    lang === "en" ? `Success criteria: ${successCriteria}` : `成功标准：${successCriteria}`
+  ].filter(Boolean).join("\n").slice(0, 1600);
+  return {
+    ...action,
+    type: "create_agent",
+    title,
+    role,
+    prompt,
+    description: stringOr(action.description, deliverable).slice(0, 700),
+    deliverable,
+    successCriteria,
+    priority: stringOr(action.priority, index === 0 ? "high" : "medium").slice(0, 40)
+  };
+}
+
+function inferAgentRole(title, text, lang) {
+  const haystack = `${title} ${text}`.toLowerCase();
+  if (/critic|review|risk|审查|批判|风险|质检|qa/.test(haystack)) return "critic";
+  if (/research|source|web|资料|来源|研究|检索/.test(haystack)) return "researcher";
+  if (/data|metric|table|数据|指标|表格/.test(haystack)) return "data analyst";
+  if (/write|draft|copy|文案|写作|草稿/.test(haystack)) return "writer";
+  if (/visual|image|design|视觉|图片|设计/.test(haystack)) return "visual director";
+  if (/plan|roadmap|步骤|计划|规划/.test(haystack)) return "planner";
+  return lang === "en" ? "worker" : "执行者";
 }
 
 function shouldSplitPlanAction(action) {
@@ -2175,7 +2234,9 @@ function dedupeCanvasActions(actions) {
   const result = [];
   for (const action of actions) {
     if (!action?.type) continue;
-    const key = `${action.type}:${action.url || action.title || action.query || JSON.stringify(action.content || {}).slice(0, 120)}`;
+    const key = action.type === "create_agent"
+      ? `${action.type}:${action.title || action.role || ""}:${action.prompt || action.deliverable || action.description || ""}`.slice(0, 260)
+      : `${action.type}:${action.url || action.title || action.query || JSON.stringify(action.content || {}).slice(0, 120)}`;
     if (seen.has(key)) continue;
     seen.add(key);
     result.push(action);
@@ -2746,21 +2807,30 @@ async function handleGenerate(body, res) {
     : await generateTokenHubImage(prompt, body?.imageUrl || null, imageDataUrl);
 
   const generatedImage = result.imageDataUrl || result.imageUrl || "";
-  let stored = null;
-  if (generatedImage) {
-    try {
-      stored = await storeGeneratedImage(generatedImage);
-    } catch (storeError) {
-      console.error("[handleGenerate] failed to store generated image:", storeError);
-    }
+  if (!generatedImage) {
+    return sendJson(res, 502, { error: "Image generation did not return an image." });
+  }
+
+  let stored;
+  try {
+    stored = await storeGeneratedImage(generatedImage);
+  } catch (storeError) {
+    console.error("[handleGenerate] failed to store generated image:", storeError);
+    return sendJson(res, 502, {
+      error: "Generated image could not be downloaded or cached.",
+      message: storeError.message || String(storeError)
+    });
+  }
+  if (!stored?.hash) {
+    return sendJson(res, 502, { error: "Generated image could not be cached." });
   }
 
   return sendJson(res, 200, {
     provider: "api",
     model: runtimeConfigs.image.model,
     prompt,
-    imageDataUrl: stored ? `/api/assets/${stored.hash}?kind=generated` : generatedImage,
-    hash: stored ? stored.hash : undefined,
+    imageDataUrl: `/api/assets/${stored.hash}?kind=generated`,
+    hash: stored.hash,
     imageUrl: result.imageUrl,
     revisedPrompt: result.revisedPrompt
   });
@@ -3187,8 +3257,12 @@ function buildAgentArtifacts(actions, agentMode = false) {
     return agentActions.map((action, index) => ({
       type: "agent",
       title: action.title || action.nodeName || `Subagent ${index + 1}`,
-      summary: action.description || action.prompt || action.query || "",
-      status: "no-thinking"
+      summary: action.description || action.deliverable || action.prompt || action.query || "",
+      status: action.role || "no-thinking",
+      role: action.role || "",
+      deliverable: action.deliverable || "",
+      successCriteria: action.successCriteria || "",
+      priority: action.priority || ""
     }));
   }
   return [{
@@ -3219,6 +3293,17 @@ function inferDemoChatActions(message) {
   }
   if (/打开对话|展开对话|open chat/.test(text)) {
     actions.push({ type: "open_chat" });
+  }
+  if (/agent|subagent|代理|子代理|自主|自动执行|多步/.test(text)) {
+    actions.push({
+      type: "create_agent",
+      title: "Demo subagent",
+      role: "researcher",
+      prompt: String(message || "").slice(0, 500),
+      deliverable: "A focused demo result for the controller.",
+      successCriteria: "Specific, bounded, and actionable.",
+      priority: "medium"
+    });
   }
   if (/深入研究|深度思考|deep think|deep research/.test(text)) {
     actions.push({ type: "set_deep_think_mode", mode: "on" });
@@ -3472,6 +3557,15 @@ function normalizedActionString(value, maxLength = 160) {
   return trimmed ? trimmed.slice(0, maxLength) : undefined;
 }
 
+function normalizedActionStringArray(value, maxItems = 6, maxLength = 160) {
+  if (!Array.isArray(value)) return undefined;
+  const items = value
+    .map((item) => normalizedActionString(item, maxLength))
+    .filter(Boolean)
+    .slice(0, maxItems);
+  return items.length ? items : undefined;
+}
+
 function normalizedActionNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : undefined;
@@ -3501,6 +3595,11 @@ function normalizeVoiceActions(value) {
         direction: normalizedActionString(action.direction, 60),
         mode: normalizedActionString(action.mode, 80),
         scope: normalizedActionString(action.scope, 80),
+        role: normalizedActionString(action.role, 80),
+        deliverable: normalizedActionString(action.deliverable, 360),
+        successCriteria: normalizedActionString(action.successCriteria, 500),
+        priority: normalizedActionString(action.priority, 40),
+        dependencies: normalizedActionStringArray(action.dependencies, 6, 140),
         nodeType: normalizedActionString(action.nodeType, 40) || undefined,
         content: action.content || undefined,
         batchIndex: normalizedActionNumber(action.batchIndex),
@@ -3929,45 +4028,49 @@ function buildDeepResearchEventCards(events, lang) {
 }
 
 async function runQwenImageSearch({ query, imageDataUrl, lang, limit }) {
-  const prompt = query || (lang === "en" ? "Find visually similar images and useful visual references." : "搜索相似图片和可参考的视觉素材。");
+  const basePrompt = query || (lang === "en" ? "Find visually similar images and useful visual references." : "搜索相似图片和可参考的视觉素材。");
+  const prompt = lang === "en"
+    ? `${basePrompt}\n\nUse online image search and return concrete image results with title, thumbnail/image URL, source URL, and short description.`
+    : `${basePrompt}\n\n请调用联网图片搜索工具，并返回具体图片结果：标题、缩略图/图片 URL、来源 URL 和简短说明。`;
   const content = [{ type: "input_text", text: prompt }];
   if (imageDataUrl) content.push({ type: "input_image", image_url: imageDataUrl });
   const basePayload = {
     model: IMAGE_SEARCH_MODEL,
     input: imageDataUrl ? [{ role: "user", content }] : prompt
   };
-  let responseJson;
+  let bestResult = null;
   let lastError;
   const toolTypes = imageDataUrl ? ["image_search", "web_search_image"] : ["web_search_image", "image_search"];
+  const toolChoices = ["required", "auto", ""];
+  searchLoop:
   for (const toolType of toolTypes) {
-    try {
-      responseJson = await qwenResponsesRequest(runtimeConfigs.chat, {
-        ...basePayload,
-        tools: [{ type: toolType }]
-      });
-      break;
-    } catch (error) {
-      lastError = error;
+    for (const toolChoice of toolChoices) {
+      try {
+        const payload = {
+          ...basePayload,
+          tools: [{ type: toolType }]
+        };
+        if (toolChoice) payload.tool_choice = toolChoice;
+        const responseJson = await qwenResponsesRequest(runtimeConfigs.chat, payload);
+        const summary = extractResponsesText(responseJson);
+        const references = dedupeReferences([
+          ...extractReferencesFromObject(responseJson),
+          ...extractReferencesFromText(summary)
+        ]);
+        const results = buildImageSearchResults(references, { query: basePrompt, summary, limit });
+        const candidate = { responseJson, summary, references, results };
+        if (!bestResult || candidate.results.length > bestResult.results.length || (!bestResult.summary && candidate.summary)) {
+          bestResult = candidate;
+        }
+        if (results.length) break searchLoop;
+      } catch (error) {
+        lastError = error;
+      }
     }
   }
-  if (!responseJson && lastError) throw lastError;
-  const summary = extractResponsesText(responseJson);
-  const references = dedupeReferences([
-    ...extractReferencesFromObject(responseJson),
-    ...extractReferencesFromText(summary)
-  ]);
-  const results = references
-    .filter((reference) => reference.type === "image" || reference.imageUrl || reference.url)
-    .slice(0, limit)
-    .map((reference, index) => ({
-      id: `image-search-${index + 1}`,
-      title: stringOr(reference.title, query || "Image reference").slice(0, 80),
-      description: stringOr(reference.description, summary).slice(0, 240),
-      imageUrl: stringOr(reference.imageUrl || reference.url, ""),
-      sourceUrl: stringOr(reference.sourceUrl || reference.url, ""),
-      url: stringOr(reference.sourceUrl || reference.url, ""),
-      type: "image"
-    }));
+  if (!bestResult && lastError) throw lastError;
+  const summary = bestResult?.summary || "";
+  const results = bestResult?.results || [];
 
   await Promise.all(results.map(async (result) => {
     const remoteImage = result.imageUrl;
@@ -3984,10 +4087,33 @@ async function runQwenImageSearch({ query, imageDataUrl, lang, limit }) {
   return {
     provider: "api",
     model: IMAGE_SEARCH_MODEL,
-    query: prompt,
+    query: basePrompt,
     summary,
     results
   };
+}
+
+function buildImageSearchResults(references, { query, summary, limit }) {
+  const items = [];
+  for (const reference of references || []) {
+    const rawUrl = stringOr(reference?.url, "");
+    const rawImageUrl = stringOr(reference?.imageUrl, "");
+    const imageUrl = rawImageUrl || (isLikelyImageUrl(rawUrl) ? rawUrl : "");
+    const sourceUrl = stringOr(reference?.sourceUrl, "") || (rawUrl && rawUrl !== imageUrl ? rawUrl : "") || rawUrl || imageUrl;
+    if (!imageUrl && !sourceUrl) continue;
+    items.push({
+      title: stringOr(reference.title, query || "Image reference").slice(0, 80),
+      description: stringOr(reference.description, summary).slice(0, 240),
+      imageUrl,
+      sourceUrl,
+      url: sourceUrl || imageUrl,
+      type: "image"
+    });
+  }
+  return items.slice(0, limit).map((item, index) => ({
+    id: `image-search-${index + 1}`,
+    ...item
+  }));
 }
 
 async function qwenResponsesRequest(config, payload) {
@@ -4353,16 +4479,18 @@ function dedupeReferences(references) {
   const seen = new Set();
   const result = [];
   for (const reference of references || []) {
-    const url = stringOr(reference?.url || reference?.sourceUrl || reference?.imageUrl, "").trim();
-    if (!url || seen.has(url)) continue;
-    seen.add(url);
+    const imageUrl = stringOr(reference?.imageUrl, "").trim();
+    const url = stringOr(reference?.url || reference?.sourceUrl || imageUrl, "").trim();
+    const key = imageUrl || url;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
     result.push({
       title: stringOr(reference.title, "").slice(0, 120),
       description: stringOr(reference.description, "").slice(0, 500),
-      url,
+      url: url || imageUrl,
       sourceUrl: stringOr(reference.sourceUrl || url, "").slice(0, 512),
-      imageUrl: stringOr(reference.imageUrl, "").slice(0, 512),
-      type: reference.type === "image" || reference.imageUrl ? "image" : "web"
+      imageUrl: imageUrl.slice(0, 512),
+      type: reference.type === "image" || imageUrl ? "image" : "web"
     });
   }
   return result;
@@ -4930,10 +5058,25 @@ function extensionFromUrl(url) {
   try {
     const ext = path.extname(new URL(url).pathname).replace(/^\./, "").toLowerCase();
     if (["jpg", "jpeg", "png", "webp", "gif", "svg"].includes(ext)) {
-      return ext;
+      return ext === "jpeg" ? "jpg" : ext;
     }
-  } catch {}
+  } catch {
+  }
   return "";
+}
+
+function isLikelyImageUrl(url) {
+  const value = typeof url === "string" ? url.trim() : "";
+  if (!/^https?:\/\//i.test(value)) return false;
+  if (extensionFromUrl(value)) return true;
+  try {
+    const parsed = new URL(value);
+    const text = `${parsed.pathname} ${parsed.search}`.toLowerCase();
+    return /(?:image|img|thumb|thumbnail|photo|picture|media)/.test(text)
+      && !/\.(?:html?|php|aspx?)(?:$|[?#])/i.test(parsed.pathname);
+  } catch {
+    return false;
+  }
 }
 
 function delay(ms) {

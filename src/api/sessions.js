@@ -1,5 +1,6 @@
 import { prisma } from "../lib/prisma.js";
 import { storeDataUrl, readFile, parseDataUrl, storeFile } from "../lib/storage.js";
+import { isGenericSessionTitle, resolveSessionTitle } from "../lib/sessionTitle.js";
 
 function sendJson(res, status, data) {
   res.writeHead(status, {
@@ -275,6 +276,7 @@ export async function handleCreateSession(body, res) {
     const viewState = buildPersistedViewState(state);
 
     const { nodes, links, chatMessages } = serializeState(state);
+    const resolvedTitle = resolveSessionTitle({ requestedTitle: title, chatMessages });
     const assetRecords = [];
     await collectSourceAsset(state, assetRecords);
     await collectGeneratedAssets(nodes, assetRecords);
@@ -282,7 +284,7 @@ export async function handleCreateSession(body, res) {
     const session = await prisma.$transaction(async (tx) => {
       const session = await tx.session.create({
         data: {
-          title: title || "未命名会话",
+          title: resolvedTitle,
           isDemo,
           viewState
         }
@@ -370,8 +372,13 @@ export async function handleGetSession(sessionId, res) {
       return sendJson(res, 404, { error: "Session not found" });
     }
 
+    const title = isGenericSessionTitle(session.title)
+      ? resolveSessionTitle({ requestedTitle: session.title, chatMessages: session.chatMessages, fallbackTitle: session.title })
+      : session.title;
+
     return sendJson(res, 200, {
       ...session,
+      title,
       state: session.viewState?.stateSnapshot || null
     });
   } catch (error) {
@@ -403,6 +410,17 @@ export async function handleUpdateSession(sessionId, body, res) {
     await collectGeneratedAssets(nodes, assetRecords);
 
     const session = await prisma.$transaction(async (tx) => {
+      const existing = await tx.session.findUnique({
+        where: { id: sessionId },
+        select: { title: true }
+      });
+      if (!existing) {
+        throw new Error("Session not found");
+      }
+      const resolvedTitle = title === undefined
+        ? undefined
+        : resolveSessionTitle({ requestedTitle: title, chatMessages, fallbackTitle: existing.title || "未命名会话" });
+      const shouldUpdateTitle = resolvedTitle !== undefined && (!isGenericSessionTitle(title) || isGenericSessionTitle(existing.title));
       await tx.node.deleteMany({ where: { sessionId } });
       await tx.link.deleteMany({ where: { sessionId } });
       await tx.chatMessage.deleteMany({ where: { sessionId } });
@@ -456,7 +474,7 @@ export async function handleUpdateSession(sessionId, body, res) {
       return tx.session.update({
         where: { id: sessionId },
         data: {
-          ...(title !== undefined ? { title } : {}),
+          ...(shouldUpdateTitle ? { title: resolvedTitle } : {}),
           updatedAt: new Date(),
           viewState
         }

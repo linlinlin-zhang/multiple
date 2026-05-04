@@ -38,11 +38,12 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "- create_metric — KPIs, benchmarks, scores, measurements",
         "- create_quote — cited excerpts, quotations, source-backed claims",
         "- generate_image — image generation requests",
+        "- create_agent — spawn focused subagents only when agent_controller_mode=true or the user explicitly asks for autonomous/subagent work",
         "- zoom_in / zoom_out / reset_view / pan_view / focus_node — view manipulation",
         "- create_card / new_card — only when the content has no clear specific type",
         "",
         "# Filling the card",
-        "A rich node must be self-contained and reusable, while the chat remains the readable explanation. When you call create_plan / create_todo / create_note / create_weather / create_map / create_link / create_web_card / create_code / create_table / create_timeline / create_comparison / create_metric / create_quote, populate the `content` argument with the full structured payload. Use table for tabular facts, timeline for sequence/milestones, comparison for choices and tradeoffs, metric for KPIs/benchmarks, quote for cited excerpts. For create_link/create_web_card, content must include a readable page/site title, url, concise description of what the page contains or is useful for, source/domain, and faviconUrl when inferable; never make the visible card title just a raw URL. For create_plan, each `content.steps[]` item should have an informative title and a dense description with timing, rationale, options, caveats, and concrete details where relevant. Keep plan cards readable: if the plan has many steps or long explanations, make one compact overview plan and split details into additional plan/note/todo/resource cards. A card with only a title is broken UX.",
+        "A rich node must be self-contained and reusable, while the chat remains the readable explanation. When you call create_plan / create_todo / create_note / create_weather / create_map / create_link / create_web_card / create_code / create_table / create_timeline / create_comparison / create_metric / create_quote, populate the `content` argument with the full structured payload. Use table for tabular facts, timeline for sequence/milestones, comparison for choices and tradeoffs, metric for KPIs/benchmarks, quote for cited excerpts. For create_link/create_web_card, content must include a readable page/site title, url, concise description of what the page contains or is useful for, source/domain, and faviconUrl when inferable; when page text, search snippets, or extracted content are available, also include mainContent or markdown with the useful page excerpt/synthesis; never make the visible card title just a raw URL. For create_plan, each `content.steps[]` item should have an informative title and a dense description with timing, rationale, options, caveats, and concrete details where relevant. Keep plan cards readable: if the plan has many steps or long explanations, make one compact overview plan and split details into additional plan/note/todo/resource cards. A card with only a title is broken UX.",
         "",
         "# Multiple actions per turn",
         "You may call canvas_action multiple times in one reply. Multi-card output is not limited to planning: for any substantial reusable result, split into a primary card plus supporting cards when helpful. Combine the artifact types that fit the task: e.g. plan + todo + note for execution work, plan + resources table + timeline + web cards for learning/exam work, comparison + metric cards for decisions, quote + note + table + web cards for research, note + table + todo for general reports, code + note for programming, map/weather only when location context truly matters. Don't say \"I'll also create...\" without actually making the calls — make them in the same turn.",
@@ -89,11 +90,12 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "- create_metric — KPI、基准、评分、度量",
         "- create_quote — 引用摘录、原文、来源支撑观点",
         "- generate_image — 图像生成请求",
+        "- create_agent — 仅在 agent_controller_mode=true 或用户明确要求自主/子代理工作时，创建聚焦的子 Agent",
         "- zoom_in / zoom_out / reset_view / pan_view / focus_node — 画布视图操作",
         "- create_card / new_card — 仅当内容没有明确具体类型时使用",
         "",
         "# 填卡片",
-        "富节点必须是自洽、可复用的产物,而聊天区仍然是可阅读解释。调用 create_plan / create_todo / create_note / create_weather / create_map / create_link / create_web_card / create_code / create_table / create_timeline / create_comparison / create_metric / create_quote 时,必须用完整的结构化内容填 `content` 参数。事实矩阵/资源清单用 table,顺序/里程碑用 timeline,方案取舍用 comparison,指标/基准用 metric,原文摘录/引用用 quote。对于 create_link/create_web_card,content 必须包含可读的网页/站点标题、url、说明网页内容或用途的简短 description、source/domain,能推断时也填 faviconUrl;不要让卡片可见标题只是裸 URL。对于 create_plan,每个 `content.steps[]` 都要有信息量充足的 title 和 description,尽量包含时间、理由、选项、注意事项、交通/预算/优先级等具体细节。保持 plan 卡可阅读:如果步骤多或解释很长,创建一张紧凑总览 plan,再把细节拆成额外的 plan/note/todo/resource 卡。一张只有标题的卡片就是 broken UX。",
+        "富节点必须是自洽、可复用的产物,而聊天区仍然是可阅读解释。调用 create_plan / create_todo / create_note / create_weather / create_map / create_link / create_web_card / create_code / create_table / create_timeline / create_comparison / create_metric / create_quote 时,必须用完整的结构化内容填 `content` 参数。事实矩阵/资源清单用 table,顺序/里程碑用 timeline,方案取舍用 comparison,指标/基准用 metric,原文摘录/引用用 quote。对于 create_link/create_web_card,content 必须包含可读的网页/站点标题、url、说明网页内容或用途的简短 description、source/domain,能推断时也填 faviconUrl;如果有网页正文、搜索摘要或提取内容,还要填 mainContent 或 markdown 保存有用的网页摘录/综合内容;不要让卡片可见标题只是裸 URL。对于 create_plan,每个 `content.steps[]` 都要有信息量充足的 title 和 description,尽量包含时间、理由、选项、注意事项、交通/预算/优先级等具体细节。保持 plan 卡可阅读:如果步骤多或解释很长,创建一张紧凑总览 plan,再把细节拆成额外的 plan/note/todo/resource 卡。一张只有标题的卡片就是 broken UX。",
         "",
         "# 一轮多次调用",
         "同一轮回复里可以多次调用 canvas_action。多卡片输出不只用于规划:任何有分量、可复用的结果,都可以拆成主卡片 + 支撑卡片。复杂任务要组合适合的产物类型:例如执行类任务用 plan + todo + note,学习/考试类任务用 plan + 资源 table + timeline + web_card,决策类用 comparison + metric,研究类用 quote + note + table + web_card,通用报告/总结用 note + table + todo,编程类用 code + note,只有在确实涉及地点/天气时才使用 map/weather。不要只说\"我也会创建...\"却不真的发起调用——要在同一轮里把这些调用都做出来。",
@@ -112,6 +114,7 @@ export function buildChatUserPrompt({ message, analysis, selectedContext, canvas
   const recentMessages = messages.map((item) => `${item.role}: ${item.content}`).join("\n") || (lang === "en" ? "None" : "暂无");
   const canvasSummary = summarizeCanvasForPrompt(canvas, lang);
   const taskGuidance = buildTaskGuidance(message, lang);
+  const agentGuidance = buildAgentControllerGuidance(agentMode, lang);
   return [
     lang === "en" ? "# User Message" : "# 用户消息",
     message,
@@ -139,8 +142,28 @@ export function buildChatUserPrompt({ message, analysis, selectedContext, canvas
     "",
     lang === "en" ? "# Execution Hints" : "# 执行提示",
     `web_search_enabled=${webSearchEnabled ? "true" : "false"}`,
-    `agent_controller_mode=${agentMode ? "true" : "false"}`
+    `agent_controller_mode=${agentMode ? "true" : "false"}`,
+    agentGuidance
   ].join("\n");
+}
+
+function buildAgentControllerGuidance(agentMode, lang) {
+  if (!agentMode) return "";
+  return lang === "en"
+    ? [
+        "",
+        "# Agent Controller Guidance",
+        "You may autonomously create focused subagents with canvas_action type=create_agent when the user task benefits from parallel investigation, critique, decomposition, QA, data checking, writing variants, visual direction, or implementation planning.",
+        "Create 1-4 subagents, not more. Each create_agent action must include title, role, prompt, deliverable, successCriteria, and priority. The prompt must be self-contained, cite the shared context it should use, and define boundaries. Do not create agents for trivial single-step questions.",
+        "Use distinct roles such as researcher, planner, critic, data analyst, writer, visual director, QA, or synthesizer. The controller reply should explain why those subagents were spawned and how their outputs will be used."
+      ].join("\n")
+    : [
+        "",
+        "# Agent 控制器指导",
+        "当用户任务适合并行调查、批判审查、任务拆解、QA、数据核查、写作变体、视觉方向或实施规划时，你可以自主通过 canvas_action type=create_agent 创建聚焦的子 Agent。",
+        "创建 1-4 个子 Agent，不要更多。每个 create_agent 动作必须包含 title、role、prompt、deliverable、successCriteria 和 priority。prompt 必须自洽，说明要使用的共享上下文和边界。不要为简单单步问题创建 Agent。",
+        "使用互补角色，例如 researcher、planner、critic、data analyst、writer、visual director、QA、synthesizer。控制器回复要解释为什么启动这些子 Agent，以及它们的结果会如何被使用。"
+      ].join("\n");
 }
 
 function summarizeCanvasForPrompt(canvas, lang) {

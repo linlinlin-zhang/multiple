@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma.js";
+import { isGenericSessionTitle, resolveSessionTitle } from "../lib/sessionTitle.js";
 
 function sendJson(res, status, data) {
   res.writeHead(status, {
@@ -34,6 +35,14 @@ export async function handleListHistory(query, res) {
           isDemo: true,
           createdAt: true,
           updatedAt: true,
+          chatMessages: {
+            orderBy: { createdAt: "asc" },
+            take: 2,
+            select: {
+              role: true,
+              content: true
+            }
+          },
           _count: {
             select: { nodes: true, assets: true }
           }
@@ -44,7 +53,9 @@ export async function handleListHistory(query, res) {
 
     const formatted = sessions.map((s) => ({
       id: s.id,
-      title: s.title,
+      title: isGenericSessionTitle(s.title)
+        ? resolveSessionTitle({ requestedTitle: s.title, chatMessages: s.chatMessages, fallbackTitle: s.title })
+        : s.title,
       isDemo: s.isDemo,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
@@ -90,5 +101,25 @@ export async function handleRenameSession(sessionId, body, res) {
   } catch (error) {
     console.error("[handleRenameSession]", error);
     return sendJson(res, 500, { error: error.message || "Failed to rename session" });
+  }
+}
+
+export async function handleDeleteSession(sessionId, res) {
+  try {
+    if (!sessionId || typeof sessionId !== "string") {
+      return sendJson(res, 400, { error: "sessionId is required" });
+    }
+
+    await prisma.session.delete({
+      where: { id: sessionId }
+    });
+
+    return sendJson(res, 200, { ok: true });
+  } catch (error) {
+    console.error("[handleDeleteSession]", error);
+    if (error?.code === "P2025") {
+      return sendJson(res, 404, { error: "Session not found" });
+    }
+    return sendJson(res, 500, { error: error.message || "Failed to delete session" });
   }
 }
