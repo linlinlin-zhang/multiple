@@ -13,6 +13,7 @@ import { handleCreateFileUnderstanding, handleGetFileUnderstanding } from "./src
 import { handleContextIngest, handleContextRetrieve, handleContextStats, handleContextWipe } from "./src/api/context.js";
 import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js";
 import { extractTextFromBuffer } from "./src/lib/textExtract.js";
+import { parseFileStructured } from "./src/lib/fileParser.js";
 import { PrismaClient } from "@prisma/client";
 import WebSocket from "ws";
 import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt, buildChatSystemContext, buildChatUserPrompt, buildGeneratePrompt, buildExplainPrompt, buildExplainSystemPrompt, buildRealtimeInstruction, buildDeepThinkSystemPrompt, buildDeepThinkUserPrompt, buildExploreContent, CANVAS_ACTION_TYPES, CANVAS_ACTION_TYPES_TEXT } from "./src/prompts/index.js";
@@ -27,6 +28,20 @@ loadDotEnv(path.join(__dirname, ".env"));
 
 const PORT = Number(process.env.PORT || 3000);
 const DEMO_MODE = process.env.DEMO_MODE === "true";
+const IMAGE_POLL_INTERVAL_MS = Number(process.env.IMAGE_POLL_INTERVAL_MS || 2000);
+const IMAGE_POLL_ATTEMPTS = Number(process.env.IMAGE_POLL_ATTEMPTS || 30);
+const IMAGE_INCLUDE_DATA_URL = process.env.IMAGE_INCLUDE_DATA_URL === "true";
+const MAX_BODY_BYTES = 22 * 1024 * 1024;
+const CHAT_COMPLETION_TIMEOUT_MS = Number(process.env.CHAT_COMPLETION_TIMEOUT_MS || 120000);
+const CHAT_STREAM_IDLE_TIMEOUT_MS = Number(process.env.CHAT_STREAM_IDLE_TIMEOUT_MS || process.env.CHAT_STREAM_TIMEOUT_MS || 240000);
+const DEEP_RESEARCH_TIMEOUT_MS = Number(process.env.DEEP_RESEARCH_TIMEOUT_MS || 600000);
+const EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.EXPLORE_THINKING_TIMEOUT_MS || 240000);
+const EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.EXPLORE_FALLBACK_TIMEOUT_MS || 150000);
+const CHAT_ATTACHMENT_MAX_CHARS = 32000;
+const IMAGE_SEARCH_MODEL = process.env.IMAGE_SEARCH_MODEL || "qwen3.5-plus";
+const MAX_QUICK_CANVAS_ACTIONS_PER_TURN = 10;
+const MAX_THINKING_CANVAS_ACTIONS_PER_TURN = 12;
+const MAX_DEEP_RESEARCH_CANVAS_CARDS = 25;
 
 const prisma = new PrismaClient();
 
@@ -98,25 +113,14 @@ let runtimeConfigs = {
     apiKeyEnv: ["DASHSCOPE_API_KEY", "DEEPTHINK_API_KEY"],
     options: {
       sourceCardMode: "cards",
-      maxCanvasCards: 20,
-      maxReferenceCards: 20,
+      maxCanvasCards: MAX_DEEP_RESEARCH_CANVAS_CARDS,
+      maxReferenceCards: MAX_DEEP_RESEARCH_CANVAS_CARDS,
       liveCanvasCards: 6,
       outputFormat: "model_summary_report",
       incrementalOutput: true
     }
   })
 };
-
-const IMAGE_POLL_INTERVAL_MS = Number(process.env.IMAGE_POLL_INTERVAL_MS || 2000);
-const IMAGE_POLL_ATTEMPTS = Number(process.env.IMAGE_POLL_ATTEMPTS || 30);
-const IMAGE_INCLUDE_DATA_URL = process.env.IMAGE_INCLUDE_DATA_URL === "true";
-const MAX_BODY_BYTES = 22 * 1024 * 1024;
-const CHAT_COMPLETION_TIMEOUT_MS = Number(process.env.CHAT_COMPLETION_TIMEOUT_MS || 120000);
-const CHAT_STREAM_IDLE_TIMEOUT_MS = Number(process.env.CHAT_STREAM_IDLE_TIMEOUT_MS || process.env.CHAT_STREAM_TIMEOUT_MS || 240000);
-const DEEP_RESEARCH_TIMEOUT_MS = Number(process.env.DEEP_RESEARCH_TIMEOUT_MS || 600000);
-const EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.EXPLORE_THINKING_TIMEOUT_MS || 120000);
-const EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.EXPLORE_FALLBACK_TIMEOUT_MS || 60000);
-const IMAGE_SEARCH_MODEL = process.env.IMAGE_SEARCH_MODEL || "qwen3.5-plus";
 
 const CANVAS_ACTION_TOOL_SCHEMA = {
   type: "function",
@@ -791,8 +795,8 @@ async function refreshConfigs() {
       apiKeyEnv: ["DASHSCOPE_API_KEY", "DEEPTHINK_API_KEY"],
       options: {
         sourceCardMode: "cards",
-        maxCanvasCards: 20,
-        maxReferenceCards: 20,
+        maxCanvasCards: MAX_DEEP_RESEARCH_CANVAS_CARDS,
+        maxReferenceCards: MAX_DEEP_RESEARCH_CANVAS_CARDS,
         liveCanvasCards: 6,
         outputFormat: "model_summary_report",
         incrementalOutput: true
@@ -980,14 +984,14 @@ function normalizeModelOptions(role, value) {
       Number(raw.maxCanvasCards) === 5 &&
       Number(raw.maxReferenceCards) === 8 &&
       Number(raw.liveCanvasCards) === 3;
-    const source = isPreviousDefault ? { ...raw, sourceCardMode: "cards", maxCanvasCards: 20, maxReferenceCards: 20, liveCanvasCards: 6 } : raw;
+    const source = isPreviousDefault ? { ...raw, sourceCardMode: "cards", maxCanvasCards: MAX_DEEP_RESEARCH_CANVAS_CARDS, maxReferenceCards: MAX_DEEP_RESEARCH_CANVAS_CARDS, liveCanvasCards: 6 } : raw;
     return dropUndefined({
       top_p: cleanOptionalNumber(source.top_p, 0.01, 1),
       max_tokens: cleanOptionalInteger(source.max_tokens, 1, 200000),
       sourceCardMode: ["list", "cards", "off"].includes(source.sourceCardMode) ? source.sourceCardMode : "cards",
-      maxCanvasCards: cleanInteger(source.maxCanvasCards, 1, 20, 20),
-      maxReferenceCards: cleanInteger(source.maxReferenceCards, 0, 20, 20),
-      liveCanvasCards: cleanInteger(source.liveCanvasCards, 0, 20, 6),
+      maxCanvasCards: cleanInteger(source.maxCanvasCards, 1, MAX_DEEP_RESEARCH_CANVAS_CARDS, MAX_DEEP_RESEARCH_CANVAS_CARDS),
+      maxReferenceCards: cleanInteger(source.maxReferenceCards, 0, MAX_DEEP_RESEARCH_CANVAS_CARDS, MAX_DEEP_RESEARCH_CANVAS_CARDS),
+      liveCanvasCards: cleanInteger(source.liveCanvasCards, 0, MAX_DEEP_RESEARCH_CANVAS_CARDS, 6),
       outputFormat: cleanString(source.outputFormat, 80) || "model_summary_report",
       incrementalOutput: cleanBoolean(source.incrementalOutput, true)
     });
@@ -1287,7 +1291,7 @@ async function handleRealtimeVoice(body, res) {
   const reply = stringOr(result?.reply, "");
   let actions = Array.isArray(result?.actions) ? result.actions : [];
   actions = ensureChatFallbackActionsClean(transcript, actions, reply);
-  actions = enrichCanvasActions(actions, transcript, reply, lang);
+  actions = enrichCanvasActions(actions, transcript, reply, lang, "no-thinking");
 
   return sendJson(res, 200, {
     provider: "api",
@@ -1451,6 +1455,19 @@ async function handleChat(body, res) {
   const selectedContext = body?.selectedContext && typeof body.selectedContext === "object" ? body.selectedContext : null;
   const canvas = body?.canvas && typeof body.canvas === "object" ? body.canvas : {};
   let systemContext = typeof body?.systemContext === "string" ? body.systemContext.slice(0, 32000) : "";
+  const chatDocumentAttachments = await normalizeChatDocumentAttachments(body?.chatAttachments || body?.attachments, lang);
+  const attachmentContext = buildChatAttachmentContext(chatDocumentAttachments, lang);
+  if (attachmentContext) {
+    systemContext = systemContext
+      ? `${systemContext}\n\n${attachmentContext}`
+      : attachmentContext;
+  }
+  if (chatDocumentAttachments.length) {
+    ingestChatDocumentAttachments(sessionId, chatDocumentAttachments).catch((e) =>
+      console.warn("[handleChat] document attachment ingest failed:", e.message)
+    );
+  }
+  const ingestUserMessage = attachmentContext ? `${message}\n\n${attachmentContext.slice(0, 4000)}` : message;
 
   // Session-scoped RAG: retrieve relevant chunks before the LLM call.
   // Falls through silently when sessionId is missing or embeddings aren't configured.
@@ -1521,6 +1538,7 @@ async function handleChat(body, res) {
       agentMode,
       lang,
       sessionId,
+      ingestMessage: ingestUserMessage,
       retrievedCount: retrieved.length,
       webSearchEnabled: webSearchEnabled || webSearchForced
     }, res);
@@ -1539,13 +1557,13 @@ async function handleChat(body, res) {
   let actions = normalizeVoiceActions(extractToolCallActions(response));
   actions = ensureChatFallbackActionsClean(message, actions, reply);
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled || webSearchForced);
-  actions = enrichCanvasActions(actions, message, reply, lang);
+  actions = enrichCanvasActions(actions, message, reply, lang, thinkingMode);
   actions = agentMode ? finalizeAgentControllerActions(actions, message, lang) : actions.filter((action) => action.type !== "create_agent");
   const thinkingContent = thinkingMode === "thinking" ? collectReasoningContent(response) : "";
   const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
 
   // Fire-and-forget: persist this turn into the session context pool.
-  ingestChatTurn(sessionId, message, finalReply).catch((e) =>
+  ingestChatTurn(sessionId, ingestUserMessage, finalReply).catch((e) =>
     console.warn("[handleChat] chat turn ingest failed:", e.message)
   );
 
@@ -1564,13 +1582,118 @@ async function handleChat(body, res) {
   });
 }
 
+async function normalizeChatDocumentAttachments(value, lang = "zh") {
+  const raw = Array.isArray(value) ? value : (value ? [value] : []);
+  const results = [];
+  for (const item of raw.slice(0, 3)) {
+    if (!item || typeof item !== "object") continue;
+    const kind = String(item.type || item.kind || "").toLowerCase();
+    if (kind.includes("image")) continue;
+    const fileName = String(item.fileName || item.name || item.title || "document").trim().slice(0, 180);
+    const mimeType = String(item.mimeType || "").trim().slice(0, 180);
+    const dataUrl = typeof item.dataUrl === "string" ? item.dataUrl.trim() : "";
+    let ext = extensionFromFileName(fileName) || extensionFromMimeType(mimeType) || "";
+    let text = typeof item.text === "string" ? item.text.trim() : "";
+    let totalPages = 0;
+    let isScanned = false;
+    let parseError = "";
+
+    if (dataUrl && !text) {
+      try {
+        const parsedDataUrl = parseDataUrl(dataUrl);
+        ext = ext || parsedDataUrl.ext || "txt";
+        try {
+          const structured = await parseFileStructured(parsedDataUrl.buffer, ext);
+          text = structured.allText || "";
+          totalPages = structured.totalPages || 0;
+          isScanned = Boolean(structured.isScanned);
+        } catch {
+          const extracted = extractTextFromBuffer(parsedDataUrl.buffer, ext);
+          text = extracted?.text || "";
+        }
+      } catch (error) {
+        parseError = error.message || "Failed to parse attachment.";
+      }
+    }
+
+    const truncated = text.length > CHAT_ATTACHMENT_MAX_CHARS;
+    results.push({
+      fileName,
+      mimeType,
+      ext,
+      text: text.slice(0, CHAT_ATTACHMENT_MAX_CHARS),
+      truncated,
+      totalPages,
+      isScanned,
+      parseError: parseError.slice(0, 240)
+    });
+  }
+  return results.filter((item) => item.fileName || item.text || item.parseError);
+}
+
+function buildChatAttachmentContext(attachments, lang = "zh") {
+  if (!attachments.length) return "";
+  const isEn = lang === "en";
+  let remaining = CHAT_ATTACHMENT_MAX_CHARS;
+  const lines = [
+    isEn ? "# Uploaded Document Attachments" : "# 用户上传的对话文档附件",
+    isEn
+      ? "Use these document contents as first-class context for the current answer. If extraction is limited, state that limitation clearly."
+      : "请把这些文档内容作为本轮回答的一等上下文使用。如果提取受限，请在回答中明确说明局限。"
+  ];
+
+  for (const attachment of attachments) {
+    const title = attachment.fileName || (isEn ? "document" : "文档");
+    const meta = [
+      attachment.ext ? `type=${attachment.ext}` : "",
+      attachment.totalPages ? (isEn ? `pages/slides=${attachment.totalPages}` : `页/张=${attachment.totalPages}`) : "",
+      attachment.isScanned ? (isEn ? "scanned=true" : "扫描件=true") : ""
+    ].filter(Boolean).join(", ");
+    lines.push("", `## ${title}${meta ? ` (${meta})` : ""}`);
+    if (attachment.parseError) {
+      lines.push(isEn ? `Extraction warning: ${attachment.parseError}` : `提取警告：${attachment.parseError}`);
+    }
+    if (attachment.text && remaining > 0) {
+      const chunk = attachment.text.slice(0, remaining);
+      lines.push(isEn ? "Extracted content:" : "提取内容：", chunk);
+      remaining -= chunk.length;
+      if (attachment.truncated || remaining <= 0) {
+        lines.push(isEn ? "[Content truncated for prompt length.]" : "【因提示词长度限制，内容已截断。】");
+      }
+    } else if (!attachment.text) {
+      lines.push(isEn ? "No readable text was extracted from this attachment." : "未能从该附件中提取到可读文本。");
+    }
+  }
+  return lines.join("\n").slice(0, CHAT_ATTACHMENT_MAX_CHARS + 2000);
+}
+
+async function ingestChatDocumentAttachments(sessionId, attachments) {
+  if (!sessionId || !isEmbeddingConfigured()) return;
+  for (const attachment of attachments) {
+    const text = String(attachment?.text || "").trim();
+    if (text.length < 30) continue;
+    await ingestText({
+      sessionId,
+      kind: CONTEXT_KINDS.FILE,
+      text,
+      sourceId: `chat-file:${attachment.fileName || Date.now()}`,
+      sourceMeta: {
+        fileName: attachment.fileName || "",
+        mimeType: attachment.mimeType || "",
+        ext: attachment.ext || ""
+      },
+      replace: true
+    });
+  }
+}
+
 function buildChatResultFromResponse({ response, message, thinkingMode, agentMode, lang, streamedReasoning = "", webSearchEnabled = false }) {
   const references = extractResponseReferences(response);
   const reply = normalizeCitationMarkers(collectChatContent(response).trim(), references);
   let actions = normalizeVoiceActions(extractToolCallActions(response));
   actions = ensureChatFallbackActionsClean(message, actions, reply);
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled);
-  actions = enrichCanvasActions(actions, message, reply, lang);
+  actions = enrichCanvasActions(actions, message, reply, lang, thinkingMode);
   actions = agentMode ? finalizeAgentControllerActions(actions, message, lang) : actions.filter((action) => action.type !== "create_agent");
   const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
   return {
@@ -1806,7 +1929,11 @@ function mergeReferenceActions(actions, response, message, webSearchEnabled = fa
   return normalized;
 }
 
-function enrichCanvasActions(actions, message, reply = "", lang = "zh") {
+function canvasActionLimitForThinkingMode(thinkingMode = "no-thinking") {
+  return thinkingMode === "thinking" ? MAX_THINKING_CANVAS_ACTIONS_PER_TURN : MAX_QUICK_CANVAS_ACTIONS_PER_TURN;
+}
+
+function enrichCanvasActions(actions, message, reply = "", lang = "zh", thinkingMode = "no-thinking") {
   if (!Array.isArray(actions) || !actions.length) return actions;
   let expanded = [...actions];
   const planAction = actions.find((action) => action?.type === "create_plan" && Array.isArray(action?.content?.steps));
@@ -1837,7 +1964,8 @@ function enrichCanvasActions(actions, message, reply = "", lang = "zh") {
     }
   }
   expanded = expandGeneralCanvasActions(expanded, message, reply, lang);
-  return dedupeCanvasActions(expanded).slice(0, 10);
+  expanded = enrichImageContextActions(expanded, message, reply, lang);
+  return dedupeCanvasActions(expanded).slice(0, canvasActionLimitForThinkingMode(thinkingMode));
 }
 
 function finalizeAgentControllerActions(actions, message, lang) {
@@ -2059,6 +2187,60 @@ function expandGeneralCanvasActions(actions, message, reply, lang) {
   return [...actions, ...additions.filter(Boolean).slice(0, Math.max(0, 4 - reusable.length))];
 }
 
+function enrichImageContextActions(actions, message, reply = "", lang = "zh") {
+  const existing = Array.isArray(actions) ? actions : [];
+  if (!existing.length) return existing;
+  if (existing.some((action) => ["image_search", "reverse_image_search", "text_image_search", "generate_image"].includes(action?.type))) return existing;
+  if (!existing.some((action) => REUSABLE_CARD_ACTION_TYPES.includes(action?.type))) return existing;
+
+  const requestText = String(message || "").normalize("NFKC");
+  const answerText = String(reply || "").normalize("NFKC");
+  const combinedText = `${requestText}\n${answerText}`.trim();
+  if (!shouldAddGeneralVisualSupport(requestText, combinedText)) return existing;
+
+  const query = deriveSearchQueryClean(requestText) || requestText.slice(0, 160);
+  if (!query) return existing;
+  const generate = shouldGenerateGeneralVisual(requestText, combinedText);
+  const title = generate
+    ? (lang === "en" ? "Concept visualization" : "概念可视化")
+    : (lang === "en" ? "Visual references" : "视觉参考");
+  const description = generate
+    ? (lang === "en" ? "Generated concept image to make an abstract or speculative idea easier to inspect on the canvas." : "生成一张概念图，把抽象或推演性的想法转成可查看的画面。")
+    : (lang === "en" ? "Internet image search for real-world visual references that can support the current task." : "联网搜索真实视觉参考，用于支撑当前任务。");
+  const action = generate
+    ? {
+        type: "generate_image",
+        title,
+        description,
+        prompt: `${query}\n\n${lang === "en" ? "Create a useful, high-signal visual concept image for this workspace task. Avoid text-heavy layouts." : "为这个工作区任务生成一张有信息量、便于继续讨论的概念图，避免大量文字排版。"}`
+      }
+    : {
+        type: "image_search",
+        title,
+        description,
+        query
+      };
+  return [...existing, action];
+}
+
+function shouldAddGeneralVisualSupport(requestText, combinedText) {
+  const text = String(combinedText || requestText || "");
+  if (!text.trim()) return false;
+  if (/(不要.*(图片|图像|照片|视觉|配图)|无需.*(图片|图像|照片|视觉|配图)|no images?|without images?|text only)/i.test(text)) return false;
+  const explicitVisual = /(图片|图像|照片|插图|配图|参考图|视觉|画面|外观|造型|构图|色彩|风格|渲染|草图|分镜|image|photo|picture|visual|illustration|render|sketch|moodboard|styleboard|storyboard)/i.test(text);
+  const visualizableWork = /(地点|空间|场景|角色|人物|产品|品牌|建筑|展览|装置|服装|食物|动植物|地形|路线|界面|海报|封面|包装|原型|设计|创作|世界观|概念|location|place|space|scene|character|product|brand|building|exhibit|installation|fashion|food|animal|plant|terrain|route|interface|poster|cover|package|prototype|design|creative|concept)/i.test(text);
+  const substantialTask = isPlanningRequest(requestText) || isResearchRequest(requestText) || isComparisonRequest(requestText) || isGeneralMultiCardRequest(requestText);
+  const notMostlyCodeOrData = !isDataOrCodeRequest(requestText) || /(界面|可视化|图表|设计|ui|ux|visuali[sz]ation|diagram|chart|design)/i.test(text);
+  return notMostlyCodeOrData && (explicitVisual || (substantialTask && visualizableWork));
+}
+
+function shouldGenerateGeneralVisual(requestText, combinedText) {
+  const text = String(combinedText || requestText || "");
+  const creativeOrSpeculative = /(成图|创作|画|绘制|渲染|概念图|概念设计|幻想|想象|虚构|设定|分镜|角色设计|场景设计|世界观|原型图|草图|draw|render|concept art|concept design|imaginary|fictional|speculative|storyboard|character design|scene design|prototype visual|sketch)/i.test(text);
+  const asksForReality = /(真实|现实|现有|最新|来源|证据|参考|照片|案例|资料|新闻|官方|real|existing|current|source|evidence|reference|photo|case study|official|news)/i.test(text);
+  return creativeOrSpeculative && !asksForReality;
+}
+
 function wantsCanvasArtifact(text) {
   return /(画布|卡片|节点|创建|新建|生成.*(卡片|节点)|保存成|放到画布|整理到画布|canvas|card|node|create|add|save.*card)/i.test(String(text || ""));
 }
@@ -2245,7 +2427,7 @@ function dedupeCanvasActions(actions) {
   return result;
 }
 
-async function handleChatStream({ payload, message, thinkingMode, agentMode, lang, sessionId = "", retrievedCount = 0, webSearchEnabled = false }, res) {
+async function handleChatStream({ payload, message, thinkingMode, agentMode, lang, sessionId = "", ingestMessage = "", retrievedCount = 0, webSearchEnabled = false }, res) {
   res.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache, no-transform",
@@ -2272,7 +2454,7 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
       webSearchEnabled
     });
     if (retrievedCount) finalPayload.retrievedContext = retrievedCount;
-    ingestChatTurn(sessionId, message, finalPayload.reply || "").catch((e) =>
+    ingestChatTurn(sessionId, ingestMessage || message, finalPayload.reply || "").catch((e) =>
       console.warn("[handleChatStream] chat turn ingest failed:", e.message)
     );
     writeSse(res, "final", finalPayload);
@@ -3625,7 +3807,7 @@ function normalizeVoiceActions(value) {
 }
 
 function normalizeDeepThinkActions(value) {
-  return normalizeVoiceActions(value).slice(0, 6);
+  return normalizeVoiceActions(value).slice(0, MAX_DEEP_RESEARCH_CANVAS_CARDS);
 }
 
 function extractVoiceAudioDataUrl(response) {
@@ -3936,8 +4118,8 @@ function buildDeepResearchResult(collected, context) {
   const references = dedupeReferences(collected.references);
   const options = runtimeConfigs.deepthink.options || {};
   const sourceCardMode = ["list", "cards", "off"].includes(options.sourceCardMode) ? options.sourceCardMode : "cards";
-  const maxCanvasCards = cleanInteger(options.maxCanvasCards, 1, 20, 20);
-  const maxReferenceCards = cleanInteger(options.maxReferenceCards, 0, 20, 20);
+  const maxCanvasCards = cleanInteger(options.maxCanvasCards, 1, MAX_DEEP_RESEARCH_CANVAS_CARDS, MAX_DEEP_RESEARCH_CANVAS_CARDS);
+  const maxReferenceCards = cleanInteger(options.maxReferenceCards, 0, MAX_DEEP_RESEARCH_CANVAS_CARDS, MAX_DEEP_RESEARCH_CANVAS_CARDS);
   const rankedReferences = rankDeepResearchReferences(references).slice(0, maxReferenceCards);
   const eventCards = buildDeepResearchEventCards(collected.events, context.lang).slice(0, Math.max(0, maxCanvasCards - 2));
   const referenceCards = sourceCardMode === "cards" ? rankedReferences.slice(0, Math.max(0, maxCanvasCards - eventCards.length - 1)).map((reference, index) => ({
@@ -5160,11 +5342,11 @@ function normalizeDeepThinkPlan(value, prompt, lang) {
   const fallback = buildDemoDeepThinkPlan(prompt, lang, runtimeConfigs.deepthink.model);
   const cards = Array.isArray(value?.cards) ? value.cards : fallback.cards;
   const links = Array.isArray(value?.links) ? value.links : fallback.links;
-  const allowedTypes = new Set(["direction", "web", "image", "file", "api", "note", "plan", "todo", "weather", "map", "link", "code"]);
+  const allowedTypes = new Set(["direction", "web", "image", "file", "api", "note", "plan", "todo", "weather", "map", "link", "code", "table", "timeline", "comparison", "metric", "quote"]);
 
   return {
     reply: stringOr(value?.reply, fallback.reply),
-    cards: cards.slice(0, 8).map((card, index) => {
+    cards: cards.slice(0, MAX_DEEP_RESEARCH_CANVAS_CARDS).map((card, index) => {
       const type = allowedTypes.has(card?.type) ? card.type : "note";
       const title = stringOr(card?.title, fallback.cards[index % fallback.cards.length].title).slice(0, 48);
       const summary = stringOr(card?.summary || card?.description, fallback.cards[index % fallback.cards.length].summary).slice(0, 240);
@@ -5178,7 +5360,7 @@ function normalizeDeepThinkPlan(value, prompt, lang) {
         url: stringOr(card?.url, "").slice(0, 512)
       };
     }),
-    links: links.slice(0, 6).map((link) => ({
+    links: links.slice(0, MAX_DEEP_RESEARCH_CANVAS_CARDS).map((link) => ({
       from: Number.isInteger(link?.from) ? link.from : 0,
       to: Number.isInteger(link?.to) ? link.to : 0,
       label: stringOr(link?.label, "").slice(0, 40)
@@ -5556,7 +5738,9 @@ function extensionFromMimeType(mimeType) {
     "text/plain": "txt",
     "text/markdown": "md",
     "application/json": "json",
+    "application/msword": "doc",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-powerpoint": "ppt",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "application/pdf": "pdf",
     "audio/webm": "webm",

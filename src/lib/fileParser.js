@@ -8,6 +8,7 @@
 
 import { PDFParse } from "pdf-parse";
 import JSZip from "jszip";
+import { extractTextFromBuffer } from "./textExtract.js";
 
 const SCANNED_THRESHOLD_CHARS_PER_PAGE = 30;
 
@@ -19,12 +20,14 @@ export async function parseFileStructured(buffer, ext) {
     case "md":
     case "json":
       return parsePlainTextStructured(buffer, normalizedExt);
+    case "doc":
+      return parseLegacyOfficeStructured(buffer, normalizedExt);
     case "docx":
       return parseDocxStructured(buffer);
     case "pdf":
       return parsePdfStructured(buffer);
     case "ppt":
-      throw new Error("Legacy .ppt format is not supported; please convert it to .pptx.");
+      return parseLegacyOfficeStructured(buffer, normalizedExt);
     case "pptx":
       return parsePptxStructured(buffer);
     default:
@@ -46,6 +49,19 @@ function parsePlainTextStructured(buffer, ext) {
   }
 
   return makeParsed(ext, pages, {}, false);
+}
+
+function parseLegacyOfficeStructured(buffer, ext) {
+  const extracted = extractTextFromBuffer(buffer, ext);
+  const cleaned = cleanText(extracted.text || "");
+  const pages = [];
+  const pageSize = ext === "ppt" ? 1200 : 2400;
+  for (let i = 0; i < Math.max(1, cleaned.length); i += pageSize) {
+    const chunk = cleaned.slice(i, i + pageSize);
+    pages.push(makePage(Math.floor(i / pageSize) + 1, chunk, [], detectTablesFromText(chunk)));
+    if (!cleaned.length) break;
+  }
+  return makeParsed(ext, pages, {}, cleaned.length < SCANNED_THRESHOLD_CHARS_PER_PAGE);
 }
 
 async function parseDocxStructured(buffer) {

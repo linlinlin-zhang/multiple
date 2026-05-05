@@ -162,7 +162,9 @@ function serializeUnderstanding(record) {
 function extFromMime(mimeType) {
   const map = {
     "application/pdf": "pdf",
+    "application/msword": "doc",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-powerpoint": "ppt",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "text/plain": "txt",
     "text/markdown": "md",

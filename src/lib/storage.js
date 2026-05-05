@@ -169,7 +169,9 @@ function extFromMime(mimeType) {
     "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
     "image/gif": "gif", "image/svg+xml": "svg",
     "application/pdf": "pdf",
+    "application/msword": "doc",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-powerpoint": "ppt",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "text/plain": "txt",
     "video/mp4": "mp4", "video/webm": "webm"

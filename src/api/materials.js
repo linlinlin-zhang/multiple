@@ -244,7 +244,9 @@ function extFromMimeType(mimeType) {
     "image/gif": "gif",
     "image/svg+xml": "svg",
     "application/pdf": "pdf",
+    "application/msword": "doc",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-powerpoint": "ppt",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "text/plain": "txt",
     "video/mp4": "mp4",
@@ -255,7 +257,9 @@ function extFromMimeType(mimeType) {
 
 const SUPPORTED_MATERIAL_MIMES = new Set([
   "application/pdf",
+  "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint",
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "text/plain",
   "video/mp4",

@@ -19,12 +19,14 @@ export function extractTextFromBuffer(buffer, ext) {
     case "md":
     case "json":
       return extractPlainText(buffer);
+    case "doc":
+      return extractLegacyOffice(buffer);
     case "docx":
       return extractDocx(buffer);
     case "pdf":
       return extractPdf(buffer);
     case "ppt":
-      throw new Error("Legacy .ppt format not supported; please convert to .pptx.");
+      return extractLegacyOffice(buffer);
     case "pptx":
       return extractPptx(buffer);
     default:
@@ -123,6 +125,17 @@ function extractPptx(buffer) {
     .map((m) => m.replace(/<a:t>([^<]*)<\/a:t>/, "$1"))
     .join(" ");
   return finalize(text);
+}
+
+function extractLegacyOffice(buffer) {
+  const raw = buffer.toString("latin1");
+  const parts = raw
+    .replace(/\0/g, " ")
+    .match(/[\x20-\x7E\u4e00-\u9fa5]{4,}/g);
+  if (!parts) {
+    return finalize("");
+  }
+  return finalize(parts.filter(isReadable).join(" "));
 }
 
 function isReadable(str) {
