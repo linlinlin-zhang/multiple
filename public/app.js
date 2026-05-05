@@ -418,8 +418,8 @@ const optionPositions = [
 
 const i18n = {
   zh: {
-    "nav.workbench": "工作界面",
-    "nav.history": "历史浏览器",
+    "nav.workbench": "工作台",
+    "nav.history": "历史记录",
     "nav.home": "主页",
     "nav.sessions": "历史会话",
     "nav.settings": "设置",
@@ -443,7 +443,7 @@ const i18n = {
     "command.searchCardEmpty": "未找到匹配的卡片",
     "command.searchCardFound": "已定位到卡片：{title}",
     "junction.mergeExceedsCapacity": "合并后超过最大容量 {max}",
-    "command.history": "历史浏览器",
+    "command.history": "历史记录",
     "command.historyDesc": "打开完整历史记录页面",
     "command.settings": "设置",
     "command.settingsDesc": "打开全局设置和 API 设置",

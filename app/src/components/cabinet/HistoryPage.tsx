@@ -245,7 +245,7 @@ export default function HistoryPage({ sessionId, outputKind }: HistoryPageProps)
                 </div>
               </div>
               <a
-                href={`/?session=${session.id}`}
+                href={`/app.html?session=${session.id}`}
                 className="inline-flex items-center px-5 py-2 bg-cabinet-blue text-cabinet-paper text-sm font-medium rounded-full hover:bg-cabinet-cyan transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cabinet-blue focus-visible:ring-offset-2 flex-shrink-0"
               >
                 {t("cabinet.openInCanvas")}
