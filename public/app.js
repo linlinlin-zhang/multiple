@@ -37,6 +37,7 @@ const commandMenu = document.querySelector("#commandMenu");
 const chatAttachButton = document.querySelector("#chatAttachButton");
 const chatActionMenu = document.querySelector("#chatActionMenu");
 const chatUploadAction = document.querySelector("#chatUploadAction");
+const chatMaterialAction = document.querySelector("#chatMaterialAction");
 const chatMinimapAction = document.querySelector("#chatMinimapAction");
 const chatDeepThinkAction = document.querySelector("#chatDeepThinkAction");
 const chatSubagentsAction = document.querySelector("#chatSubagentsAction");
@@ -127,6 +128,7 @@ const state = {
   sourceVideoHash: null,
   sourceVideoMimeType: "",
   sourceUrl: null,             // for url sources
+  sourceNodeDeleted: false,
   fileName: "",
   latestAnalysis: null,
   fileUnderstanding: null, // { summary, abstract, structure, keyMaterials, actionableDirections, isScanned }
@@ -591,7 +593,7 @@ const i18n = {
     "image.error": "图片读取失败",
     "image.chooseFile": "请选择图片文件",
     "node.delete": "删除",
-    "node.cannotDeleteSource": "初始卡片不可删除",
+    "node.cannotDeleteSource": "该卡片不可删除",
     "node.cannotDeleteWithChildren": "该卡片有子节点，不可删除",
     "badge.image_generation": "成图",
     "badge.research": "研究",
@@ -633,9 +635,12 @@ const i18n = {
     "command.newCardDesc": "在画布上创建空白卡片",
     "command.newCanvasDesc": "创建新的空白画布",
     "command.searchCardPrompt": "输入关键词搜索画布卡片",
+    "command.importMaterial": "素材导入",
+    "command.importMaterialDesc": "从素材库搜索并加入对话或画布",
     "junction.maxCapacity": "连接节点最多只能连接 {max} 张卡片",
-    "source.uploadPrompt": "上传图片或文档",
-    "source.uploadHint": "选择图片、Word、PDF、PPT 或 TXT，生成分支方向",
+    "source.defaultTitle": "源卡片",
+    "source.uploadPrompt": "上传图片、视频或文档",
+    "source.uploadHint": "选择图片、视频、Word、PDF、PPT 或 TXT，生成分支方向",
     "research.analyzeTooltip": "调用 no-thinking 模式，快速视觉分析",
     "research.cannotResearch": "这张卡片不能研究",
     "chat.conversationMessages": "{count} 条消息",
@@ -657,6 +662,8 @@ const i18n = {
     "chat.actionMenu": "功能区",
     "chat.upload": "上传图片或文件",
     "chat.uploadDesc": "添加到画布或输入框",
+    "chat.materialImport": "素材导入",
+    "chat.materialImportDesc": "从素材库搜索并加入对话或画布",
     "chat.minimap": "缩略图",
     "chat.deepThinkDesc": "使用 Qwen Deep Research，并把证据流式整理为画布卡片",
     "chat.generatedCannotGenerate": "生成图片节点不能继续生成新方向",
@@ -681,6 +688,18 @@ const i18n = {
     "save.importFailed": "导入失败：",
     "file.unsupported": "不支持的文件类型。请上传图片或文本文件。",
     "file.readError": "文件读取失败：",
+    "material.searchPlaceholder": "搜索素材库素材...",
+    "material.searchPrompt": "输入关键词搜索素材库",
+    "material.searchEmpty": "没有找到匹配素材",
+    "material.importTitle": "导入素材",
+    "material.importAsChat": "加入对话素材",
+    "material.importAsChatDesc": "放入输入框附件，随下一条消息发送",
+    "material.importAsCard": "生成源卡片",
+    "material.importAsCardDesc": "在画布上生成一张可研究的源卡片",
+    "material.cancel": "取消",
+    "material.importedToChat": "已加入对话素材",
+    "material.importedToCard": "已生成素材卡片",
+    "material.importFailed": "素材导入失败",
     "session.unnamed": "未命名会话",
     "session.exploration": "的探索",
     "reference.title": "参考资料",
@@ -788,6 +807,8 @@ const i18n = {
     "command.searchCardPrompt": "Type keywords to search canvas cards",
     "command.searchCardEmpty": "No matching card found",
     "command.searchCardFound": "Located card: {title}",
+    "command.importMaterial": "Import material",
+    "command.importMaterialDesc": "Search the material library and add it to chat or canvas",
     "junction.maxCapacity": "Junction node can connect at most {max} cards",
     "junction.mergeExceedsCapacity": "Merge would exceed maximum capacity of {max}",
     "command.history": "History browser",
@@ -868,8 +889,9 @@ const i18n = {
     "settings.reset": "Reset",
     "settings.darkMode": "Dark Mode",
     "settings.language": "Language",
-    "source.uploadPrompt": "Upload image or document",
-    "source.uploadHint": "Select image, Word, PDF, PPT or TXT to generate branches",
+    "source.defaultTitle": "Source card",
+    "source.uploadPrompt": "Upload image, video or document",
+    "source.uploadHint": "Select image, video, Word, PDF, PPT or TXT to generate branches",
     "source.analyze": "Analyze",
     "research.button": "Research",
     "research.analyze": "Analyze",
@@ -989,7 +1011,9 @@ const i18n = {
     "chat.attach": "Upload image or text file",
     "chat.actionMenu": "Action menu",
     "chat.upload": "Upload image or file",
-    "chat.uploadDesc": "Add to the canvas or input",
+    "chat.uploadDesc": "Add to canvas or input",
+    "chat.materialImport": "Import material",
+    "chat.materialImportDesc": "Search the material library and add it to chat or canvas",
     "chat.minimap": "Minimap",
     "chat.minimapDesc": "Show or hide the canvas minimap",
     "chat.deepThink": "Deep research",
@@ -1093,14 +1117,26 @@ const i18n = {
     "save.alertFirst": "Please save the session before exporting.",
     "save.exportFailed": "Export failed: ",
     "save.importFailed": "Import failed: ",
-    "file.unsupported": "Unsupported file type. Please upload an image or text file.",
+    "file.unsupported": "Unsupported file type. Please upload an image or text document.",
     "file.readError": "File read failed: ",
     "image.error": "Image read failed",
     "image.chooseFile": "Please select an image file",
-    "session.unnamed": "Untitled Session",
+    "material.searchPlaceholder": "Search material library...",
+    "material.searchPrompt": "Type keywords to search the material library",
+    "material.searchEmpty": "No matching materials found",
+    "material.importTitle": "Import material",
+    "material.importAsChat": "Add to chat",
+    "material.importAsChatDesc": "Attach it to the input box and send it with your next message",
+    "material.importAsCard": "Create source card",
+    "material.importAsCardDesc": "Create a researchable source card on the canvas",
+    "material.cancel": "Cancel",
+    "material.importedToChat": "Added to chat attachment",
+    "material.importedToCard": "Created material source card",
+    "material.importFailed": "Material import failed",
+    "session.unnamed": "Untitled session",
     "session.exploration": " Exploration",
     "node.delete": "Delete",
-    "node.cannotDeleteSource": "Source card cannot be deleted",
+    "node.cannotDeleteSource": "This card cannot be deleted",
     "node.cannotDeleteWithChildren": "Cannot delete a card with children",
     "reference.title": "References",
     "reference.empty": "No references available",
@@ -1269,6 +1305,12 @@ function renderAllText() {
     if (title) title.textContent = t("chat.upload");
     if (desc) desc.textContent = t("chat.uploadDesc");
   }
+  if (chatMaterialAction) {
+    const title = chatMaterialAction.querySelector(".chat-action-title");
+    const desc = chatMaterialAction.querySelector(".chat-action-desc");
+    if (title) title.textContent = t("chat.materialImport");
+    if (desc) desc.textContent = t("chat.materialImportDesc");
+  }
   if (chatMinimapAction) {
     const title = chatMinimapAction.querySelector(".chat-action-title");
     const desc = chatMinimapAction.querySelector(".chat-action-desc");
@@ -1338,6 +1380,9 @@ function renderAllText() {
   if (langLabel) langLabel.textContent = t("settings.language");
   renderSettingsAdvancedFields();
   renderCommandMenu();
+  if (!primarySourceHasContent() && sourceName && !sourceName.querySelector(".node-title-input")) {
+    sourceName.textContent = defaultSourceCardTitle();
+  }
 
   const sessionPanelHeader = document.querySelector(".session-panel-header span");
   if (sessionPanelHeader) sessionPanelHeader.textContent = t("session.panelTitle");
@@ -1492,6 +1537,7 @@ function getWorkbenchCommands() {
     { id: "arrange", icon: "A", label: t("command.arrange"), description: t("command.arrangeDesc") },
     { id: "new-card", icon: "N", label: t("command.newCard"), description: t("command.newCardDesc") },
     { id: "search-card", icon: "Q", label: t("command.searchCard"), description: t("command.searchCardDesc") },
+    { id: "import-material", icon: "L", label: t("command.importMaterial"), description: t("command.importMaterialDesc") },
     { id: "new-canvas", icon: "C", label: t("command.newCanvas"), description: t("command.newCanvasDesc") },
     {
       id: "subagents",
@@ -1697,12 +1743,16 @@ async function executeWorkbenchCommand(commandId) {
     setTimeout(() => openCardSearchBar(commandArgument), 0);
     return;
   }
+  if (commandId === "import-material") {
+    setTimeout(() => openMaterialSearchBar(commandArgument), 0);
+    return;
+  }
   if (commandId === "new-canvas") return createNewCanvas();
   if (commandId === "subagents") return toggleSubagentsMode();
 }
 
 function extractCommandArgument(commandId, rawValue) {
-  if (commandId !== "new-card" && commandId !== "search-card") return "";
+  if (!["new-card", "search-card", "import-material"].includes(commandId)) return "";
   let text = String(rawValue || "").trim().replace(/^\/+/, "").trim();
   const aliases = commandId === "new-card"
     ? [
@@ -1714,13 +1764,23 @@ function extractCommandArgument(commandId, rawValue) {
         "新建",
         "卡片"
       ]
-    : [
+    : commandId === "search-card"
+      ? [
         t("command.searchCard"),
         "search-card",
         "search card",
         "search",
         "搜索卡片",
         "搜索"
+      ]
+      : [
+        t("command.importMaterial"),
+        "import-material",
+        "import material",
+        "material",
+        "素材导入",
+        "导入素材",
+        "素材"
       ];
   const sortedAliases = aliases.filter(Boolean).sort((a, b) => b.length - a.length);
   const lower = text.toLowerCase();
@@ -1732,6 +1792,8 @@ function extractCommandArgument(commandId, rawValue) {
 }
 
 let cardSearchMode = false;
+let materialSearchMode = false;
+let materialSearchRequestId = 0;
 
 function openCardSearchUI(initialQuery = "") {
   cardSearchMode = true;
@@ -1746,10 +1808,12 @@ function closeCardSearchUI() {
 }
 
 function openCardSearchBar(initialQuery = "") {
+  materialSearchMode = false;
   if (cardSearchBar) {
     cardSearchBar.classList.remove("hidden");
   }
   if (cardSearchInput) {
+    cardSearchInput.placeholder = t("command.searchCardPrompt");
     cardSearchInput.value = initialQuery;
     cardSearchInput.focus();
     renderCardSearchBarResults();
@@ -1765,10 +1829,16 @@ function closeCardSearchBar() {
   }
   if (cardSearchInput) {
     cardSearchInput.value = "";
+    cardSearchInput.placeholder = t("command.searchCardPrompt");
   }
+  materialSearchMode = false;
 }
 
 function renderCardSearchBarResults() {
+  if (materialSearchMode) {
+    renderMaterialSearchBarResults();
+    return;
+  }
   if (!cardSearchResults || !cardSearchInput) return;
   const query = cardSearchInput.value.trim().toLowerCase();
   const allCards = getAllCanvasCards();
@@ -1803,6 +1873,273 @@ function renderCardSearchBarResults() {
     });
     cardSearchResults.appendChild(item);
   });
+}
+
+function openMaterialSearchBar(initialQuery = "") {
+  materialSearchMode = true;
+  closeCommandMenu();
+  if (cardSearchBar) {
+    cardSearchBar.classList.remove("hidden");
+  }
+  if (cardSearchInput) {
+    cardSearchInput.placeholder = t("material.searchPlaceholder");
+    cardSearchInput.value = initialQuery;
+    cardSearchInput.focus();
+    renderMaterialSearchBarResults();
+  }
+}
+
+async function renderMaterialSearchBarResults() {
+  if (!cardSearchResults || !cardSearchInput) return;
+  const query = cardSearchInput.value.trim();
+  const requestId = ++materialSearchRequestId;
+  cardSearchResults.innerHTML = "";
+  const loading = document.createElement("div");
+  loading.className = "card-search-empty";
+  loading.textContent = t("material.searchPrompt");
+  cardSearchResults.appendChild(loading);
+  try {
+    const params = new URLSearchParams({ sort: "added" });
+    if (query) params.set("q", query);
+    const data = await getJson(`/api/materials?${params.toString()}`);
+    if (requestId !== materialSearchRequestId || !materialSearchMode) return;
+    const items = Array.isArray(data.items) ? data.items : [];
+    cardSearchResults.innerHTML = "";
+    if (!items.length) {
+      const empty = document.createElement("div");
+      empty.className = "card-search-empty";
+      empty.textContent = t("material.searchEmpty");
+      cardSearchResults.appendChild(empty);
+      return;
+    }
+    items.slice(0, 30).forEach((item) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "card-search-item material-search-item";
+      const title = document.createElement("span");
+      title.className = "card-search-item-title";
+      title.textContent = item.fileName || item.name || t("generated.result");
+      const meta = document.createElement("span");
+      meta.className = "card-search-item-id";
+      meta.textContent = materialSearchItemMeta(item);
+      button.append(title, meta);
+      button.addEventListener("click", async () => {
+        closeCardSearchBar();
+        await chooseMaterialImportTarget(item);
+      });
+      cardSearchResults.appendChild(button);
+    });
+  } catch (error) {
+    if (requestId !== materialSearchRequestId) return;
+    cardSearchResults.innerHTML = "";
+    const empty = document.createElement("div");
+    empty.className = "card-search-empty";
+    empty.textContent = error?.message || t("material.importFailed");
+    cardSearchResults.appendChild(empty);
+  }
+}
+
+function materialSearchItemMeta(item = {}) {
+  const type = materialKindLabel(item);
+  const size = formatByteSize(item.fileSize || item.size || 0);
+  return [type, size].filter(Boolean).join(" · ");
+}
+
+function materialKind(item = {}) {
+  const mime = String(item.mimeType || "").toLowerCase();
+  const name = String(item.fileName || "");
+  if (mime.startsWith("image/") || /\.(png|jpe?g|webp|gif|svg)$/i.test(name)) return "image";
+  if (mime.startsWith("video/") || /\.(mp4|webm|mov|m4v|ogv)$/i.test(name)) return "video";
+  return "document";
+}
+
+function materialKindLabel(item = {}) {
+  const kind = materialKind(item);
+  if (kind === "image") return currentLang === "en" ? "Image" : "图片";
+  if (kind === "video") return currentLang === "en" ? "Video" : "视频";
+  return documentAttachmentLabel({ name: item.fileName || "", mimeType: item.mimeType || "" });
+}
+
+function materialAssetUrl(item = {}) {
+  if (item.id) return `/api/materials/${encodeURIComponent(item.id)}/file`;
+  if (item.hash) return `/api/assets/${item.hash}?kind=upload`;
+  return "";
+}
+
+function formatByteSize(value) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+async function chooseMaterialImportTarget(item) {
+  const target = await showMaterialImportDialog(item);
+  if (target === "chat") {
+    await importMaterialAsChatAttachment(item);
+  } else if (target === "card") {
+    await importMaterialAsSourceCard(item);
+  }
+}
+
+function showMaterialImportDialog(item = {}) {
+  return new Promise((resolve) => {
+    const modal = document.createElement("div");
+    modal.className = "material-import-modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.innerHTML = `
+      <div class="material-import-backdrop"></div>
+      <div class="material-import-content">
+        <h3>${escapeHtml(t("material.importTitle"))}</h3>
+        <p>${escapeHtml(item.fileName || item.name || "")}</p>
+        <div class="material-import-actions">
+          <button class="material-import-choice" data-choice="chat" type="button">
+            <strong>${escapeHtml(t("material.importAsChat"))}</strong>
+            <span>${escapeHtml(t("material.importAsChatDesc"))}</span>
+          </button>
+          <button class="material-import-choice" data-choice="card" type="button">
+            <strong>${escapeHtml(t("material.importAsCard"))}</strong>
+            <span>${escapeHtml(t("material.importAsCardDesc"))}</span>
+          </button>
+        </div>
+        <button class="material-import-cancel" type="button">${escapeHtml(t("material.cancel"))}</button>
+      </div>
+    `;
+    const close = (choice) => {
+      document.removeEventListener("keydown", onKeyDown);
+      modal.remove();
+      resolve(choice);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") close(null);
+    };
+    modal.querySelector(".material-import-backdrop")?.addEventListener("click", () => close(null));
+    modal.querySelector(".material-import-cancel")?.addEventListener("click", () => close(null));
+    modal.querySelectorAll(".material-import-choice").forEach((button) => {
+      button.addEventListener("click", () => close(button.dataset.choice || null));
+    });
+    document.addEventListener("keydown", onKeyDown);
+    document.body.appendChild(modal);
+    modal.querySelector(".material-import-choice")?.focus();
+  });
+}
+
+async function importMaterialAsChatAttachment(item = {}) {
+  try {
+    const kind = materialKind(item);
+    const url = materialAssetUrl(item);
+    if (!url) throw new Error(t("material.importFailed"));
+    const file = { name: item.fileName || item.name || "material", type: item.mimeType || "application/octet-stream" };
+    if (kind === "image") {
+      pendingChatAttachment = {
+        kind: "image",
+        fileName: file.name,
+        mimeType: item.mimeType || "image/png",
+        dataUrl: await assetUrlToDataUrl(url),
+        size: item.fileSize || 0
+      };
+    } else if (kind === "video") {
+      pendingChatAttachment = {
+        kind: "video",
+        fileName: file.name,
+        mimeType: item.mimeType || sourceVideoMimeType(file.name),
+        dataUrl: await assetUrlToDataUrl(url),
+        assetUrl: url,
+        hash: item.hash || "",
+        size: item.fileSize || 0
+      };
+    } else {
+      const isPlainText = isPlainTextDocument(file.name) || String(item.mimeType || "").startsWith("text/");
+      pendingChatAttachment = {
+        kind: "document",
+        fileName: file.name,
+        mimeType: item.mimeType || DOCUMENT_MIME_TYPES[sourceDocumentExtension(file.name)] || "application/octet-stream",
+        size: item.fileSize || 0,
+        ext: sourceDocumentExtension(file.name),
+        text: isPlainText ? (await fetchTextAsset(url)).slice(0, 32000) : "",
+        dataUrl: isPlainText ? "" : await assetUrlToDataUrl(url)
+      };
+    }
+    showChatAttachmentPreview(file, pendingChatAttachment);
+    updateChatPrimaryButtonMode();
+    chatInput?.focus();
+    showToast(t("material.importedToChat"));
+  } catch (error) {
+    showToast(error?.message || t("material.importFailed"));
+  }
+}
+
+async function fetchTextAsset(url) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(t("material.importFailed"));
+  return response.text();
+}
+
+async function importMaterialAsSourceCard(item = {}) {
+  try {
+    const kind = materialKind(item);
+    const url = materialAssetUrl(item);
+    if (!url) throw new Error(t("material.importFailed"));
+    const fileName = item.fileName || "";
+    const mimeType = item.mimeType || DOCUMENT_MIME_TYPES[sourceDocumentExtension(fileName)] || "";
+    let documentText = "";
+    let documentDataUrl = "";
+    if (kind === "document") {
+      const isPlainText = isPlainTextDocument(fileName) || String(item.mimeType || "").startsWith("text/");
+      if (isPlainText) {
+        documentText = (await fetchTextAsset(url)).slice(0, 32000);
+      } else {
+        documentDataUrl = await assetUrlToDataUrl(url);
+      }
+    }
+    const anchor = state.selectedNodeId && state.nodes.has(state.selectedNodeId)
+      ? state.nodes.get(state.selectedNodeId)
+      : (state.nodes.get("source") || { x: 96, y: 88, width: 318 });
+    const nodeId = `source-card-material-${Date.now().toString(36)}-${safeNodeSlug(fileName || item.id || "material")}`;
+    createStandaloneSourceCard({
+      id: nodeId,
+      title: fileName || t("source.defaultTitle"),
+      fileName,
+      x: (anchor.x || 96) + (anchor.width || 318) + 96,
+      y: (anchor.y || 88) + 24,
+      imageUrl: kind === "image" ? url : "",
+      imageHash: "",
+      sourceType: kind === "video" ? "video" : (kind === "image" ? "image" : "text"),
+      sourceVideoUrl: kind === "video" ? url : "",
+      sourceVideoHash: "",
+      sourceVideoMimeType: kind === "video" ? item.mimeType || sourceVideoMimeType(fileName) : ""
+    });
+    const node = state.nodes.get(nodeId);
+    if (node?.sourceCard && kind === "document") {
+      node.sourceCard = {
+        ...node.sourceCard,
+        title: fileName || node.sourceCard.title,
+        fileName,
+        sourceType: "text",
+        sourceText: documentText,
+        sourceDataUrl: documentDataUrl,
+        sourceDataUrlHash: "",
+        mimeType
+      };
+      renderDocumentPreview(
+        fileName,
+        sourceDocumentPreviewRef(fileName, documentDataUrl, ""),
+        documentText,
+        mimeType,
+        node.element.querySelector(".upload-target")
+      );
+      node.element.querySelector(".empty-state")?.classList.add("hidden");
+      setSourceCardResearchActionsDisabled(node.element, false);
+      syncSourceCardImageActionState(nodeId);
+    }
+    autoSave();
+    focusNodeById(nodeId, "center");
+    showToast(t("material.importedToCard"));
+  } catch (error) {
+    showToast(error?.message || t("material.importFailed"));
+  }
 }
 
 function getCardSearchQuery() {
@@ -2097,6 +2434,10 @@ function wireControls() {
   chatUploadAction?.addEventListener("click", () => {
     closeChatActionMenu();
     handleAttachClick();
+  });
+  chatMaterialAction?.addEventListener("click", () => {
+    closeChatActionMenu();
+    openMaterialSearchBar();
   });
   chatMinimapAction?.addEventListener("click", () => {
     closeChatActionMenu();
@@ -3590,6 +3931,8 @@ async function handleFile(event) {
   if (event.target && "value" in event.target) {
     event.target.value = "";
   }
+  state.sourceNodeDeleted = false;
+  sourceNode?.classList.remove("hidden");
 
   const isImage = file.type.startsWith("image/");
   const isVideo = isSupportedVideoFile(file);
@@ -3955,6 +4298,8 @@ async function analyzeUrl() {
 }
 
 function renderUrlSource(url, title) {
+  state.sourceNodeDeleted = false;
+  sourceNode?.classList.remove("hidden");
   clearDocumentPreview(document.querySelector("#sourceNode .upload-target"));
   sourcePreview.src = "";
   sourcePreview.classList.remove("has-image");
@@ -4119,6 +4464,10 @@ async function handleChatSubmit(event) {
     if (command) {
       if (command.id === "search-card") {
         openCardSearchBar(resolved?.remainder || "");
+        return;
+      }
+      if (command.id === "import-material") {
+        openMaterialSearchBar(resolved?.remainder || "");
         return;
       }
       await executeWorkbenchCommand(command.id);
@@ -6025,7 +6374,7 @@ function setDeepThinkModeFromAction(action) {
 
 function deleteNodeFromAction(action) {
   const nodeId = resolveActionNodeId(action, state.selectedNodeId);
-  if (!nodeId || nodeId === "source" || nodeId === "analysis") return;
+  if (!nodeId || nodeId === "analysis") return;
   deleteNode(nodeId);
 }
 
@@ -10977,7 +11326,7 @@ function getChildren(id) {
 }
 
 function canDeleteNode(nodeId) {
-  if (nodeId === "source") return false;
+  if (nodeId === "analysis") return false;
   const children = getChildren(nodeId);
   if (children.length > 0) return false;
   return true;
@@ -11110,12 +11459,28 @@ function makeSourceNameEditable() {
 
 function deleteNode(nodeId) {
   if (!canDeleteNode(nodeId)) {
-    const reason = nodeId === "source" ? t("node.cannotDeleteSource") : t("node.cannotDeleteWithChildren");
+    const reason = getChildren(nodeId).length > 0 ? t("node.cannotDeleteWithChildren") : t("node.cannotDeleteSource");
     showSelectionToast(reason);
     return;
   }
   const node = state.nodes.get(nodeId);
   if (!node) return;
+
+  if (nodeId === "source") {
+    state.sourceNodeDeleted = true;
+    if (state.selectedNodeId === nodeId) {
+      deselectNode();
+    }
+    state.selectedNodeIds.delete(nodeId);
+    state.links = state.links.filter(l => l.from !== nodeId && l.to !== nodeId);
+    node.element.classList.add("hidden");
+    updateCounts();
+    updateMultiSelectionVisuals();
+    updateCollapseControls();
+    drawLinks();
+    autoSave();
+    return;
+  }
 
   // Clean up junction state if this is a junction node
   if (state.junctions.has(nodeId)) {
@@ -12621,6 +12986,7 @@ function computeStateHash() {
     sourceVideo: state.sourceVideo ? state.sourceVideo.slice(0, 200) : null,
     sourceVideoHash: state.sourceVideoHash || null,
     sourceVideoMimeType: state.sourceVideoMimeType || "",
+    sourceNodeDeleted: state.sourceNodeDeleted,
     latestAnalysis: state.latestAnalysis,
     blueprints: Object.fromEntries(state.blueprints),
     groups: Object.fromEntries(state.groups)
@@ -12639,6 +13005,7 @@ async function prepareStateForSave() {
     sourceVideoHash: state.sourceVideoHash || null,
     sourceVideoMimeType: state.sourceVideoMimeType || "",
     sourceUrl: state.sourceUrl,
+    sourceNodeDeleted: state.sourceNodeDeleted,
     fileName: state.fileName,
     latestAnalysis: state.latestAnalysis,
     chatMessages: state.chatMessages,
@@ -12760,7 +13127,25 @@ async function ensureSourceCardDocumentDataUrl(sourceCard) {
   return sourceCard.sourceDataUrl;
 }
 
+function defaultSourceCardTitle() {
+  return t("source.defaultTitle");
+}
+
+function primarySourceHasContent() {
+  return Boolean(
+    state.sourceImage ||
+    state.sourceImageHash ||
+    state.sourceText ||
+    state.sourceDataUrl ||
+    state.sourceDataUrlHash ||
+    state.sourceVideo ||
+    state.sourceVideoHash ||
+    state.sourceUrl
+  );
+}
+
 function getSourceBadgeClass() {
+  if (!primarySourceHasContent()) return "empty";
   if (state.sourceType === "url") return "link";
   if (state.sourceType === "video") return "video";
   if (state.sourceType === "text") {
@@ -12772,6 +13157,7 @@ function getSourceBadgeClass() {
 }
 
 function getSourceBadgeLabel() {
+  if (!primarySourceHasContent()) return defaultSourceCardTitle();
   if (state.sourceType === "url") {
     return state.fileName || "LINK";
   }
@@ -12793,6 +13179,9 @@ function updateSourceBadge() {
   }
   badge.className = `source-badge ${getSourceBadgeClass()}`;
   badge.textContent = getSourceBadgeLabel();
+  if (!primarySourceHasContent() && sourceName && !sourceName.querySelector(".node-title-input")) {
+    sourceName.textContent = defaultSourceCardTitle();
+  }
   syncSourceImageActionState();
   syncResearchDropdownOptions();
 }
@@ -12922,6 +13311,8 @@ async function loadSession(sessionId) {
     state.sourceVideoHash = null;
     state.sourceVideoMimeType = "";
     state.sourceUrl = null;
+    state.sourceNodeDeleted = Boolean(sessionState?.sourceNodeDeleted);
+    sourceNode?.classList.toggle("hidden", state.sourceNodeDeleted);
     state.fileName = "";
     state.latestAnalysis = null;
     state.fileUnderstanding = null;
@@ -12948,7 +13339,7 @@ async function loadSession(sessionId) {
         : null
     ) || assets.find((asset) => asset.kind === "upload" && asset.fileName && asset.fileName === (sessionState?.fileName || sourceNodeData.fileName))
       || assets.find(a => a.kind === "upload");
-    if (sourceAsset) {
+    if (!state.sourceNodeDeleted && sourceAsset) {
       const isVideo = sessionState?.sourceType === "video" || sourceAsset.mimeType?.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/i.test(sourceAsset.fileName || "");
       const isText = sessionState?.sourceType === "text" || sourceAsset.mimeType?.startsWith("text/") || /\.(txt|md|json|doc|docx|pdf|ppt|pptx)$/i.test(sourceAsset.fileName || "");
       state.sourceType = isVideo ? "video" : (isText ? "text" : "image");
@@ -12994,7 +13385,7 @@ async function loadSession(sessionId) {
       sourceName.textContent = trimMiddle(state.fileName, 28);
       if (researchButton) researchButton.disabled = false;
       updateSourceBadge();
-    } else if (sessionState?.sourceType === "url" && sessionState?.sourceUrl) {
+    } else if (!state.sourceNodeDeleted && sessionState?.sourceType === "url" && sessionState?.sourceUrl) {
       // Restore URL source without upload asset
       state.sourceType = "url";
       state.sourceUrl = sessionState.sourceUrl;
@@ -13024,7 +13415,7 @@ async function loadSession(sessionId) {
       sourcePreview.src = "";
       sourcePreview.classList.remove("has-image");
       emptyState.classList.remove("hidden");
-      sourceName.textContent = "Source image";
+      sourceName.textContent = defaultSourceCardTitle();
       if (researchButton) researchButton.disabled = true;
       updateSourceBadge();
     }
@@ -13073,7 +13464,7 @@ async function loadSession(sessionId) {
     if (sessionState?.sourceUrl) {
       state.sourceUrl = sessionState.sourceUrl;
     }
-    if (state.sourceType === "text" && state.fileName && (state.sourceText || state.sourceDataUrl || state.sourceDataUrlHash)) {
+    if (!state.sourceNodeDeleted && state.sourceType === "text" && state.fileName && (state.sourceText || state.sourceDataUrl || state.sourceDataUrlHash)) {
       sourcePreview.src = "";
       sourcePreview.classList.remove("has-image");
       emptyState.classList.add("hidden");
@@ -13082,7 +13473,7 @@ async function loadSession(sessionId) {
       renderSourceDocumentPreviewFromState();
       updateSourceBadge();
     }
-    if (state.sourceType === "video" && state.fileName && (state.sourceVideo || state.sourceVideoHash)) {
+    if (!state.sourceNodeDeleted && state.sourceType === "video" && state.fileName && (state.sourceVideo || state.sourceVideoHash)) {
       sourcePreview.src = "";
       sourcePreview.classList.remove("has-image");
       emptyState.classList.add("hidden");
@@ -13248,7 +13639,11 @@ async function loadSession(sessionId) {
     }
 
     state.links = data.links.map(l => ({ from: l.fromNodeId, to: l.toNodeId, kind: l.kind }));
-    if (analysisNodeData && !state.links.find(l => l.from === "source" && l.to === "analysis")) {
+    if (state.sourceNodeDeleted) {
+      state.links = state.links.filter((link) => link.from !== "source" && link.to !== "source");
+      sourceNode?.classList.add("hidden");
+    }
+    if (!state.sourceNodeDeleted && analysisNodeData && !state.links.find(l => l.from === "source" && l.to === "analysis")) {
       state.links.unshift({ from: "source", to: "analysis", kind: "analysis" });
     }
 

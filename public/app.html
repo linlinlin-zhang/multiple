@@ -17,7 +17,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="/styles.css?v=20" />
+    <link rel="stylesheet" href="/styles.css?v=21" />
   </head>
   <body>
     <div class="app-shell">
@@ -67,8 +67,8 @@
             <label class="upload-target" for="fileInput">
               <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v,.txt,.md,.json,.doc,.docx,.pdf,.ppt,.pptx" />
               <span id="emptyState" class="empty-state">
-                <strong>上传图片或文档</strong>
-                <span>选择图片、Word、PDF、PPT 或 TXT，生成分支方向</span>
+                <strong>上传图片、视频或文档</strong>
+                <span>选择图片、视频、Word、PDF、PPT 或 TXT，生成分支方向</span>
               </span>
               <img id="sourcePreview" class="source-preview" alt="上传的源图" />
             </label>
@@ -77,7 +77,7 @@
               <button id="urlAnalyzeButton" class="primary-button" disabled>分析链接</button>
             </div>
             <div class="node-caption">
-              <span id="sourceName">Source image</span>
+              <span id="sourceName">源卡片</span>
               <div class="research-dropdown-wrapper">
                 <button id="researchButton" class="research-button" type="button" disabled>研究</button>
                 <div class="research-dropdown">
@@ -204,6 +204,13 @@
                         <span class="chat-action-copy">
                           <span class="chat-action-title">上传图片或文件</span>
                           <span class="chat-action-desc">添加到当前画布或输入框</span>
+                        </span>
+                      </button>
+                      <button id="chatMaterialAction" class="chat-action-item" type="button" role="menuitem">
+                        <span class="chat-action-icon">L</span>
+                        <span class="chat-action-copy">
+                          <span class="chat-action-title">素材导入</span>
+                          <span class="chat-action-desc">从素材库搜索并加入对话或画布</span>
                         </span>
                       </button>
                       <button id="chatMinimapAction" class="chat-action-item" type="button" role="menuitem">

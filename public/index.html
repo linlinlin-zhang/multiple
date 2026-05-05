@@ -293,17 +293,35 @@
 
         function createVortex() {
             const textureLoader = new THREE.TextureLoader();
-            const cardGeometry = new THREE.PlaneGeometry(3, 2.2);
 
             const radius = 6;
             const heightStep = 1.8;
             const angleStep = Math.PI / 3.5;
+            const defaultCardWidth = 3.61;
+            const defaultCardHeight = 2.65;
+            const targetCardArea = defaultCardWidth * defaultCardHeight;
+            const maxCardLongSide = 4.16;
+            const borderPadding = 0.08;
 
             CARD_DATA.forEach((data, i) => {
                 let borderColor = COLORS[data.type] || '#ffffff';
 
                 textureLoader.load(data.img, (texture) => {
                     texture.minFilter = THREE.LinearFilter;
+                    const image = texture.image || {};
+                    const imageWidth = image.naturalWidth || image.width || defaultCardWidth;
+                    const imageHeight = image.naturalHeight || image.height || defaultCardHeight;
+                    const fallbackAspect = defaultCardWidth / defaultCardHeight;
+                    const imageAspect = imageWidth > 0 && imageHeight > 0 ? imageWidth / imageHeight : fallbackAspect;
+                    let cardWidth = Math.sqrt(targetCardArea * imageAspect);
+                    let cardHeight = cardWidth / imageAspect;
+                    const cardLongSide = Math.max(cardWidth, cardHeight);
+
+                    if (cardLongSide > maxCardLongSide) {
+                        const scale = maxCardLongSide / cardLongSide;
+                        cardWidth *= scale;
+                        cardHeight *= scale;
+                    }
 
                     const material = new THREE.MeshBasicMaterial({
                         map: texture,
@@ -312,6 +330,7 @@
                         opacity: 1
                     });
 
+                    const cardGeometry = new THREE.PlaneGeometry(cardWidth, cardHeight);
                     const card = new THREE.Mesh(cardGeometry, material);
 
                     const angle = i * angleStep;
@@ -327,7 +346,7 @@
                     card.rotateX((Math.random() - 0.5) * 0.2);
                     card.rotateZ((Math.random() - 0.5) * 0.2);
 
-                    const borderGeo = new THREE.PlaneGeometry(3.1, 2.3);
+                    const borderGeo = new THREE.PlaneGeometry(cardWidth + borderPadding, cardHeight + borderPadding);
                     const borderMat = new THREE.MeshBasicMaterial({ color: borderColor, side: THREE.BackSide, transparent: true, opacity: 1 });
                     const border = new THREE.Mesh(borderGeo, borderMat);
                     border.position.z = -0.05;

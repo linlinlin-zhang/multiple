@@ -668,7 +668,7 @@ body.nav-collapsed .nav-settings {
 }
 
 .source-node .node-delete-btn {
-  display: none;
+  display: grid;
 }
 
 .source-node.standalone-source-node .node-delete-btn {
@@ -2744,6 +2744,103 @@ html[data-theme="dark"] .chat-scroll-bottom {
 .confirm-modal-confirm {
   background: var(--danger);
   color: var(--paper);
+}
+
+.material-import-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 270;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.material-import-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(5px);
+}
+
+.material-import-content {
+  position: relative;
+  width: min(520px, 100%);
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--paper);
+  box-shadow: var(--shadow-16);
+  z-index: 1;
+}
+
+.material-import-content h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.material-import-content p {
+  margin: 0 0 16px;
+  color: var(--body);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.material-import-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.material-import-choice {
+  min-height: 104px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.material-import-choice:hover,
+.material-import-choice:focus-visible {
+  border-color: var(--ps-blue);
+  box-shadow: 0 12px 26px rgba(0, 112, 204, 0.16);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.material-import-choice strong,
+.material-import-choice span {
+  display: block;
+}
+
+.material-import-choice strong {
+  margin-bottom: 6px;
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.material-import-choice span {
+  color: var(--body);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.material-import-cancel {
+  display: block;
+  margin: 16px 0 0 auto;
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--body);
+  cursor: pointer;
 }
 
 .chat-attach-button {
