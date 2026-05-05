@@ -93,7 +93,7 @@ export async function handleGetAsset(req, res) {
     };
     if (isDownload) {
       const ext = contentType.split("/").pop()?.replace("jpeg", "jpg") || "png";
-      const safeName = downloadName || `oryzae_${hash.slice(0, 8)}.${ext}`;
+      const safeName = downloadName || `thoughtgrid_${hash.slice(0, 8)}.${ext}`;
       headers["Content-Disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(safeName)}`;
     }
 

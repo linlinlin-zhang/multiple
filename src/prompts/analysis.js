@@ -28,7 +28,7 @@ export function buildAnalysisPrompt(lang, taskType = 'general') {
   return lang === "en"
     ? [
         "# Role",
-        "You are ORYZAE's multimodal canvas analyst with deep pattern recognition.",
+        "You are ThoughtGrid's multimodal canvas analyst with deep pattern recognition.",
         "",
         "# Mission",
         "Analyze the user's uploaded content (image, document, link, code, audio transcript, or data) and propose 5-8 canvas options that help the user explore, plan, research, or create.",
@@ -101,7 +101,7 @@ export function buildAnalysisPrompt(lang, taskType = 'general') {
       ].join("\n")
     : [
         "# 角色",
-        "你是 ORYZAE 的多模态画布分析助手，具备深度模式识别能力。",
+        "你是 ThoughtGrid 的多模态画布分析助手，具备深度模式识别能力。",
         "",
         "# 使命",
         "分析用户上传的内容（图片、文档、链接、代码、音频转录或数据），提出 5-8 个画布方案，帮助用户探索、规划、研究或创作。",
@@ -178,7 +178,7 @@ export function buildExplorePrompt(lang, taskType = 'general') {
   return lang === "en"
     ? [
         "# Role",
-        "You are ORYZAE's deep-research canvas analyst with broad exploration capabilities.",
+        "You are ThoughtGrid's deep-research canvas analyst with broad exploration capabilities.",
         "",
         "# Mission",
         "Use thinking mode to deeply understand the content, subjects, atmosphere, and extensible directions. Then provide 5-8 canvas options AND gather 2-4 relevant reference materials.",
@@ -242,7 +242,7 @@ export function buildExplorePrompt(lang, taskType = 'general') {
       ].join("\n")
     : [
         "# 角色",
-        "你是 ORYZAE 的具备深度研究能力的画布分析助手。",
+        "你是 ThoughtGrid 的具备深度研究能力的画布分析助手。",
         "",
         "# 使命",
         "请使用思考模式深入理解内容、主体、氛围、可延展的方向。然后给出 5-8 个画布方案，并搜集 2-4 条相关的参考资料。",
@@ -309,7 +309,7 @@ export function buildExplorePrompt(lang, taskType = 'general') {
 export function buildUrlAnalysisPrompt({ url, domain, pageText }) {
   return [
     "# Role",
-    "你是 ORYZAE 的网络内容分析助手。",
+    "你是 ThoughtGrid 的网络内容分析助手。",
     "",
     "# Mission",
     "分析用户提供的网页链接，总结其核心主题、可延展的方向，并给出 5-8 个画布方案。",
@@ -340,7 +340,7 @@ export function buildUrlAnalysisPrompt({ url, domain, pageText }) {
 export function buildTextAnalysisPrompt({ extractedText }) {
   return [
     "# Role",
-    "你是 ORYZAE 的文本分析助手。",
+    "你是 ThoughtGrid 的文本分析助手。",
     "",
     "# Mission",
     "分析用户上传的文档，理解其内容、主题、氛围、可延展的方向，并给出 5-8 个画布方案。",

@@ -735,7 +735,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`ORYZAE Image Board running at http://localhost:${PORT}`);
+  console.log(`ThoughtGrid running at http://localhost:${PORT}`);
   console.log(`Model mode: ${appMode()}`);
 });
 
@@ -2813,7 +2813,7 @@ async function fetchPublicPageText(urlString) {
   try {
     const response = await fetch(urlString, {
       headers: {
-        "User-Agent": "ORYZAE/0.1 link-analyzer",
+        "User-Agent": "ThoughtGrid/0.1 link-analyzer",
         Accept: "text/html, text/plain, application/xhtml+xml"
       },
       signal: controller.signal
@@ -3469,7 +3469,7 @@ async function ingestRemoteImageAsUpload(imageUrl) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 12000);
-    const response = await fetch(imageUrl, { signal: controller.signal, headers: { "User-Agent": "ORYZAE-Search/1.0" } });
+    const response = await fetch(imageUrl, { signal: controller.signal, headers: { "User-Agent": "ThoughtGrid-Search/1.0" } });
     clearTimeout(timeout);
     if (!response.ok) return null;
     const contentType = (response.headers.get("content-type") || "").split(";")[0].trim();

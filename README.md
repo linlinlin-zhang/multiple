@@ -1,8 +1,8 @@
-# ORYZAE 3.0
+# ThoughtGrid 4.0
 
-ORYZAE is a multimodal AI canvas for visual research, image generation, file understanding, and voice-driven workspace control. It turns images, documents, links, and conversations into persistent canvas cards, then lets Qwen models analyze, search, plan, generate, and reorganize the workspace.
+ThoughtGrid is a multimodal AI canvas for research, planning, file understanding, image/video generation, agent workflows, and voice-driven workspace control. It turns images, videos, documents, links, and conversations into persistent canvas cards, then lets Qwen models analyze, search, cite, calculate, generate, and reorganize the workspace.
 
-Version 3.0 shifts the project from a simple image-board prototype into an AI workbench: the canvas is the primary surface, chat and voice are control layers, and every session can be reviewed through the history browser and material library.
+Version 4.0 shifts the project from an image-board prototype into a general-purpose AI workbench: the canvas is the primary surface, chat and voice are control layers, agents and deep research share the same tool layer, and every session can be reviewed through the history browser and material library.
 
 ## Core Experience
 
@@ -68,7 +68,7 @@ Minimal local configuration:
 
 ```bash
 PORT=3000
-DATABASE_URL="postgresql://user:password@localhost:5432/oryzae?schema=public"
+DATABASE_URL="postgresql://user:password@localhost:5432/thoughtgrid?schema=public"
 STORAGE_PATH="./storage"
 DASHSCOPE_API_KEY=your_dashscope_key
 ```
@@ -184,7 +184,7 @@ The Node server serves both the backend APIs and the static frontend.
 |   `-- prompts/            Prompt builders and prompt routing
 |-- server.js               Main Node server
 |-- .env.example            Qwen/DashScope environment template
-`-- README.md               ORYZAE 3.0 system guide
+`-- README.md               ThoughtGrid system guide
 ```
 
 ## Development Notes
@@ -197,7 +197,7 @@ The Node server serves both the backend APIs and the static frontend.
 
 ## Current Direction
 
-ORYZAE 3.0 is aimed at becoming a demo-ready multimodal canvas system where:
+ThoughtGrid is aimed at becoming a demo-ready multimodal canvas system where:
 
 - the canvas expresses AI reasoning and knowledge structure;
 - deep research creates evidence cards and reports instead of only chat text;

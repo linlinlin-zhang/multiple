@@ -153,7 +153,7 @@ export default function SettingsPage() {
         if (data.theme === "light" || data.theme === "dark") {
           setTheme(data.theme);
           document.documentElement.setAttribute("data-theme", data.theme);
-          localStorage.setItem("oryzae-theme", data.theme);
+          localStorage.setItem("thoughtgrid-theme", data.theme);
         }
         if (data.language === "zh" || data.language === "en") {
           setLang(data.language);
@@ -214,7 +214,7 @@ export default function SettingsPage() {
   const saveTheme = async (nextTheme: "light" | "dark") => {
     setTheme(nextTheme);
     document.documentElement.setAttribute("data-theme", nextTheme);
-    localStorage.setItem("oryzae-theme", nextTheme);
+    localStorage.setItem("thoughtgrid-theme", nextTheme);
     await fetch("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -260,7 +260,7 @@ export default function SettingsPage() {
             <Menu size={20} />
           </button>
           <div>
-            <div className="text-xs text-cabinet-inkMuted">麦田创作</div>
+            <div className="text-xs text-cabinet-inkMuted">织境</div>
             <h1 className="text-xl font-medium tracking-[0]">{t("settings.pageTitle")}</h1>
           </div>
         </header>

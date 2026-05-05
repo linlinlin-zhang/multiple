@@ -3,16 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>麦田创作 / 历史记录</title>
-    <meta name="description" content="浏览麦田创作历史会话" />
+    <title>织境 / 历史记录</title>
+    <meta name="description" content="浏览织境历史会话" />
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000000'/%3E%3Ccircle cx='32' cy='32' r='18' fill='%230070cc'/%3E%3Cpath d='M22 32h20M32 22v20' stroke='%23ffffff' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
     <script>
       (function() {
-        var t = localStorage.getItem("oryzae-theme");
+        var t = localStorage.getItem("thoughtgrid-theme") || localStorage.getItem("oryzae-theme");
         if (t === "dark" || t === "light") {
           document.documentElement.setAttribute("data-theme", t);
         }
-        var l = localStorage.getItem("oryzae-lang");
+        var l = localStorage.getItem("thoughtgrid-lang") || localStorage.getItem("oryzae-lang");
         if (l === "zh" || l === "en") {
           document.documentElement.setAttribute("lang", l === "zh" ? "zh-CN" : "en");
         }

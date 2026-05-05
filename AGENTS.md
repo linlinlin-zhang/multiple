@@ -1,6 +1,6 @@
-# ORYZAE Image Board
+# ThoughtGrid / 织境
 
-A canvas-based image generation exploration prototype with persistent sessions and a file-cabinet history browser.
+A multimodal AI canvas workbench with persistent sessions, material library, history browser, sharing, agents, research, and image/video generation.
 
 ## Project
 

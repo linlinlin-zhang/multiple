@@ -3,15 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>麦田创作 / 工作台</title>
+    <title>织境 / 工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23faf9f4'/%3E%3Ccircle cx='21' cy='25' r='7' fill='%233d9a92'/%3E%3Ccircle cx='43' cy='20' r='7' fill='%23d9bc68'/%3E%3Ccircle cx='38' cy='43' r='7' fill='%23bd453c'/%3E%3Cpath d='M21 25 43 20 38 43 21 25' fill='none' stroke='%23202939' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E" />
     <script>
       (function() {
-        var t = localStorage.getItem("oryzae-theme");
+        var t = localStorage.getItem("thoughtgrid-theme") || localStorage.getItem("oryzae-theme");
         if (t === "dark" || t === "light") {
           document.documentElement.setAttribute("data-theme", t);
         }
-        var l = localStorage.getItem("oryzae-lang");
+        var l = localStorage.getItem("thoughtgrid-lang") || localStorage.getItem("oryzae-lang");
         if (l === "zh" || l === "en") {
           document.documentElement.setAttribute("lang", l === "zh" ? "zh-CN" : "en");
         }
@@ -28,7 +28,7 @@
           <span></span>
         </button>
         <div class="nav-brand">
-          <strong>麦田创作平台</strong>
+          <strong>织境平台</strong>
         </div>
         <nav class="nav-links" aria-label="页面导航">
           <a class="nav-link" href="/" title="主页">
@@ -127,7 +127,7 @@
         <form id="chatForm" class="chatbar">
           <div id="chatSidebarResize" class="chat-sidebar-resize" role="separator" aria-orientation="vertical" aria-label="调整对话区域宽度"></div>
           <div class="chat-panel-header">
-            <span class="chat-panel-logo">ORYZAE</span>
+            <span class="chat-panel-logo">ThoughtGrid</span>
             <div class="chat-panel-actions" aria-label="对话操作">
               <button id="chatAgentButton" class="chat-panel-button" type="button" aria-label="Agent" title="Agent">
                 <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -187,7 +187,10 @@
           <div class="chat-compose">
             <div id="commandMenu" class="command-menu hidden" role="listbox" aria-label="工作台命令"></div>
             <div id="cardSearchBar" class="card-search-bar hidden">
-              <input id="cardSearchInput" class="card-search-input" type="text" placeholder="搜索画布卡片..." autocomplete="off" />
+              <div class="card-search-input-wrap">
+                <input id="cardSearchInput" class="card-search-input" type="text" placeholder="搜索画布卡片..." autocomplete="off" />
+                <button id="cardSearchCloseButton" class="card-search-close" type="button" aria-label="关闭搜索" title="关闭搜索">×</button>
+              </div>
               <div id="cardSearchResults" class="card-search-results"></div>
             </div>
             <div id="chatAttachmentPreview" class="chat-attachment-preview hidden"></div>

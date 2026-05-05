@@ -4,7 +4,7 @@ import ShareViewerPage from "./components/share/ShareViewerPage";
 import "./index.css";
 import { I18nProvider } from "./lib/i18n";
 
-const savedLang = localStorage.getItem("oryzae-lang") as "zh" | "en" | null;
+const savedLang = (localStorage.getItem("thoughtgrid-lang") ?? localStorage.getItem("oryzae-lang")) as "zh" | "en" | null;
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

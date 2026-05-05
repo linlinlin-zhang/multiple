@@ -12,7 +12,7 @@ export function buildRealtimeInstruction(context) {
 
   return [
     "# Role",
-    `You are the realtime voice action planner for ORYZAE, a multimodal AI workbench. Understand the user's spoken command in ${lang}.`,
+    `You are the realtime voice action planner for ThoughtGrid, a multimodal AI workbench. Understand the user's spoken command in ${lang}.`,
     "",
     "# Mission",
     "Return strict JSON only in the TEXT channel. Provide a short natural-language `reply` plus at most 4 app actions. Use actions only when the user clearly asks the app to do something.",

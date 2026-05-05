@@ -15,10 +15,10 @@ export default function App() {
   const view = getCurrentView();
   useEffect(() => {
     document.title = view === "settings"
-      ? "麦田创作 / 设置"
+      ? "织境 / 设置"
       : view === "library"
-        ? "麦田创作 / 素材库"
-        : "麦田创作 / 历史记录";
+        ? "织境 / 素材库"
+        : "织境 / 历史记录";
   }, [view]);
   if (view === "settings") return <SettingsPage />;
   if (view === "library") return <MaterialLibraryPage />;

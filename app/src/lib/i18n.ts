@@ -4,7 +4,7 @@ export type Lang = "zh" | "en";
 
 const dictionaries: Record<Lang, Record<string, string>> = {
   zh: {
-    "app.title": "麦田创作 / 历史记录",
+    "app.title": "织境 / 历史记录",
     "sidebar.sessions": "历史会话",
     "sidebar.assets": "资源",
     "sidebar.create": "新建",
@@ -93,7 +93,7 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     "nav.pages": "页面导航",
     "nav.open": "打开导航",
     "nav.close": "关闭导航",
-    "nav.product": "麦田创作平台",
+    "nav.product": "织境平台",
     "nav.workbench": "工作台",
     "nav.history": "历史记录",
     "nav.home": "主页",
@@ -243,7 +243,7 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     "library.itemNotFound": "未找到素材"
   },
   en: {
-    "app.title": "麦田创作 / 历史记录",
+    "app.title": "ThoughtGrid / History",
     "sidebar.sessions": "Sessions",
     "sidebar.assets": "Assets",
     "sidebar.create": "New",
@@ -332,7 +332,7 @@ const dictionaries: Record<Lang, Record<string, string>> = {
     "nav.pages": "Page navigation",
     "nav.open": "Open navigation",
     "nav.close": "Close navigation",
-    "nav.product": "麦田创作平台",
+    "nav.product": "ThoughtGrid",
     "nav.workbench": "Workbench",
     "nav.history": "History",
     "nav.home": "Home",
@@ -501,7 +501,7 @@ export function I18nProvider({ children, initialLang = "zh" }: { children: React
   const setLang = useCallback((next: Lang) => {
     setLangState(next);
     document.documentElement.setAttribute("lang", next === "zh" ? "zh-CN" : "en");
-    localStorage.setItem("oryzae-lang", next);
+    localStorage.setItem("thoughtgrid-lang", next);
   }, []);
 
   const t = useCallback(
@@ -518,7 +518,7 @@ export function I18nProvider({ children, initialLang = "zh" }: { children: React
 
   useEffect(() => {
     function onStorage(e: StorageEvent) {
-      if (e.key === "oryzae-lang") {
+      if (e.key === "thoughtgrid-lang" || e.key === "oryzae-lang") {
         const next = e.newValue as Lang;
         if (next === "zh" || next === "en") {
           setLangState(next);

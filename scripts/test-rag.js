@@ -109,7 +109,7 @@ async function testIngestRetrieveWipe() {
   res = await request("POST", "/api/context/ingest", {
     sessionId,
     kind: "file",
-    text: "ORYZAE 是一个画布式 AI 创作原型，使用 PostgreSQL + pgvector 提供会话级 RAG。embedding 模型默认是 DashScope text-embedding-v3，向量维度为 1024。",
+    text: "ThoughtGrid 是一个画布式 AI 创作工作台，使用 PostgreSQL + pgvector 提供会话级 RAG。embedding 模型默认是 DashScope text-embedding-v3，向量维度为 1024。",
     sourceId: "doc:test-1",
     sourceMeta: { fileName: "test.txt" }
   });
@@ -122,7 +122,7 @@ async function testIngestRetrieveWipe() {
 
   res = await request("POST", "/api/context/retrieve", {
     sessionId,
-    query: "ORYZAE 使用什么向量数据库？",
+    query: "ThoughtGrid 使用什么向量数据库？",
     topK: 3,
     minScore: 0.1
   });

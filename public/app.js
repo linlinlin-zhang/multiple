@@ -69,8 +69,34 @@ const urlInput = document.querySelector("#urlInput");
 const urlAnalyzeButton = document.querySelector("#urlAnalyzeButton");
 const cardSearchBar = document.querySelector("#cardSearchBar");
 const cardSearchInput = document.querySelector("#cardSearchInput");
+const cardSearchCloseButton = document.querySelector("#cardSearchCloseButton");
 const cardSearchResults = document.querySelector("#cardSearchResults");
 const chatAttachmentPreview = document.querySelector("#chatAttachmentPreview");
+
+const STORAGE_KEYS = {
+  language: ["thoughtgrid-lang", "oryzae-lang"],
+  theme: ["thoughtgrid-theme", "oryzae-theme"],
+  lastSessionId: ["thoughtgrid-last-session-id", "oryzae-last-session-id"],
+  navCollapsed: ["thoughtgrid.navCollapsed", "oryzae.navCollapsed"],
+  chatSidebarOpen: ["thoughtgrid.chatSidebarOpen", "oryzae.chatSidebarOpen"],
+  chatSidebarWidth: ["thoughtgrid.chatSidebarWidth", "oryzae.chatSidebarWidth"],
+  chatInputHeight: ["thoughtgrid.chatInputHeight", "oryzae.chatInputHeight"],
+  subagentsEnabled: ["thoughtgrid-subagents-enabled", "oryzae-subagents-enabled"],
+  thinkingMode: ["thoughtgrid-thinking-mode", "oryzae-thinking-mode"]
+};
+
+function getStoredItem(keys, storage = localStorage) {
+  return storage.getItem(keys[0]) ?? storage.getItem(keys[1]);
+}
+
+function setStoredItem(keys, value, storage = localStorage) {
+  storage.setItem(keys[0], value);
+}
+
+function removeStoredItem(keys, storage = localStorage) {
+  storage.removeItem(keys[0]);
+  storage.removeItem(keys[1]);
+}
 
 const settingsPanel = document.querySelector("#settingsPanel");
 const settingsBtn = document.querySelector("#settingsBtn");
@@ -319,6 +345,10 @@ function ingestSessionContext({ kind, text, sourceId = null, sourceMeta = null, 
 
 const CANVAS_TOOL_DEFINITIONS = [
   { type: "pan_view" },
+  { type: "zoom_in" },
+  { type: "zoom_out" },
+  { type: "set_zoom" },
+  { type: "reset_view" },
   { type: "focus_node" },
   { type: "select_node" },
   { type: "move_node" },
@@ -704,7 +734,7 @@ const i18n = {
     "session.exploration": "的探索",
     "reference.title": "参考资料",
     "history.empty": "暂无历史会话",
-    "chat.systemContext": "你是 ORYZAE 画布式 AI 工作台内的助手。画布支持规划、研究、写作、分析、设计和图像生成。适合时使用 canvas_action 工具创建结构化节点（plan / todo / note / weather / map / link / code / web_card / image 等）。每次调用工具时，也要给用户正常文字回复。",
+    "chat.systemContext": "你是 ThoughtGrid 画布式 AI 工作台内的助手。画布支持规划、研究、写作、分析、设计和图像生成。适合时使用 canvas_action 工具创建结构化节点（plan / todo / note / weather / map / link / code / web_card / image 等）。每次调用工具时，也要给用户正常文字回复。",
     "chat.actionFeedback.create_direction": "已创建方向卡片",
     "chat.actionFeedback.create_card": "已创建卡片",
     "chat.actionFeedback.new_card": "已创建卡片",
@@ -1076,14 +1106,14 @@ const i18n = {
     "health.demo": "demo",
     "health.api": "api",
     "health.mixed": "mixed",
-    "chat.systemContext": "You are the assistant inside ORYZAE, a canvas-based AI workbench. The canvas supports planning, research, writing, analysis, design, and image generation. Use the canvas_action tool to create structured nodes (plan / todo / note / weather / map / link / code / web_card / image / etc.) when appropriate. Whenever you call a tool, also write a normal message reply to the user.",
-    "chat.systemRole": "You are ORYZAE's canvas assistant.",
+    "chat.systemContext": "You are the assistant inside ThoughtGrid, a canvas-based AI workbench. The canvas supports planning, research, writing, analysis, design, and image generation. Use the canvas_action tool to create structured nodes (plan / todo / note / weather / map / link / code / web_card / image / etc.) when appropriate. Whenever you call a tool, also write a normal message reply to the user.",
+    "chat.systemRole": "You are ThoughtGrid's canvas assistant.",
     "chat.selectedCardContext": "The user is currently chatting about the following card on the canvas:\nType: {type}\nTitle: {title}\nSummary: {summary}",
     "chat.selectedCardPrompt": "Prompt: {prompt}",
     "analysis.systemPrompt": "You are a visual creative director analyzing user-uploaded images for a canvas-based image generation app. Quickly understand the image content, subjects, atmosphere, and extensible narrative directions, then provide 5 different image generation directions. These directions will be displayed as branch nodes on the canvas; users click them to invoke the image generation model. Return strict JSON only, no Markdown, no code blocks.",
     "generate.systemPrompt": "Generate a new image based on the reference image, preserving the most important subjects, color relationships, or visual memory points, but do not simply copy. Direction: {title}\n\nDescription: {description}\n\nDetailed prompt: {prompt}\n\nOutput should be a complete, standalone image; clear composition; no watermarks, UI screenshot borders, or explanatory text.",
     "explain.systemContext": "You are a visual creative commentary assistant writing short descriptions for each generated image in a canvas-based image generation app. The user sees: original image analysis summary, selected creative direction, and the actual prompt sent to the image generation model. Your task is to describe in 1-2 sentences (30-60 words) what this generated image did visually, what it preserved, and what it changed. Tone: professional, concise, evocative. Do not repeat the prompt verbatim; distill it into a description the viewer can perceive.",
-    "explain.systemRole": "You are ORYZAE's Qwen-powered visual creative commentary assistant. Descriptions are short, evocative, and avoid technical details.",
+    "explain.systemRole": "You are ThoughtGrid's Qwen-powered visual creative commentary assistant. Descriptions are short, evocative, and avoid technical details.",
     "generated.download": "Download",
     "generated.regenerate": "Regenerate",
     "generated.result": "Generated Result",
@@ -1198,7 +1228,7 @@ function setLanguage(lang) {
   if (lang !== "zh" && lang !== "en") return;
   currentLang = lang;
   document.documentElement.setAttribute("lang", lang === "zh" ? "zh-CN" : "en");
-  localStorage.setItem("oryzae-lang", lang);
+  setStoredItem(STORAGE_KEYS.language, lang);
   renderAllText();
 }
 
@@ -1284,6 +1314,10 @@ function renderAllText() {
   if (chatCloseButton) {
     chatCloseButton.title = t("chat.closePanel");
     chatCloseButton.setAttribute("aria-label", t("chat.closePanel"));
+  }
+  if (cardSearchCloseButton) {
+    cardSearchCloseButton.title = t("session.close");
+    cardSearchCloseButton.setAttribute("aria-label", t("session.close"));
   }
   if (chatSidebarToggle) {
     chatSidebarToggle.title = t("chat.openPanel");
@@ -1513,7 +1547,7 @@ async function init() {
       window.history.replaceState({}, "", url);
     }
   } else {
-    const lastSessionId = sessionStorage.getItem("oryzae-last-session-id");
+    const lastSessionId = getStoredItem(STORAGE_KEYS.lastSessionId, sessionStorage);
     if (lastSessionId) {
       try {
         await loadSession(lastSessionId);
@@ -1521,7 +1555,7 @@ async function init() {
         url.searchParams.set("session", lastSessionId);
         window.history.replaceState({}, "", url);
       } catch {
-        sessionStorage.removeItem("oryzae-last-session-id");
+        removeStoredItem(STORAGE_KEYS.lastSessionId, sessionStorage);
       }
     }
   }
@@ -1811,6 +1845,7 @@ function openCardSearchBar(initialQuery = "") {
   materialSearchMode = false;
   if (cardSearchBar) {
     cardSearchBar.classList.remove("hidden");
+    cardSearchBar.dataset.mode = "card";
   }
   if (cardSearchInput) {
     cardSearchInput.placeholder = t("command.searchCardPrompt");
@@ -1823,6 +1858,7 @@ function openCardSearchBar(initialQuery = "") {
 function closeCardSearchBar() {
   if (cardSearchBar) {
     cardSearchBar.classList.add("hidden");
+    delete cardSearchBar.dataset.mode;
   }
   if (cardSearchResults) {
     cardSearchResults.innerHTML = "";
@@ -1831,7 +1867,9 @@ function closeCardSearchBar() {
     cardSearchInput.value = "";
     cardSearchInput.placeholder = t("command.searchCardPrompt");
   }
+  cardSearchMode = false;
   materialSearchMode = false;
+  materialSearchRequestId += 1;
 }
 
 function renderCardSearchBarResults() {
@@ -1880,6 +1918,7 @@ function openMaterialSearchBar(initialQuery = "") {
   closeCommandMenu();
   if (cardSearchBar) {
     cardSearchBar.classList.remove("hidden");
+    cardSearchBar.dataset.mode = "material";
   }
   if (cardSearchInput) {
     cardSearchInput.placeholder = t("material.searchPlaceholder");
@@ -2694,6 +2733,12 @@ function wireControls() {
   }, { passive: false });
 
   // Card search bar wiring
+  cardSearchCloseButton?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeCardSearchBar();
+    chatInput?.focus();
+  });
   cardSearchInput?.addEventListener("input", renderCardSearchBarResults);
   cardSearchInput?.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
@@ -2854,7 +2899,7 @@ function toggleMinimap() {
 }
 
 function restoreNavState() {
-  const collapsed = localStorage.getItem("oryzae.navCollapsed") === "true";
+  const collapsed = getStoredItem(STORAGE_KEYS.navCollapsed) === "true";
   document.body.classList.toggle("nav-collapsed", collapsed);
   navToggle.setAttribute("aria-expanded", String(!collapsed));
   navToggle.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
@@ -2863,7 +2908,7 @@ function restoreNavState() {
 function toggleNav() {
   const collapsed = !document.body.classList.contains("nav-collapsed");
   document.body.classList.toggle("nav-collapsed", collapsed);
-  localStorage.setItem("oryzae.navCollapsed", String(collapsed));
+  setStoredItem(STORAGE_KEYS.navCollapsed, String(collapsed));
   navToggle.setAttribute("aria-expanded", String(!collapsed));
   navToggle.setAttribute("aria-label", collapsed ? "Expand navigation" : "Collapse navigation");
 }
@@ -2872,7 +2917,7 @@ function setChatSidebarOpen(open) {
   document.body.classList.toggle("chat-sidebar-closed", !open);
   chatSidebarToggle?.classList.toggle("hidden", open);
   chatSidebarToggle?.setAttribute("aria-expanded", String(open));
-  localStorage.setItem("oryzae.chatSidebarOpen", String(open));
+  setStoredItem(STORAGE_KEYS.chatSidebarOpen, String(open));
   if (!open) {
     closeCommandMenu();
     chatConversationPanel?.classList.add("hidden");
@@ -2881,15 +2926,15 @@ function setChatSidebarOpen(open) {
 }
 
 function restoreChatSidebarState() {
-  const saved = localStorage.getItem("oryzae.chatSidebarOpen");
+  const saved = getStoredItem(STORAGE_KEYS.chatSidebarOpen);
   setChatSidebarOpen(saved !== "false");
 }
 
 function restoreChatSizing() {
-  const savedSidebar = Number(localStorage.getItem("oryzae.chatSidebarWidth") || 0);
+  const savedSidebar = Number(getStoredItem(STORAGE_KEYS.chatSidebarWidth) || 0);
   if (savedSidebar) applyChatSidebarWidth(savedSidebar);
 
-  const savedInput = Number(localStorage.getItem("oryzae.chatInputHeight") || 0);
+  const savedInput = Number(getStoredItem(STORAGE_KEYS.chatInputHeight) || 0);
   if (savedInput) applyChatInputHeight(savedInput);
 }
 
@@ -2908,7 +2953,7 @@ function clampChatSidebarWidth(width) {
 function applyChatSidebarWidth(width) {
   const clamped = clampChatSidebarWidth(width);
   document.documentElement.style.setProperty("--chat-sidebar-width", `${clamped}px`);
-  localStorage.setItem("oryzae.chatSidebarWidth", String(clamped));
+  setStoredItem(STORAGE_KEYS.chatSidebarWidth, String(clamped));
 }
 
 function clampChatInputHeight(height) {
@@ -2920,7 +2965,7 @@ function clampChatInputHeight(height) {
 function applyChatInputHeight(height) {
   const clamped = clampChatInputHeight(height);
   document.documentElement.style.setProperty("--chat-input-height", `${clamped}px`);
-  localStorage.setItem("oryzae.chatInputHeight", String(clamped));
+  setStoredItem(STORAGE_KEYS.chatInputHeight, String(clamped));
 }
 
 function startChatSidebarResize(event) {
@@ -3484,7 +3529,7 @@ function setSubagentsMode(enabled, { silent = false } = {}) {
   state.subagentsEnabled = Boolean(enabled);
   if (subagentsToggle) subagentsToggle.checked = state.subagentsEnabled;
   chatForm?.classList.toggle("subagents-enabled", state.subagentsEnabled);
-  localStorage.setItem("oryzae-subagents-enabled", state.subagentsEnabled ? "true" : "false");
+  setStoredItem(STORAGE_KEYS.subagentsEnabled, state.subagentsEnabled ? "true" : "false");
   if (silent) return;
   showToast(state.subagentsEnabled
     ? (currentLang === "en" ? "Subagents enabled" : "Subagents 已启用")
@@ -3492,7 +3537,7 @@ function setSubagentsMode(enabled, { silent = false } = {}) {
 }
 
 function loadSubagentsMode() {
-  setSubagentsMode(localStorage.getItem("oryzae-subagents-enabled") === "true", { silent: true });
+  setSubagentsMode(getStoredItem(STORAGE_KEYS.subagentsEnabled) === "true", { silent: true });
 }
 
 function toggleSubagentsMode() {
@@ -3584,12 +3629,12 @@ function startNewChat() {
 function setThinkingMode(mode) {
   if (mode !== "thinking" && mode !== "no-thinking") return;
   state.thinkingMode = mode;
-  localStorage.setItem("oryzae-thinking-mode", mode);
+  setStoredItem(STORAGE_KEYS.thinkingMode, mode);
   updateThinkingToggleUI();
 }
 
 function loadThinkingMode() {
-  const saved = localStorage.getItem("oryzae-thinking-mode");
+  const saved = getStoredItem(STORAGE_KEYS.thinkingMode);
   if (saved === "thinking" || saved === "no-thinking") {
     state.thinkingMode = saved;
   } else {
@@ -3631,7 +3676,7 @@ async function checkHealth() {
 function applyTheme(theme) {
   if (theme !== "light" && theme !== "dark") return;
   document.documentElement.setAttribute("data-theme", theme);
-  localStorage.setItem("oryzae-theme", theme);
+  setStoredItem(STORAGE_KEYS.theme, theme);
 }
 
 async function loadTheme() {
@@ -6219,7 +6264,7 @@ function searchCardFromAction(action) {
 }
 
 async function exportCanvasReportFromAction(action = {}) {
-  const title = String(action.title || state.latestAnalysis?.title || state.fileName || "oryzae-report").trim();
+  const title = String(action.title || state.latestAnalysis?.title || state.fileName || "thoughtgrid-report").trim();
   const visibleNodes = Array.from(state.nodes.values()).filter(isNodeVisible);
   const lines = [
     `# ${title}`,
@@ -6236,7 +6281,7 @@ async function exportCanvasReportFromAction(action = {}) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${sanitizeFileName(title).slice(0, 40) || "oryzae-report"}.md`;
+  a.download = `${sanitizeFileName(title).slice(0, 40) || "thoughtgrid-report"}.md`;
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -6330,14 +6375,14 @@ async function runSubagentAction(action) {
       messages: state.chatMessages.slice(-20),
       systemContext: currentLang === "en"
         ? [
-            "Run this as an isolated no-thinking subagent for an ORYZAE controller.",
+            "Run this as an isolated no-thinking subagent for a ThoughtGrid controller.",
             `Worker role: ${role}`,
             `Deliverable: ${deliverable}`,
             `Success criteria: ${successCriteria}`,
             "Return a complete useful result and safe canvas actions when they help preserve reusable findings. Do not create further subagents."
           ].join("\n")
         : [
-            "请作为 ORYZAE 控制器下的隔离 no-thinking 子 Agent 执行任务。",
+            "请作为 ThoughtGrid 控制器下的隔离 no-thinking 子 Agent 执行任务。",
             `工作角色：${role}`,
             `交付物：${deliverable}`,
             `成功标准：${successCriteria}`,
@@ -7269,7 +7314,7 @@ function createNewCardNode(seedText = "") {
 }
 
 function createNewCanvas() {
-  sessionStorage.removeItem("oryzae-last-session-id");
+  removeStoredItem(STORAGE_KEYS.lastSessionId, sessionStorage);
   const url = new URL(window.location.href);
   url.searchParams.delete("session");
   window.location.href = url.pathname + url.search;
@@ -9877,18 +9922,18 @@ async function copyImageShareLink(nodeId) {
 }
 
 function suggestImageFileName(info) {
-  const raw = info?.title || info?.node?.option?.title || state.fileName || "oryzae-image";
+  const raw = info?.title || info?.node?.option?.title || state.fileName || "thoughtgrid-image";
   const name = sanitizeFileName(raw).replace(/\.(png|jpe?g|webp|gif)$/i, "");
   const ext = getImageFileExtension(info?.imageUrl || raw) || "png";
-  return `${name || "oryzae-image"}.${ext}`;
+  return `${name || "thoughtgrid-image"}.${ext}`;
 }
 
 function sanitizeFileName(value) {
-  return String(value || "oryzae-image")
+  return String(value || "thoughtgrid-image")
     .trim()
     .replace(/[\\/:*?"<>|]+/g, "-")
     .replace(/\s+/g, " ")
-    .slice(0, 80) || "oryzae-image";
+    .slice(0, 80) || "thoughtgrid-image";
 }
 
 function getImageFileExtension(value) {
@@ -13215,20 +13260,16 @@ async function prepareStateForSave() {
 async function getSourceImageDataUrl() {
   const selected = state.selectedNodeId ? state.nodes.get(state.selectedNodeId) : null;
   if (selected?.sourceCard) {
-    if (selected.sourceCard.imageUrl || selected.sourceCard.imageHash) {
-      return getImageDataUrlForNode(state.selectedNodeId);
-    }
-    return "";
+    const imageUrl = sourceCardReferenceImageUrl(selected.sourceCard);
+    return imageUrl ? safeImageUrlToDataUrl(imageUrl) : "";
+  }
+  if (selected && state.selectedNodeId !== "source") {
+    const info = getImageNodeInfo(state.selectedNodeId);
+    if (info?.imageUrl) return safeImageUrlToDataUrl(info.imageUrl);
   }
   if (state.sourceImage && state.sourceImage.startsWith("data:")) return state.sourceImage;
   if (state.sourceImageHash) {
-    const response = await fetch(`/api/assets/${state.sourceImageHash}?kind=upload`);
-    const blob = await response.blob();
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.readAsDataURL(blob);
-    });
+    return safeAssetUrlToDataUrl(`/api/assets/${state.sourceImageHash}?kind=upload`);
   }
   return state.sourceImage;
 }
@@ -13236,21 +13277,38 @@ async function getSourceImageDataUrl() {
 async function getSourceVideoDataUrl() {
   const selected = state.selectedNodeId ? state.nodes.get(state.selectedNodeId) : null;
   if (selected?.sourceCard) {
-    if (selected.sourceCard.sourceType === "video") {
-      const videoUrl = sourceCardDisplayVideoUrl(selected.sourceCard);
-      if (videoUrl) return assetUrlToDataUrl(videoUrl);
-    }
-    return "";
+    const videoUrl = sourceCardDisplayVideoUrl(selected.sourceCard);
+    return videoUrl ? safeAssetUrlToDataUrl(videoUrl) : "";
+  }
+  if (selected && state.selectedNodeId !== "source") {
+    const videoUrl = selected.videoUrl || (selected.videoHash ? `/api/assets/${selected.videoHash}?kind=generated` : "") || selected.element?.querySelector("video")?.src || "";
+    if (videoUrl) return safeAssetUrlToDataUrl(videoUrl);
   }
   if (state.sourceType !== "video") return "";
   if (state.sourceVideo && state.sourceVideo.startsWith("data:")) return state.sourceVideo;
   if (state.sourceVideoHash) {
-    return assetUrlToDataUrl(`/api/assets/${state.sourceVideoHash}?kind=upload`);
+    return safeAssetUrlToDataUrl(`/api/assets/${state.sourceVideoHash}?kind=upload`);
   }
   if (state.sourceVideo && !state.sourceVideo.startsWith("data:")) {
-    return assetUrlToDataUrl(state.sourceVideo);
+    return safeAssetUrlToDataUrl(state.sourceVideo);
   }
   return "";
+}
+
+async function safeImageUrlToDataUrl(url) {
+  try {
+    return await imageUrlToDataUrl(url);
+  } catch {
+    return "";
+  }
+}
+
+async function safeAssetUrlToDataUrl(url) {
+  try {
+    return await assetUrlToDataUrl(url);
+  } catch {
+    return "";
+  }
 }
 
 async function getImageDataUrlForNode(nodeId) {
@@ -13433,7 +13491,7 @@ async function saveSession({ isAuto = false } = {}) {
       saveStatus.className = "save-status saved";
     }
     if (currentSessionId) {
-      sessionStorage.setItem("oryzae-last-session-id", currentSessionId);
+      setStoredItem(STORAGE_KEYS.lastSessionId, currentSessionId, sessionStorage);
     }
   } catch (error) {
     console.error("Save failed:", error);

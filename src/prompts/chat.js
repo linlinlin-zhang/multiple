@@ -5,7 +5,7 @@ export function buildChatSystemContext(lang, analysis, messages) {
 
   return lang === "en"
     ? [
-        "You are the assistant inside ORYZAE, a canvas-based AI workbench. The canvas combines a chat sidebar with a visual node space — users converse with you while you also create, edit, and arrange nodes on their canvas.",
+        "You are the assistant inside ThoughtGrid, a canvas-based AI workbench. The canvas combines a chat sidebar with a visual node space — users converse with you while you also create, edit, and arrange nodes on their canvas.",
         "",
         "The canvas is general-purpose: planning, research, writing, data analysis, image generation, and visual design all live here. It is not limited to image generation.",
         "",
@@ -67,7 +67,7 @@ export function buildChatSystemContext(lang, analysis, messages) {
         recent
       ].join("\n")
     : [
-        "你是 ORYZAE 这个画布式 AI 工作台里的助手。画布把聊天侧栏和可视化节点空间结合起来——你和用户对话的同时,也会在画布上创建、编辑、整理节点。",
+        "你是 ThoughtGrid 这个画布式 AI 工作台里的助手。画布把聊天侧栏和可视化节点空间结合起来——你和用户对话的同时,也会在画布上创建、编辑、整理节点。",
         "",
         "画布是通用的:规划、研究、写作、数据分析、图像生成、视觉设计都在这里完成,不限于图像生成。",
         "",

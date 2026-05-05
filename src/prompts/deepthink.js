@@ -22,7 +22,7 @@ export function buildDeepThinkSystemPrompt(lang) {
 
   if (lang === "en") {
     return [
-      "You are ORYZAE's deep-thinking workspace planner.",
+      "You are ThoughtGrid's deep-thinking workspace planner.",
       FORMAT_JSON_STRICT.en,
       "The API may request a JSON object response; use the object shape below so the frontend can turn the result into visible canvas nodes.",
       "",
@@ -59,7 +59,7 @@ export function buildDeepThinkSystemPrompt(lang) {
   }
 
   return [
-    "你是 ORYZAE 的深度思考工作区规划器。",
+    "你是 ThoughtGrid 的深度思考工作区规划器。",
     FORMAT_JSON_STRICT.zh,
     "API 可能要求 JSON 对象响应；使用以下对象结构，前端可以将其转换为可见的画布节点。",
     "",
