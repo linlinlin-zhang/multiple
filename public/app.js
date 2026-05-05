@@ -203,7 +203,7 @@ const MODEL_OPTION_FIELDS = {
     { key: "useReferenceImage", type: "checkbox" }
   ],
   asr: [
-    { key: "targetLanguage", type: "select", options: [["auto", "Auto"], ["zh", "涓枃"], ["en", "English"]] },
+    { key: "targetLanguage", type: "select", options: [["auto", "Auto"], ["zh", "\u4e2d\u6587"], ["en", "English"]] },
     { key: "chunkMs", type: "number", min: 600, max: 6000, step: 100 }
   ],
   realtime: [
@@ -277,7 +277,7 @@ const VIEWER_ASPECT_OPTIONS = {
   "1:1": { label: { zh: "方形 1:1", en: "Square 1:1" }, size: "1536*1536" },
   "3:4": { label: { zh: "竖版 3:4", en: "Portrait 3:4" }, size: "1080*1440" },
   "9:16": { label: { zh: "故事版 9:16", en: "Story 9:16" }, size: "1080*1920" },
-  "4:3": { label: { zh: "妯増 4:3", en: "Landscape 4:3" }, size: "1440*1080" },
+  "4:3": { label: { zh: "\u6a2a\u7248 4:3", en: "Landscape 4:3" }, size: "1440*1080" },
   "16:9": { label: { zh: "宽屏 16:9", en: "Wide 16:9" }, size: "1920*1080" }
 };
 
@@ -1349,7 +1349,7 @@ function getWorkbenchCommands() {
       id: "subagents",
       icon: "A",
       label: currentLang === "en" ? "Subagents" : "Subagents",
-      description: currentLang === "en" ? "Allow complex tasks to spawn quick agents" : "鍏佽澶嶆潅浠诲姟鎷嗘垚澶氫釜蹇€?agent"
+      description: currentLang === "en" ? "Allow complex tasks to spawn quick agents" : "\u5141\u8bb8\u590d\u6742\u4efb\u52a1\u62c6\u6210\u591a\u4e2a\u5feb\u901f agent"
     }
   ];
 }
@@ -1799,7 +1799,7 @@ function wireControls() {
     understandOption.dataset.mode = "understand";
     understandOption.innerHTML = `
       <span class="option-label">${t("fileUnderstanding.understandButton")}</span>
-      <div class="option-tooltip">鐞嗚В鏂囨。缁撴瀯銆佹彁鍙栧叧閿礌鏉愬苟鐢熸垚鍙墽琛屾柟鍚?/div>
+      <div class="option-tooltip">\u7406\u89e3\u6587\u6863\u7ed3\u6784\u3001\u63d0\u53d6\u5173\u952e\u7d20\u6750\u5e76\u751f\u6210\u53ef\u6267\u884c\u65b9\u5411</div>
     `;
     understandOption.style.display = "none"; // hidden by default, shown when document source is active
     researchDropdown.appendChild(understandOption);
@@ -2605,9 +2605,9 @@ const ACTION_FEEDBACK_ICONS = {
   open_history: "🗄",
   open_settings: "⚙",
   open_upload: "⬆",
-  set_thinking_mode: "馃",
+  set_thinking_mode: "\u{1F9E0}",
   set_deep_think_mode: "🔬",
-  create_agent: "馃"
+  create_agent: "\u{1F916}"
 };
 
 function normalizeChatActionResults(value) {
@@ -2641,7 +2641,7 @@ function formatActionFailureNote(actionResults = []) {
   });
   return currentLang === "en"
     ? `\n\n> Some requested canvas actions did not complete:\n${lines.join("\n")}`
-    : `\n\n> 鏈変簺鐢诲竷鎿嶄綔娌℃湁鐪熸瀹屾垚锛歕n${lines.join("\n")}`;
+    : `\n\n> \u6709\u4e9b\u753b\u5e03\u64cd\u4f5c\u6ca1\u6709\u771f\u6b63\u5b8c\u6210\uff1a\n${lines.join("\n")}`;
 }
 
 function normalizeChatArtifacts(value) {
@@ -2887,7 +2887,7 @@ function updateChatPrimaryButtonMode() {
   if (chatInput) chatInput.readOnly = busy;
   if (chatAttachButton) chatAttachButton.disabled = busy;
   const label = busy
-    ? (currentLang === "en" ? "Working..." : "鎵ц涓?..")
+    ? (currentLang === "en" ? "Working..." : "\u6267\u884c\u4e2d...")
     : hasText ? t("chat.send") : active ? t("voice.realtimeStop") : t("voice.realtime");
   chatRealtimeButton.title = label;
   chatRealtimeButton.setAttribute("aria-label", label);
@@ -3311,10 +3311,10 @@ function renderDocumentPreview(fileName, sourceRef = "", text = "", mimeType = "
     icon.textContent = ext === "ppt" ? "PPT" : "PPTX";
     const title = document.createElement("p");
     title.className = "pptx-name";
-    title.textContent = fileName || (currentLang === "en" ? "Presentation" : "婕旂ず鏂囩");
+    title.textContent = fileName || (currentLang === "en" ? "Presentation" : "\u6f14\u793a\u6587\u7a3f");
     const hint = document.createElement("p");
     hint.className = "pptx-hint";
-    hint.textContent = currentLang === "en" ? "First slide preview" : "棣栭〉棰勮";
+    hint.textContent = currentLang === "en" ? "First slide preview" : "\u9996\u9875\u9884\u89c8";
     cover.append(icon, title, hint);
     preview.appendChild(cover);
   } else {
@@ -3890,7 +3890,7 @@ async function submitChatMessage(message, options = {}) {
     const partial = String(pendingAssistant?.content || "").trim();
     const suffix = currentLang === "en"
       ? `\n\n> The stream was interrupted before completion: ${errorText}`
-      : `\n\n> 鏈娴佸紡鍥炲鍦ㄥ畬鎴愬墠涓柇锛?{errorText}`;
+      : `\n\n> \u672c\u6b21\u6d41\u5f0f\u56de\u590d\u5728\u5b8c\u6210\u524d\u4e2d\u65ad\uff1a${errorText}`;
     updateChatMessage(pendingAssistant, {
       content: partial ? `${partial}${suffix}` : errorText,
       pending: false
@@ -3905,7 +3905,7 @@ async function submitChatMessage(message, options = {}) {
 }
 
 function shouldUseClientAgentMode(message) {
-  return /(agent|subagent|浠ｇ悊|鑷姩|鑷富|杩炵画浠诲姟|涓€绯诲垪|澶氭|鍒嗘楠瑙勫垝骞舵墽琛寍瀹屾垚鏁翠釜|甯垜鍋氬畬|multi[-\s]?step|long task)/i.test(String(message || ""));
+  return /(agent|subagent|\u4ee3\u7406|\u81ea\u52a8|\u81ea\u4e3b|\u8fde\u7eed\u4efb\u52a1|\u4e00\u7cfb\u5217|\u591a\u6b65|\u5206\u6b65|\u89c4\u5212\u5e76\u6267\u884c|\u5b8c\u6210\u6574\u4e2a|\u5e2e\u6211\u505a\u5b8c|multi[-\s]?step|long task)/i.test(String(message || ""));
 }
 
 function generateDirectionFromDialog() {
@@ -4149,7 +4149,7 @@ function deepThinkImageRelevant(card, plan = {}) {
     plan?.query,
     plan?.reply
   ].filter(Boolean).join(" ");
-  return /鍥剧墖|鐓х墖|鍥惧儚|鎴愬浘|鐢熸垚鍥緗鐢婚潰|瑙嗚|娴锋姤|鎻掔敾|缁樺埗|璁捐绋縷鍙傝€冨浘|鏋勫浘|image|picture|photo|visual|poster|illustration|artwork|render|mockup|logo|icon/i.test(text);
+  return /\u56fe\u7247|\u7167\u7247|\u56fe\u50cf|\u6210\u56fe|\u751f\u6210\u56fe|\u753b\u9762|\u89c6\u89c9|\u6d77\u62a5|\u63d2\u753b|\u7ed8\u5236|\u8bbe\u8ba1|\u53c2\u8003\u56fe|\u6784\u56fe|image|picture|photo|visual|poster|illustration|artwork|render|mockup|logo|icon/i.test(text);
 }
 
 function deepThinkCardContent(card, type, nodeType) {
@@ -4175,7 +4175,7 @@ function deepThinkTypeLabel(type) {
     image: "图片",
     file: "文件",
     api: "动作",
-    note: "绗旇",
+    note: "\u7b14\u8bb0",
     plan: "计划",
     todo: "待办",
     weather: "天气",
@@ -4877,7 +4877,7 @@ function resolveDirectNodeId(value) {
   if (["source", "src", "image", "upload", "file"].includes(lowered) || /源|原图|图片|文件|上传/.test(text)) {
     return state.nodes.has("source") ? "source" : null;
   }
-  if (["analysis", "report", "summary"].includes(lowered) || /鍒嗘瀽|鎶ュ憡|鎽樿|鎬荤粨/.test(text)) {
+  if (["analysis", "report", "summary"].includes(lowered) || /\u5206\u6790|\u62a5\u544a|\u6458\u8981|\u603b\u7ed3/.test(text)) {
     return state.nodes.has("analysis") ? "analysis" : null;
   }
   return null;
@@ -4994,7 +4994,7 @@ function normalizePositionKey(value) {
   if (raw.includes("bottom")) return raw.includes("left") ? "lower-left" : raw.includes("right") ? "lower-right" : "below";
   if (raw.includes("screen")) return "screen-center";
   if (raw.includes("canvas")) return "canvas-center";
-  if (raw.includes("center") || /涓棿|涓ぎ/.test(raw)) return "center";
+  if (raw.includes("center") || /\u4e2d\u95f4|\u4e2d\u592e/.test(raw)) return "center";
   return raw;
 }
 
@@ -5455,7 +5455,7 @@ async function runSubagentAction(action) {
   const nodeId = createOptionNode({
     id: `agent-${Date.now()}-${Number.isFinite(action.batchIndex) ? `${action.batchIndex}-` : ""}${safeNodeSlug(title)}`,
     title,
-    description: currentLang === "en" ? `${role} subagent is running: ${deliverable}` : `${role} 瀛?Agent 鎵ц涓細${deliverable}`,
+    description: currentLang === "en" ? `${role} subagent is running: ${deliverable}` : `${role} \u5b50 Agent \u6267\u884c\u4e2d\uff1a${deliverable}`,
     prompt,
     tone: role,
     layoutHint: "agent",
@@ -5610,7 +5610,7 @@ function setThinkingModeFromAction(action) {
 
 function setDeepThinkModeFromAction(action) {
   const mode = String(action.mode || action.target || action.title || "").toLowerCase();
-  const off = mode.includes("off") || mode.includes("false") || mode.includes("cancel") || mode.includes("disable") || /鍏抽棴|鍙栨秷|鍋滄/.test(mode);
+  const off = mode.includes("off") || mode.includes("false") || mode.includes("cancel") || mode.includes("disable") || /\u5173\u95ed|\u53d6\u6d88|\u505c\u6b62/.test(mode);
   setDeepThinkModeActive(!off);
 }
 
@@ -5936,7 +5936,7 @@ function inferTableColumns(rows) {
   const first = rows.find((row) => row && typeof row === "object");
   if (Array.isArray(first)) return first.map((_, index) => `${currentLang === "en" ? "Column" : "列"} ${index + 1}`).slice(0, 8);
   if (first && typeof first === "object") return Object.keys(first).slice(0, 8);
-  return rows.length ? [currentLang === "en" ? "Content" : "鍐呭"] : [];
+  return rows.length ? [currentLang === "en" ? "Content" : "\u5185\u5bb9"] : [];
 }
 
 function tableRowSearchText(row) {
@@ -5960,9 +5960,9 @@ function nodeTypeLabel(nodeType) {
 
 function nodeLayoutLabel(option, nodeType) {
   const type = String(nodeType || "").toLowerCase();
-  if (type === "plan") return currentLang === "en" ? "overview" : "鎬昏";
+  if (type === "plan") return currentLang === "en" ? "overview" : "\u603b\u89c8";
   if (type === "todo") return currentLang === "en" ? "checklist" : "清单";
-  if (type === "note") return currentLang === "en" ? "note" : "绗旇";
+  if (type === "note") return currentLang === "en" ? "note" : "\u7b14\u8bb0";
   if (type === "link") return currentLang === "en" ? "reference" : "参考";
   if (type === "code") return currentLang === "en" ? "code" : "代码";
   if (type === "table") return currentLang === "en" ? "structured" : "结构化";
@@ -7335,7 +7335,7 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
         const icon = ACTION_FEEDBACK_ICONS[ar.type] || "⚡";
         const labelKey = `chat.actionFeedback.${ar.type}`;
         const label = failed
-          ? (currentLang === "en" ? "Action failed" : "鎵ц澶辫触")
+          ? (currentLang === "en" ? "Action failed" : "\u6267\u884c\u5931\u8d25")
           : (t(labelKey) || t("chat.actionApplied") || "已执行");
         const title = failed ? ar.error : (ar.title || "");
         card.innerHTML = `
@@ -11077,7 +11077,7 @@ function handleLiveResearchCanvasEvent(eventData = {}, pendingMessage = null) {
   const parent = state.nodes.get(parentNodeId);
   const liveLimit = getDeepThinkLiveCanvasCards();
   if (liveLimit <= 0) return;
-  const stageTitle = String(eventData.title || eventData.stage || (currentLang === "en" ? "Research step" : "鐮旂┒姝ラ")).slice(0, 48);
+  const stageTitle = String(eventData.title || eventData.stage || (currentLang === "en" ? "Research step" : "\u7814\u7a76\u6b65\u9aa4")).slice(0, 48);
   const delta = String(eventData.delta || eventData.summary || "").trim();
   const query = String(eventData.query || eventData.searchQuery || "").trim();
   const sourceCardMode = getDeepThinkSourceCardMode();
@@ -12447,7 +12447,7 @@ async function handleDirectionAction(nodeId, dir) {
 function buildDirectionPrompt(dir, lang) {
   const isEn = lang === "en";
   const typeMap = {
-    "research": isEn ? "research topic" : "鐮旂┒涓婚",
+    "research": isEn ? "research topic" : "\u7814\u7a76\u4e3b\u9898",
     "task-plan": isEn ? "task plan" : "任务计划",
     "web-analysis": isEn ? "web analysis" : "网页分析",
     "report-structure": isEn ? "report structure" : "汇报结构",
