@@ -202,8 +202,11 @@ function summarizeCanvasForPrompt(canvas, lang) {
       id: node?.id,
       type: node?.type || node?.nodeType || node?.sourceType,
       title: node?.title || node?.name || node?.label,
+      fileName: node?.fileName || undefined,
       summary: String(node?.summary || node?.description || node?.prompt || "").slice(0, 900),
-      url: node?.url || node?.sourceUrl
+      url: node?.url || node?.sourceUrl,
+      hasDocument: node?.hasDocument || undefined,
+      hasDocumentData: node?.hasDocumentData || undefined
     }))
   }, null, 2).slice(0, 16000);
 }

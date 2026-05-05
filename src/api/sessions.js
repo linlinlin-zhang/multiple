@@ -43,7 +43,9 @@ function serializeState(state) {
             fileName: n.sourceCard?.fileName || n.sourceCard?.title || null,
             summary: n.sourceCard?.summary || null,
             sourceType: n.sourceCard?.sourceType || null,
-            sourceText: n.sourceCard?.sourceText || null
+            sourceText: n.sourceCard?.sourceText || null,
+            sourceDataUrlHash: n.sourceCard?.sourceDataUrlHash || null,
+            mimeType: n.sourceCard?.mimeType || null
           }
         : n.option
         ? {
@@ -222,6 +224,31 @@ async function collectSourceAsset(state, assetRecords) {
 
 async function collectGeneratedAssets(nodes, assetRecords) {
   for (const node of nodes) {
+    if (node.type === "source-card") {
+      const sourceCard = node.data?.sourceCard || {};
+      const fileName = sourceCard.fileName || sourceCard.title || null;
+      if (typeof sourceCard.sourceDataUrl === "string" && sourceCard.sourceDataUrl.startsWith("data:")) {
+        const parsed = parseDataUrl(sourceCard.sourceDataUrl);
+        const stored = await storeFile(parsed.buffer, { kind: "upload", ext: parsed.ext || "bin" });
+        sourceCard.sourceDataUrlHash = stored.hash;
+        sourceCard.sourceDataUrl = null;
+        node.data.sourceDataUrlHash = stored.hash;
+        addAssetRecord(assetRecords, {
+          hash: stored.hash,
+          kind: "upload",
+          mimeType: parsed.mimeType,
+          fileSize: stored.size,
+          fileName
+        });
+      } else if (sourceCard.sourceDataUrlHash || node.data?.sourceDataUrlHash) {
+        const record = await assetRecordFromStoredHash(sourceCard.sourceDataUrlHash || node.data.sourceDataUrlHash, {
+          kind: "upload",
+          fileName,
+          mimeType: sourceCard.mimeType || ""
+        });
+        addAssetRecord(assetRecords, record);
+      }
+    }
     if (node.type === "source-card" && node.data?.imageHash) {
       const record = await assetRecordFromStoredHash(node.data.imageHash, {
         kind: "upload",

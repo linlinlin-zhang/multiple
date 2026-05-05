@@ -1741,17 +1741,11 @@ async function normalizeChatDocumentAttachments(value, lang = "zh") {
 
     if (dataUrl && !text) {
       try {
-        const parsedDataUrl = parseDataUrl(dataUrl);
-        ext = ext || parsedDataUrl.ext || "txt";
-        try {
-          const structured = await parseFileStructured(parsedDataUrl.buffer, ext);
-          text = structured.allText || "";
-          totalPages = structured.totalPages || 0;
-          isScanned = Boolean(structured.isScanned);
-        } catch {
-          const extracted = extractTextFromBuffer(parsedDataUrl.buffer, ext);
-          text = extracted?.text || "";
-        }
+        const document = await extractDocumentTextFromDataUrl(dataUrl, fileName);
+        ext = ext || document.ext || "txt";
+        text = document.text || "";
+        totalPages = document.totalPages || 0;
+        isScanned = Boolean(document.isScanned);
       } catch (error) {
         parseError = error.message || "Failed to parse attachment.";
       }
@@ -1772,15 +1766,47 @@ async function normalizeChatDocumentAttachments(value, lang = "zh") {
   return results.filter((item) => item.fileName || item.text || item.parseError);
 }
 
+async function extractDocumentTextFromDataUrl(dataUrl, fileName = "") {
+  const parsedDataUrl = parseDataUrl(dataUrl);
+  const ext = extensionFromFileName(fileName) || parsedDataUrl.ext || "txt";
+  const extracted = await extractDocumentTextFromBuffer(parsedDataUrl.buffer, ext);
+  return {
+    ...parsedDataUrl,
+    ...extracted,
+    ext
+  };
+}
+
+async function extractDocumentTextFromBuffer(buffer, ext) {
+  let structuredMeta = {};
+  try {
+    const structured = await parseFileStructured(buffer, ext);
+    structuredMeta = {
+      totalPages: structured.totalPages || 0,
+      isScanned: Boolean(structured.isScanned)
+    };
+    const text = structured.allText || "";
+    if (text.trim()) {
+      return { text, ...structuredMeta };
+    }
+  } catch {}
+  const extracted = extractTextFromBuffer(buffer, ext);
+  return {
+    text: extracted?.text || "",
+    totalPages: structuredMeta.totalPages || 0,
+    isScanned: Boolean(structuredMeta.isScanned)
+  };
+}
+
 function buildChatAttachmentContext(attachments, lang = "zh") {
   if (!attachments.length) return "";
   const isEn = lang === "en";
   let remaining = CHAT_ATTACHMENT_MAX_CHARS;
   const lines = [
-    isEn ? "# Uploaded Document Attachments" : "# 用户上传的对话文档附件",
+    isEn ? "# Document Context" : "# 文档上下文",
     isEn
-      ? "Use these document contents as first-class context for the current answer. If extraction is limited, state that limitation clearly."
-      : "请把这些文档内容作为本轮回答的一等上下文使用。如果提取受限，请在回答中明确说明局限。"
+      ? "Use these uploaded or selected source-card document contents as first-class context for the current answer. If extraction is limited, state that limitation clearly."
+      : "请把这些上传或选中的源卡片文档内容作为本轮回答的一等上下文使用。如果提取受限，请在回答中明确说明局限。"
   ];
 
   for (const attachment of attachments) {
@@ -2843,8 +2869,17 @@ async function handleAnalyzeExplore(body, res) {
   }
 
   const lang = body?.language === "en" ? "en" : "zh";
+  let extractedText = "";
+  if (dataUrl && fileName) {
+    try {
+      const document = await extractDocumentTextFromDataUrl(dataUrl, fileName);
+      extractedText = document.text || "";
+    } catch {
+      extractedText = "";
+    }
+  }
 
-  const primaryContent = text || url || imageDataUrl || "";
+  const primaryContent = text || extractedText || url || imageDataUrl || "";
   const contentType = body?.contentType || (imageDataUrl ? "image" : text ? "text" : url ? "url" : "text");
 
   const { taskType, confidence, wasFallback } = await routeContent({
@@ -2860,20 +2895,9 @@ async function handleAnalyzeExplore(body, res) {
 
   let content;
   let pageText = "";
-  let extractedText = "";
   try {
     pageText = url ? await fetchPublicPageText(url).catch(() => "") : "";
-    if (dataUrl && fileName) {
-      try {
-        const parsed = parseDataUrl(dataUrl);
-        const ext = extensionFromFileName(fileName) || parsed.ext || "";
-        const result = extractTextFromBuffer(parsed.buffer, ext);
-        extractedText = result?.text || "";
-      } catch {
-        extractedText = "";
-      }
-    }
-    content = buildExploreContent({ prompt, imageDataUrl, url, pageText, text, dataUrl, fileName, parseDataUrl, extensionFromFileName, extractTextFromBuffer });
+    content = buildExploreContent({ prompt, imageDataUrl, url, pageText, text: text || extractedText, dataUrl: text || extractedText ? "" : dataUrl, fileName, parseDataUrl, extensionFromFileName, extractTextFromBuffer });
   } catch (parseErr) {
     return sendJson(res, 400, { error: parseErr.message || "Failed to parse uploaded file." });
   }
@@ -3057,14 +3081,12 @@ async function handleAnalyzeText(body, res) {
     extractedText = body.text.trim();
   } else if (typeof body?.dataUrl === "string" && body.dataUrl.startsWith("data:")) {
     try {
-      const parsed = parseDataUrl(body.dataUrl);
-      const ext = extensionFromFileName(safeFileName) || parsed.ext || "txt";
-      const result = extractTextFromBuffer(parsed.buffer, ext);
-      extractedText = result.text;
+      const document = await extractDocumentTextFromDataUrl(body.dataUrl, safeFileName);
+      extractedText = document.text;
 
       // Store the original file for history browser
       try {
-        const stored = await storeFile(parsed.buffer, { kind: "upload", ext });
+        const stored = await storeFile(document.buffer, { kind: "upload", ext: document.ext || "bin" });
         storedHash = stored.hash;
       } catch (storeErr) {
         console.error("[handleAnalyzeText] storeFile failed:", storeErr);

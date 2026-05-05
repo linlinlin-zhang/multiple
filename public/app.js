@@ -3286,9 +3286,75 @@ function getChatThreadTitle(thread, index) {
   return title.length > 28 ? `${title.slice(0, 28)}...` : title;
 }
 
+function normalizeChatMarkdown(markdown) {
+  const value = String(markdown || "").replace(/\r\n?/g, "\n");
+  return value.split(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g).map((segment) => {
+    if (/^(```|~~~)/.test(segment)) return segment;
+    return normalizeChatMarkdownText(segment);
+  }).join("").trim();
+}
+
+function normalizeChatMarkdownText(segment) {
+  let text = String(segment || "").replace(/[ \t]+$/gm, "");
+  text = text.replace(/([^\n])[ \t]+(-{3,}|\*{3,}|_{3,})[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "$1\n\n$2\n\n$3 ");
+  text = text.replace(/(^|\n)(-{3,}|\*{3,}|_{3,})[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "$1$2\n\n$3 ");
+  text = text.replace(/([^\n])[ \t]+(#{1,6})[ \t]+(?=[^\s#])/g, "$1\n\n$2 ");
+  text = text.replace(/([。！？!?；;：:])\s*(#{1,6})[ \t]*(?=[^\s#])/g, "$1\n\n$2 ");
+  text = text.replace(/\|[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "|\n\n$1 ");
+  text = text.replace(/(^|\n)(#{1,6})[ \t]*(?=[^\s#])/g, "$1$2 ");
+  text = text.split("\n").map(repairInlineMarkdownTableLine).join("\n");
+  return text.replace(/\n{3,}/g, "\n\n");
+}
+
+function repairInlineMarkdownTableLine(line) {
+  if (!line.includes("|") || !/\|\s*:?-{3,}:?\s*\|/.test(line)) return line;
+  const firstPipe = line.indexOf("|");
+  const prefix = line.slice(0, firstPipe).trimEnd();
+  const cells = line.slice(firstPipe).split("|").map((cell) => cell.trim()).filter(Boolean);
+  const separatorStart = cells.findIndex(isMarkdownTableSeparatorCell);
+  if (separatorStart <= 0) return line;
+  let columnCount = 0;
+  while (isMarkdownTableSeparatorCell(cells[separatorStart + columnCount])) columnCount += 1;
+  if (columnCount < 2) return line;
+  const header = cells.slice(separatorStart - columnCount, separatorStart);
+  if (header.length !== columnCount) return line;
+  const rows = [
+    formatMarkdownTableRow(header),
+    formatMarkdownTableRow(cells.slice(separatorStart, separatorStart + columnCount).map(normalizeMarkdownTableSeparator))
+  ];
+  let trailing = "";
+  const rest = cells.slice(separatorStart + columnCount);
+  for (let index = 0; index < rest.length; index += columnCount) {
+    const row = rest.slice(index, index + columnCount);
+    if (row.length < columnCount && /^#{1,6}\s+/.test(row.join(" "))) {
+      trailing = `\n\n${row.join(" ")}`;
+      break;
+    }
+    if (row.length) rows.push(formatMarkdownTableRow(row));
+  }
+  return `${prefix ? `${prefix}\n\n` : ""}${rows.join("\n")}${trailing}`;
+}
+
+function isMarkdownTableSeparatorCell(value) {
+  return /^:?-{3,}:?$/.test(String(value || "").replace(/\s+/g, ""));
+}
+
+function normalizeMarkdownTableSeparator(value) {
+  const cell = String(value || "").replace(/\s+/g, "");
+  if (cell.startsWith(":") && cell.endsWith(":")) return ":---:";
+  if (cell.endsWith(":")) return "---:";
+  if (cell.startsWith(":")) return ":---";
+  return "---";
+}
+
+function formatMarkdownTableRow(cells) {
+  return `| ${cells.map((cell) => String(cell || "").trim() || " ").join(" | ")} |`;
+}
+
 function renderMarkdownToHtml(markdown) {
   if (!markdown) return "";
-  const rawHtml = micromark(markdown, {
+  const normalizedMarkdown = normalizeChatMarkdown(markdown);
+  const rawHtml = micromark(normalizedMarkdown, {
     allowDangerousHtml: false,
     extensions: [gfm()],
     htmlExtensions: [gfmHtml()]
@@ -4436,6 +4502,15 @@ function buildSelectedNodeContext(nodeId = state.selectedNodeId) {
     generated: Boolean(node.generated),
     hasReferences: Boolean(node.option?.references?.length)
   };
+  if (nodeId === "source") {
+    context.fileName = state.fileName || "";
+    context.sourceType = state.sourceType || "";
+    context.hasDocumentData = state.sourceType === "text" && Boolean(state.sourceText || state.sourceDataUrl || state.sourceDataUrlHash);
+  } else if (node.sourceCard) {
+    context.fileName = node.sourceCard.fileName || node.sourceCard.title || "";
+    context.sourceType = node.sourceCard.sourceType || "";
+    context.hasDocumentData = node.sourceCard.sourceType === "text" && Boolean(node.sourceCard.sourceText || node.sourceCard.sourceDataUrl || node.sourceCard.sourceDataUrlHash);
+  }
 
   const junctionId = resolveBlueprintJunctionId(nodeId);
   const blueprint = buildBlueprintContext(junctionId, false);
@@ -4493,7 +4568,10 @@ async function submitChatMessage(message, options = {}) {
   const chatAttachment = pendingChatAttachment;
   const attachmentImageDataUrl = chatAttachment?.kind === "image" ? chatAttachment.dataUrl : "";
   const attachmentVideoDataUrl = chatAttachment?.kind === "video" ? chatAttachment.dataUrl : "";
-  const chatAttachmentsPayload = buildChatAttachmentPayload(chatAttachment);
+  const chatAttachmentsPayload = mergeChatAttachmentPayloads(
+    buildChatAttachmentPayload(chatAttachment),
+    await buildSelectedSourceDocumentAttachmentPayload()
+  );
 
   chatInput.value = "";
   clearChatAttachmentPreview();
@@ -5354,6 +5432,9 @@ function buildVoiceCanvasContext() {
     type: getNodeType(node),
     summary: getNodeSummary(node).slice(0, 600),
     prompt: String(node.option?.prompt || node.sourceCard?.sourceText || "").slice(0, 900),
+    fileName: node.sourceCard?.fileName || "",
+    hasDocument: node.sourceCard?.sourceType === "text",
+    hasDocumentData: node.sourceCard?.sourceType === "text" && Boolean(node.sourceCard?.sourceText || node.sourceCard?.sourceDataUrl || node.sourceCard?.sourceDataUrlHash),
     x: Math.round(node.x || 0),
     y: Math.round(node.y || 0),
     width: Math.round(node.width || node.element?.offsetWidth || 0),
@@ -7636,6 +7717,8 @@ async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
       };
       createOptionNode(option, nodeId);
     }
+    if (data.summary) sourceCard.summary = data.summary;
+    if (data.sourceHash) sourceCard.sourceDataUrlHash = data.sourceHash;
     setStatus(useExplore ? t("research.exploreComplete") : t("status.ready"), "ready");
     autoSave();
   } catch (error) {
@@ -8131,7 +8214,7 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
     }
 
     if (message.content) {
-      const text = document.createElement("span");
+      const text = document.createElement("div");
       text.className = "chat-text markdown-body";
       if (message.role === "assistant") {
         text.innerHTML = renderMarkdownToHtml(applyCitationLinks(message.content, message.references));
@@ -8146,7 +8229,7 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       }
       line.appendChild(text);
     } else if (message.pending) {
-      const text = document.createElement("span");
+      const text = document.createElement("div");
       text.className = "chat-text markdown-body";
       const cursor = document.createElement("span");
       cursor.className = "streaming-cursor";
@@ -12258,6 +12341,89 @@ function buildChatAttachmentPayload(attachment) {
   }];
 }
 
+function mergeChatAttachmentPayloads(...groups) {
+  const merged = [];
+  const seen = new Set();
+  for (const group of groups) {
+    for (const item of (Array.isArray(group) ? group : [])) {
+      if (!item || typeof item !== "object") continue;
+      const key = [
+        item.type || "file",
+        item.fileName || item.name || "",
+        item.dataUrl ? item.dataUrl.slice(0, 96) : "",
+        item.text ? item.text.slice(0, 96) : "",
+        item.assetUrl || ""
+      ].join("|");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(item);
+      if (merged.length >= 3) return merged;
+    }
+  }
+  return merged;
+}
+
+async function buildSelectedSourceDocumentAttachmentPayload() {
+  const payloads = [];
+  const selectedIds = new Set(Array.from(state.selectedNodeIds || []));
+  if (state.selectedNodeId) selectedIds.add(state.selectedNodeId);
+  for (const nodeId of selectedIds) {
+    if (payloads.length >= 2) break;
+    const attachment = nodeId === "source"
+      ? await documentAttachmentFromPrimarySource()
+      : await documentAttachmentFromSourceCard(state.nodes.get(nodeId)?.sourceCard);
+    if (attachment?.text || attachment?.dataUrl) {
+      payloads.push({
+        type: "file",
+        name: attachment.fileName,
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+        size: attachment.size || 0,
+        text: attachment.text || "",
+        dataUrl: attachment.dataUrl || "",
+        source: attachment.source || "selected-source"
+      });
+    }
+  }
+  return payloads;
+}
+
+async function documentAttachmentFromPrimarySource() {
+  if (state.sourceType !== "text") return null;
+  const fileName = state.fileName || (currentLang === "en" ? "source document" : "源文档");
+  if (!state.sourceText && !state.sourceDataUrl) {
+    try {
+      await ensureSourceDocumentDataUrl();
+    } catch {}
+  }
+  if (!state.sourceText && !state.sourceDataUrl) return null;
+  return {
+    fileName,
+    mimeType: DOCUMENT_MIME_TYPES[sourceDocumentExtension(fileName)] || "application/octet-stream",
+    text: state.sourceText || "",
+    dataUrl: state.sourceText ? "" : (state.sourceDataUrl || ""),
+    source: "primary-source"
+  };
+}
+
+async function documentAttachmentFromSourceCard(sourceCard) {
+  if (!sourceCard || sourceCard.sourceType !== "text") return null;
+  const fileName = sourceCard.fileName || sourceCard.title || (currentLang === "en" ? "source card document" : "源卡片文档");
+  if (!sourceCard.sourceText && !sourceCard.sourceDataUrl) {
+    try {
+      await ensureSourceCardDocumentDataUrl(sourceCard);
+    } catch {}
+  }
+  if (!sourceCard.sourceText && !sourceCard.sourceDataUrl) return null;
+  return {
+    fileName,
+    mimeType: sourceCard.mimeType || DOCUMENT_MIME_TYPES[sourceDocumentExtension(fileName)] || "application/octet-stream",
+    text: sourceCard.sourceText || "",
+    dataUrl: sourceCard.sourceText ? "" : (sourceCard.sourceDataUrl || ""),
+    source: "source-card"
+  };
+}
+
 function showChatAttachmentPreview(file, attachment = null) {
   if (!chatAttachmentPreview) return;
   chatAttachmentPreview.innerHTML = "";
@@ -13048,8 +13214,11 @@ async function prepareStateForSave() {
 
 async function getSourceImageDataUrl() {
   const selected = state.selectedNodeId ? state.nodes.get(state.selectedNodeId) : null;
-  if (selected?.sourceCard?.imageUrl || selected?.sourceCard?.imageHash) {
-    return getImageDataUrlForNode(state.selectedNodeId);
+  if (selected?.sourceCard) {
+    if (selected.sourceCard.imageUrl || selected.sourceCard.imageHash) {
+      return getImageDataUrlForNode(state.selectedNodeId);
+    }
+    return "";
   }
   if (state.sourceImage && state.sourceImage.startsWith("data:")) return state.sourceImage;
   if (state.sourceImageHash) {
@@ -13066,9 +13235,12 @@ async function getSourceImageDataUrl() {
 
 async function getSourceVideoDataUrl() {
   const selected = state.selectedNodeId ? state.nodes.get(state.selectedNodeId) : null;
-  if (selected?.sourceCard?.sourceType === "video") {
-    const videoUrl = sourceCardDisplayVideoUrl(selected.sourceCard);
-    if (videoUrl) return assetUrlToDataUrl(videoUrl);
+  if (selected?.sourceCard) {
+    if (selected.sourceCard.sourceType === "video") {
+      const videoUrl = sourceCardDisplayVideoUrl(selected.sourceCard);
+      if (videoUrl) return assetUrlToDataUrl(videoUrl);
+    }
+    return "";
   }
   if (state.sourceType !== "video") return "";
   if (state.sourceVideo && state.sourceVideo.startsWith("data:")) return state.sourceVideo;
