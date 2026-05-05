@@ -82,9 +82,9 @@ const optionFields: Record<ApiRole, OptionField[]> = {
     { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
     { key: "max_tokens", type: "number", min: 1, step: 1 },
     { key: "sourceCardMode", type: "select", options: [["list", "List"], ["cards", "Cards"], ["off", "Off"]] },
-    { key: "maxCanvasCards", type: "number", min: 1, max: 20, step: 1 },
-    { key: "maxReferenceCards", type: "number", min: 0, max: 20, step: 1 },
-    { key: "liveCanvasCards", type: "number", min: 0, max: 20, step: 1 },
+    { key: "maxCanvasCards", type: "number", min: 1, max: 25, step: 1 },
+    { key: "maxReferenceCards", type: "number", min: 0, max: 25, step: 1 },
+    { key: "liveCanvasCards", type: "number", min: 0, max: 25, step: 1 },
     { key: "outputFormat", type: "text", placeholder: "model_summary_report" },
     { key: "incrementalOutput", type: "checkbox" },
   ],
@@ -246,7 +246,7 @@ export default function SettingsPage() {
             <Menu size={20} />
           </button>
           <div>
-            <div className="text-xs text-cabinet-inkMuted">ORYZAE</div>
+            <div className="text-xs text-cabinet-inkMuted">麦田创作</div>
             <h1 className="text-xl font-medium tracking-[0]">{t("settings.pageTitle")}</h1>
           </div>
         </header>

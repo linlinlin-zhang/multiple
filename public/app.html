@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ORYZAE / Image Board</title>
+    <title>麦田创作 / 工作台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23faf9f4'/%3E%3Ccircle cx='21' cy='25' r='7' fill='%233d9a92'/%3E%3Ccircle cx='43' cy='20' r='7' fill='%23d9bc68'/%3E%3Ccircle cx='38' cy='43' r='7' fill='%23bd453c'/%3E%3Cpath d='M21 25 43 20 38 43 21 25' fill='none' stroke='%23202939' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E" />
     <script>
       (function() {
@@ -28,11 +28,7 @@
           <span></span>
         </button>
         <div class="nav-brand">
-          <div class="nav-brand-icon">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
-          </div>
-          <span class="nav-kicker">ORYZAE</span>
-          <strong>创作平台</strong>
+          <strong>麦田创作平台</strong>
         </div>
         <nav class="nav-links" aria-label="页面导航">
           <a class="nav-link" href="/" title="主页">
@@ -69,7 +65,7 @@
               <button type="button" class="source-tab" data-tab="url">链接</button>
             </div>
             <label class="upload-target" for="fileInput">
-              <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.docx,.pdf,.pptx" />
+              <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.doc,.docx,.pdf,.ppt,.pptx" />
               <span id="emptyState" class="empty-state">
                 <strong>上传图片或文档</strong>
                 <span>选择图片、Word、PDF、PPT 或 TXT，生成分支方向</span>
@@ -222,13 +218,6 @@
                         <span class="chat-action-copy">
                           <span class="chat-action-title">深入研究</span>
                           <span class="chat-action-desc">把研究过程展开成画布卡片</span>
-                        </span>
-                      </button>
-                      <button id="chatImageSearchAction" class="chat-action-item" type="button" role="menuitem">
-                        <span class="chat-action-icon">IMG</span>
-                        <span class="chat-action-copy">
-                          <span class="chat-action-title">图片搜索</span>
-                          <span class="chat-action-desc">以文字或选中图片搜索视觉参考</span>
                         </span>
                       </button>
                       <button id="chatSubagentsAction" class="chat-action-item" type="button" role="menuitem">

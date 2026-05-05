@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ORYZAE — AI 图像创作平台</title>
+    <title>麦田创作 — AI 画布创作平台</title>
     <link rel="stylesheet" href="/lib/homepage.css" />
     <script src="/lib/three.min.js"></script>
     <style>
@@ -58,6 +58,72 @@
         .modal-layer {
             pointer-events: auto;
         }
+
+        .home-copy {
+            max-width: min(620px, 46vw);
+            padding: clamp(1.5rem, 3vw, 3.5rem) 0 0 clamp(0.25rem, 1vw, 1.25rem);
+            color: #171713;
+        }
+
+        .home-title {
+            margin: 0;
+            font-family: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "STSong", "SimSun", serif;
+            font-size: clamp(3.4rem, 6.8vw, 6.6rem);
+            font-weight: 500;
+            line-height: 1.04;
+            letter-spacing: -0.1em;
+            text-wrap: balance;
+        }
+
+        .home-intro {
+            max-width: 560px;
+            margin: clamp(1.8rem, 3.8vw, 3.2rem) 0 0;
+            font-family: "Inter", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+            font-size: clamp(1.05rem, 1.45vw, 1.36rem);
+            font-weight: 400;
+            line-height: 1.68;
+            letter-spacing: 0.02em;
+            color: rgba(31, 31, 27, 0.72);
+        }
+
+        .home-cta {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 220px;
+            min-height: 46px;
+            margin: clamp(1.9rem, 3vw, 2.6rem) auto 0;
+            padding: 0.78rem 1.6rem;
+            border-radius: 0;
+            background: #0070cc;
+            color: #ffffff;
+            font-family: "Inter", "PingFang SC", "Microsoft YaHei", sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-decoration: none;
+            box-shadow: none;
+            transition: background-color 180ms ease, color 180ms ease;
+        }
+
+        .home-cta:hover {
+            background: #1883fd;
+        }
+
+        @media (max-width: 900px) {
+            .home-copy {
+                max-width: min(88vw, 680px);
+            }
+
+            .home-title {
+                font-size: clamp(3.2rem, 14vw, 5.8rem);
+            }
+
+            .home-intro {
+                max-width: 500px;
+                font-size: 1.08rem;
+            }
+        }
     </style>
 </head>
 <body class="text-1f1f1b">
@@ -66,57 +132,17 @@
 
     <div class="ui-layer p-8 flex flex-col justify-between">
         <div class="flex justify-between items-start" style="pointer-events: auto;">
-            <div class="max-w-md">
-                <div class="mb-8">
-                    <h1 class="text-6xl font-bold tracking-tighter mb-2">ORYZAE</h1>
-                    <p class="text-xs uppercase tracking-widest text-1f1f1b-50 mb-4 font-sans">AI Image Creation Platform</p>
-                    <div class="w-12 h-0-5 bg-0070cc mb-4"></div>
-                    <p class="text-lg font-sans leading-relaxed text-1f1f1b">
-                        从一张参考图，推演出<br>无限创作可能
-                    </p>
-                </div>
+            <div class="home-copy">
+                <h1 class="home-title">麦田创作</h1>
+                <p class="home-intro">
+                    一个把灵感铺展成可视化画布的 AI 创作工作台。上传图片、文档或链接，用对话生成分析、资料、计划与视觉方向；每一次探索都会沉淀为可回溯的创作分支。
+                </p>
 
-                <div class="space-y-3 mt-6">
-                    <div class="flex items-start gap-4 p-4 bg-white border border-1f1f1b-10 rounded-sm shadow-sm">
-                        <span class="flex items-center justify-center w-8 h-8 rounded-full bg-0070cc text-white text-sm font-bold shrink-0">1</span>
-                        <div>
-                            <h3 class="font-bold text-sm mb-1 font-sans">图像解析</h3>
-                            <p class="text-xs text-1f1f1b-70 font-sans leading-relaxed">上传参考图，AI 自动识别空间结构、色彩情绪与视觉主体</p>
-                        </div>
-                    </div>
-                    <div class="flex items-start gap-4 p-4 bg-white border border-1f1f1b-10 rounded-sm shadow-sm">
-                        <span class="flex items-center justify-center w-8 h-8 rounded-full bg-0070cc text-white text-sm font-bold shrink-0">2</span>
-                        <div>
-                            <h3 class="font-bold text-sm mb-1 font-sans">意图描述</h3>
-                            <p class="text-xs text-1f1f1b-70 font-sans leading-relaxed">语音或文字描述创作意图，系统智能补全专业提示词</p>
-                        </div>
-                    </div>
-                    <div class="flex items-start gap-4 p-4 bg-white border border-1f1f1b-10 rounded-sm shadow-sm">
-                        <span class="flex items-center justify-center w-8 h-8 rounded-full bg-0070cc text-white text-sm font-bold shrink-0">3</span>
-                        <div>
-                            <h3 class="font-bold text-sm mb-1 font-sans">多 Agent 推演</h3>
-                            <p class="text-xs text-1f1f1b-70 font-sans leading-relaxed">风格研究员、构图分析师、生成器协同并行工作</p>
-                        </div>
-                    </div>
-                    <div class="flex items-start gap-4 p-4 bg-white border border-1f1f1b-10 rounded-sm shadow-sm">
-                        <span class="flex items-center justify-center w-8 h-8 rounded-full bg-0070cc text-white text-sm font-bold shrink-0">4</span>
-                        <div>
-                            <h3 class="font-bold text-sm mb-1 font-sans">生成与回溯</h3>
-                            <p class="text-xs text-1f1f1b-70 font-sans leading-relaxed">一键生成高质量视觉作品，完整历史与分支随时回溯</p>
-                        </div>
-                    </div>
-                </div>
-
-                <a href="/app.html" class="inline-flex items-center justify-center mt-8 px-10 py-4 bg-0070cc text-white text-sm font-bold tracking-wide hover-bg-005fa3 transition-all duration-200 text-center w-full max-w-xs rounded-sm shadow-md hover-shadow-lg hover-translate-y-up">
-                    开始使用
+                <a href="/app.html" class="home-cta">
+                    开始创作
                     <svg class="ml-2" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
                 </a>
             </div>
-        </div>
-
-        <div class="text-sm opacity-60">
-            <p>滚轮旋转 · 拖拽浏览 · 点击展开</p>
-            <p class="mt-1">ORYZAE AI IMAGE BOARD</p>
         </div>
     </div>
 

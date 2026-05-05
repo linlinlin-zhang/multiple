@@ -45,10 +45,7 @@ export default function AppNavigation({ activePage, open, onClose }: AppNavigati
         className="absolute left-0 top-0 flex h-full w-[280px] max-w-[86vw] flex-col bg-cabinet-black px-5 py-5 text-cabinet-paper shadow-[18px_0_42px_rgba(0,0,0,0.18)]"
         aria-label={t("nav.label")}
       >
-        <div className="flex items-center justify-between">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/16 bg-white/10">
-            <LayoutDashboard size={20} />
-          </div>
+        <div className="flex justify-end">
           <button
             type="button"
             onClick={onClose}
@@ -59,12 +56,11 @@ export default function AppNavigation({ activePage, open, onClose }: AppNavigati
           </button>
         </div>
 
-        <div className="mt-8 border-b border-white/14 pb-6">
-          <div className="text-xs text-white/68">ORYZAE</div>
-          <div className="mt-2 text-[22px] font-light leading-tight tracking-[0]">{t("nav.product")}</div>
+        <div className="mt-3 border-b border-white/14 pb-4">
+          <div className="text-[22px] font-light leading-tight tracking-[0]">{t("nav.product")}</div>
         </div>
 
-        <nav className="mt-6 grid gap-2" aria-label={t("nav.pages")}>
+        <nav className="mt-4 grid gap-2" aria-label={t("nav.pages")}>
           {items.map((item) => {
             const active = activePage === item.active;
             return (
