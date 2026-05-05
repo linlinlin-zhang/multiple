@@ -1,4 +1,4 @@
-import { micromark } from "https://esm.sh/micromark@4";
+﻿import { micromark } from "https://esm.sh/micromark@4";
 import { gfm, gfmHtml } from "https://esm.sh/micromark-extension-gfm@3";
 
 const viewport = document.querySelector("#viewport");
@@ -39,7 +39,6 @@ const chatActionMenu = document.querySelector("#chatActionMenu");
 const chatUploadAction = document.querySelector("#chatUploadAction");
 const chatMinimapAction = document.querySelector("#chatMinimapAction");
 const chatDeepThinkAction = document.querySelector("#chatDeepThinkAction");
-const chatImageSearchAction = document.querySelector("#chatImageSearchAction");
 const chatSubagentsAction = document.querySelector("#chatSubagentsAction");
 const deepThinkModeChip = document.querySelector("#deepThinkModeChip");
 const deepThinkModeCancel = document.querySelector("#deepThinkModeCancel");
@@ -146,9 +145,15 @@ const state = {
   view: {
     x: 0,
     y: 0,
-    scale: 0.86
+    scale: 0.86,
+    generatedCount: 0
   }
 };
+
+const MAX_QUICK_CANVAS_ACTIONS_PER_TURN = 10;
+const MAX_THINKING_CANVAS_ACTIONS_PER_TURN = 12;
+const MAX_DEEP_RESEARCH_CANVAS_CARDS = 25;
+const MAX_CANVAS_ACTIONS_PER_TURN = MAX_THINKING_CANVAS_ACTIONS_PER_TURN;
 
 const settingsCache = {
   currentRole: "analysis",
@@ -169,7 +174,7 @@ const settingsCache = {
     temperature: 0.7,
     options: { voice: "Ethan", outputAudio: false, enableSearch: false, smoothOutput: "auto", transcriptionModel: "qwen3-asr-flash-realtime", chunkMs: 3200, silenceThreshold: 0.012 }
   },
-  deepthink: { endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation", model: "qwen-deep-research", apiKey: "", temperature: 0.7, options: { sourceCardMode: "cards", maxCanvasCards: 20, maxReferenceCards: 20, liveCanvasCards: 6, outputFormat: "model_summary_report", incrementalOutput: true } }
+  deepthink: { endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation", model: "qwen-deep-research", apiKey: "", temperature: 0.7, options: { sourceCardMode: "cards", maxCanvasCards: MAX_DEEP_RESEARCH_CANVAS_CARDS, maxReferenceCards: MAX_DEEP_RESEARCH_CANVAS_CARDS, liveCanvasCards: 6, outputFormat: "model_summary_report", incrementalOutput: true } }
 };
 
 const MODEL_OPTION_FIELDS = {
@@ -198,7 +203,7 @@ const MODEL_OPTION_FIELDS = {
     { key: "useReferenceImage", type: "checkbox" }
   ],
   asr: [
-    { key: "targetLanguage", type: "select", options: [["auto", "Auto"], ["zh", "中文"], ["en", "English"]] },
+    { key: "targetLanguage", type: "select", options: [["auto", "Auto"], ["zh", "涓枃"], ["en", "English"]] },
     { key: "chunkMs", type: "number", min: 600, max: 6000, step: 100 }
   ],
   realtime: [
@@ -215,9 +220,9 @@ const MODEL_OPTION_FIELDS = {
     { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
     { key: "max_tokens", type: "number", min: 1, step: 1 },
     { key: "sourceCardMode", type: "select", options: [["list", "List"], ["cards", "Cards"], ["off", "Off"]] },
-    { key: "maxCanvasCards", type: "number", min: 1, max: 20, step: 1 },
-    { key: "maxReferenceCards", type: "number", min: 0, max: 20, step: 1 },
-    { key: "liveCanvasCards", type: "number", min: 0, max: 20, step: 1 },
+    { key: "maxCanvasCards", type: "number", min: 1, max: MAX_DEEP_RESEARCH_CANVAS_CARDS, step: 1 },
+    { key: "maxReferenceCards", type: "number", min: 0, max: MAX_DEEP_RESEARCH_CANVAS_CARDS, step: 1 },
+    { key: "liveCanvasCards", type: "number", min: 0, max: MAX_DEEP_RESEARCH_CANVAS_CARDS, step: 1 },
     { key: "outputFormat", type: "text", placeholder: "model_summary_report" },
     { key: "incrementalOutput", type: "checkbox" }
   ]
@@ -272,7 +277,7 @@ const VIEWER_ASPECT_OPTIONS = {
   "1:1": { label: { zh: "方形 1:1", en: "Square 1:1" }, size: "1536*1536" },
   "3:4": { label: { zh: "竖版 3:4", en: "Portrait 3:4" }, size: "1080*1440" },
   "9:16": { label: { zh: "故事版 9:16", en: "Story 9:16" }, size: "1080*1920" },
-  "4:3": { label: { zh: "横版 4:3", en: "Landscape 4:3" }, size: "1440*1080" },
+  "4:3": { label: { zh: "妯増 4:3", en: "Landscape 4:3" }, size: "1440*1080" },
   "16:9": { label: { zh: "宽屏 16:9", en: "Wide 16:9" }, size: "1920*1080" }
 };
 
@@ -380,8 +385,6 @@ const i18n = {
     "nav.home": "主页",
     "nav.sessions": "历史会话",
     "nav.settings": "设置",
-    "command.menu": "工作台命令",
-    "command.hint": "输入 / 选择工作台工具",
     "command.save": "保存会话",
     "command.saveDesc": "把当前画布保存到历史记录",
     "command.export": "导出会话",
@@ -389,25 +392,18 @@ const i18n = {
     "command.import": "导入会话",
     "command.importDesc": "从 JSON 文件恢复会话",
     "command.sessions": "历史会话",
-    "command.sessionsDesc": "打开工作台内的会话列表",
     "command.fit": "重置视图",
-    "command.fitDesc": "让画布回到初始视角",
     "command.zoomIn": "放大",
     "command.zoomInDesc": "放大当前画布",
     "command.zoomOut": "缩小",
     "command.zoomOutDesc": "缩小当前画布",
-    "command.arrange": "一键整理",
     "command.arrangeDesc": "自动整理当前画布节点",
     "command.newCard": "新建卡片",
-    "command.newCardDesc": "在画布上创建一张空白卡片",
     "command.newCanvas": "新建画布",
-    "command.newCanvasDesc": "创建一个新的空白画布",
     "command.searchCard": "搜索卡片",
     "command.searchCardDesc": "按名称搜索画布上的卡片并定位",
-    "command.searchCardPrompt": "输入卡片名称搜索…",
     "command.searchCardEmpty": "未找到匹配的卡片",
     "command.searchCardFound": "已定位到卡片：{title}",
-    "junction.maxCapacity": "聚合节点最多连接 {max} 张卡片",
     "junction.mergeExceedsCapacity": "合并后超过最大容量 {max}",
     "command.history": "历史浏览器",
     "command.historyDesc": "打开完整历史记录页面",
@@ -427,76 +423,42 @@ const i18n = {
     "settings.advanced": "模型参数",
     "settings.option.top_p": "Top P",
     "settings.option.max_tokens": "最大输出 Tokens",
-    "settings.option.size": "输出分辨率",
     "settings.option.n": "生成张数",
-    "settings.option.negative_prompt": "反向提示词",
     "settings.option.prompt_extend": "Prompt 智能改写",
     "settings.option.watermark": "添加水印",
     "settings.option.seed": "随机种子",
-    "settings.option.useReferenceImage": "使用当前图片作为参考",
     "settings.option.targetLanguage": "转写目标语言",
     "settings.option.chunkMs": "音频分段时长",
     "settings.option.enableWebSearch": "启用联网搜索",
     "settings.option.jsonObjectResponse": "JSON 对象响应",
     "settings.option.enableWebExtractor": "启用网页提取",
-    "settings.option.enableCodeInterpreter": "启用代码解释器",
     "settings.option.enableCanvasTools": "启用画布工具",
     "settings.option.enablePreviousResponse": "启用多轮响应 ID",
     "settings.option.voice": "音色",
     "settings.option.outputAudio": "返回语音回复",
     "settings.option.enableSearch": "实时语音联网搜索",
-    "settings.option.smoothOutput": "口语化输出",
     "settings.option.transcriptionModel": "实时转写模型",
-    "settings.option.silenceThreshold": "静音阈值",
-    "settings.option.sourceCardMode": "来源上画布方式",
     "settings.option.maxCanvasCards": "最大画布卡片数",
-    "settings.option.maxReferenceCards": "最大来源数量",
-    "settings.option.liveCanvasCards": "流式实时卡片数",
     "settings.option.outputFormat": "研究输出格式",
     "settings.option.incrementalOutput": "增量输出",
-    "settings.hint.top_p": "留空使用模型默认值。",
-    "settings.hint.max_tokens": "留空不限制，由模型默认控制。",
-    "settings.hint.size": "Qwen Image 2.0 Pro 支持自由宽高，推荐使用 2K 预设。",
-    "settings.hint.n": "Qwen Image 2.0 系列支持 1-6 张；当前画布会使用第一张。",
-    "settings.hint.negative_prompt": "不希望出现在画面里的内容，最多 500 字符。",
-    "settings.hint.prompt_extend": "开启后模型会优化正向提示词，画面更丰富。",
-    "settings.hint.seed": "留空随机；相同 seed 可提高复现概率。",
-    "settings.hint.enableWebSearch": "控制 Qwen 对话/分析是否允许触发内置联网搜索能力。",
-    "settings.hint.jsonObjectResponse": "分析模型需要严格结构化输出时可开启；如果模型不兼容请关闭。",
-    "settings.hint.enableWebExtractor": "允许 Qwen Responses 在用户提供网页链接时提取网页正文。",
-    "settings.hint.enableCodeInterpreter": "允许 Qwen Responses 在计算、数据分析、绘图请求中调用代码解释器。",
-    "settings.hint.enableCanvasTools": "允许对话模型返回 canvas_action，用于创建或控制画布卡片。",
-    "settings.hint.enablePreviousResponse": "开启后同一聊天线程会复用 Qwen Responses previous_response_id。",
-    "settings.hint.chunkMs": "ASR 或实时语音每次发送的音频长度；越短越实时，越长越稳定。",
-    "settings.hint.voice": "例如 Ethan、Cherry、Chelsie；自定义复刻音色可填音色 ID。",
-    "settings.hint.outputAudio": "开启后实时语音会播放模型原生音频。",
-    "settings.hint.enableSearch": "仅 Qwen3.5 Omni Realtime 支持，且不能与工具调用同时开启。",
-    "settings.hint.smoothOutput": "自动时由模型决定口语或书面风格。",
-    "settings.hint.transcriptionModel": "用于 Qwen Realtime input_audio_transcription 的 ASR 模型。",
-    "settings.hint.silenceThreshold": "前端静音过滤阈值；环境噪声大时可略微调高。",
-    "settings.hint.sourceCardMode": "list 会把研究来源合并为一个列表卡；cards 才会逐条生成来源卡；off 不上画布。",
-    "settings.hint.maxCanvasCards": "深入研究最终最多落到画布上的卡片数量，最多 20 张。",
-    "settings.hint.maxReferenceCards": "深入研究保留并展示的精选来源数量。",
-    "settings.hint.liveCanvasCards": "流式研究过程中最多创建的临时画布卡片数量，最多 20 张。",
-    "settings.hint.outputFormat": "传给 Qwen Deep Research 的 output_format，例如 model_summary_report。",
-    "settings.hint.incrementalOutput": "开启后 Deep Research 使用流式增量输出。",
     "settings.save": "保存",
     "settings.reset": "重置",
     "settings.darkMode": "深色模式",
     "settings.language": "语言",
-    "source.uploadPrompt": "上传图片或文档",
-    "source.uploadHint": "选择图片、Word、PDF、PPT 或 TXT，生成分支方向",
     "source.analyze": "分析",
     "research.button": "研究",
     "research.analyze": "分析",
     "research.explore": "探索",
-    "research.analyzeTooltip": "调用 no-thinking 模式，快速视觉分析",
     "research.exploreTooltip": "调用 thinking 模式，深入分析并搜集相关资料",
-    "research.cannotResearch": "该卡片无法进行研究",
     "research.exploring": "探索中...",
     "research.exploreComplete": "探索完成",
     "research.fallbackComplete": "探索完成（已自动降级为快速模式）",
     "research.timeout": "模型响应超时，请稍后重试",
+    "common.yes": "是",
+    "common.no": "否",
+    "link.deleteTitle": "删除连线",
+    "link.deleteMessage": "是否删除从「{from}」到「{to}」的连线？",
+    "link.deleted": "连线已删除",
     "source.urlPlaceholder": "https://...",
     "source.analyzeUrl": "分析链接",
     "chat.placeholder": "输入方向、约束，或 / 命令",
@@ -505,29 +467,18 @@ const i18n = {
     "chat.historyConversations": "历史对话",
     "chat.conversationListEmpty": "暂无历史对话",
     "chat.conversationUntitled": "新对话 {index}",
-    "chat.conversationMessages": "{count} 条消息",
     "chat.closePanel": "关闭对话区域",
     "chat.openPanel": "打开对话区域",
-    "chat.placeholderWithSelection": "对 {title} 继续探索…",
     "chat.placeholderWithCard": "与 '{title}' 对话...",
     "chat.contextIndicator": "对话上下文：{title}",
-    "chat.noMessages": "还没有对话。输入方向、约束，或按 / 选择工作台命令。",
     "chat.roleUser": "You",
     "chat.roleAssistant": "AI",
-    "chat.selectCardFirst": "请先双击选中一张卡片",
-    "chat.send": "发送",
     "chat.generate": "生成",
     "chat.thinkingPending": "正在思考...",
-    "chat.thinkingDetails": "思考过程",
     "chat.thinkingRunning": "正在思考中",
     "chat.thinkingComplete": "思考已完成",
-    "chat.thinkingUnavailable": "模型本次没有返回可展开的思考过程。",
-    "chat.actionsApplied": "已执行 {count} 个画布操作",
     "chat.scrollBottom": "回到底部",
     "chat.copyCode": "复制",
-    "chat.copied": "已复制",
-    "chat.actionApplied": "已执行画布操作",
-    "chat.clickToFocus": "点击跳转到画布节点",
     "chat.actionFeedback.create_plan": "已创建 plan 卡片",
     "chat.actionFeedback.create_todo": "已创建 todo 卡片",
     "chat.actionFeedback.create_note": "已创建 note 卡片",
@@ -541,50 +492,20 @@ const i18n = {
     "chat.actionFeedback.create_comparison": "已创建 comparison 卡片",
     "chat.actionFeedback.create_metric": "已创建 metric 卡片",
     "chat.actionFeedback.create_quote": "已创建 quote 卡片",
-    "chat.actionFeedback.create_direction": "已创建方向卡片",
-    "chat.actionFeedback.create_card": "已创建卡片",
-    "chat.actionFeedback.new_card": "已创建卡片",
-    "chat.actionFeedback.zoom_in": "已放大画布",
-    "chat.actionFeedback.zoom_out": "已缩小画布",
-    "chat.actionFeedback.reset_view": "已重置视图",
-    "chat.actionFeedback.set_zoom": "已调整缩放",
-    "chat.actionFeedback.pan_view": "已平移画布",
-    "chat.actionFeedback.focus_node": "已聚焦节点",
     "chat.actionFeedback.select_node": "已选择节点",
-    "chat.actionFeedback.move_node": "已移动节点",
-    "chat.actionFeedback.arrange_canvas": "已整理画布",
-    "chat.actionFeedback.auto_layout": "已自动整理画布",
-    "chat.actionFeedback.tidy_canvas": "已整理画布",
     "chat.actionFeedback.group_selection": "已编组选中卡片",
-    "chat.actionFeedback.ungroup_selection": "已取消编组",
-    "chat.actionFeedback.search_card": "已搜索卡片",
-    "chat.actionFeedback.export_report": "已导出画布报告",
     "chat.actionFeedback.deselect": "已取消选择",
-    "chat.actionFeedback.select_source": "已选择源卡片",
     "chat.actionFeedback.select_analysis": "已选择分析卡片",
-    "chat.actionFeedback.delete_node": "已删除卡片",
-    "chat.actionFeedback.generate_image": "已生成图片",
-    "chat.actionFeedback.web_search": "已创建联网检索卡片",
-    "chat.actionFeedback.image_search": "已搜索图片",
-    "chat.actionFeedback.reverse_image_search": "已搜索相似图片",
     "chat.actionFeedback.text_image_search": "已按文本搜图",
     "chat.actionFeedback.analyze_source": "已分析源内容",
     "chat.actionFeedback.explore_source": "已探索源内容",
     "chat.actionFeedback.research_source": "已研究源内容",
-    "chat.actionFeedback.research_node": "已开始研究",
-    "chat.actionFeedback.open_references": "已打开参考资料",
-    "chat.actionFeedback.save_session": "已保存会话",
-    "chat.actionFeedback.new_chat": "已新建对话",
     "chat.actionFeedback.open_chat_history": "已打开对话历史",
     "chat.actionFeedback.close_chat": "已关闭对话栏",
-    "chat.actionFeedback.open_chat": "已打开对话栏",
     "chat.actionFeedback.open_history": "已打开历史",
     "chat.actionFeedback.open_settings": "已打开设置",
     "chat.actionFeedback.open_upload": "已打开上传",
-    "chat.actionFeedback.set_thinking_mode": "已切换思考模式",
-    "chat.actionFeedback.set_deep_think_mode": "已切换深入研究模式",
     "chat.actionFeedback.create_agent": "已启动子任务",
-    "voice.asr": "语音转文字",
     "voice.asrListening": "正在听写...",
     "voice.asrTranscribing": "正在转写...",
     "voice.asrAccept": "保留转写",
@@ -592,38 +513,19 @@ const i18n = {
     "voice.realtime": "实时语音控制",
     "voice.realtimeStop": "结束实时语音控制",
     "voice.realtimeListening": "实时语音控制中...",
-    "voice.unsupported": "当前浏览器不支持录音。",
-    "voice.permissionDenied": "无法访问麦克风，请检查浏览器权限。",
-    "voice.asrNotConfigured": "ASR API 未配置。",
-    "voice.realtimeNotConfigured": "实时语音 API 未配置。",
-    "chat.emptyPrompt": "请输入方向描述",
-    "chat.attach": "上传图片或文本文件",
-    "chat.actionMenu": "功能区",
-    "chat.upload": "上传图片或文件",
-    "chat.uploadDesc": "添加到当前画布或输入框",
-    "chat.minimap": "缩略图",
     "chat.minimapDesc": "打开或关闭画布缩略图",
     "chat.deepThink": "深入研究",
-    "chat.deepThinkDesc": "调用 Qwen Deep Research，把研究过程实时展开为资料卡片",
     "chat.deepThinkMode": "深入研究",
     "chat.deepThinkActive": "正处于深入研究模式下",
     "chat.cancelDeepThink": "取消深入研究模式",
     "deepthink.busy": "深入研究中...",
     "deepthink.complete": "深入研究完成",
-    "chat.imageSearch": "图片搜索",
-    "chat.imageSearchDesc": "以文字或选中图片搜索视觉参考",
-    "chat.generatedCannotGenerate": "生成图节点无法继续生成方向",
-    "chat.noSourceForGenerate": "请先上传图片或打开可作为参考的图片，再生成。",
-    "thinking.mode": "思考模式",
-    "thinking.thinking": "思考",
-    "thinking.fast": "快速",
     "status.ready": "Ready",
     "status.busy": "Busy",
-    "status.saved": "已保存",
     "status.saving": "保存中...",
     "status.error": "保存失败",
     "counts.label": "方向 {options} / 成图 {generated}",
-    "option.generate": "生成这张图",
+    "option.viewContent": "查看内容",
     "analysis.title": "图像理解",
     "analysis.eyebrow": "MODEL READ",
     "analysis.titleImage": "图像理解",
@@ -632,17 +534,12 @@ const i18n = {
     "analysis.eyebrowImage": "IMAGE READ",
     "analysis.eyebrowText": "DOCUMENT READ",
     "analysis.eyebrowUrl": "LINK READ",
-    "analysis.defaultSummary": "已完成内容理解。",
-    "fileUnderstanding.title": "文件理解卡",
     "fileUnderstanding.summary": "摘要",
     "fileUnderstanding.structure": "结构",
-    "fileUnderstanding.pages": "{count} 页",
     "fileUnderstanding.keyMaterials": "关键素材",
     "fileUnderstanding.images": "图片",
     "fileUnderstanding.tables": "表格",
     "fileUnderstanding.charts": "图表",
-    "fileUnderstanding.actionableDirections": "可执行方向",
-    "fileUnderstanding.scannedWarning": "这似乎是扫描版文档，建议使用 OCR 以提取完整文本。",
     "fileUnderstanding.understandButton": "理解文档",
     "fileUnderstanding.understanding": "正在理解文档...",
     "direction.research": "研究",
@@ -658,25 +555,16 @@ const i18n = {
     "session.fit": "重置视图",
     "session.zoomOut": "缩小",
     "session.zoomIn": "放大",
-    "session.arrange": "一键整理",
     "health.checking": "checking",
     "health.demo": "demo",
     "health.api": "api",
     "health.mixed": "mixed",
-    "chat.systemContext": "你是 ORYZAE 画布工作台的助手。画布支持规划、研究、写作、分析、设计和图像生成等通用任务。在合适的时候使用 canvas_action 工具创建结构化节点(plan / todo / note / weather / map / link / code / web_card / 图像 等)。每次调用工具都要同时写一条正常的消息回复给用户。",
-    "chat.systemRole": "你是 ORYZAE 的画布助手。",
     "chat.selectedCardContext": "当前用户正在与画布上的以下卡片对话：\n类型：{type}\n标题：{title}\n内容摘要：{summary}",
     "chat.selectedCardPrompt": "提示词：{prompt}",
-    "analysis.systemPrompt": "你是一个视觉创意导演，正在为一个画布式图片生成应用分析用户上传的图片。请快速理解图片内容、主体、氛围、可延展的叙事方向，并给出 5 个不同的成图方向。这些方向会作为画布上的分支节点展示，用户点击后会调用成图模型。请只返回严格 JSON，不要 Markdown，不要代码块。",
-    "generate.systemPrompt": "请基于参考图生成一张新图，保留原图最重要的主体、颜色关系或视觉记忆点，但不要只是复制。成图方向：{title}\n\n方向说明：{description}\n\n详细提示词：{prompt}\n\n输出应是一张完整、可独立展示的图片；构图清晰；不要添加水印、UI 截图边框或说明文字。",
-    "explain.systemContext": "你是一位视觉创意评论助手，正在为画布式图片生成应用中的每张生成图撰写简短的内容讲解。用户会看到：原图分析摘要、选中的创作方向、以及实际发给成图模型的提示词。你的任务是用 1-2 句话（30-60 字）描述这张生成图在视觉上做了什么、保留了什么、改变了什么。语气专业、简洁、有画面感。不要重复提示词原文，要提炼成观众能感知的视觉描述。",
-    "explain.systemRole": "你是 ORYZAE 的 Qwen 视觉创意评论助手。讲解要短、有画面感、不提技术细节。",
     "generated.download": "下载",
-    "generated.regenerate": "重生成",
     "generated.result": "生成结果",
     "viewer.title": "图片详情",
     "viewer.close": "关闭",
-    "viewer.regenerate": "重生成",
     "viewer.modify": "修改",
     "viewer.download": "下载",
     "viewer.confirmModify": "确认修改",
@@ -684,36 +572,20 @@ const i18n = {
     "viewer.promptPlaceholder": "描述编辑",
     "viewer.brush": "选择",
     "viewer.clearMask": "清除",
-    "viewer.aspect": "宽高比",
     "viewer.aspectAuto": "原图比例",
-    "viewer.aspectMenuTitle": "用不同宽高比生成此图片",
-    "viewer.maskRequired": "请先涂抹要编辑的区域。",
-    "viewer.maskHint": "已使用画笔选区，模型会优先修改涂抹区域。",
     "viewer.share": "分享",
     "viewer.shareInProgress": "生成分享链接中...",
-    "viewer.shareCopied": "分享链接已复制到剪贴板",
     "viewer.shareFailed": "分享链接生成失败",
-    "collapse.expand": "展开 {count} 个后续节点",
-    "collapse.collapse": "收起 {count} 个后续节点",
     "collapse.noChildren": "没有后续节点",
     "save.auto": "自动保存中...",
     "save.inProgress": "保存中...",
     "save.failed": "保存失败",
     "save.savedAt": "已保存 {time}",
-    "save.alertFirst": "请先保存会话后再导出。",
-    "save.exportFailed": "导出失败：",
-    "save.importFailed": "导入失败：",
-    "file.unsupported": "暂不支持该文件类型，请上传图片或文本文件。",
-    "file.readError": "文件读取失败：",
     "image.error": "图片读取失败",
     "image.chooseFile": "请选择图片文件",
-    "session.unnamed": "未命名会话",
-    "session.exploration": "的探索",
     "node.delete": "删除",
     "node.cannotDeleteSource": "初始卡片不可删除",
     "node.cannotDeleteWithChildren": "该卡片有子节点，不可删除",
-    "reference.title": "参考资料",
-    "reference.empty": "暂无参考资料",
     "badge.image_generation": "成图",
     "badge.research": "研究",
     "badge.planning": "规划",
@@ -727,7 +599,6 @@ const i18n = {
     "badge.link": "链接",
     "badge.code": "代码",
     "badge.table": "表格",
-    "badge.timeline": "时间线",
     "badge.comparison": "对比",
     "badge.metric": "指标",
     "badge.quote": "引用",
@@ -736,15 +607,12 @@ const i18n = {
     "nodeType.copy": "复制",
     "nodeType.expand": "展开",
     "nodeType.collapse": "收起",
-    "nodeType.done": "已完成",
-    "nodeType.undone": "未完成",
     "nodeType.forecast": "预报",
     "nodeType.temperature": "温度",
     "nodeType.location": "位置",
     "nodeType.coordinates": "坐标",
     "nodeType.preview": "预览",
     "nodeType.steps": "步骤",
-    "nodeType.step": "第 {n} 步",
     "generated.viewContent": "查看内容",
     "generated.openLink": "打开链接",
     "generated.copyCode": "复制代码",
@@ -781,7 +649,6 @@ const i18n = {
     "command.newCanvasDesc": "Create a new blank canvas",
     "command.searchCard": "Search card",
     "command.searchCardDesc": "Find and locate a card on the canvas by name",
-    "command.searchCardPrompt": "Type card name to search…",
     "command.searchCardEmpty": "No matching card found",
     "command.searchCardFound": "Located card: {title}",
     "junction.maxCapacity": "Junction node can connect at most {max} cards",
@@ -874,6 +741,11 @@ const i18n = {
     "research.exploreComplete": "Explore complete",
     "research.fallbackComplete": "Explore complete (fell back to fast mode)",
     "research.timeout": "Model response timed out. Please try again.",
+    "common.yes": "Yes",
+    "common.no": "No",
+    "link.deleteTitle": "Delete Link",
+    "link.deleteMessage": "Delete the link from \"{from}\" to \"{to}\"?",
+    "link.deleted": "Link deleted",
     "source.urlPlaceholder": "https://...",
     "source.analyzeUrl": "Analyze Link",
     "chat.placeholder": "Direction, constraint, or / command",
@@ -885,7 +757,6 @@ const i18n = {
     "chat.conversationMessages": "{count} messages",
     "chat.closePanel": "Close chat panel",
     "chat.openPanel": "Open chat panel",
-    "chat.placeholderWithSelection": "Explore {title}…",
     "chat.placeholderWithCard": "Chat with '{title}'...",
     "chat.contextIndicator": "Context: {title}",
     "chat.noMessages": "No messages yet. Enter a direction, constraint, or press / for workbench commands.",
@@ -987,8 +858,6 @@ const i18n = {
     "chat.cancelDeepThink": "Cancel deep research mode",
     "deepthink.busy": "Deep research...",
     "deepthink.complete": "Deep research complete",
-    "chat.imageSearch": "Image search",
-    "chat.imageSearchDesc": "Search visual references from text or the selected image",
     "chat.generatedCannotGenerate": "Generated image nodes cannot spawn new directions",
     "chat.noSourceForGenerate": "Upload or open a reference image before generating.",
     "thinking.mode": "Thinking Mode",
@@ -1001,6 +870,7 @@ const i18n = {
     "status.error": "Save failed",
     "counts.label": "Options {options} / Generated {generated}",
     "option.generate": "Generate this image",
+    "option.viewContent": "View content",
     "analysis.title": "Image Understanding",
     "analysis.eyebrow": "MODEL READ",
     "analysis.titleImage": "Image Understanding",
@@ -1129,7 +999,6 @@ const i18n = {
     "generated.viewWeather": "View Weather"
   }
 };
-
 let currentLang = "zh";
 
 function t(key, vars = {}) {
@@ -1263,12 +1132,6 @@ function renderAllText() {
     const desc = chatDeepThinkAction.querySelector(".chat-action-desc");
     if (title) title.textContent = t("chat.deepThink");
     if (desc) desc.textContent = t("chat.deepThinkDesc");
-  }
-  if (chatImageSearchAction) {
-    const title = chatImageSearchAction.querySelector(".chat-action-title");
-    const desc = chatImageSearchAction.querySelector(".chat-action-desc");
-    if (title) title.textContent = t("chat.imageSearch");
-    if (desc) desc.textContent = t("chat.imageSearchDesc");
   }
   if (deepThinkModeChip) {
     deepThinkModeChip.title = t("chat.deepThinkActive");
@@ -1486,7 +1349,7 @@ function getWorkbenchCommands() {
       id: "subagents",
       icon: "A",
       label: currentLang === "en" ? "Subagents" : "Subagents",
-      description: currentLang === "en" ? "Allow complex tasks to spawn quick agents" : "允许复杂任务拆成多个快速 agent"
+      description: currentLang === "en" ? "Allow complex tasks to spawn quick agents" : "鍏佽澶嶆潅浠诲姟鎷嗘垚澶氫釜蹇€?agent"
     }
   ];
 }
@@ -1936,7 +1799,7 @@ function wireControls() {
     understandOption.dataset.mode = "understand";
     understandOption.innerHTML = `
       <span class="option-label">${t("fileUnderstanding.understandButton")}</span>
-      <div class="option-tooltip">理解文档结构、提取关键素材并生成可执行方向</div>
+      <div class="option-tooltip">鐞嗚В鏂囨。缁撴瀯銆佹彁鍙栧叧閿礌鏉愬苟鐢熸垚鍙墽琛屾柟鍚?/div>
     `;
     understandOption.style.display = "none"; // hidden by default, shown when document source is active
     researchDropdown.appendChild(understandOption);
@@ -2095,14 +1958,6 @@ function wireControls() {
     closeChatActionMenu();
     setDeepThinkModeActive(true);
     chatInput?.focus();
-  });
-  chatImageSearchAction?.addEventListener("click", async () => {
-    closeChatActionMenu();
-    await runChatBoundCanvasAction(() => searchImagesFromAction({
-      type: pendingChatAttachment?.kind === "image" ? "reverse_image_search" : "image_search",
-      query: chatInput?.value.trim() || "",
-      imageDataUrl: pendingChatAttachment?.kind === "image" ? pendingChatAttachment.dataUrl : ""
-    }));
   });
   chatSubagentsAction?.addEventListener("click", () => {
     closeChatActionMenu();
@@ -2631,6 +2486,7 @@ function createChatThread(messages = [], title = "") {
     title,
     createdAt: new Date().toISOString(),
     previousResponseId: "",
+    topicNodeId: "",
     messages: messages.map(normalizeChatThreadMessage)
   };
 }
@@ -2667,11 +2523,14 @@ function normalizeChatAttachments(value) {
       return {
         type,
         name: String(item.name || item.fileName || item.title || "").slice(0, 120),
+        mimeType: String(item.mimeType || "").slice(0, 120),
+        size: Number.isFinite(Number(item.size)) ? Number(item.size) : 0,
         imageUrl,
-        url: String(item.url || "").slice(0, 1024)
+        url: String(item.url || "").slice(0, 1024),
+        text: type === "file" ? String(item.text || "").slice(0, 8000) : ""
       };
     })
-    .filter((item) => item.name || item.imageUrl || item.url);
+    .filter((item) => item.name || item.imageUrl || item.url || item.text);
 }
 
 function normalizeChatThinkingTrace(value) {
@@ -2688,7 +2547,7 @@ function normalizeChatMessageActions(value) {
   const raw = Array.isArray(value) ? value : (value ? [value] : []);
   return raw
     .filter((action) => action && typeof action === "object" && action.type)
-    .slice(0, 8)
+    .slice(0, MAX_DEEP_RESEARCH_CANVAS_CARDS)
     .map((action) => ({ ...action, type: String(action.type) }));
 }
 
@@ -2746,16 +2605,16 @@ const ACTION_FEEDBACK_ICONS = {
   open_history: "🗄",
   open_settings: "⚙",
   open_upload: "⬆",
-  set_thinking_mode: "🧠",
+  set_thinking_mode: "馃",
   set_deep_think_mode: "🔬",
-  create_agent: "🤖"
+  create_agent: "馃"
 };
 
 function normalizeChatActionResults(value) {
   const raw = Array.isArray(value) ? value : (value ? [value] : []);
   return raw
     .filter((entry) => entry && typeof entry === "object" && entry.type)
-    .slice(0, 8)
+    .slice(0, MAX_DEEP_RESEARCH_CANVAS_CARDS)
     .map((entry) => {
       const result = entry.result;
       const nodeId = (typeof result === "string" ? result : result?.nodeId) || entry.nodeId || "";
@@ -2782,7 +2641,7 @@ function formatActionFailureNote(actionResults = []) {
   });
   return currentLang === "en"
     ? `\n\n> Some requested canvas actions did not complete:\n${lines.join("\n")}`
-    : `\n\n> 有些画布操作没有真正完成：\n${lines.join("\n")}`;
+    : `\n\n> 鏈変簺鐢诲竷鎿嶄綔娌℃湁鐪熸瀹屾垚锛歕n${lines.join("\n")}`;
 }
 
 function normalizeChatArtifacts(value) {
@@ -2846,6 +2705,7 @@ function normalizeChatThread(thread, index = 0) {
     title: typeof thread.title === "string" ? thread.title : "",
     createdAt: thread.createdAt || fallback.createdAt,
     previousResponseId: typeof thread.previousResponseId === "string" ? thread.previousResponseId : "",
+    topicNodeId: typeof thread.topicNodeId === "string" ? thread.topicNodeId : "",
     messages
   };
 }
@@ -2903,6 +2763,7 @@ function serializeChatThreads() {
     title: thread.title || "",
     createdAt: thread.createdAt || new Date().toISOString(),
     previousResponseId: thread.previousResponseId || "",
+    topicNodeId: thread.topicNodeId || "",
     messages: thread.messages.map((message) => ({
       role: message.role,
       content: message.content,
@@ -3026,7 +2887,7 @@ function updateChatPrimaryButtonMode() {
   if (chatInput) chatInput.readOnly = busy;
   if (chatAttachButton) chatAttachButton.disabled = busy;
   const label = busy
-    ? (currentLang === "en" ? "Working..." : "执行中...")
+    ? (currentLang === "en" ? "Working..." : "鎵ц涓?..")
     : hasText ? t("chat.send") : active ? t("voice.realtimeStop") : t("voice.realtime");
   chatRealtimeButton.title = label;
   chatRealtimeButton.setAttribute("aria-label", label);
@@ -3399,6 +3260,106 @@ function arrayBufferToBase64(buffer) {
   return btoa(binary);
 }
 
+const DOCUMENT_MIME_TYPES = {
+  txt: "text/plain",
+  md: "text/markdown",
+  json: "application/json",
+  doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ppt: "application/vnd.ms-powerpoint",
+  pdf: "application/pdf",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+};
+
+function sourceDocumentExtension(fileName = "") {
+  return String(fileName || "").split(".").pop()?.toLowerCase() || "";
+}
+
+function isSupportedDocumentFile(fileName = "") {
+  return /\.(txt|md|json|doc|docx|pdf|ppt|pptx)$/i.test(fileName || "");
+}
+
+function isPlainTextDocument(fileName = "") {
+  return ["txt", "md", "json"].includes(sourceDocumentExtension(fileName));
+}
+
+function clearDocumentPreview(uploadTarget) {
+  const target = uploadTarget || document.querySelector("#sourceNode .upload-target");
+  target?.querySelector(".source-document-preview")?.remove();
+  target?.classList.remove("has-document-preview");
+}
+
+function renderDocumentPreview(fileName, sourceRef = "", text = "", mimeType = "", uploadTarget = null) {
+  const target = uploadTarget || document.querySelector("#sourceNode .upload-target");
+  if (!target) return;
+  clearDocumentPreview(target);
+  const ext = sourceDocumentExtension(fileName);
+  const preview = document.createElement("div");
+  preview.className = `source-document-preview type-${ext || "file"}`;
+
+  if (ext === "pdf" && sourceRef) {
+    const frame = document.createElement("iframe");
+    frame.className = "source-document-frame";
+    frame.title = fileName || "PDF";
+    frame.src = `${sourceRef}#page=1&toolbar=0&navpanes=0&scrollbar=0`;
+    preview.appendChild(frame);
+  } else if (ext === "pptx" || ext === "ppt") {
+    const cover = document.createElement("div");
+    cover.className = "source-document-cover pptx-preview";
+    const icon = document.createElement("span");
+    icon.className = "pptx-icon";
+    icon.textContent = ext === "ppt" ? "PPT" : "PPTX";
+    const title = document.createElement("p");
+    title.className = "pptx-name";
+    title.textContent = fileName || (currentLang === "en" ? "Presentation" : "婕旂ず鏂囩");
+    const hint = document.createElement("p");
+    hint.className = "pptx-hint";
+    hint.textContent = currentLang === "en" ? "First slide preview" : "棣栭〉棰勮";
+    cover.append(icon, title, hint);
+    preview.appendChild(cover);
+  } else {
+    const cover = document.createElement("div");
+    cover.className = "source-document-cover text-preview";
+    const title = document.createElement("p");
+    title.textContent = fileName || (currentLang === "en" ? "Text document" : "鏂囨湰鏂囨。");
+    const excerpt = String(text || "").trim().slice(0, 120);
+    if (excerpt) {
+      const small = document.createElement("span");
+      small.textContent = excerpt;
+      cover.append(title, small);
+    } else {
+      cover.appendChild(title);
+    }
+    preview.appendChild(cover);
+  }
+
+  const img = target.querySelector(".source-preview");
+  if (img) {
+    img.removeAttribute("src");
+    img.classList.remove("has-image");
+  }
+  target.appendChild(preview);
+  target.classList.add("has-document-preview");
+  target.classList.remove("has-source-image");
+}
+
+function sourceDocumentPreviewRef(fileName, dataUrl = "", hash = "") {
+  if (dataUrl) return dataUrl;
+  if (!isPlainTextDocument(fileName) && hash) return `/api/assets/${hash}?kind=upload`;
+  return "";
+}
+
+function renderSourceDocumentPreviewFromState() {
+  if (state.sourceType !== "text" || !state.fileName) return;
+  renderDocumentPreview(
+    state.fileName,
+    sourceDocumentPreviewRef(state.fileName, state.sourceDataUrl, state.sourceDataUrlHash),
+    state.sourceText || "",
+    DOCUMENT_MIME_TYPES[sourceDocumentExtension(state.fileName)] || "",
+    document.querySelector("#sourceNode .upload-target")
+  );
+}
+
 async function handleFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -3407,11 +3368,13 @@ async function handleFile(event) {
   }
 
   const isImage = file.type.startsWith("image/");
-  const isTextDoc = /\.(txt|md|json|docx|pdf|pptx)$/i.test(file.name);
+  const isTextDoc = isSupportedDocumentFile(file.name);
 
   if (isImage) {
     setStatus(t("status.busy"), "busy");
     try {
+      clearDocumentPreview(document.querySelector("#sourceNode .upload-target"));
+      document.querySelector(".url-source-card")?.remove();
       const image = await resizeImage(file, 1600, 0.88);
       state.sourceImage = image.dataUrl;
       state.sourceType = "image";
@@ -3455,7 +3418,7 @@ async function handleFile(event) {
       state.sourceDataUrlHash = null;
 
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
-      const isPlainText = ["txt", "md", "json"].includes(ext);
+      const isPlainText = isPlainTextDocument(file.name);
 
       if (isPlainText) {
         const text = await file.text();
@@ -3464,29 +3427,20 @@ async function handleFile(event) {
       } else {
         const arrayBuffer = await file.arrayBuffer();
         const base64 = arrayBufferToBase64(arrayBuffer);
-        const mimeMap = {
-          docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          pdf: "application/pdf",
-          pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-        };
-        const mime = mimeMap[ext] || "application/octet-stream";
+        const mime = DOCUMENT_MIME_TYPES[ext] || "application/octet-stream";
         state.sourceDataUrl = `data:${mime};base64,${base64}`;
         state.sourceText = null;
       }
 
-      // Show document preview in source node
+      document.querySelector(".url-source-card")?.remove();
       sourcePreview.src = "";
       sourcePreview.classList.remove("has-image");
       emptyState.classList.add("hidden");
       sourceName.textContent = trimMiddle(file.name, 28);
       if (researchButton) researchButton.disabled = false;
 
-      // Render document preview for PDF/PPT
-      const isRichDoc = ["pdf", "pptx", "docx"].includes(ext);
-      if (isRichDoc) {
-        const uploadTarget = document.querySelector("#sourceNode .upload-target");
-        renderDocumentPreview(file.name, state.sourceDataUrl, null, mimeMap[ext], uploadTarget);
-      }
+      const uploadTarget = document.querySelector("#sourceNode .upload-target");
+      renderDocumentPreview(file.name, state.sourceDataUrl, state.sourceText, DOCUMENT_MIME_TYPES[ext], uploadTarget);
 
       clearOptions();
       state.latestAnalysis = null;
@@ -3544,6 +3498,11 @@ function handleAnalyze(mode = "analyze") {
     showSelectionToast(t("research.cannotResearch"));
     return;
   }
+  const selectedNode = state.selectedNodeId ? state.nodes.get(state.selectedNodeId) : null;
+  if (selectedNode?.sourceCard) {
+    analyzeStandaloneSourceCard(state.selectedNodeId, { mode });
+    return;
+  }
   analyzeSource(mode);
 }
 
@@ -3551,6 +3510,11 @@ function handleExplore() {
   // If a node is selected, validate it can be researched
   if (state.selectedNodeId && !canResearchNode(state.selectedNodeId)) {
     showSelectionToast(t("research.cannotResearch"));
+    return;
+  }
+  const selectedNode = state.selectedNodeId ? state.nodes.get(state.selectedNodeId) : null;
+  if (selectedNode?.sourceCard) {
+    analyzeStandaloneSourceCard(state.selectedNodeId, { mode: "explore" });
     return;
   }
   exploreSource();
@@ -3695,6 +3659,7 @@ async function analyzeUrl() {
 }
 
 function renderUrlSource(url, title) {
+  clearDocumentPreview(document.querySelector("#sourceNode .upload-target"));
   sourcePreview.src = "";
   sourcePreview.classList.remove("has-image");
   emptyState.classList.add("hidden");
@@ -3779,6 +3744,9 @@ async function handleChatSubmit(event) {
   if (!message && pendingChatAttachment?.kind === "image") {
     message = currentLang === "en" ? "Please look at this image and help me understand it." : "请先看看这张图片，并帮我理解它。";
   }
+  if (!message && pendingChatAttachment && pendingChatAttachment.kind !== "image") {
+    message = currentLang === "en" ? "Please analyze this document and summarize the key points." : "请分析这个文档，并总结关键要点。";
+  }
   if (!message) return;
   if (message.startsWith("/")) {
     const resolved = resolveWorkbenchCommandFromInput(message);
@@ -3810,6 +3778,7 @@ async function submitChatMessage(message, options = {}) {
   const effectiveThinkingMode = options.forcedThinkingMode || (agentMode ? "no-thinking" : state.thinkingMode);
   const chatAttachment = pendingChatAttachment;
   const attachmentImageDataUrl = chatAttachment?.kind === "image" ? chatAttachment.dataUrl : "";
+  const chatAttachmentsPayload = buildChatAttachmentPayload(chatAttachment);
 
   chatInput.value = "";
   clearChatAttachmentPreview();
@@ -3818,8 +3787,16 @@ async function submitChatMessage(message, options = {}) {
   const userAttachments = attachmentImageDataUrl ? [{
     type: "image",
     name: chatAttachment?.fileName || "",
+    mimeType: chatAttachment?.mimeType || "",
+    size: chatAttachment?.size || 0,
     imageUrl: attachmentImageDataUrl
-  }] : [];
+  }] : (chatAttachment ? [{
+    type: "file",
+    name: chatAttachment.fileName || "",
+    mimeType: chatAttachment.mimeType || "",
+    size: chatAttachment.size || 0,
+    text: chatAttachment.text || ""
+  }] : []);
   appendChatMessage("user", text, { attachments: userAttachments });
   const pendingAssistant = appendChatMessage("assistant", "", {
     pending: true,
@@ -3871,6 +3848,7 @@ async function submitChatMessage(message, options = {}) {
       thinkingMode: effectiveThinkingMode,
       agentMode,
       subagentsEnabled,
+      chatAttachments: chatAttachmentsPayload,
       sessionId: currentSessionId || "",
       previousResponseId: ensureActiveChatThread().previousResponseId || ""
     };
@@ -3891,7 +3869,7 @@ async function submitChatMessage(message, options = {}) {
     const returnedActions = data?.actions || data?.action;
     let actionResults = [];
     if (returnedActions) {
-      actionResults = await applyVoiceActions(returnedActions, { imageDataUrl: attachmentImageDataUrl });
+      actionResults = await applyVoiceActions(returnedActions, { imageDataUrl: attachmentImageDataUrl, message: text });
     }
     assistantMeta.actionResults = actionResults;
     const failureNote = formatActionFailureNote(actionResults);
@@ -3912,7 +3890,7 @@ async function submitChatMessage(message, options = {}) {
     const partial = String(pendingAssistant?.content || "").trim();
     const suffix = currentLang === "en"
       ? `\n\n> The stream was interrupted before completion: ${errorText}`
-      : `\n\n> 本次流式回复在完成前中断：${errorText}`;
+      : `\n\n> 鏈娴佸紡鍥炲鍦ㄥ畬鎴愬墠涓柇锛?{errorText}`;
     updateChatMessage(pendingAssistant, {
       content: partial ? `${partial}${suffix}` : errorText,
       pending: false
@@ -3927,7 +3905,7 @@ async function submitChatMessage(message, options = {}) {
 }
 
 function shouldUseClientAgentMode(message) {
-  return /(agent|subagent|代理|自动|自主|连续任务|一系列|多步|分步骤|规划并执行|完成整个|帮我做完|multi[-\s]?step|long task)/i.test(String(message || ""));
+  return /(agent|subagent|浠ｇ悊|鑷姩|鑷富|杩炵画浠诲姟|涓€绯诲垪|澶氭|鍒嗘楠瑙勫垝骞舵墽琛寍瀹屾垚鏁翠釜|甯垜鍋氬畬|multi[-\s]?step|long task)/i.test(String(message || ""));
 }
 
 function generateDirectionFromDialog() {
@@ -4011,7 +3989,7 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
     artifacts: [{
       type: "deep-think",
       title: currentLang === "en" ? "Collecting research material" : "正在收集研究素材",
-      summary: currentLang === "en" ? "Web, document, image, and action cards will appear here when the model returns them." : "模型返回网页、文档、图片和动作卡片后会展示在这里。",
+      summary: currentLang === "en" ? "Web, document, image, and action cards will appear here when the model returns them." : "模型返回网页、文档、图片和动作卡片后会显示在这里。",
       status: currentLang === "en" ? "running" : "运行中"
     }]
   });
@@ -4041,7 +4019,7 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
     });
     const created = applyDeepThinkPlan({ ...data, message: prompt, query: prompt }, parentNodeId);
     if (Array.isArray(data?.actions) && data.actions.length) {
-      await applyVoiceActions(data.actions);
+      await applyVoiceActions(data.actions, { message: prompt });
     } else if (created[0]) {
       forceSelectNode(created[0]);
     }
@@ -4171,7 +4149,7 @@ function deepThinkImageRelevant(card, plan = {}) {
     plan?.query,
     plan?.reply
   ].filter(Boolean).join(" ");
-  return /图片|照片|图像|成图|生成图|画面|视觉|海报|插画|绘制|设计稿|参考图|构图|image|picture|photo|visual|poster|illustration|artwork|render|mockup|logo|icon/i.test(text);
+  return /鍥剧墖|鐓х墖|鍥惧儚|鎴愬浘|鐢熸垚鍥緗鐢婚潰|瑙嗚|娴锋姤|鎻掔敾|缁樺埗|璁捐绋縷鍙傝€冨浘|鏋勫浘|image|picture|photo|visual|poster|illustration|artwork|render|mockup|logo|icon/i.test(text);
 }
 
 function deepThinkCardContent(card, type, nodeType) {
@@ -4197,7 +4175,7 @@ function deepThinkTypeLabel(type) {
     image: "图片",
     file: "文件",
     api: "动作",
-    note: "笔记",
+    note: "绗旇",
     plan: "计划",
     todo: "待办",
     weather: "天气",
@@ -4244,7 +4222,7 @@ function buildDeepThinkReferences(card) {
   }
   if (card?.query) {
     references.push({
-      title: currentLang === "en" ? "Search query" : "检索线索",
+      title: currentLang === "en" ? "Search query" : "搜索线索",
       url: `https://www.google.com/search?q=${encodeURIComponent(card.query)}`,
       description: card.query,
       type: "web"
@@ -4254,15 +4232,19 @@ function buildDeepThinkReferences(card) {
 }
 
 function getDeepThinkMaxCanvasCards() {
-  return Math.round(getNumericModelOption("deepthink", "maxCanvasCards", 20, 1, 20));
+  return Math.min(MAX_DEEP_RESEARCH_CANVAS_CARDS, Math.round(getNumericModelOption("deepthink", "maxCanvasCards", MAX_DEEP_RESEARCH_CANVAS_CARDS, 1, MAX_DEEP_RESEARCH_CANVAS_CARDS)));
+}
+
+function getCanvasActionLimitForCurrentMode() {
+  return state.thinkingMode === "thinking" ? MAX_THINKING_CANVAS_ACTIONS_PER_TURN : MAX_QUICK_CANVAS_ACTIONS_PER_TURN;
 }
 
 function getDeepThinkLiveCanvasCards() {
-  return Math.round(getNumericModelOption("deepthink", "liveCanvasCards", 6, 0, 20));
+  return Math.round(getNumericModelOption("deepthink", "liveCanvasCards", 6, 0, MAX_DEEP_RESEARCH_CANVAS_CARDS));
 }
 
 function getDeepThinkMaxReferenceCards() {
-  return Math.round(getNumericModelOption("deepthink", "maxReferenceCards", 20, 0, 20));
+  return Math.round(getNumericModelOption("deepthink", "maxReferenceCards", MAX_DEEP_RESEARCH_CANVAS_CARDS, 0, MAX_DEEP_RESEARCH_CANVAS_CARDS));
 }
 
 function getDeepThinkSourceCardMode() {
@@ -4682,12 +4664,72 @@ function buildVoiceCanvasContext() {
   };
 }
 
+function isCardCreationActionType(type) {
+  return new Set([...RICH_CARD_ACTION_TYPES, "create_direction", "create_web_card", "web_search", "generate_image", "image_search", "reverse_image_search", "text_image_search"]).has(String(type || ""));
+}
+
+function actionTopicTitle(action = {}, context = {}) {
+  const explicit = String(action.topicTitle || context.topicTitle || "").trim();
+  if (explicit) return explicit.slice(0, 48);
+  const thread = ensureActiveChatThread();
+  const title = thread.title || context.message || action.title || action.query || action.prompt || action.description || (currentLang === "en" ? "New topic" : "新话题");
+  return String(title).replace(/\s+/g, " ").slice(0, 48);
+}
+
+function ensureChatTopicNode(actions = [], context = {}) {
+  const creationCount = actions.filter((action) => {
+    const type = typeof action === "string" ? action : action?.type || action?.name;
+    return isCardCreationActionType(type);
+  }).length;
+  if (!creationCount) return null;
+
+  const thread = ensureActiveChatThread();
+  if (thread.topicNodeId && state.nodes.has(thread.topicNodeId)) return thread.topicNodeId;
+
+  const parentId = state.selectedNodeId && state.nodes.has(state.selectedNodeId)
+    ? state.selectedNodeId
+    : (state.nodes.has("analysis") ? "analysis" : "source");
+  const title = actionTopicTitle(actions.find((action) => typeof action === "object") || {}, context);
+  const parent = state.nodes.get(parentId);
+  const siblingCount = Array.from(state.nodes.values()).filter((node) => node.option?.deepThinkType === "topic").length;
+  const nodeId = createOptionNode({
+    id: `topic-${thread.id}`,
+    title,
+    description: currentLang === "en"
+      ? "Topic hub. New cards in this chat branch are organized under this node."
+      : "主题中心卡。本话题后续生成的卡片会收纳在这个节点下。",
+    prompt: String(context.message || title),
+    tone: currentLang === "en" ? "topic hub" : "主题中心",
+    layoutHint: "mind-map",
+    nodeType: "note",
+    deepThinkType: "topic",
+    content: {
+      text: currentLang === "en"
+        ? `# ${title}\n\nUse this card as the hub for this topic. Collapse it to collect the downstream branch.`
+        : `# ${title}\n\n这张卡片作为当前话题的中心节点。点击它左侧的收纳点可以收起后续分支。`
+    },
+    x: (parent?.x || 96) + (parentId === "analysis" ? 390 : 420),
+    y: (parent?.y || 88) + siblingCount * 180
+  }, parentId);
+  if (nodeId) {
+    thread.topicNodeId = nodeId;
+    return nodeId;
+  }
+  return null;
+}
+
 async function applyVoiceActions(value, context = {}) {
   const actions = Array.isArray(value) ? value : (value ? [value] : []);
   const results = [];
   const pendingAgents = [];
   const creationTypes = new Set([...RICH_CARD_ACTION_TYPES, "create_direction", "create_web_card", "web_search", "create_agent"]);
-  const batchParentId = state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
+  const activeThread = ensureActiveChatThread();
+  const hadTopicNode = Boolean(activeThread.topicNodeId && state.nodes.has(activeThread.topicNodeId));
+  const topicNodeId = ensureChatTopicNode(actions, context);
+  const selectedParentId = hadTopicNode && topicNodeId && state.selectedNodeId && state.nodes.has(state.selectedNodeId) && state.selectedNodeId !== topicNodeId && state.selectedNodeId !== "source" && state.selectedNodeId !== "analysis"
+    ? state.selectedNodeId
+    : "";
+  const batchParentId = selectedParentId || topicNodeId || state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
   const creationCount = actions.filter((action) => {
     const type = typeof action === "string" ? action : action?.type || action?.name;
     return creationTypes.has(String(type || ""));
@@ -4697,6 +4739,9 @@ async function applyVoiceActions(value, context = {}) {
     const type = typeof action === "string" ? action : action?.type || action?.name;
     if (!type) continue;
     const normalized = typeof action === "string" ? { type } : { ...action, type };
+    if (isCardCreationActionType(type) && !normalized.parentNodeId && !normalized.parentNodeName) {
+      normalized.parentNodeId = batchParentId;
+    }
     if (creationTypes.has(String(type)) && creationCount > 1) {
       normalized.parentNodeId = normalized.parentNodeId || batchParentId;
       normalized.batchIndex = Number.isFinite(normalized.batchIndex) ? normalized.batchIndex : creationIndex;
@@ -4832,7 +4877,7 @@ function resolveDirectNodeId(value) {
   if (["source", "src", "image", "upload", "file"].includes(lowered) || /源|原图|图片|文件|上传/.test(text)) {
     return state.nodes.has("source") ? "source" : null;
   }
-  if (["analysis", "report", "summary"].includes(lowered) || /分析|报告|摘要|总结/.test(text)) {
+  if (["analysis", "report", "summary"].includes(lowered) || /鍒嗘瀽|鎶ュ憡|鎽樿|鎬荤粨/.test(text)) {
     return state.nodes.has("analysis") ? "analysis" : null;
   }
   return null;
@@ -4949,7 +4994,7 @@ function normalizePositionKey(value) {
   if (raw.includes("bottom")) return raw.includes("left") ? "lower-left" : raw.includes("right") ? "lower-right" : "below";
   if (raw.includes("screen")) return "screen-center";
   if (raw.includes("canvas")) return "canvas-center";
-  if (raw.includes("center") || /中间|中央/.test(raw)) return "center";
+  if (raw.includes("center") || /涓棿|涓ぎ/.test(raw)) return "center";
   return raw;
 }
 
@@ -5040,6 +5085,15 @@ function moveNodeByAction(action) {
     }
   }
 
+  if (action.avoidOverlap === true) {
+    const placement = findNonOverlappingPosition(x, y, {
+      width: node.element?.offsetWidth || node.width || 318,
+      height: node.element?.offsetHeight || node.height || 220
+    }, { excludeIds: [nodeId] });
+    x = placement.x;
+    y = placement.y;
+  }
+
   setNodeBoardPosition(nodeId, x, y);
   focusNodeById(nodeId, action.position || "center");
 }
@@ -5127,7 +5181,7 @@ function createDirectionFromAction(action) {
   if (!nodeId) return null;
 
   if (action.position || action.anchorNodeId || action.anchorNodeName) {
-    moveNodeByAction({ ...action, type: "move_node", nodeId, anchorNodeId: action.anchorNodeId || parentId });
+    moveNodeByAction({ ...action, type: "move_node", nodeId, anchorNodeId: action.anchorNodeId || parentId, avoidOverlap: true });
   } else if (!Number.isFinite(action.batchIndex)) {
     focusNodeById(nodeId, "center");
   }
@@ -5166,11 +5220,12 @@ async function searchImagesFromAction(action = {}) {
   }
 
   setStatus(currentLang === "en" ? "Searching images..." : "正在搜索图片...", "busy");
+  const imageLimit = getCanvasActionLimitForCurrentMode();
   const data = await postJson("/api/image-search", {
     query,
     imageDataUrl,
     language: currentLang,
-    limit: 8
+    limit: imageLimit
   });
   const results = Array.isArray(data?.results) ? data.results : [];
   if (!results.length) {
@@ -5183,7 +5238,7 @@ async function searchImagesFromAction(action = {}) {
   const baseX = (anchor?.x || 96) + (anchor?.width || 318) + 120;
   const baseY = (anchor?.y || 88) - 20;
   const createdIds = [];
-  results.slice(0, 6).forEach((result, index) => {
+  results.slice(0, imageLimit).forEach((result, index) => {
     const x = baseX + Math.floor(index / 3) * 360;
     const y = baseY + (index % 3) * 230;
     const title = String(result.title || result.sourceUrl || result.url || "Image reference").slice(0, 48);
@@ -5232,7 +5287,7 @@ async function searchImagesFromAction(action = {}) {
       }
     }
   });
-  const artifacts = results.slice(0, 6).map((result) => ({
+  const artifacts = results.slice(0, imageLimit).map((result) => ({
     type: "image",
     title: String(result.title || result.sourceUrl || result.url || "Image reference").slice(0, 80),
     summary: String(result.description || data.summary || "").slice(0, 420),
@@ -5253,7 +5308,13 @@ async function searchImagesFromAction(action = {}) {
 }
 
 async function generateImageFromAction(action) {
-  let nodeId = resolveActionNodeId(action, state.selectedNodeId);
+  const explicitTargetId = resolveDirectNodeId(action?.nodeId) || resolveNodeIdByText(action?.nodeName) || resolveNodeIdByText(action?.target);
+  const parentNodeId = resolveParentNodeId(action, null);
+  const hasPromptText = Boolean(action?.prompt || action?.title || action?.query);
+  let nodeId = explicitTargetId || resolveActionNodeId(action, state.selectedNodeId);
+  if (!explicitTargetId && parentNodeId && parentNodeId !== state.selectedNodeId && hasPromptText) {
+    nodeId = createDirectionFromAction({ ...action, parentNodeId });
+  }
   const target = nodeId ? state.nodes.get(nodeId) : null;
   if ((!target || target.id === "source" || target.id === "analysis") && (action.prompt || action.title || action.query)) {
     nodeId = createDirectionFromAction({ ...action, parentNodeId: target?.id || state.selectedNodeId || "analysis" });
@@ -5394,14 +5455,14 @@ async function runSubagentAction(action) {
   const nodeId = createOptionNode({
     id: `agent-${Date.now()}-${Number.isFinite(action.batchIndex) ? `${action.batchIndex}-` : ""}${safeNodeSlug(title)}`,
     title,
-    description: currentLang === "en" ? `${role} subagent is running: ${deliverable}` : `${role} 子 Agent 执行中：${deliverable}`,
+    description: currentLang === "en" ? `${role} subagent is running: ${deliverable}` : `${role} 瀛?Agent 鎵ц涓細${deliverable}`,
     prompt,
     tone: role,
     layoutHint: "agent",
     deepThinkType: "agent",
     nodeType: "note",
     content: {
-      text: agentActionMarkdown({ title, role, prompt, deliverable, successCriteria, priority, dependencies, status: currentLang === "en" ? "running" : "执行中" })
+      status: currentLang === "en" ? "running" : "运行中"
     },
     batchIndex: action.batchIndex,
     batchSize: action.batchSize
@@ -5549,7 +5610,7 @@ function setThinkingModeFromAction(action) {
 
 function setDeepThinkModeFromAction(action) {
   const mode = String(action.mode || action.target || action.title || "").toLowerCase();
-  const off = mode.includes("off") || mode.includes("false") || mode.includes("cancel") || mode.includes("disable") || /关闭|取消|停止/.test(mode);
+  const off = mode.includes("off") || mode.includes("false") || mode.includes("cancel") || mode.includes("disable") || /鍏抽棴|鍙栨秷|鍋滄/.test(mode);
   setDeepThinkModeActive(!off);
 }
 
@@ -5756,6 +5817,61 @@ function defaultLinkDescription(url, fallback = "") {
     : `来自 ${host || "网页"} 的参考页面，可用于核实来源信息、官方细节和继续阅读。`;
 }
 
+function inferOptionNodeType(option, fallbackTaskType = "general") {
+  const explicit = String(option?.nodeType || "").toLowerCase();
+  if (explicit === "image" || RICH_CARD_NODE_TYPES.includes(explicit)) return explicit;
+  const purpose = String(option?.purpose || "").toLowerCase();
+  const taskType = String(fallbackTaskType || option?.taskType || "").toLowerCase();
+  const layout = String(option?.layoutHint || "").toLowerCase();
+  const tone = String(option?.tone || "").toLowerCase();
+  const text = [option?.title, option?.description, option?.prompt].map((value) => String(value || "").toLowerCase()).join(" ");
+  const visualTerms = /(image|visual|picture|photo|illustration|poster|cover|render|sketch|style frame|storyboard|diagram|\u56fe\u7247|\u56fe\u50cf|\u89c6\u89c9|\u753b\u9762|\u6210\u56fe|\u63d2\u753b|\u6d77\u62a5|\u5c01\u9762|\u6e32\u67d3|\u8349\u56fe|\u5206\u955c|\u56fe\u89e3)/;
+  if (purpose === "visual" || taskType === "image_generation" || visualTerms.test(`${tone} ${layout} ${text}`)) return "image";
+  if (purpose === "plan" || /(plan|schedule|workflow|roadmap|\u6b65\u9aa4|\u8ba1\u5212|\u89c4\u5212|\u6d41\u7a0b|\u8def\u7ebf\u56fe|\u65e5\u7a0b)/.test(text)) return "plan";
+  if (purpose === "tool" && /(todo|checklist|浠诲姟|寰呭姙|娓呭崟)/.test(text)) return "todo";
+  if (purpose === "research" || purpose === "content" || purpose === "exploration" || ["research", "planning", "creative", "general"].includes(taskType)) return "note";
+  return "note";
+}
+
+function ensureInferredOptionContent(option, nodeType) {
+  if (!option || typeof option !== "object" || option.content && typeof option.content === "object" && Object.keys(option.content).length) return;
+  const text = [option.description, option.prompt].map((value) => String(value || "").trim()).filter(Boolean).join("\n\n");
+  if (nodeType === "plan") {
+    const lines = text.split(/\n+/).map((line) => line.replace(/^[-*\d.\s]+/, "").trim()).filter(Boolean);
+    option.content = { steps: (lines.length ? lines : [option.title || text || "Plan"]).slice(0, 8).map((line) => ({ title: line.slice(0, 120) })) };
+  } else if (nodeType === "todo") {
+    const lines = text.split(/\n+/).map((line) => line.replace(/^[-*\d.\s]+/, "").trim()).filter(Boolean);
+    option.content = { items: (lines.length ? lines : [option.title || text || "Task"]).slice(0, 12).map((line) => ({ text: line.slice(0, 140), done: false })) };
+  } else if (nodeType === "note") {
+    option.content = { text: text || option.title || "" };
+  }
+}
+
+function prepareOptionForCanvas(option, fallbackTaskType = "general") {
+  if (!option || typeof option !== "object") return option;
+  const nodeType = inferOptionNodeType(option, fallbackTaskType);
+  option.nodeType = nodeType;
+  ensureInferredOptionContent(option, nodeType);
+  normalizeOptionContent(option);
+  return option;
+}
+
+function configureOptionPrimaryButton(button, option) {
+  if (!button) return;
+  const nodeType = String(option?.nodeType || "image").toLowerCase();
+  button.textContent = nodeType && nodeType !== "image" ? t("option.viewContent") : t("option.generate");
+}
+
+function setupOptionCardElement(element, option, taskType = "general") {
+  prepareOptionForCanvas(option, taskType);
+  applyTaskTypeBadge(element, taskTypeForOption(option, taskType));
+  element.querySelector(".option-tone").textContent = optionEyebrow(option, option.nodeType || "image");
+  element.querySelector(".option-title").textContent = option.title || t("generated.result");
+  element.querySelector(".option-description").textContent = option.description || "";
+  renderRichNodeContent(element, option);
+  element.dataset.nodeType = option.nodeType || "image";
+}
+
 function normalizeOptionContent(option) {
   const nodeType = String(option?.nodeType || "").toLowerCase();
   const current = option?.content && typeof option.content === "object" ? option.content : {};
@@ -5820,7 +5936,7 @@ function inferTableColumns(rows) {
   const first = rows.find((row) => row && typeof row === "object");
   if (Array.isArray(first)) return first.map((_, index) => `${currentLang === "en" ? "Column" : "列"} ${index + 1}`).slice(0, 8);
   if (first && typeof first === "object") return Object.keys(first).slice(0, 8);
-  return rows.length ? [currentLang === "en" ? "Content" : "内容"] : [];
+  return rows.length ? [currentLang === "en" ? "Content" : "鍐呭"] : [];
 }
 
 function tableRowSearchText(row) {
@@ -5844,9 +5960,9 @@ function nodeTypeLabel(nodeType) {
 
 function nodeLayoutLabel(option, nodeType) {
   const type = String(nodeType || "").toLowerCase();
-  if (type === "plan") return currentLang === "en" ? "overview" : "总览";
+  if (type === "plan") return currentLang === "en" ? "overview" : "鎬昏";
   if (type === "todo") return currentLang === "en" ? "checklist" : "清单";
-  if (type === "note") return currentLang === "en" ? "note" : "笔记";
+  if (type === "note") return currentLang === "en" ? "note" : "绗旇";
   if (type === "link") return currentLang === "en" ? "reference" : "参考";
   if (type === "code") return currentLang === "en" ? "code" : "代码";
   if (type === "table") return currentLang === "en" ? "structured" : "结构化";
@@ -6199,38 +6315,22 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
   const parentNode = state.nodes.get(parentNodeId);
   if (!parentNode) return null;
   normalizeDeepThinkOption(option);
+  const isTopicNode = option.deepThinkType === "topic";
 
   // Compute position offset from parent
-  const offsetX = 380;
+  const offsetX = isTopicNode ? 420 : 380;
   const offsetY = 40;
   let newX = Number.isFinite(option.x) ? option.x : (parentNode.x || 0) + offsetX;
   let newY = Number.isFinite(option.y) ? option.y : (parentNode.y || 0) + offsetY;
   const batchIndex = Number.isFinite(option.batchIndex) ? Math.max(0, option.batchIndex) : -1;
   const batchSize = Number.isFinite(option.batchSize) ? Math.max(1, option.batchSize) : 1;
   if (!Number.isFinite(option.x) && !Number.isFinite(option.y) && batchIndex >= 0 && batchSize > 1) {
-    const columns = batchSize <= 3 ? 1 : 2;
+    const columns = batchSize <= 4 ? 1 : batchSize <= 10 ? 2 : 3;
     const column = batchIndex % columns;
     const row = Math.floor(batchIndex / columns);
     newX = (parentNode.x || 0) + offsetX + column * 360;
     newY = (parentNode.y || 0) + offsetY + row * 280;
   }
-  if (!Number.isFinite(option.x) && !Number.isFinite(option.y)) {
-    let attempts = 0;
-    const startX = newX;
-    const startY = newY;
-    while (attempts < 16) {
-      const collision = [...state.nodes.values()].some((node) =>
-        Math.abs((node.x || 0) - newX) < 330 && Math.abs((node.y || 0) - newY) < 240
-      );
-      if (!collision) break;
-      const column = Math.floor(attempts / 4);
-      const row = attempts % 4;
-      newX = startX + column * 360;
-      newY = startY + row * 260;
-      attempts++;
-    }
-  }
-
   const id = `option-${option.id}`;
 
   // Remove existing node with same id if any
@@ -6251,22 +6351,14 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
   element.style.left = `${newX}px`;
   element.style.top = `${newY}px`;
   element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
-  normalizeOptionContent(option);
-  applyTaskTypeBadge(element, taskTypeForOption(option, taskType));
-  element.querySelector(".option-tone").textContent = optionEyebrow(option, option.nodeType || "image");
-  element.querySelector(".option-title").textContent = option.title || t("generated.result");
-  element.querySelector(".option-description").textContent = option.description || "";
-  renderRichNodeContent(element, option);
+  setupOptionCardElement(element, option, taskType);
 
   const titleEl = element.querySelector(".option-title");
   if (titleEl) makeTitleEditable(id, titleEl);
 
   const button = element.querySelector(".generate-button");
-  if (option.nodeType && option.nodeType !== "image") {
-    button.textContent = t("generated.viewContent");
-  }
+  configureOptionPrimaryButton(button, option);
   button.addEventListener("click", () => generateOption(id, option));
-  element.dataset.nodeType = option.nodeType || "image";
   if (option.references?.length) {
     const badge = document.createElement("span");
     badge.className = "reference-badge";
@@ -6276,6 +6368,14 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
   }
 
   board.appendChild(element);
+  const placement = findNonOverlappingPosition(newX, newY, {
+    width: element.offsetWidth || 318,
+    height: element.offsetHeight || 220
+  }, { excludeIds: [id] });
+  newX = placement.x;
+  newY = placement.y;
+  element.style.left = `${newX}px`;
+  element.style.top = `${newY}px`;
   registerNode(id, element, {
     x: newX,
     y: newY,
@@ -6362,15 +6462,40 @@ function bindSourcePreviewFallback(img, empty, upload, imageHash = "") {
   };
 }
 
-function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash = "", fileName = "" }) {
+function createSourceCardResearchMenu(nodeId, button, disabled = false) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "source-card-research-actions";
+  button.disabled = Boolean(disabled);
+  button.classList.add("source-card-analyze-button");
+  button.textContent = t("research.analyze");
+  const exploreButton = document.createElement("button");
+  exploreButton.className = "research-button source-card-explore-button";
+  exploreButton.type = "button";
+  exploreButton.textContent = t("research.explore");
+  exploreButton.disabled = Boolean(disabled);
+  button.addEventListener("click", () => analyzeStandaloneSourceCard(nodeId, { mode: "analyze" }));
+  exploreButton.addEventListener("click", () => analyzeStandaloneSourceCard(nodeId, { mode: "explore" }));
+  wrapper.append(button, exploreButton);
+  return wrapper;
+}
+
+function setSourceCardResearchActionsDisabled(element, disabled) {
+  element?.querySelectorAll(".source-card-research-actions .research-button").forEach((button) => {
+    button.disabled = Boolean(disabled);
+  });
+}
+
+function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash = "", fileName = "", avoidOverlap = true }) {
   const nodeId = id || `source-card-${Date.now().toString(36)}`;
   if (state.nodes.has(nodeId)) return nodeId;
+  let newX = Number.isFinite(x) ? x : 520;
+  let newY = Number.isFinite(y) ? y : 120;
 
   const element = document.createElement("section");
   element.className = "node source-node standalone-source-node";
   element.dataset.nodeId = nodeId;
-  element.style.left = `${x || 520}px`;
-  element.style.top = `${y || 120}px`;
+  element.style.left = `${newX}px`;
+  element.style.top = `${newY}px`;
 
   const tabs = document.createElement("div");
   tabs.className = "source-tabs";
@@ -6390,7 +6515,7 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   upload.className = `upload-target${imageUrl ? " has-source-image" : ""}`;
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = "image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.docx,.pdf,.pptx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  input.accept = "image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.doc,.docx,.pdf,.ppt,.pptx,text/plain,application/msword,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation";
   const empty = document.createElement("span");
   empty.className = `empty-state${imageUrl ? " hidden" : ""}`;
   empty.innerHTML = `<strong>${t("source.uploadPrompt")}</strong><span>${t("source.uploadHint")}</span>`;
@@ -6425,10 +6550,21 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   research.type = "button";
   research.textContent = t("research.button");
   research.disabled = !imageUrl;
-  caption.append(name, research);
+  const researchMenu = createSourceCardResearchMenu(nodeId, research, !imageUrl);
+  caption.append(name, researchMenu);
 
   element.append(tabs, upload, urlPanel, caption);
   board.appendChild(element);
+  if (avoidOverlap) {
+    const placement = findNonOverlappingPosition(newX, newY, {
+      width: element.offsetWidth || 318,
+      height: element.offsetHeight || 326
+    }, { excludeIds: [nodeId] });
+    newX = placement.x;
+    newY = placement.y;
+    element.style.left = `${newX}px`;
+    element.style.top = `${newY}px`;
+  }
 
   const sourceCard = {
     title: title || fileName || "Source card",
@@ -6441,8 +6577,8 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
     sourceDataUrlHash: ""
   };
   registerNode(nodeId, element, {
-    x: Number.isFinite(x) ? x : 520,
-    y: Number.isFinite(y) ? y : 120,
+    x: newX,
+    y: newY,
     width: 318,
     height: element.offsetHeight || 326,
     sourceCard
@@ -6455,8 +6591,6 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
     if (file) await handleStandaloneSourceFile(nodeId, file);
     event.target.value = "";
   });
-  research.addEventListener("click", () => analyzeStandaloneSourceCard(nodeId));
-
   // Tab switching
   fileTab.addEventListener("click", () => {
     fileTab.classList.add("active");
@@ -6490,7 +6624,7 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
         node.sourceCard.title = data.title || node.sourceCard.title || node.sourceCard.fileName;
       }
       name.textContent = trimMiddle(node.sourceCard.fileName, 28);
-      research.disabled = false;
+      setSourceCardResearchActionsDisabled(node.element, false);
       syncSourceCardImageActionState(nodeId);
       setStatus(t("status.ready"), "ready");
       autoSave();
@@ -6524,7 +6658,7 @@ function syncSourceCardImageActionState(nodeId) {
 }
 
 async function handleStandaloneSourceFile(nodeId, file) {
-  const isDocumentFile = /\.(txt|md|json|docx|pdf|pptx)$/i.test(file?.name || "");
+  const isDocumentFile = /\.(txt|md|json|doc|docx|pdf|ppt|pptx)$/i.test(file?.name || "");
   if (!file?.type?.startsWith("image/") && !isDocumentFile) {
     showToast(t("file.unsupported"));
     return;
@@ -6539,6 +6673,7 @@ async function handleStandaloneSourceFile(nodeId, file) {
     const research = node.element.querySelector(".research-button");
 
     if (file.type.startsWith("image/")) {
+      clearDocumentPreview(node.element.querySelector(".upload-target"));
       const image = await resizeImage(file, 1600, 0.88);
       const stored = await postJson("/api/assets", {
         dataUrl: image.dataUrl,
@@ -6563,18 +6698,11 @@ async function handleStandaloneSourceFile(nodeId, file) {
       }
     } else {
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
-      const isPlainText = ["txt", "md", "json"].includes(ext);
+      const isPlainText = isPlainTextDocument(file.name);
       const buffer = await file.arrayBuffer();
       const base64 = arrayBufferToBase64(buffer);
-      const mimeMap = {
-        txt: "text/plain",
-        md: "text/markdown",
-        json: "application/json",
-        docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        pdf: "application/pdf",
-        pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-      };
-      const dataUrl = `data:${mimeMap[ext] || file.type || "application/octet-stream"};base64,${base64}`;
+      const dataUrl = `data:${DOCUMENT_MIME_TYPES[ext] || file.type || "application/octet-stream"};base64,${base64}`;
+      const text = isPlainText ? await file.text() : "";
       let stored = null;
       try {
         stored = await postJson("/api/assets", { dataUrl, kind: "upload", fileName: file.name });
@@ -6586,7 +6714,7 @@ async function handleStandaloneSourceFile(nodeId, file) {
         imageHash: "",
         imageUrl: "",
         sourceType: "text",
-        sourceText: isPlainText ? await file.text() : "",
+        sourceText: text,
         sourceDataUrl: isPlainText ? "" : dataUrl,
         sourceDataUrlHash: stored?.hash || ""
       };
@@ -6594,10 +6722,11 @@ async function handleStandaloneSourceFile(nodeId, file) {
         img.src = "";
         img.classList.remove("has-image");
       }
+      renderDocumentPreview(file.name, isPlainText ? "" : dataUrl, text, DOCUMENT_MIME_TYPES[ext], node.element.querySelector(".upload-target"));
     }
     empty?.classList.add("hidden");
     if (name) name.textContent = trimMiddle(file.name, 28);
-    if (research) research.disabled = false;
+    setSourceCardResearchActionsDisabled(node.element, false);
     syncSourceCardImageActionState(nodeId);
     setStatus(t("status.ready"), "ready");
     autoSave();
@@ -6606,7 +6735,7 @@ async function handleStandaloneSourceFile(nodeId, file) {
   }
 }
 
-async function analyzeStandaloneSourceCard(nodeId) {
+async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
   const node = state.nodes.get(nodeId);
   const sourceCard = node?.sourceCard;
   if (sourceCard?.sourceType === "text" && !sourceCard.sourceText && !sourceCard.sourceDataUrl) {
@@ -6616,42 +6745,43 @@ async function analyzeStandaloneSourceCard(nodeId) {
   if (sourceCard?.sourceType === "text" && !sourceCard?.sourceText && !sourceCard?.sourceDataUrl) return;
   if (!sourceCard?.sourceType || sourceCard.sourceType === "empty") return;
   forceSelectNode(nodeId);
-  setStatus(t("status.busy"), "busy");
-  const button = node.element.querySelector(".research-button");
-  if (button) {
-    button.disabled = true;
-    button.classList.add("is-busy");
-  }
+  const useExplore = mode === "explore";
+  setStatus(useExplore ? t("research.exploring") : t("status.busy"), "busy");
+  const activeButton = node.element.querySelector(useExplore ? ".source-card-explore-button" : ".source-card-analyze-button");
+  setSourceCardResearchActionsDisabled(node.element, true);
+  activeButton?.classList.add("is-busy");
   try {
     let data;
     if (sourceCard.sourceType === "text") {
-      data = await postJson("/api/analyze-text", {
+      data = await postJson(useExplore ? "/api/analyze-explore" : "/api/analyze-text", {
         text: sourceCard.sourceText || "",
         dataUrl: sourceCard.sourceDataUrl || "",
         fileName: sourceCard.fileName || sourceCard.title || "source-card",
-        thinkingMode: state.thinkingMode,
+        thinkingMode: useExplore ? "thinking" : state.thinkingMode,
         sessionId: currentSessionId || ""
       }, {
-        timeoutMs: 150000,
+        timeoutMs: useExplore ? 180000 : 150000,
         timeoutMessage: t("research.timeout")
       });
     } else if (sourceCard.sourceType === "url") {
-      data = await postJson("/api/analyze-url", {
+      data = await postJson(useExplore ? "/api/analyze-explore" : "/api/analyze-url", {
         url: sourceCard.sourceUrl,
-        thinkingMode: state.thinkingMode,
+        fileName: sourceCard.fileName || sourceCard.title || "source-card",
+        thinkingMode: useExplore ? "thinking" : state.thinkingMode,
         sessionId: currentSessionId || ""
       }, {
-        timeoutMs: 150000,
+        timeoutMs: useExplore ? 180000 : 150000,
         timeoutMessage: t("research.timeout")
       });
     } else {
-      data = await postJson("/api/analyze", {
-        imageDataUrl: await getImageDataUrlForNode(nodeId),
+      const imageDataUrl = await getImageDataUrlForNode(nodeId);
+      data = await postJson(useExplore ? "/api/analyze-explore" : "/api/analyze", {
+        imageDataUrl,
         fileName: sourceCard.fileName || sourceCard.title || "source-card",
-        thinkingMode: state.thinkingMode,
+        thinkingMode: useExplore ? "thinking" : state.thinkingMode,
         sessionId: currentSessionId || ""
       }, {
-        timeoutMs: 150000,
+        timeoutMs: useExplore ? 180000 : 150000,
         timeoutMessage: t("research.timeout")
       });
     }
@@ -6671,15 +6801,13 @@ async function analyzeStandaloneSourceCard(nodeId) {
       };
       createOptionNode(option, nodeId);
     }
-    setStatus(t("status.ready"), "ready");
+    setStatus(useExplore ? t("research.exploreComplete") : t("status.ready"), "ready");
     autoSave();
   } catch (error) {
     setStatus(error.message || t("status.error"), "error");
   } finally {
-    if (button) {
-      button.disabled = false;
-      button.classList.remove("is-busy");
-    }
+    setSourceCardResearchActionsDisabled(node.element, false);
+    activeButton?.classList.remove("is-busy");
   }
 }
 
@@ -7207,7 +7335,7 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
         const icon = ACTION_FEEDBACK_ICONS[ar.type] || "⚡";
         const labelKey = `chat.actionFeedback.${ar.type}`;
         const label = failed
-          ? (currentLang === "en" ? "Action failed" : "执行失败")
+          ? (currentLang === "en" ? "Action failed" : "鎵ц澶辫触")
           : (t(labelKey) || t("chat.actionApplied") || "已执行");
         const title = failed ? ar.error : (ar.title || "");
         card.innerHTML = `
@@ -7242,12 +7370,20 @@ function renderChatAttachments(attachments) {
   list.className = "chat-message-attachments";
   attachments.forEach((attachment) => {
     const href = attachment.url || attachment.imageUrl || "";
-    const item = document.createElement(href ? "a" : "div");
+    const item = document.createElement(href ? "a" : (attachment.text ? "button" : "div"));
     item.className = `chat-message-attachment type-${attachment.type || "file"}`;
+    if (item.tagName === "BUTTON") item.type = "button";
     if (href) {
       item.href = href;
       item.target = "_blank";
       item.rel = "noopener noreferrer";
+    } else if (attachment.text) {
+      item.addEventListener("click", () => {
+        openAttachmentPreviewModal(
+          { name: attachment.name || "document", type: attachment.mimeType || "text/plain" },
+          { kind: "document", fileName: attachment.name || "", text: attachment.text }
+        );
+      });
     }
     if (attachment.type === "image" && attachment.imageUrl) {
       const image = document.createElement("img");
@@ -7255,6 +7391,11 @@ function renderChatAttachments(attachments) {
       image.alt = attachment.name || "";
       image.loading = "lazy";
       item.appendChild(image);
+    } else {
+      const icon = document.createElement("strong");
+      icon.className = "chat-message-attachment-icon";
+      icon.textContent = documentAttachmentLabel(attachment);
+      item.appendChild(icon);
     }
     if (attachment.name) {
       const name = document.createElement("span");
@@ -7264,6 +7405,17 @@ function renderChatAttachments(attachments) {
     list.appendChild(item);
   });
   return list;
+}
+
+function documentAttachmentLabel(attachment) {
+  const name = String(attachment?.name || "");
+  const ext = sourceDocumentExtension(name);
+  if (ext) return ext.toUpperCase();
+  if (String(attachment?.mimeType || "").includes("pdf")) return "PDF";
+  if (String(attachment?.mimeType || "").includes("presentation")) return "PPT";
+  if (String(attachment?.mimeType || "").includes("wordprocessing")) return "DOC";
+  if (String(attachment?.mimeType || "").startsWith("text/")) return "TXT";
+  return "FILE";
 }
 
 function renderChatArtifacts(artifacts) {
@@ -7402,22 +7554,14 @@ function renderOptions(options, taskType = "general") {
     element.style.left = `${position.x}px`;
     element.style.top = `${position.y}px`;
     element.style.setProperty("--tilt", `${position.tilt}deg`);
-    normalizeOptionContent(option);
-    applyTaskTypeBadge(element, taskTypeForOption(option, taskType));
-    element.querySelector(".option-tone").textContent = optionEyebrow(option, option.nodeType || "image");
-    element.querySelector(".option-title").textContent = option.title || t("generated.result");
-    element.querySelector(".option-description").textContent = option.description || "";
-    renderRichNodeContent(element, option);
+    setupOptionCardElement(element, option, taskType);
 
     const titleEl = element.querySelector(".option-title");
     if (titleEl) makeTitleEditable(id, titleEl);
 
     const button = element.querySelector(".generate-button");
-    if (option.nodeType && option.nodeType !== "image") {
-      button.textContent = t("generated.viewContent");
-    }
+    configureOptionPrimaryButton(button, option);
     button.addEventListener("click", () => generateOption(id, option));
-    element.dataset.nodeType = option.nodeType || "image";
 
     board.appendChild(element);
     registerNode(id, element, {
@@ -7453,8 +7597,8 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
   options.forEach((option, index) => {
     const offsetX = 380;
     const offsetY = 40 + index * 24;
-    const newX = Number.isFinite(option.x) ? option.x : (parentNode.x || 0) + offsetX;
-    const newY = Number.isFinite(option.y) ? option.y : (parentNode.y || 0) + offsetY;
+    let newX = Number.isFinite(option.x) ? option.x : (parentNode.x || 0) + offsetX;
+    let newY = Number.isFinite(option.y) ? option.y : (parentNode.y || 0) + offsetY;
 
     const id = `option-${option.id || `${parentNodeId}-${index}`}`;
 
@@ -7476,22 +7620,14 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
     element.style.left = `${newX}px`;
     element.style.top = `${newY}px`;
     element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
-    normalizeOptionContent(option);
-    applyTaskTypeBadge(element, taskTypeForOption(option, taskType));
-    element.querySelector(".option-tone").textContent = optionEyebrow(option, option.nodeType || "image");
-    element.querySelector(".option-title").textContent = option.title || t("generated.result");
-    element.querySelector(".option-description").textContent = option.description || "";
-    renderRichNodeContent(element, option);
+    setupOptionCardElement(element, option, taskType);
 
     const titleEl = element.querySelector(".option-title");
     if (titleEl) makeTitleEditable(id, titleEl);
 
     const button = element.querySelector(".generate-button");
-    if (option.nodeType && option.nodeType !== "image") {
-      button.textContent = t("generated.viewContent");
-    }
+    configureOptionPrimaryButton(button, option);
     button.addEventListener("click", () => generateOption(id, option));
-    element.dataset.nodeType = option.nodeType || "image";
     if (option.references?.length) {
       const badge = document.createElement("span");
       badge.className = "reference-badge";
@@ -7501,6 +7637,14 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
     }
 
     board.appendChild(element);
+    const placement = findNonOverlappingPosition(newX, newY, {
+      width: element.offsetWidth || 318,
+      height: element.offsetHeight || 220
+    }, { excludeIds: [id] });
+    newX = placement.x;
+    newY = placement.y;
+    element.style.left = `${newX}px`;
+    element.style.top = `${newY}px`;
     registerNode(id, element, {
       x: newX,
       y: newY,
@@ -7521,6 +7665,9 @@ function renderExploreOptions(options, references, taskType = "general") {
   clearOptions();
 
   options.forEach((option, index) => {
+    if (references.length > 0) {
+      option.references = references;
+    }
     const fragment = optionTemplate.content.cloneNode(true);
     const element = fragment.querySelector(".option-node");
     const position = optionPositions[index % optionPositions.length];
@@ -7530,26 +7677,14 @@ function renderExploreOptions(options, references, taskType = "general") {
     element.style.left = `${position.x}px`;
     element.style.top = `${position.y}px`;
     element.style.setProperty("--tilt", `${position.tilt}deg`);
-    applyTaskTypeBadge(element, taskType);
-    element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
-    element.querySelector(".option-title").textContent = option.title || t("generated.result");
-    element.querySelector(".option-description").textContent = option.description || "";
-    renderRichNodeContent(element, option);
+    setupOptionCardElement(element, option, taskType);
 
     const titleEl = element.querySelector(".option-title");
     if (titleEl) makeTitleEditable(id, titleEl);
 
     const button = element.querySelector(".generate-button");
-    if (option.nodeType && option.nodeType !== "image") {
-      button.textContent = t("generated.viewContent");
-    }
+    configureOptionPrimaryButton(button, option);
     button.addEventListener("click", () => generateOption(id, option));
-    element.dataset.nodeType = option.nodeType || "image";
-
-    // Store references on the option data
-    if (references.length > 0) {
-      option.references = references;
-    }
 
     // Add reference badge if references exist
     if (references.length > 0) {
@@ -7876,24 +8011,18 @@ function restoreOptionNode(element, option) {
   element.className = fresh.className;
   element.innerHTML = fresh.innerHTML;
   element.dataset.nodeId = nodeId;
-  element.dataset.nodeType = option.nodeType || "image";
   element.classList.toggle("deep-think-node", Boolean(option.deepThinkType));
   if (option.deepThinkType) element.dataset.deepThinkType = option.deepThinkType;
   else delete element.dataset.deepThinkType;
 
-  normalizeOptionContent(option);
-  applyTaskTypeBadge(element, taskType);
-  element.querySelector(".option-tone").textContent = optionEyebrow(option, option.nodeType || "image");
-  element.querySelector(".option-title").textContent = option.title || t("generated.result");
-  element.querySelector(".option-description").textContent = option.description || "";
-  renderRichNodeContent(element, option);
+  setupOptionCardElement(element, option, taskType);
 
   const titleEl = element.querySelector(".option-title");
   if (titleEl) makeTitleEditable(nodeId, titleEl);
 
   const button = element.querySelector(".generate-button");
   if (button) {
-    if (option.nodeType && option.nodeType !== "image") button.textContent = t("generated.viewContent");
+    configureOptionPrimaryButton(button, option);
     button.addEventListener("click", () => generateOption(nodeId, option));
   }
 
@@ -8025,7 +8154,7 @@ function turnIntoRichNode(element, option) {
       wrap.className = "rich-weather-wrap";
       const icon = document.createElement("div");
       icon.className = "rich-weather-icon";
-      icon.textContent = w.icon || "☀"; // default sun
+      icon.textContent = w.icon || "鈽€"; // default sun
       const temp = document.createElement("div");
       temp.className = "rich-weather-temp";
       temp.textContent = w.temp || "";
@@ -9262,9 +9391,112 @@ function updateMultiSelectionVisuals() {
 
 function getNodeBounds(node) {
   if (!node) return null;
-  const width = node.width || node.element?.offsetWidth || 318;
-  const height = node.height || node.element?.offsetHeight || 220;
+  const width = node.element?.offsetWidth || node.width || 318;
+  const height = node.element?.offsetHeight || node.height || 220;
   return { x: node.x || 0, y: node.y || 0, width, height, right: (node.x || 0) + width, bottom: (node.y || 0) + height };
+}
+
+function rectanglesOverlap(a, b, padding = 0) {
+  return a.x < b.x + b.width + padding
+    && a.x + a.width + padding > b.x
+    && a.y < b.y + b.height + padding
+    && a.y + a.height + padding > b.y;
+}
+
+function findNonOverlappingPosition(preferredX, preferredY, size = {}, options = {}) {
+  const width = Math.max(120, Number(size.width) || 318);
+  const height = Math.max(80, Number(size.height) || 220);
+  const padding = Number.isFinite(options.padding) ? options.padding : 32;
+  const minX = Number.isFinite(options.minX) ? options.minX : -1200;
+  const maxX = Number.isFinite(options.maxX) ? options.maxX : 5600;
+  const minY = Number.isFinite(options.minY) ? options.minY : -1200;
+  const maxY = Number.isFinite(options.maxY) ? options.maxY : 5600;
+  const baseX = clamp(Number.isFinite(preferredX) ? preferredX : 520, minX, maxX);
+  const baseY = clamp(Number.isFinite(preferredY) ? preferredY : 120, minY, maxY);
+  const stepX = Number.isFinite(options.stepX) ? options.stepX : Math.max(360, width + padding + 42);
+  const stepY = Number.isFinite(options.stepY) ? options.stepY : Math.max(260, height + padding + 42);
+  const maxRing = Number.isFinite(options.maxRing) ? Math.max(1, options.maxRing) : 12;
+  const excludeIds = new Set(options.excludeIds || []);
+  const occupied = [];
+  for (const [id, node] of state.nodes.entries()) {
+    if (excludeIds.has(id) || !isNodeVisible(node)) continue;
+    const bounds = getNodeBounds(node);
+    if (bounds) occupied.push(bounds);
+  }
+  if (Array.isArray(options.occupiedBounds)) {
+    for (const bounds of options.occupiedBounds) {
+      if (bounds) occupied.push(bounds);
+    }
+  }
+  const seen = new Set();
+  const tryPosition = (x, y) => {
+    const nextX = clamp(x, minX, maxX);
+    const nextY = clamp(y, minY, maxY);
+    const key = `${Math.round(nextX)}:${Math.round(nextY)}`;
+    if (seen.has(key)) return null;
+    seen.add(key);
+    const candidate = { x: nextX, y: nextY, width, height };
+    return occupied.some((bounds) => rectanglesOverlap(candidate, bounds, padding)) ? null : { x: nextX, y: nextY };
+  };
+  const initial = tryPosition(baseX, baseY);
+  if (initial) return initial;
+  for (let ring = 1; ring <= maxRing; ring += 1) {
+    const offsets = [];
+    for (let dx = -ring; dx <= ring; dx += 1) {
+      for (let dy = -ring; dy <= ring; dy += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== ring) continue;
+        offsets.push({ dx, dy });
+      }
+    }
+    offsets.sort((a, b) => {
+      const leftDelta = Number(a.dx < 0) - Number(b.dx < 0);
+      if (leftDelta) return leftDelta;
+      const yDelta = Math.abs(a.dy) - Math.abs(b.dy);
+      if (yDelta) return yDelta;
+      return b.dx - a.dx;
+    });
+    for (const offset of offsets) {
+      const match = tryPosition(baseX + offset.dx * stepX, baseY + offset.dy * stepY);
+      if (match) return match;
+    }
+  }
+  return {
+    x: clamp(baseX + stepX * (maxRing + 1), minX, maxX),
+    y: baseY
+  };
+}
+
+function resolveNonOverlappingTargetPositions(targetPositions, options = {}) {
+  const adjusted = new Map();
+  const occupiedBounds = [];
+  const movingIds = new Set(targetPositions.keys());
+  const entries = Array.from(targetPositions.entries()).sort(([aId, a], [bId, b]) => {
+    const rank = (id) => id === "source" ? 0 : id === "analysis" ? 1 : state.nodes.get(id)?.option?.deepThinkType === "topic" ? 2 : 3;
+    const rankDelta = rank(aId) - rank(bId);
+    if (rankDelta) return rankDelta;
+    if (Math.abs((a.x || 0) - (b.x || 0)) > 8) return (a.x || 0) - (b.x || 0);
+    if (Math.abs((a.y || 0) - (b.y || 0)) > 8) return (a.y || 0) - (b.y || 0);
+    return getNodeTitle(state.nodes.get(aId)).localeCompare(getNodeTitle(state.nodes.get(bId)), currentLang === "zh" ? "zh-Hans-CN" : "en");
+  });
+  for (const [id, target] of entries) {
+    const node = state.nodes.get(id);
+    if (!node) continue;
+    const width = node.element?.offsetWidth || node.width || 318;
+    const height = node.element?.offsetHeight || node.height || 220;
+    const placement = findNonOverlappingPosition(target.x, target.y, { width, height }, {
+      excludeIds: movingIds,
+      occupiedBounds,
+      padding: Number.isFinite(options.padding) ? options.padding : 48,
+      minX: options.minX,
+      maxX: options.maxX,
+      minY: options.minY,
+      maxY: options.maxY,
+      maxRing: options.maxRing
+    });
+    adjusted.set(id, placement);
+    occupiedBounds.push({ x: placement.x, y: placement.y, width, height });
+  }
+  return adjusted;
 }
 
 function getSelectionBounds(nodeIds = Array.from(state.selectedNodeIds)) {
@@ -9413,6 +9645,44 @@ function showToast(message) {
   toastTimer = setTimeout(() => {
     toast.classList.remove("visible");
   }, 2500);
+}
+
+function showConfirmDialog({ title, message, confirmText = t("common.yes"), cancelText = t("common.no") }) {
+  return new Promise((resolve) => {
+    const modal = document.createElement("div");
+    modal.className = "confirm-modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.innerHTML = `
+      <div class="confirm-modal-backdrop"></div>
+      <div class="confirm-modal-content">
+        <h3>${escapeHtml(title)}</h3>
+        <p>${escapeHtml(message)}</p>
+        <div class="confirm-modal-actions">
+          <button class="confirm-modal-cancel" type="button">${escapeHtml(cancelText)}</button>
+          <button class="confirm-modal-confirm" type="button">${escapeHtml(confirmText)}</button>
+        </div>
+      </div>
+    `;
+    let settled = false;
+    const close = (result) => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener("keydown", onKeyDown);
+      modal.remove();
+      resolve(result);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") close(false);
+      if (event.key === "Enter") close(true);
+    };
+    modal.querySelector(".confirm-modal-backdrop")?.addEventListener("click", () => close(false));
+    modal.querySelector(".confirm-modal-cancel")?.addEventListener("click", () => close(false));
+    modal.querySelector(".confirm-modal-confirm")?.addEventListener("click", () => close(true));
+    document.addEventListener("keydown", onKeyDown);
+    document.body.appendChild(modal);
+    modal.querySelector(".confirm-modal-confirm")?.focus();
+  });
 }
 
 function registerNode(id, element, data) {
@@ -9924,6 +10194,44 @@ function isHiddenByCollapsedAncestor(id) {
   return false;
 }
 
+async function confirmDeleteLink(link) {
+  const from = state.nodes.get(link.from);
+  const to = state.nodes.get(link.to);
+  const confirmed = await showConfirmDialog({
+    title: t("link.deleteTitle"),
+    message: t("link.deleteMessage", {
+      from: trimMiddle(getNodeTitle(from) || link.from, 32),
+      to: trimMiddle(getNodeTitle(to) || link.to, 32)
+    })
+  });
+  if (!confirmed) return;
+  const index = state.links.indexOf(link);
+  if (index >= 0) {
+    state.links.splice(index, 1);
+  } else {
+    state.links = state.links.filter((item) => item !== link && !(item.from === link.from && item.to === link.to && item.kind === link.kind));
+  }
+  syncJunctionAfterLinkDeletion(link);
+  drawLinks();
+  autoSave();
+  showToast(t("link.deleted"));
+}
+
+function syncJunctionAfterLinkDeletion(link) {
+  const junctionId = state.junctions.has(link.from) ? link.from : state.junctions.has(link.to) ? link.to : "";
+  if (!junctionId) return;
+  const cardId = junctionId === link.from ? link.to : link.from;
+  const junction = state.junctions.get(junctionId);
+  if (junction) {
+    junction.connectedCardIds = junction.connectedCardIds.filter((id) => id !== cardId);
+    updateJunctionCount(junctionId);
+  }
+  const blueprint = state.blueprints.get(junctionId);
+  if (blueprint) {
+    delete blueprint.positions[cardId];
+    blueprint.relationships = blueprint.relationships.filter((relationship) => relationship.from !== cardId && relationship.to !== cardId);
+  }
+}
 function makeDraggable(element, id) {
   let start = null;
 
@@ -10022,10 +10330,16 @@ function drawLinks() {
     const linkClass = `link link-orthogonal${isBundled ? " link-bundled" : ""}`;
     const shadow = svgElement("path", { d: path, class: `link-shadow${isBundled ? " link-bundled" : ""}` });
     const line = svgElement("path", { d: path, class: linkClass });
+    const hitTarget = svgElement("path", { d: path, class: "link-hit-target", tabindex: "0" });
+    hitTarget.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      confirmDeleteLink(link);
+    });
     const pinA = svgElement("circle", { cx: start.x, cy: start.y, r: 7, class: "link-pin" });
     const pinB = svgElement("circle", { cx: end.x, cy: end.y, r: 7, class: "link-pin" });
 
-    fragments.append(shadow, line, pinA, pinB);
+    fragments.append(shadow, line, hitTarget, pinA, pinB);
   });
 
   linkLayer.replaceChildren(fragments);
@@ -10351,7 +10665,7 @@ function setChatActionMenuOpen(open) {
 function handleAttachClick() {
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = "image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.docx,.pdf,.pptx,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  input.accept = "image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.doc,.docx,.pdf,.ppt,.pptx,text/plain,application/msword,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation";
   input.onchange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -10361,7 +10675,6 @@ function handleAttachClick() {
 }
 
 async function handleAttachment(file) {
-  const isDocumentFile = /\.(docx|pdf|pptx)$/i.test(file.name);
   if (file.type.startsWith("image/")) {
     try {
       const image = await resizeImage(file, 1600, 0.88);
@@ -10371,7 +10684,8 @@ async function handleAttachment(file) {
         mimeType: image.mimeType || file.type || "image/jpeg",
         dataUrl: image.dataUrl,
         width: image.width,
-        height: image.height
+        height: image.height,
+        size: file.size || 0
       };
       showChatAttachmentPreview(file, pendingChatAttachment);
       updateChatPrimaryButtonMode();
@@ -10379,23 +10693,47 @@ async function handleAttachment(file) {
     } catch (err) {
       alert(t("file.readError") + (err instanceof Error ? err.message : String(err)));
     }
-  } else if (isDocumentFile) {
-    pendingChatAttachment = null;
-    alert(currentLang === "en" ? "Document chat attachments are not supported yet. Import the file from the canvas card instead." : "暂不支持把文档作为对话附件发送。请从画布卡片导入文档。");
-  } else if (file.type.startsWith("text/") || file.name.endsWith(".txt") || file.name.endsWith(".md") || file.name.endsWith(".json")) {
+  } else if (isSupportedDocumentFile(file.name) || file.type.startsWith("text/")) {
     try {
-      pendingChatAttachment = null;
-      const text = await file.text();
-      chatInput.value = text.slice(0, 32000);
-      chatInput.focus();
-      showChatAttachmentPreview(file);
+      const ext = sourceDocumentExtension(file.name);
+      const isPlainText = isPlainTextDocument(file.name) || file.type.startsWith("text/");
+      const text = isPlainText ? await file.text() : "";
+      let dataUrl = "";
+      if (!isPlainText) {
+        const buffer = await file.arrayBuffer();
+        dataUrl = `data:${DOCUMENT_MIME_TYPES[ext] || file.type || "application/octet-stream"};base64,${arrayBufferToBase64(buffer)}`;
+      }
+      pendingChatAttachment = {
+        kind: "document",
+        fileName: file.name,
+        mimeType: DOCUMENT_MIME_TYPES[ext] || file.type || "text/plain",
+        size: file.size || 0,
+        ext,
+        text: text.slice(0, 32000),
+        dataUrl
+      };
+      showChatAttachmentPreview(file, pendingChatAttachment);
       updateChatPrimaryButtonMode();
+      chatInput?.focus();
     } catch (err) {
       alert(t("file.readError") + (err instanceof Error ? err.message : String(err)));
     }
   } else {
     alert(t("file.unsupported"));
   }
+}
+
+function buildChatAttachmentPayload(attachment) {
+  if (!attachment || attachment.kind === "image") return [];
+  return [{
+    type: "file",
+    name: attachment.fileName || "",
+    fileName: attachment.fileName || "",
+    mimeType: attachment.mimeType || "",
+    size: attachment.size || 0,
+    text: attachment.text || "",
+    dataUrl: attachment.dataUrl || ""
+  }];
 }
 
 function showChatAttachmentPreview(file, attachment = null) {
@@ -10438,27 +10776,70 @@ function showChatAttachmentPreview(file, attachment = null) {
   chip.addEventListener("click", () => {
     if (file.type.startsWith("image/")) {
       openAttachmentPreviewModal(file);
+    } else if (attachment?.text || attachment?.dataUrl) {
+      openAttachmentPreviewModal(file, attachment);
     }
   });
 
   chatAttachmentPreview.appendChild(chip);
 }
 
-function openAttachmentPreviewModal(file) {
-  const url = pendingChatAttachment?.fileName === file.name && pendingChatAttachment?.kind === "image"
-    ? pendingChatAttachment.dataUrl
-    : URL.createObjectURL(file);
+function openAttachmentPreviewModal(file, attachment = pendingChatAttachment) {
+  const isTextPreview = Boolean(attachment?.text);
+  const ext = sourceDocumentExtension(attachment?.fileName || file?.name || "");
+  const isPdfPreview = !isTextPreview && ext === "pdf" && attachment?.dataUrl;
+  const isDocumentCoverPreview = !isTextPreview && !isPdfPreview && attachment?.kind === "document";
+  let objectUrl = "";
+  let url = "";
+  if (!isTextPreview) {
+    if (attachment?.fileName === file.name && attachment?.kind === "image") {
+      url = attachment.dataUrl;
+    } else if (attachment?.dataUrl) {
+      url = attachment.dataUrl;
+    } else if (file instanceof Blob) {
+      objectUrl = URL.createObjectURL(file);
+      url = objectUrl;
+    }
+    if (!url && !isDocumentCoverPreview) return;
+  }
   const modal = document.createElement("div");
   modal.className = "attachment-preview-modal";
-  modal.innerHTML = `
+  modal.innerHTML = isTextPreview ? `
     <div class="attachment-preview-backdrop"></div>
     <div class="attachment-preview-content">
       <button class="attachment-preview-close" type="button" aria-label="关闭">×</button>
-      <img src="${url}" alt="${file.name}" class="attachment-preview-img" />
+      <pre class="attachment-preview-text"></pre>
+    </div>
+  ` : isPdfPreview ? `
+    <div class="attachment-preview-backdrop"></div>
+    <div class="attachment-preview-content">
+      <button class="attachment-preview-close" type="button" aria-label="关闭">×</button>
+      <iframe src="${url}#page=1&toolbar=0&navpanes=0" title="${escapeHtml(file.name)}" class="attachment-preview-frame"></iframe>
+    </div>
+  ` : isDocumentCoverPreview ? `
+    <div class="attachment-preview-backdrop"></div>
+    <div class="attachment-preview-content">
+      <button class="attachment-preview-close" type="button" aria-label="关闭">×</button>
+      <div class="attachment-preview-document">
+        <strong>${escapeHtml((ext || "file").toUpperCase())}</strong>
+        <span>${escapeHtml(file.name || attachment?.fileName || "document")}</span>
+      </div>
+    </div>
+  ` : `
+    <div class="attachment-preview-backdrop"></div>
+    <div class="attachment-preview-content">
+      <button class="attachment-preview-close" type="button" aria-label="关闭">×</button>
+      <img src="${url}" alt="${escapeHtml(file.name)}" class="attachment-preview-img" />
     </div>
   `;
-  modal.querySelector(".attachment-preview-backdrop").addEventListener("click", () => modal.remove());
-  modal.querySelector(".attachment-preview-close").addEventListener("click", () => modal.remove());
+  const textPreview = modal.querySelector(".attachment-preview-text");
+  if (textPreview) textPreview.textContent = attachment.text.slice(0, 8000);
+  const close = () => {
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    modal.remove();
+  };
+  modal.querySelector(".attachment-preview-backdrop").addEventListener("click", close);
+  modal.querySelector(".attachment-preview-close").addEventListener("click", close);
   document.body.appendChild(modal);
 }
 
@@ -10626,7 +11007,7 @@ async function postStreamingChat(url, payload, pendingMessage) {
   if (streamError) {
     if (pendingMessage && replyBuffer.trim()) {
       updateChatMessage(pendingMessage, {
-        content: `${replyBuffer.trim()}\n\n> ${currentLang === "en" ? "The stream was interrupted before completion." : "本次流式回复在完成前中断。"}`,
+        content: `${replyBuffer.trim()}\n\n> ${currentLang === "en" ? "The stream was interrupted before completion." : "模型流式回复在完成前中断。"}`,
         pending: false,
         thinkingContent: thinkingContent || pendingMessage.thinkingContent || ""
       });
@@ -10696,7 +11077,7 @@ function handleLiveResearchCanvasEvent(eventData = {}, pendingMessage = null) {
   const parent = state.nodes.get(parentNodeId);
   const liveLimit = getDeepThinkLiveCanvasCards();
   if (liveLimit <= 0) return;
-  const stageTitle = String(eventData.title || eventData.stage || (currentLang === "en" ? "Research step" : "研究步骤")).slice(0, 48);
+  const stageTitle = String(eventData.title || eventData.stage || (currentLang === "en" ? "Research step" : "鐮旂┒姝ラ")).slice(0, 48);
   const delta = String(eventData.delta || eventData.summary || "").trim();
   const query = String(eventData.query || eventData.searchQuery || "").trim();
   const sourceCardMode = getDeepThinkSourceCardMode();
@@ -11050,7 +11431,7 @@ function getSourceBadgeClass() {
   if (state.sourceType === "url") return "link";
   if (state.sourceType === "text") {
     const ext = (state.fileName || "").split(".").pop()?.toLowerCase();
-    if (["docx", "pdf", "pptx"].includes(ext)) return "document";
+    if (["doc", "docx", "pdf", "ppt", "pptx"].includes(ext)) return "document";
     return "text";
   }
   return "image";
@@ -11062,7 +11443,7 @@ function getSourceBadgeLabel() {
   }
   if (state.sourceType === "text") {
     const ext = (state.fileName || "").split(".").pop()?.toLowerCase();
-    const map = { txt: "TXT", md: "MD", json: "JSON", docx: "DOCX", pdf: "PDF", pptx: "PPTX" };
+    const map = { txt: "TXT", md: "MD", json: "JSON", doc: "DOC", docx: "DOCX", pdf: "PDF", ppt: "PPT", pptx: "PPTX" };
     return map[ext] || "TEXT";
   }
   return "IMG";
@@ -11082,7 +11463,7 @@ function updateSourceBadge() {
 }
 
 function syncResearchDropdownOptions() {
-  const isRichDoc = state.sourceType === "text" && state.fileName && /\.(pdf|pptx|docx)$/i.test(state.fileName);
+  const isRichDoc = state.sourceType === "text" && state.fileName && /\.(pdf|ppt|pptx|doc|docx)$/i.test(state.fileName);
   document.querySelectorAll('.research-option[data-mode="understand"]').forEach((el) => {
     el.style.display = isRichDoc ? "" : "none";
   });
@@ -11189,6 +11570,9 @@ async function loadSession(sessionId) {
     state.generatedCount = 0;
     state.sourceImage = null;
     state.sourceImageHash = null;
+    state.sourceText = null;
+    state.sourceDataUrl = null;
+    state.sourceDataUrlHash = null;
     state.sourceUrl = null;
     state.fileName = "";
     state.latestAnalysis = null;
@@ -11217,13 +11601,17 @@ async function loadSession(sessionId) {
     ) || assets.find((asset) => asset.kind === "upload" && asset.fileName && asset.fileName === (sessionState?.fileName || sourceNodeData.fileName))
       || assets.find(a => a.kind === "upload");
     if (sourceAsset) {
-      const isText = sessionState?.sourceType === "text" || sourceAsset.mimeType?.startsWith("text/") || /\.(txt|md|json|docx|pdf|pptx)$/i.test(sourceAsset.fileName || "");
+      const isText = sessionState?.sourceType === "text" || sourceAsset.mimeType?.startsWith("text/") || /\.(txt|md|json|doc|docx|pdf|ppt|pptx)$/i.test(sourceAsset.fileName || "");
       state.sourceType = isText ? "text" : "image";
       state.fileName = sourceAsset.fileName || "";
 
       if (state.sourceType === "image") {
+        clearDocumentPreview(document.querySelector("#sourceNode .upload-target"));
         state.sourceImage = `/api/assets/${sourceAsset.hash}?kind=upload`;
         state.sourceImageHash = sourceAsset.hash;
+        state.sourceText = null;
+        state.sourceDataUrl = null;
+        state.sourceDataUrlHash = null;
         sourcePreview.src = state.sourceImage;
         sourcePreview.classList.add("has-image");
       } else {
@@ -11248,6 +11636,7 @@ async function loadSession(sessionId) {
       state.sourceImageHash = null;
       state.sourceText = null;
       state.sourceDataUrl = null;
+      state.sourceDataUrlHash = null;
 
       renderUrlSource(state.sourceUrl, sessionState?.latestAnalysis?.title || "");
       sourceName.textContent = trimMiddle(state.fileName, 28);
@@ -11259,7 +11648,9 @@ async function loadSession(sessionId) {
       state.sourceImageHash = null;
       state.sourceText = null;
       state.sourceDataUrl = null;
+      state.sourceDataUrlHash = null;
       state.sourceUrl = null;
+      clearDocumentPreview(document.querySelector("#sourceNode .upload-target"));
       sourcePreview.src = "";
       sourcePreview.classList.remove("has-image");
       emptyState.classList.remove("hidden");
@@ -11284,6 +11675,9 @@ async function loadSession(sessionId) {
     }
 
     // Restore source fields from persisted state if present
+    if (sessionState?.fileName) {
+      state.fileName = sessionState.fileName;
+    }
     if (sessionState?.sourceType) {
       state.sourceType = sessionState.sourceType;
     }
@@ -11298,6 +11692,15 @@ async function loadSession(sessionId) {
     }
     if (sessionState?.sourceUrl) {
       state.sourceUrl = sessionState.sourceUrl;
+    }
+    if (state.sourceType === "text" && state.fileName && (state.sourceText || state.sourceDataUrl || state.sourceDataUrlHash)) {
+      sourcePreview.src = "";
+      sourcePreview.classList.remove("has-image");
+      emptyState.classList.add("hidden");
+      sourceName.textContent = trimMiddle(state.fileName, 28);
+      if (researchButton) researchButton.disabled = false;
+      renderSourceDocumentPreviewFromState();
+      updateSourceBadge();
     }
     if (sessionState?.fileUnderstanding) {
       state.fileUnderstanding = sessionState.fileUnderstanding;
@@ -11320,7 +11723,8 @@ async function loadSession(sessionId) {
         y: n.y,
         imageUrl,
         imageHash,
-        fileName: sourceCard.fileName || ""
+        fileName: sourceCard.fileName || "",
+        avoidOverlap: false
       });
       const restored = state.nodes.get(n.nodeId);
       if (restored?.sourceCard) {
@@ -11335,6 +11739,15 @@ async function loadSession(sessionId) {
           if (urlInputEl) urlInputEl.value = restored.sourceCard.sourceUrl;
           const urlAnalyzeBtn = restored.element.querySelector(".url-input-panel .primary-button");
           if (urlAnalyzeBtn) urlAnalyzeBtn.disabled = false;
+        }
+        if (restored.sourceCard.sourceText || restored.sourceCard.sourceDataUrl || restored.sourceCard.sourceDataUrlHash) {
+          renderDocumentPreview(
+            restored.sourceCard.fileName || restored.sourceCard.title || "",
+            sourceDocumentPreviewRef(restored.sourceCard.fileName || "", restored.sourceCard.sourceDataUrl, restored.sourceCard.sourceDataUrlHash),
+            restored.sourceCard.sourceText || "",
+            DOCUMENT_MIME_TYPES[sourceDocumentExtension(restored.sourceCard.fileName || "")] || "",
+            restored.element.querySelector(".upload-target")
+          );
         }
         const label = restored.element.querySelector(".standalone-source-name");
         if (label) label.textContent = trimMiddle(restored.sourceCard.fileName || restored.sourceCard.title || "Source card", 28);
@@ -11359,17 +11772,11 @@ async function loadSession(sessionId) {
       element.style.left = `${n.x || position.x}px`;
       element.style.top = `${n.y || position.y}px`;
       element.style.setProperty("--tilt", `${position.tilt}deg`);
-      element.querySelector(".option-tone").textContent = `${option.tone || "visual"} / ${option.layoutHint || "square"}`;
-      element.querySelector(".option-title").textContent = option.title || t("generated.result");
-      element.querySelector(".option-description").textContent = option.description || "";
-      renderRichNodeContent(element, option);
+      setupOptionCardElement(element, option, n.data?.taskType || option.taskType || "general");
 
       const button = element.querySelector(".generate-button");
-      if (option.nodeType && option.nodeType !== "image") {
-        button.textContent = t("generated.viewContent");
-      }
+      configureOptionPrimaryButton(button, option);
       button.addEventListener("click", () => generateOption(nodeId, option));
-      element.dataset.nodeType = option.nodeType || "image";
 
       // Restore reference badge if references exist
       if (option.references && option.references.length > 0) {
@@ -11568,92 +11975,128 @@ function arrangeCanvasLayout(options = {}) {
     outgoing.get(link.from)?.push(link.to);
     incoming.get(link.to)?.push(link.from);
   }
-
-  const depthMap = new Map();
-  const queue = [];
-  const seedDepth = (id, depth) => {
-    if (!visibleSet.has(id)) return;
-    const existing = depthMap.get(id);
-    if (typeof existing === "number" && existing <= depth) return;
-    depthMap.set(id, depth);
-    queue.push(id);
-  };
-
-  seedDepth("source", 0);
-  seedDepth("analysis", 1);
-  visibleNodeIds
-    .filter((id) => (incoming.get(id)?.length || 0) === 0 && id !== "source" && id !== "analysis")
-    .sort((a, b) => getNodeTitle(state.nodes.get(a)).localeCompare(getNodeTitle(state.nodes.get(b)), currentLang === "zh" ? "zh-Hans-CN" : "en"))
-    .forEach((id) => seedDepth(id, id.startsWith("option-") ? 2 : 0));
-
-  while (queue.length) {
-    const id = queue.shift();
-    const depth = depthMap.get(id) || 0;
-    for (const childId of outgoing.get(id) || []) {
-      const nextDepth = depth + 1;
-      if ((depthMap.get(childId) ?? -1) < nextDepth) {
-        depthMap.set(childId, nextDepth);
-        if (nextDepth < 12) queue.push(childId);
-      }
-    }
-  }
-
-  for (const id of visibleNodeIds) {
-    if (!depthMap.has(id)) {
-      depthMap.set(id, id.startsWith("option-") ? 2 : 0);
-    }
-  }
-
-  const parentAverageY = (id) => {
-    const parents = incoming.get(id) || [];
-    if (!parents.length) return state.nodes.get(id)?.y || 0;
-    const total = parents.reduce((sum, parentId) => sum + (state.nodes.get(parentId)?.y || 0), 0);
-    return total / parents.length;
-  };
-
-  const depthGroups = new Map();
-  for (const [id, depth] of depthMap.entries()) {
-    if (!depthGroups.has(depth)) depthGroups.set(depth, []);
-    depthGroups.get(depth).push(id);
-  }
-  for (const group of depthGroups.values()) {
-    group.sort((a, b) => {
-      const parentDelta = parentAverageY(a) - parentAverageY(b);
-      if (Math.abs(parentDelta) > 4) return parentDelta;
+  for (const [id, children] of outgoing.entries()) {
+    children.sort((a, b) => {
+      const topicDelta = Number(state.nodes.get(b)?.option?.deepThinkType === "topic") - Number(state.nodes.get(a)?.option?.deepThinkType === "topic");
+      if (topicDelta) return topicDelta;
+      const ay = state.nodes.get(a)?.y || 0;
+      const by = state.nodes.get(b)?.y || 0;
+      if (Math.abs(ay - by) > 8) return ay - by;
       return getNodeTitle(state.nodes.get(a)).localeCompare(getNodeTitle(state.nodes.get(b)), currentLang === "zh" ? "zh-Hans-CN" : "en");
     });
   }
 
   const COLUMN_GAP = 390;
   const ROW_GAP = 54;
+  const BRANCH_GAP = 120;
   const START_X = 96;
   const MIN_Y = 88;
-  const BOARD_WIDTH = Math.max(2400, board.scrollWidth || 2400);
-  const BOARD_HEIGHT = Math.max(1500, board.scrollHeight || 1500);
+  const MAX_X = 5200;
+  const MAX_Y = 5200;
   const targetPositions = new Map();
-  const depths = Array.from(depthGroups.keys()).sort((a, b) => a - b);
-
-  for (const depth of depths) {
-    const nodesAtDepth = depthGroups.get(depth).filter((id) => !id.startsWith("junction-"));
-    if (!nodesAtDepth.length) continue;
-    const x = START_X + depth * COLUMN_GAP;
-    const totalHeight = nodesAtDepth.reduce((sum, id) => {
-      const node = state.nodes.get(id);
-      return sum + (node?.height || 220);
-    }, 0) + Math.max(0, nodesAtDepth.length - 1) * ROW_GAP;
-    let y = Math.max(MIN_Y, (BOARD_HEIGHT - totalHeight) / 2);
-
-    for (const nodeId of nodesAtDepth) {
-      const node = state.nodes.get(nodeId);
-      if (!node) continue;
-      const width = node.width || node.element?.offsetWidth || 318;
-      const height = node.height || node.element?.offsetHeight || 220;
-      targetPositions.set(nodeId, {
-        x: clamp(x, 0, BOARD_WIDTH - width),
-        y: clamp(y, 0, BOARD_HEIGHT - height)
-      });
-      y += height + ROW_GAP;
+  const placed = new Set();
+  const sortIds = (ids) => ids.sort((a, b) => {
+    const sourceRank = (id) => id === "source" ? 0 : id === "analysis" ? 1 : state.nodes.get(id)?.option?.deepThinkType === "topic" ? 2 : 3;
+    const rankDelta = sourceRank(a) - sourceRank(b);
+    if (rankDelta) return rankDelta;
+    const ay = state.nodes.get(a)?.y || 0;
+    const by = state.nodes.get(b)?.y || 0;
+    if (Math.abs(ay - by) > 8) return ay - by;
+    return getNodeTitle(state.nodes.get(a)).localeCompare(getNodeTitle(state.nodes.get(b)), currentLang === "zh" ? "zh-Hans-CN" : "en");
+  });
+  const nodeSize = (id) => {
+    const node = state.nodes.get(id);
+    return {
+      width: node?.width || node?.element?.offsetWidth || 318,
+      height: node?.height || node?.element?.offsetHeight || 220
+    };
+  };
+  const hasGraphShape = visibleNodeIds.some((id) => (incoming.get(id)?.length || 0) > 1)
+    || visibleNodeIds.some((id) => (outgoing.get(id)?.length || 0) > 2)
+    || Array.from(state.junctions.keys()).some((id) => visibleSet.has(id));
+  const layoutLayeredGraph = () => {
+    const roots = sortIds(visibleNodeIds.filter((id) => (incoming.get(id)?.length || 0) === 0));
+    if (visibleSet.has("source") && !roots.includes("source")) roots.unshift("source");
+    if (!roots.length) roots.push(...sortIds(visibleNodeIds.slice(0, 1)));
+    const depth = new Map();
+    const queue = roots.map((id) => ({ id, depth: 0 }));
+    roots.forEach((id) => depth.set(id, 0));
+    while (queue.length) {
+      const current = queue.shift();
+      for (const childId of outgoing.get(current.id) || []) {
+        const nextDepth = current.depth + 1;
+        if (depth.has(childId)) continue;
+        depth.set(childId, nextDepth);
+        queue.push({ id: childId, depth: nextDepth });
+      }
     }
+    visibleNodeIds.forEach((id) => {
+      if (!depth.has(id)) depth.set(id, 0);
+    });
+    const layers = new Map();
+    for (const [id, layer] of depth.entries()) {
+      if (!layers.has(layer)) layers.set(layer, []);
+      layers.get(layer).push(id);
+    }
+    Array.from(layers.keys()).sort((a, b) => a - b).forEach((layer) => {
+      const ids = sortIds(layers.get(layer) || []);
+      let y = MIN_Y;
+      ids.forEach((id) => {
+        const size = nodeSize(id);
+        targetPositions.set(id, {
+          x: clamp(START_X + layer * COLUMN_GAP, -600, MAX_X),
+          y: clamp(y, -600, MAX_Y)
+        });
+        placed.add(id);
+        y += size.height + ROW_GAP;
+      });
+    });
+  };
+  const layoutTree = (nodeId, depth, topY, stack = new Set()) => {
+    if (!visibleSet.has(nodeId) || placed.has(nodeId) || stack.has(nodeId)) return 0;
+    stack.add(nodeId);
+    const children = sortIds((outgoing.get(nodeId) || []).filter((childId) => visibleSet.has(childId) && !placed.has(childId) && !stack.has(childId)));
+    const size = nodeSize(nodeId);
+    let subtreeHeight = size.height;
+    if (children.length) {
+      let childY = topY;
+      let totalChildrenHeight = 0;
+      children.forEach((childId) => {
+        const childHeight = layoutTree(childId, depth + 1, childY, stack);
+        if (childHeight > 0) {
+          childY += childHeight + ROW_GAP;
+          totalChildrenHeight += childHeight + ROW_GAP;
+        }
+      });
+      if (totalChildrenHeight > 0) totalChildrenHeight -= ROW_GAP;
+      subtreeHeight = Math.max(size.height, totalChildrenHeight);
+    }
+    const x = START_X + depth * COLUMN_GAP;
+    const y = topY + Math.max(0, (subtreeHeight - size.height) / 2);
+    targetPositions.set(nodeId, {
+      x: clamp(x, -600, MAX_X),
+      y: clamp(y, -600, MAX_Y)
+    });
+    placed.add(nodeId);
+    stack.delete(nodeId);
+    return subtreeHeight;
+  };
+
+  let nextY = MIN_Y;
+  if (hasGraphShape) {
+    layoutLayeredGraph();
+  } else {
+    const roots = sortIds(visibleNodeIds.filter((id) => (incoming.get(id)?.length || 0) === 0));
+    if (visibleSet.has("source") && !roots.includes("source")) roots.unshift("source");
+    if (!roots.length && state.selectedNodeId && visibleSet.has(state.selectedNodeId)) roots.push(state.selectedNodeId);
+    roots.forEach((rootId) => {
+      const height = layoutTree(rootId, 0, nextY);
+      if (height > 0) nextY += height + BRANCH_GAP;
+    });
+    sortIds(visibleNodeIds.filter((id) => !placed.has(id))).forEach((nodeId) => {
+      const height = layoutTree(nodeId, 0, nextY);
+      if (height > 0) nextY += height + BRANCH_GAP;
+    });
   }
 
   for (const [junctionId, junction] of state.junctions) {
@@ -11668,12 +12111,20 @@ function arrangeCanvasLayout(options = {}) {
     const outgoingTargets = outgoing.get(junctionId) || [];
     const firstTarget = outgoingTargets.map((id) => targetPositions.get(id) || state.nodes.get(id)).find(Boolean);
     targetPositions.set(junctionId, {
-      x: clamp(firstTarget ? avgX + 230 : avgX + 180, 0, BOARD_WIDTH - 64),
-      y: clamp(firstTarget ? (avgY + (firstTarget.y || avgY)) / 2 : avgY + 48, 0, BOARD_HEIGHT - 64)
+      x: clamp(firstTarget ? avgX + 230 : avgX + 180, -600, MAX_X),
+      y: clamp(firstTarget ? (avgY + (firstTarget.y || avgY)) / 2 : avgY + 48, -600, MAX_Y)
     });
   }
 
-  animateNodesToPositions(targetPositions, 520);
+  const adjustedPositions = resolveNonOverlappingTargetPositions(targetPositions, {
+    padding: 48,
+    minX: -600,
+    maxX: MAX_X,
+    minY: -600,
+    maxY: MAX_Y,
+    maxRing: 10
+  });
+  animateNodesToPositions(adjustedPositions, 520);
 }
 
 function animateNodesToPositions(targetPositions, duration = 400) {
@@ -11713,6 +12164,7 @@ function animateNodesToPositions(targetPositions, duration = 400) {
     } else {
       board.classList.remove("is-arranging");
       drawLinks();
+      renderGroupFrames();
       autoSave();
     }
   }
@@ -11720,7 +12172,7 @@ function animateNodesToPositions(targetPositions, duration = 400) {
   requestAnimationFrame(step);
 }
 
-// ─── File Understanding ───
+// 鈹€鈹€鈹€ File Understanding 鈹€鈹€鈹€
 
 async function triggerFileUnderstanding() {
   const hasData = state.sourceDataUrl || state.sourceText;
@@ -11995,7 +12447,7 @@ async function handleDirectionAction(nodeId, dir) {
 function buildDirectionPrompt(dir, lang) {
   const isEn = lang === "en";
   const typeMap = {
-    "research": isEn ? "research topic" : "研究主题",
+    "research": isEn ? "research topic" : "鐮旂┒涓婚",
     "task-plan": isEn ? "task plan" : "任务计划",
     "web-analysis": isEn ? "web analysis" : "网页分析",
     "report-structure": isEn ? "report structure" : "汇报结构",
@@ -12023,37 +12475,6 @@ function buildDirectionPrompt(dir, lang) {
     "",
     "请以结构清晰的格式返回，包含明确的章节。"
   ].join("\n");
-}
-
-function renderDocumentPreview(fileName, dataUrl, hash, mimeType, container) {
-  if (!container) return;
-
-  let previewEl = container.querySelector(".document-preview");
-  if (!previewEl) {
-    previewEl = document.createElement("div");
-    previewEl.className = "document-preview";
-    container.appendChild(previewEl);
-  }
-
-  const ext = (fileName || "").split(".").pop()?.toLowerCase() || "";
-  const isPdf = ext === "pdf" || mimeType === "application/pdf";
-  const isPptx = ext === "pptx" || mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-
-  if (isPdf && dataUrl) {
-    previewEl.innerHTML = `<embed src="${dataUrl}" type="application/pdf" class="document-embed" />`;
-  } else if (isPdf && hash) {
-    previewEl.innerHTML = `<iframe src="/api/assets/${hash}?kind=upload" class="document-embed"></iframe>`;
-  } else if (isPptx) {
-    previewEl.innerHTML = `
-      <div class="document-embed pptx-preview">
-        <div class="pptx-icon">📊</div>
-        <p class="pptx-name">${escapeHtml(fileName)}</p>
-        <p class="pptx-hint">${currentLang === "en" ? "PPTX preview not available in browser. Download to view." : "PPTX 浏览器预览不可用。请下载查看。"}</p>
-      </div>
-    `;
-  } else {
-    previewEl.innerHTML = `<div class="document-embed text-preview"><p>${escapeHtml(fileName)}</p></div>`;
-  }
 }
 
 function escapeHtml(text) {

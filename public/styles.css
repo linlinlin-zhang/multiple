@@ -113,7 +113,7 @@ body.nav-collapsed {
   grid-area: rail;
   display: grid;
   grid-template-rows: auto auto 1fr;
-  gap: 18px;
+  gap: 12px;
   padding: 18px 16px;
   background: var(--ps-black);
   color: var(--paper);
@@ -151,33 +151,8 @@ body.nav-collapsed {
   flex-direction: column;
   gap: 8px;
   min-width: 0;
-  padding: 2px 4px 20px;
+  padding: 0 4px 14px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-.nav-brand-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.10);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--paper);
-  opacity: 0.88;
-}
-
-.nav-brand-icon svg {
-  width: 20px;
-  height: 20px;
-}
-
-.nav-kicker {
-  color: rgba(255, 255, 255, 0.68);
-  font-size: 12px;
-  font-weight: 400;
-  letter-spacing: 0;
 }
 
 .nav-brand strong {
@@ -420,6 +395,17 @@ body.nav-collapsed .nav-settings {
   opacity: 0.56;
   vector-effect: non-scaling-stroke;
   transform: translate(1px, 3px);
+}
+
+.link-hit-target {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 18;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: stroke;
+  cursor: pointer;
+  vector-effect: non-scaling-stroke;
 }
 
 .link-pin {
@@ -954,6 +940,61 @@ body.nav-collapsed .nav-settings {
 
 .source-preview.has-image {
   opacity: 1;
+}
+
+.source-document-preview {
+  position: absolute;
+  inset: 16px 16px 52px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 19px;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.78), rgba(0, 112, 204, 0.08)),
+    var(--ice);
+  box-shadow: inset 0 0 0 1px rgba(0, 112, 204, 0.16);
+}
+
+.source-document-frame {
+  width: 140%;
+  height: 140%;
+  border: 0;
+  transform: scale(0.72);
+  transform-origin: center;
+  background: #fff;
+  pointer-events: none;
+}
+
+.source-document-cover {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 18px;
+  text-align: center;
+}
+
+.source-document-cover p {
+  margin: 0;
+  max-width: 100%;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.source-document-cover span:not(.pptx-icon) {
+  display: -webkit-box;
+  max-width: 100%;
+  color: var(--inkMuted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow: hidden;
+  line-clamp: 4;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
 }
 
 .image-card-actions {
@@ -2034,6 +2075,13 @@ body.chat-sidebar-closed .statusbar > * {
   color: var(--ink);
   background: rgba(255, 255, 255, 0.72);
   text-decoration: none;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+button.chat-message-attachment {
+  cursor: pointer;
 }
 
 .chat-message-attachment img {
@@ -2042,6 +2090,19 @@ body.chat-sidebar-closed .statusbar > * {
   object-fit: cover;
   border-radius: 8px;
   background: var(--ice);
+}
+
+.chat-message-attachment-icon {
+  display: grid;
+  place-items: center;
+  min-width: 64px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--ps-blue);
+  background: rgba(0, 112, 204, 0.08);
+  font-size: 12px;
+  letter-spacing: 0.08em;
 }
 
 .chat-message-attachment span {
@@ -2562,6 +2623,73 @@ html[data-theme="dark"] .chat-scroll-bottom {
   transform: translateX(-50%) translateY(0);
 }
 
+.confirm-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 260;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.confirm-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.52);
+  backdrop-filter: blur(4px);
+}
+
+.confirm-modal-content {
+  position: relative;
+  width: min(420px, 100%);
+  padding: 22px;
+  border-radius: 22px;
+  background: var(--paper);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-16);
+  z-index: 1;
+}
+
+.confirm-modal-content h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.confirm-modal-content p {
+  margin: 0;
+  color: var(--body);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.confirm-modal-actions button {
+  min-height: 36px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.confirm-modal-cancel {
+  background: var(--paper);
+  color: var(--body);
+}
+
+.confirm-modal-confirm {
+  background: var(--danger);
+  color: var(--paper);
+}
+
 .chat-attach-button {
   width: 34px;
   height: 34px;
@@ -2890,6 +3018,23 @@ html[data-theme="dark"] .chat-review-button {
   border-top-color: var(--paper);
   border-radius: 50%;
   animation: spin 800ms linear infinite;
+}
+
+.source-card-research-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.source-card-research-actions .research-button {
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+.source-card-research-actions .source-card-explore-button {
+  background: var(--charcoal);
 }
 
 .research-dropdown {
@@ -5000,8 +5145,51 @@ html[data-theme="dark"] .blueprint-card.dragging {
   max-width: 90vw;
   max-height: 90vh;
   object-fit: contain;
+}
+
+.attachment-preview-frame {
+  width: min(860px, 90vw);
+  height: min(760px, 86vh);
+  border: 0;
+  border-radius: 16px;
+  background: var(--paper);
+  box-shadow: var(--shadow-08);
+}
+
+.attachment-preview-document {
+  display: grid;
+  gap: 12px;
+  width: min(420px, 86vw);
+  padding: 36px;
+  border-radius: 22px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: var(--shadow-08);
+  text-align: center;
+}
+
+.attachment-preview-document strong {
+  color: var(--ps-blue);
+  font-size: 28px;
+  letter-spacing: 0.12em;
+}
+
+.attachment-preview-document span {
+  color: var(--inkMuted);
+  overflow-wrap: anywhere;
+}
+
+.attachment-preview-text {
+  max-width: min(760px, 88vw);
+  max-height: 78vh;
+  overflow: auto;
+  margin: 0;
+  padding: 18px;
   border-radius: 12px;
+  color: var(--ink);
+  background: var(--paper);
   box-shadow: var(--shadow-16);
+  white-space: pre-wrap;
 }
 
 /* ── Task-type badges on direction cards ── */
