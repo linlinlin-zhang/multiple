@@ -1,4 +1,4 @@
-﻿import { micromark } from "https://esm.sh/micromark@4";
+import { micromark } from "https://esm.sh/micromark@4";
 import { gfm, gfmHtml } from "https://esm.sh/micromark-extension-gfm@3";
 
 const viewport = document.querySelector("#viewport");
@@ -617,7 +617,134 @@ const i18n = {
     "generated.openLink": "打开链接",
     "generated.copyCode": "复制代码",
     "generated.viewMap": "查看地图",
-    "generated.viewWeather": "查看天气"
+    "generated.viewWeather": "查看天气",
+    "command.menu": "工作台命令",
+    "command.hint": "输入 / 选择工作台工具",
+    "command.sessionsDesc": "打开工作台内历史会话列表",
+    "command.fitDesc": "将画布恢复到默认视图",
+    "command.arrange": "整理画布",
+    "command.newCardDesc": "在画布上创建空白卡片",
+    "command.newCanvasDesc": "创建新的空白画布",
+    "command.searchCardPrompt": "输入关键词搜索画布卡片",
+    "junction.maxCapacity": "连接节点最多只能连接 {max} 张卡片",
+    "source.uploadPrompt": "上传图片或文档",
+    "source.uploadHint": "选择图片、Word、PDF、PPT 或 TXT，生成分支方向",
+    "research.analyzeTooltip": "调用 no-thinking 模式，快速视觉分析",
+    "research.cannotResearch": "这张卡片不能研究",
+    "chat.conversationMessages": "{count} 条消息",
+    "chat.noMessages": "还没有消息。输入方向、约束，或按 / 使用工作台命令。",
+    "chat.selectCardFirst": "请先双击一张卡片进行选择",
+    "chat.send": "发送",
+    "chat.thinkingDetails": "思考过程",
+    "chat.thinkingUnavailable": "模型本轮没有返回可展开的思考过程。",
+    "chat.actionsApplied": "已应用 {count} 个画布操作",
+    "chat.copied": "已复制！",
+    "chat.actionApplied": "已执行操作",
+    "chat.clickToFocus": "点击定位到画布节点",
+    "voice.asr": "语音转文字",
+    "voice.unsupported": "当前浏览器不支持录音。",
+    "voice.permissionDenied": "无法访问麦克风，请检查浏览器权限。",
+    "voice.asrNotConfigured": "尚未配置 ASR API。",
+    "voice.realtimeNotConfigured": "尚未配置实时语音 API。",
+    "chat.emptyPrompt": "请输入方向描述",
+    "chat.actionMenu": "功能区",
+    "chat.upload": "上传图片或文件",
+    "chat.uploadDesc": "添加到画布或输入框",
+    "chat.minimap": "缩略图",
+    "chat.deepThinkDesc": "使用 Qwen Deep Research，并把证据流式整理为画布卡片",
+    "chat.generatedCannotGenerate": "生成图片节点不能继续生成新方向",
+    "thinking.thinking": "思考",
+    "thinking.fast": "快速",
+    "status.saved": "已保存",
+    "option.generate": "生成这张图",
+    "analysis.defaultSummary": "内容理解完成。",
+    "fileUnderstanding.pages": "{count} 页",
+    "fileUnderstanding.scannedWarning": "这似乎是扫描版文档。建议使用 OCR 获取完整文本。",
+    "generated.regenerate": "重生成",
+    "viewer.regenerate": "重生成",
+    "viewer.aspect": "宽高比",
+    "viewer.aspectMenuTitle": "用不同宽高比生成此图片",
+    "viewer.maskRequired": "请先涂抹你想编辑的区域。",
+    "viewer.shareCopied": "分享链接已复制到剪贴板",
+    "collapse.expand": "展开 {count} 个后续节点",
+    "collapse.collapse": "收起 {count} 个后续节点",
+    "save.alertFirst": "请先保存会话再导出。",
+    "save.exportFailed": "导出失败：",
+    "save.importFailed": "导入失败：",
+    "file.unsupported": "不支持的文件类型。请上传图片或文本文件。",
+    "file.readError": "文件读取失败：",
+    "session.unnamed": "未命名会话",
+    "session.exploration": "的探索",
+    "reference.title": "参考资料",
+    "history.empty": "暂无历史会话",
+    "chat.systemContext": "你是 ORYZAE 画布式 AI 工作台内的助手。画布支持规划、研究、写作、分析、设计和图像生成。适合时使用 canvas_action 工具创建结构化节点（plan / todo / note / weather / map / link / code / web_card / image 等）。每次调用工具时，也要给用户正常文字回复。",
+    "chat.actionFeedback.create_direction": "已创建方向卡片",
+    "chat.actionFeedback.create_card": "已创建卡片",
+    "chat.actionFeedback.new_card": "已创建卡片",
+    "chat.actionFeedback.zoom_in": "已放大",
+    "chat.actionFeedback.zoom_out": "已缩小",
+    "chat.actionFeedback.reset_view": "已重置视图",
+    "chat.actionFeedback.set_zoom": "已调整缩放",
+    "chat.actionFeedback.pan_view": "已平移画布",
+    "chat.actionFeedback.focus_node": "已聚焦节点",
+    "chat.actionFeedback.move_node": "已移动节点",
+    "chat.actionFeedback.arrange_canvas": "已整理画布",
+    "chat.actionFeedback.auto_layout": "已自动排列画布",
+    "chat.actionFeedback.tidy_canvas": "已整理画布",
+    "chat.actionFeedback.ungroup_selection": "已解除编组",
+    "chat.actionFeedback.search_card": "已搜索卡片",
+    "chat.actionFeedback.export_report": "已导出画布报告",
+    "chat.actionFeedback.select_source": "已选择来源卡片",
+    "chat.actionFeedback.delete_node": "已删除卡片",
+    "chat.actionFeedback.generate_image": "已生成图片",
+    "chat.actionFeedback.web_search": "已创建网页搜索卡片",
+    "chat.actionFeedback.image_search": "已搜索图片",
+    "chat.actionFeedback.reverse_image_search": "已搜索相似图片",
+    "chat.actionFeedback.research_node": "已开始研究",
+    "chat.actionFeedback.open_references": "已打开参考资料",
+    "chat.actionFeedback.save_session": "已保存会话",
+    "chat.actionFeedback.new_chat": "已新建对话",
+    "chat.actionFeedback.open_chat": "已打开对话栏",
+    "chat.actionFeedback.set_thinking_mode": "已切换思考模式",
+    "chat.actionFeedback.set_deep_think_mode": "已切换深入研究模式",
+    "settings.option.size": "输出分辨率",
+    "settings.option.negative_prompt": "反向提示词",
+    "settings.option.useReferenceImage": "使用当前图片作为参考",
+    "settings.option.enableCodeInterpreter": "启用代码解释器",
+    "settings.option.smoothOutput": "口语化输出",
+    "settings.option.silenceThreshold": "静音阈值",
+    "settings.option.sourceCardMode": "来源上画布方式",
+    "settings.option.maxReferenceCards": "最大来源数量",
+    "settings.option.liveCanvasCards": "流式实时卡片数",
+    "settings.hint.top_p": "留空使用模型默认值。",
+    "settings.hint.max_tokens": "留空则使用服务商默认值。",
+    "settings.hint.size": "Qwen Image 2.0 Pro 支持自由宽高，推荐使用 2K 预设。",
+    "settings.hint.n": "Qwen Image 2.0 支持 1-6 张；当前画布会使用第一张。",
+    "settings.hint.negative_prompt": "不希望出现在画面里的内容，最多 500 字符。",
+    "settings.hint.watermark": "开启后由服务商在生成图片上添加水印。",
+    "settings.hint.prompt_extend": "开启后模型会扩展并润色提示词，让画面更丰富。",
+    "settings.hint.seed": "留空随机生成；相同 seed 可提高复现概率。",
+    "settings.hint.useReferenceImage": "开启后会把当前图片作为生成参考。",
+    "settings.hint.enableWebSearch": "控制 Qwen 对话/分析是否允许触发内置联网搜索。",
+    "settings.hint.jsonObjectResponse": "分析模型需要严格 JSON 时可开启；如果模型不兼容请关闭。",
+    "settings.hint.enableWebExtractor": "允许 Qwen Responses 在用户提供链接时提取网页正文。",
+    "settings.hint.enableCodeInterpreter": "允许 Qwen Responses 在计算、数据分析和图表任务中使用代码解释器。",
+    "settings.hint.enableCanvasTools": "允许对话模型返回 canvas_action，用于创建或控制画布卡片。",
+    "settings.hint.enablePreviousResponse": "开启后同一聊天线程会复用 Qwen Responses previous_response_id。",
+    "settings.hint.targetLanguage": "选择语音转写的目标语言，Auto 会自动识别。",
+    "settings.hint.chunkMs": "每次发送的音频长度；越短越实时，越长越稳定。",
+    "settings.hint.voice": "例如 Ethan、Cherry 或 Chelsie；也可以填写自定义复刻音色 ID。",
+    "settings.hint.outputAudio": "开启后实时语音会播放模型原生音频。",
+    "settings.hint.enableSearch": "仅 Qwen3.5 Omni Realtime 支持，且不能与工具调用同时开启。",
+    "settings.hint.smoothOutput": "自动时由模型决定口语或正式风格。",
+    "settings.hint.transcriptionModel": "用于 Qwen Realtime input_audio_transcription 的 ASR 模型。",
+    "settings.hint.silenceThreshold": "前端静音过滤阈值；环境噪声较大时可略微调高。",
+    "settings.hint.sourceCardMode": "list 会把来源合并为列表卡；cards 会逐条生成来源卡；off 不放入画布。",
+    "settings.hint.maxCanvasCards": "深入研究最终最多落到画布上的卡片数量，最多 25 张。",
+    "settings.hint.maxReferenceCards": "深入研究保留并展示的精选来源数量。",
+    "settings.hint.liveCanvasCards": "流式研究过程中最多创建的临时画布卡片数量，最多 25 张。",
+    "settings.hint.outputFormat": "传给 Qwen Deep Research 的 output_format，例如 model_summary_report。",
+    "settings.hint.incrementalOutput": "使用 Deep Research 增量流式输出。"
   },
   en: {
     "nav.workbench": "Workbench",
@@ -649,6 +776,7 @@ const i18n = {
     "command.newCanvasDesc": "Create a new blank canvas",
     "command.searchCard": "Search card",
     "command.searchCardDesc": "Find and locate a card on the canvas by name",
+    "command.searchCardPrompt": "Type keywords to search canvas cards",
     "command.searchCardEmpty": "No matching card found",
     "command.searchCardFound": "Located card: {title}",
     "junction.maxCapacity": "Junction node can connect at most {max} cards",
@@ -703,14 +831,17 @@ const i18n = {
     "settings.hint.size": "Qwen Image 2.0 Pro supports custom width and height; 2K presets are recommended.",
     "settings.hint.n": "Qwen Image 2.0 supports 1-6 images; the canvas uses the first image.",
     "settings.hint.negative_prompt": "Things to avoid in the generated image, up to 500 characters.",
+    "settings.hint.watermark": "When enabled, the provider adds a watermark to generated images.",
     "settings.hint.prompt_extend": "Let the model expand and polish the prompt for richer images.",
     "settings.hint.seed": "Leave blank for random generation; same seed improves repeatability.",
+    "settings.hint.useReferenceImage": "Use the current image as a visual reference for generation.",
     "settings.hint.enableWebSearch": "Controls whether Qwen chat/analysis may trigger built-in web search.",
     "settings.hint.jsonObjectResponse": "Enable when the analysis model should prefer strict JSON; turn it off if the model is incompatible.",
     "settings.hint.enableWebExtractor": "Allow Qwen Responses to extract page text when the user provides URLs.",
     "settings.hint.enableCodeInterpreter": "Allow Qwen Responses to use code interpreter for calculations, data analysis, and charts.",
     "settings.hint.enableCanvasTools": "Allow the chat model to return canvas_action calls that create or control canvas cards.",
     "settings.hint.enablePreviousResponse": "Reuse Qwen Responses previous_response_id inside the same chat thread.",
+    "settings.hint.targetLanguage": "Select the target language for speech transcription; Auto detects it automatically.",
     "settings.hint.chunkMs": "Audio duration sent per request; shorter is more realtime, longer is more stable.",
     "settings.hint.voice": "For example Ethan, Cherry, or Chelsie; custom cloned voice IDs also work.",
     "settings.hint.outputAudio": "When enabled, realtime voice plays the model's native audio.",
@@ -996,14 +1127,19 @@ const i18n = {
     "generated.openLink": "Open Link",
     "generated.copyCode": "Copy Code",
     "generated.viewMap": "View Map",
-    "generated.viewWeather": "View Weather"
+    "generated.viewWeather": "View Weather",
+    "history.empty": "No saved sessions yet"
   }
 };
 let currentLang = "zh";
 
 function t(key, vars = {}) {
   const dict = i18n[currentLang] || i18n.zh;
-  let text = dict[key] || i18n.zh[key] || key;
+  const isUsable = (value) => typeof value === "string" && value && !/\?{2,}/.test(value);
+  let text = dict[key];
+  if (!isUsable(text)) text = i18n.zh[key];
+  if (!isUsable(text)) text = i18n.en?.[key];
+  if (!isUsable(text)) text = key;
   for (const [k, v] of Object.entries(vars)) {
     text = text.replace(new RegExp(`\\{${k}\\}`, "g"), String(v));
   }
@@ -7334,9 +7470,10 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
         card.setAttribute("tabindex", "0");
         const icon = ACTION_FEEDBACK_ICONS[ar.type] || "⚡";
         const labelKey = `chat.actionFeedback.${ar.type}`;
+        const labelText = t(labelKey);
         const label = failed
           ? (currentLang === "en" ? "Action failed" : "\u6267\u884c\u5931\u8d25")
-          : (t(labelKey) || t("chat.actionApplied") || "已执行");
+          : (labelText === labelKey ? t("chat.actionApplied") : labelText);
         const title = failed ? ar.error : (ar.title || "");
         card.innerHTML = `
           <span class="chat-action-icon">${escapeHtml(icon)}</span>
@@ -7536,8 +7673,10 @@ function applyTaskTypeBadge(element, taskType) {
   if (!badge) return;
   const type = taskType || "general";
   const cssType = type === "image_generation" ? "visual" : type;
+  const labelKey = `badge.${type}`;
+  const label = t(labelKey);
   badge.className = `card-badge badge-${cssType}`;
-  badge.textContent = t(`badge.${type}`) || type;
+  badge.textContent = label === labelKey ? type : label;
   element.dataset.taskType = type;
 }
 
@@ -10325,10 +10464,11 @@ function drawLinks() {
     );
     const fromGroup = fromGroups.get(`${link.from}:${sides.fromSide}`);
     const toGroup = toGroups.get(`${link.to}:${sides.toSide}`);
-    const isBundled = (fromGroup?.length || 0) > 2 || (toGroup?.length || 0) > 2;
+    const isJunctionLink = link.kind === "junction";
+    const isBundled = isJunctionLink || (fromGroup?.length || 0) > 2 || (toGroup?.length || 0) > 2;
     const path = routeLinkPath(start, end, descriptor, { fromGroup, toGroup });
-    const linkClass = `link link-orthogonal${isBundled ? " link-bundled" : ""}`;
-    const shadow = svgElement("path", { d: path, class: `link-shadow${isBundled ? " link-bundled" : ""}` });
+    const linkClass = `link link-orthogonal${isBundled ? " link-bundled" : ""}${isJunctionLink ? " link-junction" : ""}`;
+    const shadow = svgElement("path", { d: path, class: `link-shadow${isBundled ? " link-bundled" : ""}${isJunctionLink ? " link-junction" : ""}` });
     const line = svgElement("path", { d: path, class: linkClass });
     const hitTarget = svgElement("path", { d: path, class: "link-hit-target", tabindex: "0" });
     hitTarget.addEventListener("dblclick", (event) => {
@@ -10336,8 +10476,10 @@ function drawLinks() {
       event.stopPropagation();
       confirmDeleteLink(link);
     });
-    const pinA = svgElement("circle", { cx: start.x, cy: start.y, r: 7, class: "link-pin" });
-    const pinB = svgElement("circle", { cx: end.x, cy: end.y, r: 7, class: "link-pin" });
+    const pinRadius = isJunctionLink ? 4.5 : 6;
+    const pinClass = `link-pin${isJunctionLink ? " link-pin-junction" : ""}`;
+    const pinA = svgElement("circle", { cx: start.x, cy: start.y, r: pinRadius, class: pinClass });
+    const pinB = svgElement("circle", { cx: end.x, cy: end.y, r: pinRadius, class: pinClass });
 
     fragments.append(shadow, line, hitTarget, pinA, pinB);
   });
@@ -10364,13 +10506,29 @@ function linkSpreadOffset(group, descriptor) {
   return (index - (group.length - 1) / 2) * step;
 }
 
+
 function chooseLinkSides(from, to) {
   const fromCenter = nodeCenter(from);
   const toCenter = nodeCenter(to);
   const dx = toCenter.x - fromCenter.x;
   const dy = toCenter.y - fromCenter.y;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
 
-  if (Math.abs(dx) >= Math.abs(dy) * 0.78) {
+  if (from?.isJunction || to?.isJunction) {
+    if (absDx >= 36) {
+      return {
+        fromSide: dx >= 0 ? "right" : "left",
+        toSide: dx >= 0 ? "left" : "right"
+      };
+    }
+    return {
+      fromSide: dy >= 0 ? "bottom" : "top",
+      toSide: dy >= 0 ? "top" : "bottom"
+    };
+  }
+
+  if (absDx >= 110 || absDx >= absDy * 0.62) {
     return {
       fromSide: dx >= 0 ? "right" : "left",
       toSide: dx >= 0 ? "left" : "right"
@@ -10402,16 +10560,40 @@ function isNodeVisible(node) {
     && !node.element.classList.contains("selective-hidden");
 }
 
+
 function anchor(node, side = "right", offset = 0) {
   const element = node.element;
   const width = element.offsetWidth || node.width || 300;
   const height = element.offsetHeight || node.height || 220;
-  const sidePadding = 18;
-  const edgePadding = 30;
+  const isJunction = node.isJunction || element.classList.contains("junction-node");
+  const clampWithin = (value, min, max) => max < min ? (min + max) / 2 : clamp(value, min, max);
+
+  if (isJunction) {
+    const centerX = node.x + width / 2;
+    const centerY = node.y + height / 2;
+    const radius = Math.max(10, Math.min(width, height) / 2 - 3);
+    const lateral = clamp(offset, -radius * 0.55, radius * 0.55);
+    if (side === "top" || side === "bottom") {
+      return {
+        x: centerX + lateral,
+        y: centerY + (side === "bottom" ? radius : -radius),
+        side
+      };
+    }
+    return {
+      x: centerX + (side === "right" ? radius : -radius),
+      y: centerY + lateral,
+      side
+    };
+  }
+
+  const sidePadding = Math.min(18, Math.max(8, Math.min(width, height) / 2 - 2));
+  const horizontalPadding = Math.min(30, Math.max(12, width / 2 - 8));
+  const verticalPadding = Math.min(30, Math.max(12, height / 2 - 8));
 
   if (side === "top" || side === "bottom") {
     return {
-      x: node.x + clamp(width / 2 + offset, edgePadding, width - edgePadding),
+      x: node.x + clampWithin(width / 2 + offset, horizontalPadding, width - horizontalPadding),
       y: node.y + (side === "bottom" ? height - sidePadding : sidePadding),
       side
     };
@@ -10419,7 +10601,7 @@ function anchor(node, side = "right", offset = 0) {
 
   return {
     x: node.x + (side === "right" ? width - sidePadding : sidePadding),
-    y: node.y + clamp(height * 0.48 + offset, edgePadding, height - edgePadding),
+    y: node.y + clampWithin(height * 0.48 + offset, verticalPadding, height - verticalPadding),
     side
   };
 }
@@ -10444,6 +10626,7 @@ function curvePath(start, end) {
   return `M ${start.x} ${start.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${end.x} ${end.y}`;
 }
 
+
 function routeLinkPath(start, end, descriptor, groups = {}) {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
@@ -10451,32 +10634,89 @@ function routeLinkPath(start, end, descriptor, groups = {}) {
   const absDy = Math.abs(dy);
   const startTangent = tangentForSide(start.side);
   const endTangent = tangentForSide(end.side);
-  const bundled = (groups.fromGroup?.length || 0) > 2 || (groups.toGroup?.length || 0) > 2;
-  const firstLeg = clamp((start.side === "left" || start.side === "right" ? absDx : absDy) * 0.32, bundled ? 96 : 62, bundled ? 180 : 132);
-  const lastLeg = clamp((end.side === "left" || end.side === "right" ? absDx : absDy) * 0.26, 54, 132);
+  const fromGroupSize = groups.fromGroup?.length || 0;
+  const toGroupSize = groups.toGroup?.length || 0;
+  const bundled = fromGroupSize > 2 || toGroupSize > 2 || descriptor?.link?.kind === "junction";
+  const firstAxisDistance = start.side === "left" || start.side === "right" ? absDx : absDy;
+  const lastAxisDistance = end.side === "left" || end.side === "right" ? absDx : absDy;
+  const firstLeg = clamp(firstAxisDistance * 0.28, bundled ? 86 : 58, bundled ? 168 : 126);
+  const lastLeg = clamp(lastAxisDistance * 0.24, 48, bundled ? 126 : 112);
+  const fromLane = linkLaneOffset(groups.fromGroup, descriptor, bundled ? 18 : 14);
+  const toLane = linkLaneOffset(groups.toGroup, descriptor, bundled ? 18 : 14);
+  const sharedLane = clamp((fromLane + toLane) * 0.45, -72, 72);
+  const lanePadding = bundled ? 92 + Math.abs(sharedLane) : 58 + Math.abs(sharedLane) * 0.5;
   const points = [{ x: start.x, y: start.y }];
   const p1 = { x: start.x + startTangent.x * firstLeg, y: start.y + startTangent.y * firstLeg };
   const p4 = { x: end.x + endTangent.x * lastLeg, y: end.y + endTangent.y * lastLeg };
+  const startHorizontal = start.side === "left" || start.side === "right";
+  const endHorizontal = end.side === "left" || end.side === "right";
   points.push(p1);
 
-  if ((start.side === "left" || start.side === "right") && (end.side === "left" || end.side === "right")) {
-    const midX = bundled
-      ? p1.x
-      : (Math.abs(p1.x - p4.x) < 90 ? (p1.x + p4.x) / 2 : p1.x + (p4.x - p1.x) * 0.52);
+  if (startHorizontal && endHorizontal) {
+    let midX;
+    if (start.side === "right" && end.side === "left" && p1.x <= p4.x) {
+      midX = (p1.x + p4.x) / 2 + sharedLane;
+    } else if (start.side === "left" && end.side === "right" && p1.x >= p4.x) {
+      midX = (p1.x + p4.x) / 2 - sharedLane;
+    } else {
+      const sign = start.side === "left" ? -1 : 1;
+      midX = sign > 0
+        ? Math.max(p1.x, p4.x) + lanePadding
+        : Math.min(p1.x, p4.x) - lanePadding;
+    }
     points.push({ x: midX, y: p1.y }, { x: midX, y: p4.y });
-  } else if ((start.side === "top" || start.side === "bottom") && (end.side === "top" || end.side === "bottom")) {
-    const midY = bundled
-      ? p1.y
-      : (Math.abs(p1.y - p4.y) < 90 ? (p1.y + p4.y) / 2 : p1.y + (p4.y - p1.y) * 0.52);
+  } else if (!startHorizontal && !endHorizontal) {
+    let midY;
+    if (start.side === "bottom" && end.side === "top" && p1.y <= p4.y) {
+      midY = (p1.y + p4.y) / 2 + sharedLane;
+    } else if (start.side === "top" && end.side === "bottom" && p1.y >= p4.y) {
+      midY = (p1.y + p4.y) / 2 - sharedLane;
+    } else {
+      const sign = start.side === "top" ? -1 : 1;
+      midY = sign > 0
+        ? Math.max(p1.y, p4.y) + lanePadding
+        : Math.min(p1.y, p4.y) - lanePadding;
+    }
     points.push({ x: p1.x, y: midY }, { x: p4.x, y: midY });
-  } else if (absDx > absDy) {
-    points.push({ x: p4.x, y: p1.y });
   } else {
-    points.push({ x: p1.x, y: p4.y });
+    const viaA = [p1, { x: p4.x, y: p1.y }, p4];
+    const viaB = [p1, { x: p1.x, y: p4.y }, p4];
+    const chosen = routeObstaclePenalty(viaA, descriptor) <= routeObstaclePenalty(viaB, descriptor) ? viaA : viaB;
+    points.push(...chosen.slice(1, -1));
   }
 
   points.push(p4, { x: end.x, y: end.y });
-  return roundedPolylinePath(avoidLinkObstacles(points, descriptor), bundled ? 24 : 18);
+  const snapped = points.map((point, index) => index === 0 || index === points.length - 1 ? point : snapRoutePoint(point));
+  return roundedPolylinePath(avoidLinkObstacles(snapped, descriptor), bundled ? 18 : 14);
+}
+
+function linkLaneOffset(group, descriptor, step = 18) {
+  if (!group || group.length <= 1) return 0;
+  const ordered = group.slice().sort((a, b) => {
+    const aCenter = nodeCenter(a.to || state.nodes.get(a.link.to));
+    const bCenter = nodeCenter(b.to || state.nodes.get(b.link.to));
+    if (Math.abs(aCenter.y - bCenter.y) > 4) return aCenter.y - bCenter.y;
+    return aCenter.x - bCenter.x;
+  });
+  const index = ordered.indexOf(descriptor);
+  return (index - (ordered.length - 1) / 2) * step;
+}
+
+function routeObstaclePenalty(points, descriptor) {
+  const fromId = descriptor?.link?.from;
+  const toId = descriptor?.link?.to;
+  let penalty = 0;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    if (firstIntersectingNode(points[i], points[i + 1], fromId, toId)) penalty += 1;
+  }
+  return penalty;
+}
+
+function snapRoutePoint(point, grid = 8) {
+  return {
+    x: Math.round(point.x / grid) * grid,
+    y: Math.round(point.y / grid) * grid
+  };
 }
 
 function avoidLinkObstacles(points, descriptor) {
@@ -10538,11 +10778,20 @@ function segmentIntersectsRect(a, b, rect) {
   return false;
 }
 
+
 function simplifyPolyline(points) {
-  return points.filter((point, index) => {
+  const compact = points.filter((point, index) => {
     const prev = points[index - 1];
     if (!prev) return true;
     return Math.abs(prev.x - point.x) > 0.5 || Math.abs(prev.y - point.y) > 0.5;
+  });
+  return compact.filter((point, index) => {
+    const prev = compact[index - 1];
+    const next = compact[index + 1];
+    if (!prev || !next) return true;
+    const horizontal = Math.abs(prev.y - point.y) < 0.5 && Math.abs(point.y - next.y) < 0.5;
+    const vertical = Math.abs(prev.x - point.x) < 0.5 && Math.abs(point.x - next.x) < 0.5;
+    return !horizontal && !vertical;
   });
 }
 
@@ -11953,6 +12202,7 @@ async function renderSessionList() {
   }
 }
 
+
 function arrangeCanvasLayout(options = {}) {
   const opts = options && typeof options === "object" && !("target" in options) ? options : {};
   const selectionOnly = Boolean(opts.selectionOnly && state.selectedNodeIds.size >= 2);
@@ -11975,35 +12225,16 @@ function arrangeCanvasLayout(options = {}) {
     outgoing.get(link.from)?.push(link.to);
     incoming.get(link.to)?.push(link.from);
   }
-  for (const [id, children] of outgoing.entries()) {
-    children.sort((a, b) => {
-      const topicDelta = Number(state.nodes.get(b)?.option?.deepThinkType === "topic") - Number(state.nodes.get(a)?.option?.deepThinkType === "topic");
-      if (topicDelta) return topicDelta;
-      const ay = state.nodes.get(a)?.y || 0;
-      const by = state.nodes.get(b)?.y || 0;
-      if (Math.abs(ay - by) > 8) return ay - by;
-      return getNodeTitle(state.nodes.get(a)).localeCompare(getNodeTitle(state.nodes.get(b)), currentLang === "zh" ? "zh-Hans-CN" : "en");
-    });
-  }
 
-  const COLUMN_GAP = 390;
-  const ROW_GAP = 54;
-  const BRANCH_GAP = 120;
+  const COLUMN_GAP = 460;
+  const ROW_GAP = 88;
+  const BRANCH_GAP = 160;
   const START_X = 96;
   const MIN_Y = 88;
-  const MAX_X = 5200;
-  const MAX_Y = 5200;
+  const MAX_X = 5600;
+  const MAX_Y = 5600;
   const targetPositions = new Map();
   const placed = new Set();
-  const sortIds = (ids) => ids.sort((a, b) => {
-    const sourceRank = (id) => id === "source" ? 0 : id === "analysis" ? 1 : state.nodes.get(id)?.option?.deepThinkType === "topic" ? 2 : 3;
-    const rankDelta = sourceRank(a) - sourceRank(b);
-    if (rankDelta) return rankDelta;
-    const ay = state.nodes.get(a)?.y || 0;
-    const by = state.nodes.get(b)?.y || 0;
-    if (Math.abs(ay - by) > 8) return ay - by;
-    return getNodeTitle(state.nodes.get(a)).localeCompare(getNodeTitle(state.nodes.get(b)), currentLang === "zh" ? "zh-Hans-CN" : "en");
-  });
   const nodeSize = (id) => {
     const node = state.nodes.get(id);
     return {
@@ -12011,6 +12242,27 @@ function arrangeCanvasLayout(options = {}) {
       height: node?.height || node?.element?.offsetHeight || 220
     };
   };
+  const sourceRank = (id) => {
+    const node = state.nodes.get(id);
+    if (id === "source") return 0;
+    if (id === "analysis") return 1;
+    if (node?.option?.deepThinkType === "topic") return 2;
+    if (node?.isJunction) return 3;
+    return 4;
+  };
+  const compareIds = (a, b) => {
+    const rankDelta = sourceRank(a) - sourceRank(b);
+    if (rankDelta) return rankDelta;
+    const ay = state.nodes.get(a)?.y || 0;
+    const by = state.nodes.get(b)?.y || 0;
+    if (Math.abs(ay - by) > 8) return ay - by;
+    return getNodeTitle(state.nodes.get(a)).localeCompare(getNodeTitle(state.nodes.get(b)), currentLang === "zh" ? "zh-Hans-CN" : "en");
+  };
+  const sortIds = (ids) => ids.slice().sort(compareIds);
+  for (const [id, children] of outgoing.entries()) {
+    outgoing.set(id, sortIds(children));
+  }
+
   const hasGraphShape = visibleNodeIds.some((id) => (incoming.get(id)?.length || 0) > 1)
     || visibleNodeIds.some((id) => (outgoing.get(id)?.length || 0) > 2)
     || Array.from(state.junctions.keys()).some((id) => visibleSet.has(id));
@@ -12025,7 +12277,8 @@ function arrangeCanvasLayout(options = {}) {
       const current = queue.shift();
       for (const childId of outgoing.get(current.id) || []) {
         const nextDepth = current.depth + 1;
-        if (depth.has(childId)) continue;
+        const previousDepth = depth.get(childId);
+        if (Number.isFinite(previousDepth) && previousDepth >= nextDepth) continue;
         depth.set(childId, nextDepth);
         queue.push({ id: childId, depth: nextDepth });
       }
@@ -12033,14 +12286,52 @@ function arrangeCanvasLayout(options = {}) {
     visibleNodeIds.forEach((id) => {
       if (!depth.has(id)) depth.set(id, 0);
     });
+    for (const [junctionId, junction] of state.junctions) {
+      if (!visibleSet.has(junctionId)) continue;
+      const connectedDepths = junction.connectedCardIds
+        .filter((id) => visibleSet.has(id))
+        .map((id) => depth.get(id))
+        .filter(Number.isFinite);
+      if (connectedDepths.length) depth.set(junctionId, Math.max(...connectedDepths) + 1);
+    }
     const layers = new Map();
     for (const [id, layer] of depth.entries()) {
       if (!layers.has(layer)) layers.set(layer, []);
       layers.get(layer).push(id);
     }
-    Array.from(layers.keys()).sort((a, b) => a - b).forEach((layer) => {
-      const ids = sortIds(layers.get(layer) || []);
-      let y = MIN_Y;
+    let orderedLayers = Array.from(layers.keys()).sort((a, b) => a - b).map((layer) => sortIds(layers.get(layer) || []));
+    const rebuildLayerOrder = () => {
+      const order = new Map();
+      orderedLayers.forEach((ids, layerIndex) => {
+        ids.forEach((id, index) => order.set(id, { layerIndex, index }));
+      });
+      return order;
+    };
+    const neighborScore = (id, neighborMap, order) => {
+      const values = (neighborMap.get(id) || []).map((neighborId) => order.get(neighborId)?.index).filter(Number.isFinite);
+      if (!values.length) return Number.POSITIVE_INFINITY;
+      return values.reduce((sum, value) => sum + value, 0) / values.length;
+    };
+    const sortLayerByNeighbors = (ids, neighborMap, order) => ids.slice().sort((a, b) => {
+      const scoreDelta = neighborScore(a, neighborMap, order) - neighborScore(b, neighborMap, order);
+      if (Math.abs(scoreDelta) > 0.001) return scoreDelta;
+      return compareIds(a, b);
+    });
+    for (let pass = 0; pass < 4; pass += 1) {
+      let order = rebuildLayerOrder();
+      for (let layer = 1; layer < orderedLayers.length; layer += 1) {
+        orderedLayers[layer] = sortLayerByNeighbors(orderedLayers[layer], incoming, order);
+        order = rebuildLayerOrder();
+      }
+      for (let layer = orderedLayers.length - 2; layer >= 0; layer -= 1) {
+        orderedLayers[layer] = sortLayerByNeighbors(orderedLayers[layer], outgoing, order);
+        order = rebuildLayerOrder();
+      }
+    }
+    const layerHeights = orderedLayers.map((ids) => ids.reduce((sum, id, index) => sum + nodeSize(id).height + (index ? ROW_GAP : 0), 0));
+    const maxLayerHeight = Math.max(...layerHeights, 0);
+    orderedLayers.forEach((ids, layer) => {
+      let y = MIN_Y + Math.max(0, (maxLayerHeight - layerHeights[layer]) / 2);
       ids.forEach((id) => {
         const size = nodeSize(id);
         targetPositions.set(id, {
@@ -12099,32 +12390,51 @@ function arrangeCanvasLayout(options = {}) {
     });
   }
 
+  const positionedBounds = (id) => {
+    const node = state.nodes.get(id);
+    if (!node) return null;
+    const position = targetPositions.get(id) || node;
+    const size = nodeSize(id);
+    return {
+      x: position.x || 0,
+      y: position.y || 0,
+      width: size.width,
+      height: size.height,
+      right: (position.x || 0) + size.width,
+      bottom: (position.y || 0) + size.height,
+      centerX: (position.x || 0) + size.width / 2,
+      centerY: (position.y || 0) + size.height / 2
+    };
+  };
+
   for (const [junctionId, junction] of state.junctions) {
     const junctionNode = state.nodes.get(junctionId);
     if (!junctionNode || !visibleSet.has(junctionId)) continue;
-    const connected = junction.connectedCardIds
-      .map((id) => targetPositions.get(id) || state.nodes.get(id))
-      .filter(Boolean);
+    const connected = junction.connectedCardIds.map(positionedBounds).filter(Boolean);
     if (!connected.length) continue;
-    const avgX = connected.reduce((sum, node) => sum + (node.x || 0), 0) / connected.length;
-    const avgY = connected.reduce((sum, node) => sum + (node.y || 0), 0) / connected.length;
-    const outgoingTargets = outgoing.get(junctionId) || [];
-    const firstTarget = outgoingTargets.map((id) => targetPositions.get(id) || state.nodes.get(id)).find(Boolean);
+    const avgY = connected.reduce((sum, rect) => sum + rect.centerY, 0) / connected.length;
+    const connectedRight = Math.max(...connected.map((rect) => rect.right));
+    const connectedLeft = Math.min(...connected.map((rect) => rect.x));
+    const targets = (outgoing.get(junctionId) || []).map(positionedBounds).filter(Boolean);
+    const targetLeft = targets.length ? Math.min(...targets.map((rect) => rect.x)) : null;
+    let x = connectedRight + 118;
+    if (Number.isFinite(targetLeft) && targetLeft > connectedRight + 220) x = Math.min(x, targetLeft - 150);
+    if (!Number.isFinite(x)) x = connectedLeft + 360;
     targetPositions.set(junctionId, {
-      x: clamp(firstTarget ? avgX + 230 : avgX + 180, -600, MAX_X),
-      y: clamp(firstTarget ? (avgY + (firstTarget.y || avgY)) / 2 : avgY + 48, -600, MAX_Y)
+      x: clamp(x, -600, MAX_X),
+      y: clamp(avgY - 20, -600, MAX_Y)
     });
   }
 
   const adjustedPositions = resolveNonOverlappingTargetPositions(targetPositions, {
-    padding: 48,
+    padding: hasGraphShape ? 72 : 52,
     minX: -600,
     maxX: MAX_X,
     minY: -600,
     maxY: MAX_Y,
-    maxRing: 10
+    maxRing: 12
   });
-  animateNodesToPositions(adjustedPositions, 520);
+  animateNodesToPositions(adjustedPositions, 560);
 }
 
 function animateNodesToPositions(targetPositions, duration = 400) {
