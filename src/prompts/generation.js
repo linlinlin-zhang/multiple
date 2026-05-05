@@ -1,7 +1,60 @@
 import { SAFETY_DIRECTIVES } from './shared.js';
 
+function formatBlueprintGenerationContext(lang, blueprint) {
+  if (!blueprint || typeof blueprint !== "object") return "";
+  const strength = Number.isFinite(Number(blueprint.referenceStrength)) ? Number(blueprint.referenceStrength) : 0.7;
+  const cards = Array.isArray(blueprint.cards) ? blueprint.cards : [];
+  const relationships = Array.isArray(blueprint.relationships) ? blueprint.relationships : [];
+  if (!cards.length && !relationships.length) return "";
+  const titleById = new Map(cards.map((card) => [card.id, card.title || card.id]));
+  const relationLabel = (type) => {
+    if (lang === "en") return type === "upstream" ? "upstream dependency" : type === "downstream" ? "downstream influence" : "parallel relationship";
+    return type === "upstream" ? "上游依赖" : type === "downstream" ? "下游影响" : "并列关系";
+  };
+  const lines = lang === "en"
+    ? [
+        "# Blueprint Context",
+        `Reference strength: ${strength} / 1. Use this value as how strictly the image should follow the blueprint relationships and current chat context.`,
+        cards.length ? `Cards: ${cards.map((card) => card.title || card.id).join("; ")}` : "",
+        ...relationships.map((relationship) => {
+          const from = titleById.get(relationship.from) || relationship.from;
+          const to = titleById.get(relationship.to) || relationship.to;
+          const note = relationship.note ? ` — ${relationship.note}` : "";
+          return `- ${from} -> ${to} (${relationLabel(relationship.type)})${note}`;
+        })
+      ]
+    : [
+        "# 蓝图上下文",
+        `参照强度：${strength} / 1。请将该数值理解为成图时对蓝图关系和当前对话上下文的严格参考程度。`,
+        cards.length ? `卡片：${cards.map((card) => card.title || card.id).join("；")}` : "",
+        ...relationships.map((relationship) => {
+          const from = titleById.get(relationship.from) || relationship.from;
+          const to = titleById.get(relationship.to) || relationship.to;
+          const note = relationship.note ? ` —— ${relationship.note}` : "";
+          return `- ${from} -> ${to}（${relationLabel(relationship.type)}）${note}`;
+        })
+      ];
+  return lines.filter(Boolean).join("\n");
+}
+
+function formatGenerateChatContext(lang, messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return "";
+  const lines = messages.slice(-8).map((message) => {
+    const role = message.role === "assistant"
+      ? (lang === "en" ? "Assistant" : "助手")
+      : (lang === "en" ? "User" : "用户");
+    return `- ${role}: ${message.content}`;
+  });
+  return [
+    lang === "en" ? "# Recent Chat Context" : "# 最近对话上下文",
+    ...lines
+  ].filter(Boolean).join("\n");
+}
+
 export function buildGeneratePrompt(lang, option) {
   const textToImage = option?.generationMode === "text-to-image";
+  const blueprintContext = formatBlueprintGenerationContext(lang, option?.blueprint);
+  const chatContext = formatGenerateChatContext(lang, option?.chatContext);
   return lang === "en"
     ? [
         "# Role",
@@ -21,6 +74,10 @@ export function buildGeneratePrompt(lang, option) {
         "",
         "Detailed prompt:",
         option.prompt,
+        "",
+        blueprintContext,
+        "",
+        chatContext,
         "",
         "# Output Requirements",
         "- Complete, standalone image.",
@@ -45,6 +102,10 @@ export function buildGeneratePrompt(lang, option) {
         "",
         "详细提示词：",
         option.prompt,
+        "",
+        blueprintContext,
+        "",
+        chatContext,
         "",
         "# 输出要求",
         "- 完整、可独立展示的图片。",

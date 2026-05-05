@@ -150,6 +150,8 @@ const state = {
   }
 };
 
+const DEFAULT_BLUEPRINT_REFERENCE_STRENGTH = 0.7;
+const BLUEPRINT_GUIDE_DISMISS_AFTER = 3;
 const MAX_QUICK_CANVAS_ACTIONS_PER_TURN = 10;
 const MAX_THINKING_CANVAS_ACTIONS_PER_TURN = 12;
 const MAX_DEEP_RESEARCH_CANVAS_CARDS = 25;
@@ -3826,6 +3828,84 @@ function findJunctionForCard(cardId) {
   return null;
 }
 
+function ensureBlueprintData(junctionId) {
+  if (!junctionId) return null;
+  if (!state.blueprints.has(junctionId)) {
+    state.blueprints.set(junctionId, { positions: {}, relationships: [], referenceStrength: DEFAULT_BLUEPRINT_REFERENCE_STRENGTH, guideInteractions: 0 });
+  }
+  const blueprint = state.blueprints.get(junctionId);
+  blueprint.positions = blueprint.positions || {};
+  blueprint.relationships = Array.isArray(blueprint.relationships) ? blueprint.relationships : [];
+  blueprint.referenceStrength = normalizeBlueprintReferenceStrength(blueprint.referenceStrength);
+  blueprint.guideInteractions = Math.max(0, Number(blueprint.guideInteractions) || 0);
+  return blueprint;
+}
+
+function normalizeBlueprintReferenceStrength(value) {
+  const numeric = Number(value);
+  return Math.round(clamp(Number.isFinite(numeric) ? numeric : DEFAULT_BLUEPRINT_REFERENCE_STRENGTH, 0.1, 1) * 10) / 10;
+}
+
+function resolveBlueprintJunctionId(nodeId) {
+  if (!nodeId) return null;
+  if (state.junctions.has(nodeId)) return nodeId;
+  return findJunctionForCard(nodeId);
+}
+
+function blueprintRelationshipTitle(nodeId) {
+  return getNodeTitle(state.nodes.get(nodeId)) || nodeId;
+}
+
+function blueprintRelationshipLabel(type) {
+  return type === "upstream" ? "上游依赖" : type === "downstream" ? "下游影响" : "并列关系";
+}
+
+function buildBlueprintContext(junctionId, includeReferenceStrength = true) {
+  const blueprint = junctionId ? state.blueprints.get(junctionId) : null;
+  const junction = junctionId ? state.junctions.get(junctionId) : null;
+  if (!blueprint && !junction) return null;
+  const normalized = ensureBlueprintData(junctionId);
+  const connectedCards = (junction?.connectedCardIds || []).map((cardId) => ({
+    id: cardId,
+    title: blueprintRelationshipTitle(cardId)
+  }));
+  const context = {
+    junctionId,
+    cards: connectedCards,
+    relationships: (normalized?.relationships || []).map(r => ({
+      from: r.from,
+      to: r.to,
+      type: r.type,
+      note: String(r.note || "").trim()
+    }))
+  };
+  if (includeReferenceStrength) {
+    context.referenceStrength = normalizeBlueprintReferenceStrength(normalized?.referenceStrength);
+  }
+  return context;
+}
+
+function formatBlueprintContextText(blueprint) {
+  if (!blueprint) return "";
+  const strength = blueprint.referenceStrength === undefined ? null : normalizeBlueprintReferenceStrength(blueprint.referenceStrength);
+  const cardText = blueprint.cards?.length
+    ? `蓝图卡片: ${blueprint.cards.map((card) => card.title || card.id).join("、")}`
+    : "";
+  const relationshipText = blueprint.relationships?.length
+    ? `蓝图关系: ${blueprint.relationships.map((r) => {
+        const fromTitle = blueprintRelationshipTitle(r.from);
+        const toTitle = blueprintRelationshipTitle(r.to);
+        const note = String(r.note || "").trim();
+        return `${fromTitle} -> ${toTitle} (${blueprintRelationshipLabel(r.type)})${note ? `: ${note}` : ""}`;
+      }).join("; ")}`
+    : "";
+  return [
+    strength === null ? "" : `蓝图参照强度: ${strength} / 1。数值越高，成图时越需要严格参考蓝图区域、关系注释与当前对话。`,
+    cardText,
+    relationshipText
+  ].filter(Boolean).join("\n");
+}
+
 function buildSelectedNodeContext(nodeId = state.selectedNodeId) {
   if (!nodeId) return null;
   const node = state.nodes.get(nodeId);
@@ -3854,21 +3934,9 @@ function buildSelectedNodeContext(nodeId = state.selectedNodeId) {
     hasReferences: Boolean(node.option?.references?.length)
   };
 
-  // Include blueprint relationships if this card belongs to a junction
-  const junctionId = findJunctionForCard(nodeId);
-  if (junctionId) {
-    const blueprint = state.blueprints.get(junctionId);
-    if (blueprint?.relationships?.length > 0) {
-      context.blueprint = {
-        junctionId,
-        relationships: blueprint.relationships.map(r => ({
-          from: r.from,
-          to: r.to,
-          type: r.type
-        }))
-      };
-    }
-  }
+  const junctionId = resolveBlueprintJunctionId(nodeId);
+  const blueprint = buildBlueprintContext(junctionId, false);
+  if (blueprint) context.blueprint = blueprint;
 
   return context;
 }
@@ -3957,17 +4025,9 @@ async function submitChatMessage(message, options = {}) {
       if (selectedContext.prompt) {
         systemContext += "\n" + t("chat.selectedCardPrompt", { prompt: selectedContext.prompt.slice(0, 1600) });
       }
-      if (selectedContext.blueprint?.relationships?.length > 0) {
-        const relDescriptions = selectedContext.blueprint.relationships.map(r => {
-          const fromNode = state.nodes.get(r.from);
-          const toNode = state.nodes.get(r.to);
-          const fromTitle = fromNode?.option?.title || r.from;
-          const toTitle = toNode?.option?.title || r.to;
-          const typeLabel = r.type === "upstream" ? "上游依赖" : r.type === "downstream" ? "下游影响" : "并列关系";
-          return `${fromTitle} -> ${toTitle} (${typeLabel})`;
-        });
-        const blueprintContextText = `蓝图关系: ${relDescriptions.join("; ")}`;
-        systemContext += "\n\n" + blueprintContextText;
+      if (selectedContext.blueprint) {
+        const blueprintContextText = formatBlueprintContextText(selectedContext.blueprint);
+        if (blueprintContextText) systemContext += "\n\n" + blueprintContextText;
       }
     }
 
@@ -7896,12 +7956,15 @@ async function generateOptionWithReference(id, option, referenceImageDataUrl, ed
   setStatus(t("status.busy"), "busy");
 
   try {
+    const blueprint = buildBlueprintContext(resolveBlueprintJunctionId(id));
     const data = await postJson("/api/generate", {
       imageDataUrl: referenceImageDataUrl || "",
       mode: referenceImageDataUrl ? "image-to-image" : "text-to-image",
       maskDataUrl: editOptions.maskDataUrl || "",
       size: editOptions.size || "",
       option,
+      blueprint,
+      chatContext: blueprint ? getChatHistoryPayload() : [],
       language: currentLang,
       thinkingMode: state.thinkingMode
     });
@@ -9062,13 +9125,17 @@ function openBlueprintModal(junctionId) {
   const canvas = blueprintCanvas;
   if (!canvas) return;
   canvas.replaceChildren();
+  blueprintModal.dataset.junctionId = junctionId;
+  blueprintModal.querySelector(".blueprint-strength-panel")?.remove();
+  blueprintModal.querySelector(".blueprint-guide")?.remove();
 
   // Create SVG overlay for relationship lines
   const svg = svgElement("svg", { class: "blueprint-svg" });
   canvas.appendChild(svg);
 
   // Render each connected card as a simplified mini-card
-  const blueprint = state.blueprints.get(junctionId);
+  const blueprint = ensureBlueprintData(junctionId);
+  renderBlueprintControls(blueprint);
   const positions = blueprint?.positions || {};
   let index = 0;
   for (const cardId of junction.connectedCardIds) {
@@ -9197,6 +9264,75 @@ function closeBlueprintModal() {
   }
 }
 
+function renderBlueprintControls(blueprint) {
+  const content = blueprintModal?.querySelector(".modal-content");
+  if (!content || !blueprint) return;
+
+  const panel = document.createElement("div");
+  panel.className = "blueprint-strength-panel";
+
+  const labelRow = document.createElement("div");
+  labelRow.className = "blueprint-strength-row";
+
+  const label = document.createElement("span");
+  label.textContent = "蓝图参照强度";
+
+  const value = document.createElement("span");
+  value.className = "blueprint-strength-value";
+  value.textContent = normalizeBlueprintReferenceStrength(blueprint.referenceStrength).toFixed(1);
+
+  labelRow.append(label, value);
+
+  const input = document.createElement("input");
+  input.type = "range";
+  input.min = "0.1";
+  input.max = "1";
+  input.step = "0.1";
+  input.value = value.textContent;
+  input.addEventListener("input", () => {
+    const next = normalizeBlueprintReferenceStrength(input.value);
+    blueprint.referenceStrength = next;
+    value.textContent = next.toFixed(1);
+    autoSave();
+  });
+  input.addEventListener("change", () => {
+    markBlueprintGuideInteraction();
+  });
+
+  const hint = document.createElement("p");
+  hint.textContent = "控制成图时 AI 参考蓝图区域与对话区域的严格程度；不成图时不影响结果。";
+
+  panel.append(labelRow, input, hint);
+  content.appendChild(panel);
+
+  if (blueprint.guideInteractions < BLUEPRINT_GUIDE_DISMISS_AFTER) {
+    const guide = document.createElement("div");
+    guide.className = "blueprint-guide";
+    [
+      "拖动卡片整理多卡片聚合节点的结构。",
+      "从卡片边缘拖线，选择上游、下游或并列关系。",
+      "双击关系线添加说明标签，描述两张卡片之间的细节。",
+      "这些蓝图信息会随对话一起提供给 AI。"
+    ].forEach((text) => {
+      const line = document.createElement("p");
+      line.textContent = text;
+      guide.appendChild(line);
+    });
+    content.appendChild(guide);
+  }
+}
+
+function markBlueprintGuideInteraction() {
+  const junctionId = blueprintModal?.dataset.junctionId;
+  const blueprint = ensureBlueprintData(junctionId);
+  if (!blueprint || blueprint.guideInteractions >= BLUEPRINT_GUIDE_DISMISS_AFTER) return;
+  blueprint.guideInteractions = Math.min(BLUEPRINT_GUIDE_DISMISS_AFTER, blueprint.guideInteractions + 1);
+  if (blueprint.guideInteractions >= BLUEPRINT_GUIDE_DISMISS_AFTER) {
+    blueprintModal?.querySelector(".blueprint-guide")?.remove();
+  }
+  autoSave();
+}
+
 function makeModalDraggable(element, cardId, canvas) {
   let start = null;
 
@@ -9236,16 +9372,14 @@ function makeModalDraggable(element, cardId, canvas) {
     // Persist position and size to state.blueprints
     const junctionId = blueprintModal.dataset.junctionId;
     if (!junctionId) return;
-    if (!state.blueprints.has(junctionId)) {
-      state.blueprints.set(junctionId, { positions: {}, relationships: [] });
-    }
-    const blueprint = state.blueprints.get(junctionId);
+    const blueprint = ensureBlueprintData(junctionId);
     blueprint.positions[cardId] = {
       x: parseFloat(element.style.left) || 0,
       y: parseFloat(element.style.top) || 0,
       width: parseFloat(element.style.width) || element.offsetWidth,
       height: parseFloat(element.style.height) || element.offsetHeight
     };
+    markBlueprintGuideInteraction();
     autoSave();
   });
 }
@@ -9254,30 +9388,320 @@ function drawBlueprintLinks(canvas, relationships) {
   const svg = canvas.querySelector(".blueprint-svg");
   if (!svg) return;
   const fragments = document.createDocumentFragment();
+  fragments.appendChild(createBlueprintArrowDefs());
 
   for (const rel of relationships) {
     const fromCard = canvas.querySelector(`[data-card-id="${rel.from}"]`);
     const toCard = canvas.querySelector(`[data-card-id="${rel.to}"]`);
     if (!fromCard || !toCard) continue;
 
-    const fromRect = { x: parseFloat(fromCard.style.left), y: parseFloat(fromCard.style.top), width: fromCard.offsetWidth || 200, height: fromCard.offsetHeight || 140 };
-    const toRect = { x: parseFloat(toCard.style.left), y: parseFloat(toCard.style.top), width: toCard.offsetWidth || 200, height: toCard.offsetHeight || 140 };
-
-    const start = { x: fromRect.x + fromRect.width, y: fromRect.y + fromRect.height * 0.4 };
-    const end = { x: toRect.x, y: toRect.y + toRect.height * 0.4 };
+    const fromRect = blueprintCardRect(fromCard);
+    const toRect = blueprintCardRect(toCard);
+    const { start, end } = blueprintLinkAnchors(fromRect, toRect);
     const path = curvePath(start, end);
 
-    const line = svgElement("path", {
+    const isDirectional = rel.type !== "parallel";
+    const lineAttributes = {
       d: path,
-      class: `blueprint-link ${rel.type}`
+      class: `blueprint-link ${rel.type}${isDirectional ? " directional" : ""}`
+    };
+    if (isDirectional) {
+      lineAttributes["marker-end"] = `url(#blueprint-arrow-${rel.type === "downstream" ? "downstream" : "upstream"})`;
+    }
+    const line = svgElement("path", lineAttributes);
+    const relKey = blueprintRelationshipKey(rel);
+    line.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (event.detail > 1) return;
+      window.setTimeout(() => {
+        if (canvas.dataset.blueprintLastDblclick === relKey) {
+          delete canvas.dataset.blueprintLastDblclick;
+          return;
+        }
+        removeBlueprintRelationship(rel.from, rel.to, canvas);
+      }, 220);
     });
-    line.addEventListener("click", () => {
-      removeBlueprintRelationship(rel.from, rel.to, canvas);
+    line.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      const canvasRect = canvas.getBoundingClientRect();
+      canvas.dataset.blueprintLastDblclick = relKey;
+      addBlueprintRelationshipNote(canvas, rel, {
+        x: event.clientX - canvasRect.left + canvas.scrollLeft + 12,
+        y: event.clientY - canvasRect.top + canvas.scrollTop + 12
+      });
     });
     fragments.appendChild(line);
   }
 
   svg.replaceChildren(fragments);
+  renderBlueprintRelationshipNotes(canvas, relationships);
+}
+
+function blueprintRelationshipKey(relationship) {
+  return `${relationship.from}->${relationship.to}`;
+}
+
+function blueprintRelationshipNotePosition(canvas, relationship) {
+  const fromCard = canvas.querySelector(`[data-card-id="${relationship.from}"]`);
+  const toCard = canvas.querySelector(`[data-card-id="${relationship.to}"]`);
+  if (!fromCard || !toCard) return { x: 40, y: 40 };
+  const { start, end } = blueprintLinkAnchors(blueprintCardRect(fromCard), blueprintCardRect(toCard));
+  const maxX = Math.max(24, Math.max(canvas.scrollWidth, canvas.clientWidth) - 260);
+  const maxY = Math.max(24, Math.max(canvas.scrollHeight, canvas.clientHeight) - 130);
+  return {
+    x: clamp((start.x + end.x) / 2 + 14, 24, maxX),
+    y: clamp((start.y + end.y) / 2 + 14, 24, maxY)
+  };
+}
+
+function addBlueprintRelationshipNote(canvas, relationship, preferredPosition = null) {
+  const junctionId = blueprintModal?.dataset.junctionId;
+  const blueprint = ensureBlueprintData(junctionId);
+  if (!blueprint) return;
+  const target = blueprint.relationships.find((item) => item.from === relationship.from && item.to === relationship.to) || relationship;
+  const position = preferredPosition || blueprintRelationshipNotePosition(canvas, target);
+  target.noteVisible = true;
+  target.noteX = Math.round(position.x);
+  target.noteY = Math.round(position.y);
+  if (typeof target.note !== "string") target.note = "";
+  renderBlueprintRelationshipNotes(canvas, blueprint.relationships);
+  const note = Array.from(canvas.querySelectorAll(".blueprint-relationship-note")).find((item) => item.dataset.relKey === blueprintRelationshipKey(target));
+  const input = note?.querySelector("textarea");
+  if (input) {
+    input.focus();
+    input.select();
+  }
+  markBlueprintGuideInteraction();
+  autoSave();
+}
+
+function renderBlueprintRelationshipNotes(canvas, relationships) {
+  canvas.querySelectorAll(".blueprint-relationship-note").forEach((item) => item.remove());
+  for (const rel of relationships) {
+    const hasText = String(rel.note || "").trim().length > 0;
+    if (!rel.noteVisible && !hasText) continue;
+    const fallback = blueprintRelationshipNotePosition(canvas, rel);
+    const x = Number.isFinite(Number(rel.noteX)) ? Number(rel.noteX) : fallback.x;
+    const y = Number.isFinite(Number(rel.noteY)) ? Number(rel.noteY) : fallback.y;
+    const note = document.createElement("div");
+    note.className = "blueprint-relationship-note";
+    note.dataset.relKey = blueprintRelationshipKey(rel);
+    note.style.left = `${Math.max(24, Math.round(x))}px`;
+    note.style.top = `${Math.max(24, Math.round(y))}px`;
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "blueprint-note-remove";
+    remove.textContent = "×";
+    remove.addEventListener("click", (event) => {
+      event.stopPropagation();
+      delete rel.note;
+      delete rel.noteVisible;
+      delete rel.noteX;
+      delete rel.noteY;
+      note.remove();
+      markBlueprintGuideInteraction();
+      autoSave();
+    });
+
+    const textarea = document.createElement("textarea");
+    textarea.value = rel.note || "";
+    textarea.placeholder = "描述这两张卡片之间的关系...";
+    textarea.addEventListener("pointerdown", (event) => event.stopPropagation());
+    textarea.addEventListener("input", () => {
+      rel.note = textarea.value;
+      rel.noteVisible = true;
+      autoSave();
+    });
+    textarea.addEventListener("blur", () => {
+      rel.note = textarea.value.trim();
+      markBlueprintGuideInteraction();
+      autoSave();
+    });
+    textarea.addEventListener("keydown", (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+        event.preventDefault();
+        textarea.blur();
+      }
+    });
+
+    note.append(remove, textarea);
+    canvas.appendChild(note);
+  }
+}
+
+function createBlueprintArrowDefs() {
+  const defs = svgElement("defs", {});
+  const rootStyle = getComputedStyle(document.documentElement);
+  const markers = [
+    { id: "blueprint-arrow-upstream", color: rootStyle.getPropertyValue("--ps-blue").trim() || "#0070cc" },
+    { id: "blueprint-arrow-downstream", color: rootStyle.getPropertyValue("--ps-cyan").trim() || "#28b8d8" }
+  ];
+  for (const markerDef of markers) {
+    const marker = svgElement("marker", {
+      id: markerDef.id,
+      viewBox: "0 0 10 10",
+      refX: "8.5",
+      refY: "5",
+      markerWidth: "7",
+      markerHeight: "7",
+      orient: "auto",
+      markerUnits: "strokeWidth"
+    });
+    marker.appendChild(svgElement("path", {
+      d: "M 0 0 L 10 5 L 0 10 z",
+      fill: markerDef.color
+    }));
+    defs.appendChild(marker);
+  }
+  return defs;
+}
+
+function blueprintCardRect(card) {
+  const x = parseFloat(card.style.left) || 0;
+  const y = parseFloat(card.style.top) || 0;
+  const width = card.offsetWidth || parseFloat(card.style.width) || 200;
+  const height = card.offsetHeight || parseFloat(card.style.height) || 140;
+  return { x, y, width, height, right: x + width, bottom: y + height };
+}
+
+function blueprintLinkAnchors(fromRect, toRect) {
+  const fromCenter = {
+    x: fromRect.x + fromRect.width / 2,
+    y: fromRect.y + fromRect.height / 2
+  };
+  const toCenter = {
+    x: toRect.x + toRect.width / 2,
+    y: toRect.y + toRect.height / 2
+  };
+  const dx = toCenter.x - fromCenter.x;
+  const dy = toCenter.y - fromCenter.y;
+  if (Math.abs(dx) >= Math.abs(dy) * 0.72) {
+    const fromSide = dx >= 0 ? "right" : "left";
+    const toSide = dx >= 0 ? "left" : "right";
+    return {
+      start: {
+        x: fromSide === "right" ? fromRect.right : fromRect.x,
+        y: clamp(toCenter.y, fromRect.y + 26, fromRect.bottom - 26),
+        side: fromSide
+      },
+      end: {
+        x: toSide === "right" ? toRect.right : toRect.x,
+        y: clamp(fromCenter.y, toRect.y + 26, toRect.bottom - 26),
+        side: toSide
+      }
+    };
+  }
+  const fromSide = dy >= 0 ? "bottom" : "top";
+  const toSide = dy >= 0 ? "top" : "bottom";
+  return {
+    start: {
+      x: clamp(toCenter.x, fromRect.x + 28, fromRect.right - 28),
+      y: fromSide === "bottom" ? fromRect.bottom : fromRect.y,
+      side: fromSide
+    },
+    end: {
+      x: clamp(fromCenter.x, toRect.x + 28, toRect.right - 28),
+      y: toSide === "bottom" ? toRect.bottom : toRect.y,
+      side: toSide
+    }
+  };
+}
+
+function persistBlueprintCardPositions(canvas, blueprint) {
+  if (!canvas || !blueprint) return;
+  blueprint.positions = blueprint.positions || {};
+  canvas.querySelectorAll(".blueprint-card[data-card-id]").forEach((card) => {
+    const cardId = card.dataset.cardId;
+    if (!cardId) return;
+    blueprint.positions[cardId] = {
+      x: parseFloat(card.style.left) || 0,
+      y: parseFloat(card.style.top) || 0,
+      width: parseFloat(card.style.width) || card.offsetWidth,
+      height: parseFloat(card.style.height) || card.offsetHeight
+    };
+  });
+}
+
+function setBlueprintCardPosition(card, x, y) {
+  if (!card) return;
+  card.style.left = `${Math.max(24, Math.round(x))}px`;
+  card.style.top = `${Math.max(24, Math.round(y))}px`;
+}
+
+function applyBlueprintRelationshipLayout(canvas, relationship) {
+  if (!canvas || !relationship) return;
+  const fromCard = canvas.querySelector(`[data-card-id="${relationship.from}"]`);
+  const toCard = canvas.querySelector(`[data-card-id="${relationship.to}"]`);
+  if (!fromCard || !toCard) return;
+
+  const fromRect = blueprintCardRect(fromCard);
+  const toRect = blueprintCardRect(toCard);
+  const gap = relationship.type === "parallel" ? 52 : 82;
+  const centerX = (fromRect.x + fromRect.width / 2 + toRect.x + toRect.width / 2) / 2;
+  const centerY = (fromRect.y + fromRect.height / 2 + toRect.y + toRect.height / 2) / 2;
+
+  if (relationship.type === "parallel") {
+    const ordered = [fromCard, toCard].sort((a, b) => blueprintCardRect(a).x - blueprintCardRect(b).x);
+    const leftRect = blueprintCardRect(ordered[0]);
+    const rightRect = blueprintCardRect(ordered[1]);
+    const rowHeight = Math.max(leftRect.height, rightRect.height);
+    const totalWidth = leftRect.width + gap + rightRect.width;
+    const leftX = centerX - totalWidth / 2;
+    const topY = centerY - rowHeight / 2;
+    setBlueprintCardPosition(ordered[0], leftX, topY + (rowHeight - leftRect.height) / 2);
+    setBlueprintCardPosition(ordered[1], leftX + leftRect.width + gap, topY + (rowHeight - rightRect.height) / 2);
+  } else if (relationship.type === "upstream") {
+    const rowHeight = Math.max(fromRect.height, toRect.height);
+    const totalWidth = toRect.width + gap + fromRect.width;
+    const leftX = centerX - totalWidth / 2;
+    const topY = centerY - rowHeight / 2;
+    setBlueprintCardPosition(toCard, leftX, topY + (rowHeight - toRect.height) / 2);
+    setBlueprintCardPosition(fromCard, leftX + toRect.width + gap, topY + (rowHeight - fromRect.height) / 2);
+  } else {
+    const rowHeight = Math.max(fromRect.height, toRect.height);
+    const totalWidth = fromRect.width + gap + toRect.width;
+    const leftX = centerX - totalWidth / 2;
+    const topY = centerY - rowHeight / 2;
+    setBlueprintCardPosition(fromCard, leftX, topY + (rowHeight - fromRect.height) / 2);
+    setBlueprintCardPosition(toCard, leftX + fromRect.width + gap, topY + (rowHeight - toRect.height) / 2);
+  }
+
+  resolveBlueprintCardOverlaps(canvas, [relationship.from, relationship.to]);
+}
+
+function resolveBlueprintCardOverlaps(canvas, priorityIds = []) {
+  if (!canvas) return;
+  const priority = new Map(priorityIds.map((id, index) => [id, index]));
+  const cards = Array.from(canvas.querySelectorAll(".blueprint-card[data-card-id]")).sort((a, b) => {
+    const ap = priority.has(a.dataset.cardId) ? priority.get(a.dataset.cardId) : Number.MAX_SAFE_INTEGER;
+    const bp = priority.has(b.dataset.cardId) ? priority.get(b.dataset.cardId) : Number.MAX_SAFE_INTEGER;
+    if (ap !== bp) return ap - bp;
+    const ar = blueprintCardRect(a);
+    const br = blueprintCardRect(b);
+    if (Math.abs(ar.y - br.y) > 6) return ar.y - br.y;
+    return ar.x - br.x;
+  });
+  const occupied = [];
+  for (const card of cards) {
+    let rect = blueprintCardRect(card);
+    const startX = rect.x;
+    const startY = rect.y;
+    let attempts = 0;
+    while (occupied.some((item) => rectanglesOverlap(rect, item, 24)) && attempts < 48) {
+      const row = attempts % 8;
+      const col = Math.floor(attempts / 8);
+      rect = {
+        ...rect,
+        x: startX + col * 64,
+        y: startY + (row + 1) * 46
+      };
+      attempts += 1;
+    }
+    setBlueprintCardPosition(card, rect.x, rect.y);
+    occupied.push(blueprintCardRect(card));
+  }
 }
 
 function startBlueprintCardResize(event, cardElement, cardId, canvas) {
@@ -9315,16 +9739,14 @@ function startBlueprintCardResize(event, cardElement, cardId, canvas) {
 
     const junctionId = blueprintModal.dataset.junctionId;
     if (!junctionId) return;
-    if (!state.blueprints.has(junctionId)) {
-      state.blueprints.set(junctionId, { positions: {}, relationships: [] });
-    }
-    const blueprint = state.blueprints.get(junctionId);
+    const blueprint = ensureBlueprintData(junctionId);
     blueprint.positions[cardId] = {
       x: parseFloat(cardElement.style.left) || 0,
       y: parseFloat(cardElement.style.top) || 0,
       width: parseFloat(cardElement.style.width) || cardElement.offsetWidth,
       height: parseFloat(cardElement.style.height) || cardElement.offsetHeight
     };
+    markBlueprintGuideInteraction();
     autoSave();
   };
 
@@ -9404,20 +9826,22 @@ function addBlueprintRelationship(fromCardId, toCardId, type, canvas) {
   const junctionId = blueprintModal.dataset.junctionId;
   if (!junctionId) return;
 
-  if (!state.blueprints.has(junctionId)) {
-    state.blueprints.set(junctionId, { positions: {}, relationships: [] });
-  }
-  const blueprint = state.blueprints.get(junctionId);
+  const blueprint = ensureBlueprintData(junctionId);
 
-  // Check for duplicate
-  const exists = blueprint.relationships.some(r =>
+  const existing = blueprint.relationships.find(r =>
     (r.from === fromCardId && r.to === toCardId) ||
     (r.from === toCardId && r.to === fromCardId)
   );
-  if (exists) return;
+  const relationship = existing || { from: fromCardId, to: toCardId, type };
+  relationship.from = fromCardId;
+  relationship.to = toCardId;
+  relationship.type = type;
+  if (!existing) blueprint.relationships.push(relationship);
 
-  blueprint.relationships.push({ from: fromCardId, to: toCardId, type });
+  applyBlueprintRelationshipLayout(canvas, relationship);
+  persistBlueprintCardPositions(canvas, blueprint);
   drawBlueprintLinks(canvas, blueprint.relationships);
+  markBlueprintGuideInteraction();
   autoSave();
 }
 
@@ -9432,6 +9856,7 @@ function removeBlueprintRelationship(fromCardId, toCardId, canvas) {
     !(r.from === toCardId && r.to === fromCardId)
   );
   drawBlueprintLinks(canvas, blueprint.relationships);
+  markBlueprintGuideInteraction();
   autoSave();
 }
 

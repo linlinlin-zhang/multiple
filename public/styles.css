@@ -4518,6 +4518,64 @@ html[data-theme="dark"] .ref-type-badge {
   transform: scale(1.08);
 }
 
+.blueprint-strength-panel {
+  position: absolute;
+  top: 64px;
+  right: 18px;
+  width: 210px;
+  z-index: 12;
+  padding: 12px;
+  border: 1px solid var(--divider);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(10px);
+}
+
+.blueprint-strength-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.blueprint-strength-value {
+  color: var(--ps-blue);
+  font-variant-numeric: tabular-nums;
+}
+
+.blueprint-strength-panel input[type="range"] {
+  width: 100%;
+  margin: 8px 0 6px;
+  accent-color: var(--ps-blue);
+}
+
+.blueprint-strength-panel p {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.blueprint-guide {
+  position: absolute;
+  left: 24px;
+  top: 62px;
+  z-index: 12;
+  width: 250px;
+  pointer-events: none;
+  color: color-mix(in srgb, var(--body) 58%, transparent);
+}
+
+.blueprint-guide p {
+  margin: 0 0 5px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .blueprint-modal-title {
   margin: 0;
   padding: 16px 24px 8px;
@@ -4663,6 +4721,7 @@ html[data-theme="dark"] .ref-type-badge {
   stroke: var(--ps-blue);
   stroke-width: 2.5;
   stroke-linecap: round;
+  stroke-linejoin: round;
   pointer-events: auto;
   cursor: pointer;
 }
@@ -4676,9 +4735,65 @@ html[data-theme="dark"] .ref-type-badge {
   stroke: var(--ps-cyan);
 }
 
+.blueprint-link.directional {
+  stroke-width: 2.8;
+}
+
 .blueprint-link.parallel {
   stroke: var(--muted);
   stroke-dasharray: 6 4;
+}
+
+.blueprint-relationship-note {
+  position: absolute;
+  z-index: 16;
+  width: 230px;
+  min-height: 74px;
+  padding: 10px;
+  border: 1px solid rgba(0, 112, 204, 0.22);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+  backdrop-filter: blur(8px);
+}
+
+.blueprint-relationship-note textarea {
+  width: 100%;
+  min-height: 56px;
+  resize: vertical;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.blueprint-note-remove {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--divider);
+  border-radius: 999px;
+  background: var(--paper);
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.blueprint-relationship-note:hover .blueprint-note-remove,
+.blueprint-note-remove:focus {
+  opacity: 1;
+}
+
+.blueprint-note-remove:hover {
+  color: var(--danger, #d33);
+  transform: scale(1.08);
 }
 
 .blueprint-drag-line {
@@ -4722,6 +4837,11 @@ html[data-theme="dark"] .blueprint-card {
 
 html[data-theme="dark"] .blueprint-card.dragging {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+html[data-theme="dark"] .blueprint-strength-panel,
+html[data-theme="dark"] .blueprint-relationship-note {
+  background: rgba(17, 24, 39, 0.9);
 }
 
 @media (max-width: 600px) {

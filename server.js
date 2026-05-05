@@ -2975,18 +2975,20 @@ async function handleGenerate(body, res) {
     return sendJson(res, 400, { error: "imageDataUrl or imageUrl is required for masked image editing" });
   }
 
+  const lang = body?.language === "en" ? "en" : "zh";
+  const hasReferenceImage = Boolean(imageDataUrl || body?.imageUrl);
+  const blueprint = normalizeBlueprintPayload(body?.blueprint);
+  const chatContext = normalizeGenerateChatContext(body?.chatContext);
+  const prompt = buildGeneratePrompt(lang, { ...option, generationMode: hasReferenceImage ? "image-to-image" : "text-to-image", blueprint, chatContext });
+
   if (isDemoRole(runtimeConfigs.image)) {
     return sendJson(res, 200, {
       provider: "demo",
       model: runtimeConfigs.image.model,
-      prompt: option.prompt,
+      prompt,
       imageDataUrl: buildDemoImage(option)
     });
   }
-
-  const lang = body?.language === "en" ? "en" : "zh";
-  const hasReferenceImage = Boolean(imageDataUrl || body?.imageUrl);
-  const prompt = buildGeneratePrompt(lang, { ...option, generationMode: hasReferenceImage ? "image-to-image" : "text-to-image" });
 
   // thinkingMode is accepted for consistency but image generation APIs don't support it directly.
   const result = isDashScopeQwenImageConfig(runtimeConfigs.image)
@@ -5433,6 +5435,40 @@ function normalizeOption(option) {
     tone: stringOr(option.tone, "cinematic"),
     layoutHint: stringOr(option.layoutHint, "square")
   };
+}
+
+function normalizeBlueprintPayload(blueprint) {
+  if (!blueprint || typeof blueprint !== "object") return null;
+  const referenceStrength = cleanOptionalNumber(blueprint.referenceStrength, 0.1, 1) ?? 0.7;
+  const cards = Array.isArray(blueprint.cards)
+    ? blueprint.cards.slice(0, 8).map((card) => ({
+        id: cleanString(card?.id, 80),
+        title: cleanString(card?.title, 120)
+      })).filter((card) => card.id || card.title)
+    : [];
+  const relationships = Array.isArray(blueprint.relationships)
+    ? blueprint.relationships.slice(0, 20).map((relationship) => ({
+        from: cleanString(relationship?.from, 80),
+        to: cleanString(relationship?.to, 80),
+        type: ["upstream", "downstream", "parallel"].includes(relationship?.type) ? relationship.type : "parallel",
+        note: cleanString(relationship?.note, 1000)
+      })).filter((relationship) => relationship.from && relationship.to)
+    : [];
+  if (!cards.length && !relationships.length) return null;
+  return {
+    junctionId: cleanString(blueprint.junctionId, 80),
+    referenceStrength: Math.round(referenceStrength * 10) / 10,
+    cards,
+    relationships
+  };
+}
+
+function normalizeGenerateChatContext(messages) {
+  if (!Array.isArray(messages)) return [];
+  return messages.slice(-8).map((message) => ({
+    role: message?.role === "assistant" ? "assistant" : "user",
+    content: cleanString(message?.content, 1200)
+  })).filter((message) => message.content);
 }
 
 function normalizeChatAnalysis(value) {
