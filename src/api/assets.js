@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import { prisma } from "../lib/prisma.js";
-import { storeDataUrl, readFile, parseDataUrl, hashBuffer } from "../lib/storage.js";
-import { syncToMaterialLibrary, storeMaterialFile } from "./materials.js";
+import { storeDataUrl, readFile, parseDataUrl, storeFile } from "../lib/storage.js";
+import { syncToMaterialLibrary } from "./materials.js";
 
 function sendJson(res, status, data) {
   res.writeHead(status, {
@@ -31,9 +31,7 @@ export async function handleStoreAsset(body, res) {
     } catch (imageError) {
       // If storeDataUrl fails, try general data URL parsing (for PDF, docx, etc.)
       const parsed = parseDataUrl(dataUrl);
-      const hash = hashBuffer(parsed.buffer);
-      const filePath = await storeMaterialFile(parsed.buffer, hash, parsed.ext);
-      result = { hash, filePath, size: parsed.buffer.length };
+      result = await storeFile(parsed.buffer, { kind, ext: parsed.ext || "bin" });
       mimeType = parsed.mimeType;
     }
 
@@ -119,6 +117,12 @@ function detectMimeType(buffer) {
     if (header.startsWith("47494638")) return "image/gif";
     if (header.startsWith("25504446")) return "application/pdf";
     if (header.startsWith("504b0304")) return "application/vnd.openxmlformats-officedocument";
+    if (header.startsWith("1a45dfa3")) return "video/webm";
+  }
+  if (buffer.length >= 12 && buffer.slice(4, 8).toString("ascii") === "ftyp") {
+    const brand = buffer.slice(8, 12).toString("ascii").toLowerCase();
+    if (brand.includes("qt")) return "video/quicktime";
+    return "video/mp4";
   }
 
   const textPrefix = buffer.slice(0, 128).toString("utf8").trimStart();

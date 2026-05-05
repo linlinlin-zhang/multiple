@@ -36,6 +36,9 @@ function serializeState(state) {
             sourceCard: n.sourceCard,
             imageHash: n.sourceCard?.imageHash || n.imageHash || null,
             imageUrl: n.sourceCard?.imageUrl || null,
+            sourceVideoHash: n.sourceCard?.sourceVideoHash || n.sourceCard?.videoHash || null,
+            sourceVideoUrl: n.sourceCard?.sourceVideoUrl || n.sourceCard?.videoUrl || null,
+            sourceVideoMimeType: n.sourceCard?.sourceVideoMimeType || null,
             sourceUrl: n.sourceCard?.sourceUrl || null,
             fileName: n.sourceCard?.fileName || n.sourceCard?.title || null,
             summary: n.sourceCard?.summary || null,
@@ -59,6 +62,8 @@ function serializeState(state) {
           ? {
               fileName: state.fileName || null,
               imageHash: state.sourceImageHash || extractAssetHash(state.sourceImage) || null,
+              sourceVideoHash: state.sourceVideoHash || extractAssetHash(state.sourceVideo) || null,
+              sourceVideoMimeType: state.sourceVideoMimeType || null,
               sourceType: state.sourceType || "image",
               sourceUrl: state.sourceUrl || null,
               sourceText: state.sourceText || null
@@ -102,6 +107,9 @@ function buildPersistedViewState(state) {
     sourceText: typeof state.sourceText === "string" ? state.sourceText : null,
     sourceDataUrlHash: state.sourceDataUrlHash || null,
     sourceDataUrl: typeof state.sourceDataUrl === "string" && state.sourceDataUrl.length < 256000 ? state.sourceDataUrl : null,
+    sourceVideoHash: state.sourceVideoHash || extractAssetHash(state.sourceVideo) || null,
+    sourceVideo: typeof state.sourceVideo === "string" && !state.sourceVideo.startsWith("data:") ? state.sourceVideo : null,
+    sourceVideoMimeType: state.sourceVideoMimeType || null,
     sourceUrl: state.sourceUrl || null,
     fileName: state.fileName || "",
     latestAnalysis: state.latestAnalysis || null,
@@ -165,6 +173,32 @@ async function collectSourceAsset(state, assetRecords) {
     return;
   }
 
+  if (typeof state.sourceVideo === "string" && state.sourceVideo.startsWith("data:")) {
+    const parsed = parseDataUrl(state.sourceVideo);
+    const stored = await storeFile(parsed.buffer, { kind: "upload", ext: parsed.ext || "mp4" });
+    addAssetRecord(assetRecords, {
+      hash: stored.hash,
+      kind: "upload",
+      mimeType: parsed.mimeType,
+      fileSize: stored.size,
+      fileName
+    });
+    state.sourceVideoHash = stored.hash;
+    state.sourceVideoMimeType = parsed.mimeType;
+    return;
+  }
+
+  const videoHash = state.sourceVideoHash || extractAssetHash(state.sourceVideo);
+  if (videoHash) {
+    const record = await assetRecordFromStoredHash(videoHash, {
+      kind: "upload",
+      fileName,
+      mimeType: state.sourceVideoMimeType || ""
+    });
+    addAssetRecord(assetRecords, record);
+    return;
+  }
+
   if (typeof state.sourceImage === "string" && state.sourceImage.startsWith("data:")) {
     const stored = await storeDataUrl(state.sourceImage, { kind: "upload" });
     addAssetRecord(assetRecords, {
@@ -189,6 +223,16 @@ async function collectGeneratedAssets(nodes, assetRecords) {
       const record = await assetRecordFromStoredHash(node.data.imageHash, {
         kind: "upload",
         fileName: node.data.sourceCard?.fileName || node.data.sourceCard?.title || null
+      });
+      addAssetRecord(assetRecords, record);
+      continue;
+    }
+    if (node.type === "source-card" && (node.data?.sourceVideoHash || node.data?.sourceCard?.sourceVideoHash || node.data?.sourceCard?.videoHash)) {
+      const videoHash = node.data.sourceVideoHash || node.data.sourceCard?.sourceVideoHash || node.data.sourceCard?.videoHash;
+      const record = await assetRecordFromStoredHash(videoHash, {
+        kind: "upload",
+        fileName: node.data.sourceCard?.fileName || node.data.sourceCard?.title || null,
+        mimeType: node.data.sourceCard?.sourceVideoMimeType || ""
       });
       addAssetRecord(assetRecords, record);
       continue;
@@ -230,6 +274,18 @@ async function assetRecordFromStoredHash(hash, { kind = "upload", fileName = nul
       fileName
     };
   } catch {
+    try {
+      const materialItem = await prisma.materialItem.findFirst({ where: { hash } });
+      if (materialItem) {
+        return {
+          hash,
+          kind,
+          mimeType: mimeType || materialItem.mimeType || "application/octet-stream",
+          fileSize: materialItem.fileSize || 0,
+          fileName: fileName || materialItem.fileName || null
+        };
+      }
+    } catch {}
     return {
       hash,
       kind,
@@ -255,6 +311,12 @@ function detectMimeType(buffer) {
     if (header.startsWith("47494638")) return "image/gif";
     if (header.startsWith("25504446")) return "application/pdf";
     if (header.startsWith("504b0304")) return "application/vnd.openxmlformats-officedocument";
+    if (header.startsWith("1a45dfa3")) return "video/webm";
+  }
+  if (buffer.length >= 12 && buffer.slice(4, 8).toString("ascii") === "ftyp") {
+    const brand = buffer.slice(8, 12).toString("ascii").toLowerCase();
+    if (brand.includes("qt")) return "video/quicktime";
+    return "video/mp4";
   }
   const textPrefix = buffer.slice(0, 128).toString("utf8").trimStart();
   if (textPrefix.startsWith("<svg") || textPrefix.startsWith("<?xml")) return "image/svg+xml";

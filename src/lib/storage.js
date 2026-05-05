@@ -5,7 +5,7 @@ import path from "node:path";
 const STORAGE_DIR = process.env.STORAGE_PATH || path.join(process.cwd(), "storage");
 const UPLOADS_DIR = path.join(STORAGE_DIR, "upload");
 const GENERATED_DIR = path.join(STORAGE_DIR, "generated");
-const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif", "svg"];
+const SUPPORTED_EXTENSIONS = ["jpg", "jpeg", "png", "webp", "gif", "svg", "txt", "md", "json", "pdf", "doc", "docx", "ppt", "pptx", "mp4", "webm", "mov", "m4v", "ogv", "bin"];
 
 /**
  * Ensure storage directories exist.
@@ -174,7 +174,8 @@ function extFromMime(mimeType) {
     "application/vnd.ms-powerpoint": "ppt",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "text/plain": "txt",
-    "video/mp4": "mp4", "video/webm": "webm"
+    "video/mp4": "mp4", "video/webm": "webm",
+    "video/quicktime": "mov", "video/x-m4v": "m4v", "video/ogg": "ogv"
   };
   return map[mimeType] || "bin";
 }
@@ -191,8 +192,8 @@ function normalizeKind(kind) {
 
 function normalizeExt(ext) {
   const normalized = String(ext || "jpg").replace(/^\./, "").toLowerCase();
-  if (!IMAGE_EXTENSIONS.includes(normalized)) {
-    throw new Error("Unsupported image extension");
+  if (!SUPPORTED_EXTENSIONS.includes(normalized)) {
+    throw new Error("Unsupported file extension");
   }
   return normalized === "jpeg" ? "jpg" : normalized;
 }

@@ -250,7 +250,10 @@ function extFromMimeType(mimeType) {
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "text/plain": "txt",
     "video/mp4": "mp4",
-    "video/webm": "webm"
+    "video/webm": "webm",
+    "video/quicktime": "mov",
+    "video/x-m4v": "m4v",
+    "video/ogg": "ogv"
   };
   return map[mimeType] || "";
 }
@@ -263,7 +266,10 @@ const SUPPORTED_MATERIAL_MIMES = new Set([
   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   "text/plain",
   "video/mp4",
-  "video/webm"
+  "video/webm",
+  "video/quicktime",
+  "video/x-m4v",
+  "video/ogg"
 ]);
 
 function isSupportedMaterialMime(mimeType) {

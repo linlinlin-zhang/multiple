@@ -31,7 +31,7 @@ const DEMO_MODE = process.env.DEMO_MODE === "true";
 const IMAGE_POLL_INTERVAL_MS = Number(process.env.IMAGE_POLL_INTERVAL_MS || 2000);
 const IMAGE_POLL_ATTEMPTS = Number(process.env.IMAGE_POLL_ATTEMPTS || 30);
 const IMAGE_INCLUDE_DATA_URL = process.env.IMAGE_INCLUDE_DATA_URL === "true";
-const MAX_BODY_BYTES = 22 * 1024 * 1024;
+const MAX_BODY_BYTES = 150 * 1024 * 1024;
 const CHAT_COMPLETION_TIMEOUT_MS = Number(process.env.CHAT_COMPLETION_TIMEOUT_MS || 120000);
 const CHAT_STREAM_IDLE_TIMEOUT_MS = Number(process.env.CHAT_STREAM_IDLE_TIMEOUT_MS || process.env.CHAT_STREAM_TIMEOUT_MS || 240000);
 const DEEP_RESEARCH_TIMEOUT_MS = Number(process.env.DEEP_RESEARCH_TIMEOUT_MS || 600000);
@@ -1427,6 +1427,7 @@ async function handleImageSearch(body, res) {
 async function handleChat(body, res) {
   const message = typeof body?.message === "string" ? body.message.trim().slice(0, 32000) : "";
   const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
+  const videoDataUrl = normalizeVideoDataUrl(body?.videoDataUrl);
   const analysis = normalizeChatAnalysis(body?.analysis);
   const messages = normalizeChatMessages(body?.messages);
   const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
@@ -1491,29 +1492,81 @@ async function handleChat(body, res) {
   const webSearchForced = chatOptions.enableWebSearch !== false && shouldForceWebSearchReadable(message);
   const subagentsEnabled = body?.subagentsEnabled === true;
   const agentMode = subagentsEnabled && (body?.agentMode === true || shouldUseAgentModeReadable(message));
-  const effectivePreviousResponseId = chatOptions.enablePreviousResponse === false ? "" : previousResponseId;
+  const hasVideoInput = Boolean(videoDataUrl);
+  const effectivePreviousResponseId = hasVideoInput || chatOptions.enablePreviousResponse === false ? "" : previousResponseId;
   const promptMessages = effectivePreviousResponseId ? [] : messages;
   const context = buildChatSystemContext(lang, analysis, promptMessages);
+  const userPrompt = buildChatUserPrompt({
+    message,
+    analysis,
+    selectedContext,
+    canvas,
+    messages: promptMessages,
+    systemContext,
+    thinkingMode,
+    webSearchEnabled,
+    agentMode,
+    lang
+  });
 
   const content = [
-    { type: "input_text", text: `${context}\n\n用户最新消息：${message}` }
+    { type: "input_text", text: userPrompt }
   ];
-  if (content[0]) {
-    content[0].text = buildChatUserPrompt({
-      message,
-      analysis,
-      selectedContext,
-      canvas,
-      messages: promptMessages,
-      systemContext,
-      thinkingMode,
-      webSearchEnabled,
-      agentMode,
-      lang
-    });
-  }
   if (imageDataUrl) {
     content.push({ type: "input_image", image_url: imageDataUrl });
+  }
+
+  if (hasVideoInput) {
+    const videoChatPayload = buildVideoChatCompletionsPayload({
+      instructions: context,
+      userPrompt,
+      imageDataUrl,
+      videoDataUrl,
+      message,
+      webSearchEnabled: webSearchEnabled || webSearchForced,
+      thinkingMode,
+      agentMode
+    });
+    applyChatQualityRequestOptions(videoChatPayload, runtimeConfigs.chat, message, {
+      webSearchEnabled: webSearchEnabled || webSearchForced,
+      agentMode
+    });
+
+    if (body?.stream === true) {
+      return await handleChatStream({
+        payload: videoChatPayload,
+        message,
+        thinkingMode,
+        agentMode,
+        lang,
+        sessionId,
+        ingestMessage: ingestUserMessage,
+        retrievedCount: retrieved.length,
+        webSearchEnabled: webSearchEnabled || webSearchForced,
+        transport: "chat-completions",
+        resetPreviousResponseId: true
+      }, res);
+    }
+
+    const response = await chatCompletions(runtimeConfigs.chat, videoChatPayload, {
+      timeoutMs: CHAT_COMPLETION_TIMEOUT_MS
+    });
+    const finalPayload = buildChatResultFromResponse({
+      response,
+      message,
+      thinkingMode,
+      agentMode,
+      lang,
+      webSearchEnabled: webSearchEnabled || webSearchForced
+    });
+    delete finalPayload.responseId;
+    delete finalPayload.previousResponseId;
+    finalPayload.resetPreviousResponseId = true;
+    if (retrieved.length) finalPayload.retrievedContext = retrieved.length;
+    ingestChatTurn(sessionId, ingestUserMessage, finalPayload.reply || "").catch((e) =>
+      console.warn("[handleChat] chat turn ingest failed:", e.message)
+    );
+    return sendJson(res, 200, finalPayload);
   }
 
   const chatPayload = buildChatResponsesPayload({
@@ -1591,6 +1644,22 @@ async function normalizeChatDocumentAttachments(value, lang = "zh") {
     if (kind.includes("image")) continue;
     const fileName = String(item.fileName || item.name || item.title || "document").trim().slice(0, 180);
     const mimeType = String(item.mimeType || "").trim().slice(0, 180);
+    if (kind.includes("video") || mimeType.startsWith("video/")) {
+      results.push({
+        type: "video",
+        fileName: fileName || "video",
+        mimeType,
+        ext: extensionFromFileName(fileName) || extensionFromMimeType(mimeType) || "video",
+        text: "",
+        truncated: false,
+        totalPages: 0,
+        isScanned: false,
+        parseError: "",
+        duration: Number.isFinite(Number(item.duration)) ? Number(item.duration) : 0,
+        size: Number.isFinite(Number(item.size)) ? Number(item.size) : 0
+      });
+      continue;
+    }
     const dataUrl = typeof item.dataUrl === "string" ? item.dataUrl.trim() : "";
     let ext = extensionFromFileName(fileName) || extensionFromMimeType(mimeType) || "";
     let text = typeof item.text === "string" ? item.text.trim() : "";
@@ -1647,9 +1716,14 @@ function buildChatAttachmentContext(attachments, lang = "zh") {
     const meta = [
       attachment.ext ? `type=${attachment.ext}` : "",
       attachment.totalPages ? (isEn ? `pages/slides=${attachment.totalPages}` : `页/张=${attachment.totalPages}`) : "",
+      attachment.duration ? (isEn ? `duration=${Math.round(attachment.duration)}s` : `时长=${Math.round(attachment.duration)}秒`) : "",
       attachment.isScanned ? (isEn ? "scanned=true" : "扫描件=true") : ""
     ].filter(Boolean).join(", ");
     lines.push("", `## ${title}${meta ? ` (${meta})` : ""}`);
+    if (attachment.type === "video") {
+      lines.push(isEn ? "Video attachment metadata is listed here; the video bytes are sent separately as model video input." : "这里列出视频附件元数据；视频内容会作为模型视频输入单独发送。");
+      continue;
+    }
     if (attachment.parseError) {
       lines.push(isEn ? `Extraction warning: ${attachment.parseError}` : `提取警告：${attachment.parseError}`);
     }
@@ -1730,6 +1804,31 @@ function buildChatResponsesPayload({ instructions, content, message, previousRes
   if (tools.some((tool) => tool.type === "web_search" || tool.type === "web_extractor" || tool.type === "code_interpreter")) {
     payload.enable_thinking = true;
   }
+  return payload;
+}
+
+function buildVideoChatCompletionsPayload({ instructions, userPrompt, imageDataUrl, videoDataUrl, message, webSearchEnabled, thinkingMode, agentMode = false }) {
+  const content = [
+    { type: "video_url", video_url: { url: videoDataUrl }, fps: 2 }
+  ];
+  if (imageDataUrl) {
+    content.push({ type: "image_url", image_url: { url: imageDataUrl } });
+  }
+  content.push({ type: "text", text: userPrompt });
+
+  const payload = {
+    messages: [
+      { role: "system", content: instructions },
+      { role: "user", content }
+    ]
+  };
+  const chatOptions = runtimeConfigs.chat.options || {};
+  if (chatOptions.enableCanvasTools !== false && (agentMode || !shouldSkipCanvasToolForCodeOnlyRequest(message))) {
+    payload.tools = CANVAS_TOOLS;
+    payload.tool_choice = "auto";
+  }
+  applyReasoningMode(payload, runtimeConfigs.chat, thinkingMode);
+  applyWebSearchMode(payload, runtimeConfigs.chat, webSearchEnabled);
   return payload;
 }
 
@@ -2427,7 +2526,7 @@ function dedupeCanvasActions(actions) {
   return result;
 }
 
-async function handleChatStream({ payload, message, thinkingMode, agentMode, lang, sessionId = "", ingestMessage = "", retrievedCount = 0, webSearchEnabled = false }, res) {
+async function handleChatStream({ payload, message, thinkingMode, agentMode, lang, sessionId = "", ingestMessage = "", retrievedCount = 0, webSearchEnabled = false, transport = "responses", resetPreviousResponseId = false }, res) {
   res.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache, no-transform",
@@ -2436,7 +2535,7 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
   });
   res.write("\n");
   try {
-    const response = await streamQwenResponses(runtimeConfigs.chat, payload, {
+    const response = await (transport === "chat-completions" ? streamChatCompletions : streamQwenResponses)(runtimeConfigs.chat, payload, {
       onReasoning(delta) {
         if (thinkingMode === "thinking") writeSse(res, "thinking", { delta });
       },
@@ -2454,6 +2553,11 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
       webSearchEnabled
     });
     if (retrievedCount) finalPayload.retrievedContext = retrievedCount;
+    if (resetPreviousResponseId) {
+      delete finalPayload.responseId;
+      delete finalPayload.previousResponseId;
+      finalPayload.resetPreviousResponseId = true;
+    }
     ingestChatTurn(sessionId, ingestMessage || message, finalPayload.reply || "").catch((e) =>
       console.warn("[handleChatStream] chat turn ingest failed:", e.message)
     );
@@ -5239,14 +5343,19 @@ function extensionFromContentType(contentType) {
     "image/png": "png",
     "image/webp": "webp",
     "image/gif": "gif",
-    "image/svg+xml": "svg"
+    "image/svg+xml": "svg",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov",
+    "video/x-m4v": "m4v",
+    "video/ogg": "ogv"
   }[normalized] || "";
 }
 
 function extensionFromUrl(url) {
   try {
     const ext = path.extname(new URL(url).pathname).replace(/^\./, "").toLowerCase();
-    if (["jpg", "jpeg", "png", "webp", "gif", "svg"].includes(ext)) {
+    if (["jpg", "jpeg", "png", "webp", "gif", "svg", "mp4", "webm", "mov", "m4v", "ogv"].includes(ext)) {
       return ext === "jpeg" ? "jpg" : ext;
     }
   } catch {
@@ -5664,7 +5773,7 @@ function readJson(req) {
     req.on("data", (chunk) => {
       size += chunk.length;
       if (size > MAX_BODY_BYTES) {
-        reject(new Error("Request body is too large. Please upload an image under 10MB."));
+        reject(new Error("Request body is too large. Please upload a smaller file."));
         req.destroy();
         return;
       }
@@ -5721,13 +5830,25 @@ function mimeType(filePath) {
     ".png": "image/png",
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
-    ".webp": "image/webp"
+    ".webp": "image/webp",
+    ".mp4": "video/mp4",
+    ".webm": "video/webm",
+    ".mov": "video/quicktime",
+    ".m4v": "video/mp4"
   }[ext] || "application/octet-stream";
 }
 
 function normalizeDataUrl(value) {
   if (typeof value !== "string") return null;
   if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(value) && !/^data:image\/svg\+xml(?:;[^,]*)?,/i.test(value)) {
+    return null;
+  }
+  return value;
+}
+
+function normalizeVideoDataUrl(value) {
+  if (typeof value !== "string") return null;
+  if (!/^data:video\/[a-z0-9.+-]+(?:;[^,]*)?;base64,[a-zA-Z0-9+/=]+$/i.test(value)) {
     return null;
   }
   return value;
@@ -5789,7 +5910,12 @@ function extensionFromMimeType(mimeType) {
     "audio/wave": "wav",
     "audio/x-wav": "wav",
     "audio/pcm": "pcm",
-    "audio/l16": "pcm"
+    "audio/l16": "pcm",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov",
+    "video/x-m4v": "m4v",
+    "video/ogg": "ogv"
   };
   return map[mimeType] || "";
 }

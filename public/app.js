@@ -120,9 +120,12 @@ const blueprintCanvas = document.querySelector(".blueprint-canvas");
 const state = {
   sourceImage: null,
   sourceImageHash: null,
-  sourceType: "image",         // "image" | "text" | "url"
+  sourceType: "image",         // "image" | "text" | "url" | "video"
   sourceText: null,            // for txt/md/json
   sourceDataUrl: null,         // for docx/pdf/pptx
+  sourceVideo: null,
+  sourceVideoHash: null,
+  sourceVideoMimeType: "",
   sourceUrl: null,             // for url sources
   fileName: "",
   latestAnalysis: null,
@@ -1353,7 +1356,7 @@ function renderAllText() {
   const analysisTitle = document.querySelector("#analysisNode h2");
   if (analysisTitle && !analysisTitle.querySelector(".node-title-input")) {
     // only update if not currently editing
-    const titles = { image: t("analysis.titleImage"), text: t("analysis.titleText"), url: t("analysis.titleUrl") };
+    const titles = { image: t("analysis.titleImage"), text: t("analysis.titleText"), url: t("analysis.titleUrl"), video: currentLang === "en" ? "Video analysis" : "视频分析" };
     analysisTitle.textContent = titles[state.sourceType] || t("analysis.title");
   }
 
@@ -2653,22 +2656,28 @@ function normalizeChatAttachments(value) {
     .filter((item) => item && typeof item === "object")
     .slice(0, 4)
     .map((item) => {
-      const type = String(item.type || item.kind || "").startsWith("image") ? "image" : "file";
+      const declaredType = String(item.type || item.kind || "").toLowerCase();
+      const type = declaredType.startsWith("image") ? "image" : (declaredType.startsWith("video") ? "video" : "file");
       const rawUrl = String(item.imageUrl || item.url || "");
       const imageUrl = type === "image" && rawUrl.startsWith("data:image/")
         ? rawUrl
         : rawUrl.slice(0, 1024);
+      const rawVideoUrl = String(item.videoUrl || (type === "video" ? item.url || item.dataUrl || "" : ""));
+      const videoUrl = type === "video" && (rawVideoUrl.startsWith("/api/assets/") || /^https?:\/\//i.test(rawVideoUrl) || rawVideoUrl.startsWith("blob:"))
+        ? rawVideoUrl.slice(0, 2048)
+        : "";
       return {
         type,
         name: String(item.name || item.fileName || item.title || "").slice(0, 120),
         mimeType: String(item.mimeType || "").slice(0, 120),
         size: Number.isFinite(Number(item.size)) ? Number(item.size) : 0,
         imageUrl,
-        url: String(item.url || "").slice(0, 1024),
+        videoUrl,
+        url: type === "video" ? videoUrl : String(item.url || "").slice(0, 1024),
         text: type === "file" ? String(item.text || "").slice(0, 8000) : ""
       };
     })
-    .filter((item) => item.name || item.imageUrl || item.url || item.text);
+    .filter((item) => item.name || item.imageUrl || item.videoUrl || item.url || item.text);
 }
 
 function normalizeChatThinkingTrace(value) {
@@ -3409,6 +3418,17 @@ const DOCUMENT_MIME_TYPES = {
   pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 };
 
+const VIDEO_MIME_TYPES = {
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mov: "video/quicktime",
+  m4v: "video/mp4"
+};
+const VIDEO_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
+const VIDEO_TARGET_LONG_EDGE = 1280;
+const VIDEO_TARGET_BITRATE = 1500000;
+const VIDEO_CAPTURE_FPS = 24;
+
 function sourceDocumentExtension(fileName = "") {
   return String(fileName || "").split(".").pop()?.toLowerCase() || "";
 }
@@ -3417,14 +3437,31 @@ function isSupportedDocumentFile(fileName = "") {
   return /\.(txt|md|json|doc|docx|pdf|ppt|pptx)$/i.test(fileName || "");
 }
 
+function isSupportedVideoFile(file) {
+  return Boolean(file?.type?.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/i.test(file?.name || ""));
+}
+
 function isPlainTextDocument(fileName = "") {
   return ["txt", "md", "json"].includes(sourceDocumentExtension(fileName));
+}
+
+function sourceVideoMimeType(fileName = "", mimeType = "") {
+  const cleanMime = String(mimeType || "").toLowerCase();
+  if (cleanMime.startsWith("video/")) return cleanMime;
+  return VIDEO_MIME_TYPES[sourceDocumentExtension(fileName)] || "video/mp4";
+}
+
+function clearVideoPreview(uploadTarget) {
+  const target = uploadTarget || document.querySelector("#sourceNode .upload-target");
+  target?.querySelector(".source-video-preview")?.remove();
+  target?.classList.remove("has-video-preview");
 }
 
 function clearDocumentPreview(uploadTarget) {
   const target = uploadTarget || document.querySelector("#sourceNode .upload-target");
   target?.querySelector(".source-document-preview")?.remove();
   target?.classList.remove("has-document-preview");
+  clearVideoPreview(target);
 }
 
 function renderDocumentPreview(fileName, sourceRef = "", text = "", mimeType = "", uploadTarget = null) {
@@ -3481,9 +3518,38 @@ function renderDocumentPreview(fileName, sourceRef = "", text = "", mimeType = "
   target.classList.remove("has-source-image");
 }
 
+function renderVideoPreview(fileName, sourceRef = "", mimeType = "", uploadTarget = null) {
+  const target = uploadTarget || document.querySelector("#sourceNode .upload-target");
+  if (!target || !sourceRef) return;
+  clearDocumentPreview(target);
+  const video = document.createElement("video");
+  video.className = "source-video-preview";
+  video.src = sourceRef;
+  video.title = fileName || "Video";
+  video.controls = true;
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+  if (mimeType) video.type = mimeType;
+  const img = target.querySelector(".source-preview");
+  if (img) {
+    img.removeAttribute("src");
+    img.classList.remove("has-image");
+  }
+  target.appendChild(video);
+  target.classList.add("has-video-preview");
+  target.classList.remove("has-source-image");
+}
+
 function sourceDocumentPreviewRef(fileName, dataUrl = "", hash = "") {
   if (dataUrl) return dataUrl;
   if (!isPlainTextDocument(fileName) && hash) return `/api/assets/${hash}?kind=upload`;
+  return "";
+}
+
+function sourceVideoPreviewRef(dataUrl = "", hash = "") {
+  if (dataUrl) return dataUrl;
+  if (hash) return `/api/assets/${hash}?kind=upload`;
   return "";
 }
 
@@ -3498,6 +3564,16 @@ function renderSourceDocumentPreviewFromState() {
   );
 }
 
+function renderSourceVideoPreviewFromState() {
+  if (state.sourceType !== "video" || !state.fileName) return;
+  renderVideoPreview(
+    state.fileName,
+    sourceVideoPreviewRef(state.sourceVideo, state.sourceVideoHash),
+    state.sourceVideoMimeType,
+    document.querySelector("#sourceNode .upload-target")
+  );
+}
+
 async function handleFile(event) {
   const file = event.target.files?.[0];
   if (!file) return;
@@ -3506,6 +3582,7 @@ async function handleFile(event) {
   }
 
   const isImage = file.type.startsWith("image/");
+  const isVideo = isSupportedVideoFile(file);
   const isTextDoc = isSupportedDocumentFile(file.name);
 
   if (isImage) {
@@ -3518,6 +3595,10 @@ async function handleFile(event) {
       state.sourceType = "image";
       state.sourceText = null;
       state.sourceDataUrl = null;
+      state.sourceVideo = null;
+      state.sourceVideoHash = null;
+      state.sourceVideoMimeType = "";
+      state.sourceUrl = null;
       state.sourceImageHash = null;
       state.sourceDataUrlHash = null;
       state.fileName = file.name;
@@ -3546,6 +3627,51 @@ async function handleFile(event) {
     return;
   }
 
+  if (isVideo) {
+    setStatus(t("status.busy"), "busy");
+    try {
+      clearDocumentPreview(document.querySelector("#sourceNode .upload-target"));
+      document.querySelector(".url-source-card")?.remove();
+      const video = await compressVideoFile(file);
+      state.sourceImage = null;
+      state.sourceImageHash = null;
+      state.sourceType = "video";
+      state.sourceText = null;
+      state.sourceDataUrl = null;
+      state.sourceDataUrlHash = null;
+      state.sourceVideo = video.dataUrl;
+      state.sourceVideoHash = null;
+      state.sourceVideoMimeType = video.mimeType || sourceVideoMimeType(file.name, file.type);
+      state.sourceUrl = null;
+      state.fileName = file.name;
+
+      sourcePreview.src = "";
+      sourcePreview.classList.remove("has-image");
+      emptyState.classList.add("hidden");
+      sourceName.textContent = trimMiddle(file.name, 28);
+      if (researchButton) researchButton.disabled = false;
+
+      renderVideoPreview(file.name, state.sourceVideo, state.sourceVideoMimeType, document.querySelector("#sourceNode .upload-target"));
+
+      clearOptions();
+      state.latestAnalysis = null;
+      state.fileUnderstanding = null;
+      resetChatThreads();
+      renderChatMessages();
+      state.collapsed.clear();
+      analysisNode.classList.add("hidden");
+      state.links = [];
+      applyCollapseState();
+      updateCounts();
+      setStatus(t("status.ready"), "ready");
+      updateSourceBadge();
+      autoSave();
+    } catch (error) {
+      setStatus(error.message || t("status.error"), "error");
+    }
+    return;
+  }
+
   if (isTextDoc) {
     setStatus(t("status.busy"), "busy");
     try {
@@ -3553,6 +3679,10 @@ async function handleFile(event) {
       state.sourceType = "text";
       state.sourceImage = null;
       state.sourceImageHash = null;
+      state.sourceVideo = null;
+      state.sourceVideoHash = null;
+      state.sourceVideoMimeType = "";
+      state.sourceUrl = null;
       state.sourceDataUrlHash = null;
 
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
@@ -3612,6 +3742,8 @@ function canResearchNode(nodeId) {
     return Boolean(
       node.sourceCard.imageUrl ||
       node.sourceCard.imageHash ||
+      node.sourceCard.sourceVideoUrl ||
+      node.sourceCard.sourceVideoHash ||
       node.sourceCard.sourceText ||
       node.sourceCard.sourceDataUrl ||
       node.sourceCard.sourceDataUrlHash ||
@@ -3663,8 +3795,15 @@ async function exploreSource() {
     await ensureSourceDocumentDataUrl();
   }
   if (state.sourceType === "image" && !state.sourceImage) return;
+  if (state.sourceType === "video" && !state.sourceVideo && !state.sourceVideoHash) return;
   if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) return;
   if (state.sourceType === "url" && !state.sourceUrl) return;
+  if (state.sourceType === "video") {
+    await submitChatMessage(currentLang === "en"
+      ? "Please deeply explore this video, summarize important moments, and propose useful canvas directions."
+      : "请深入探索这个视频，总结重要片段，并提出适合继续生成画布卡片的方向。", { forcedThinkingMode: "thinking" });
+    return;
+  }
 
   setStatus(t("research.exploring"), "busy");
   setResearchButtonBusy(true, t("research.button"));
@@ -3721,8 +3860,17 @@ async function analyzeSource(mode = "analyze") {
     await ensureSourceDocumentDataUrl();
   }
   if (state.sourceType === "image" && !state.sourceImage) return;
+  if (state.sourceType === "video" && !state.sourceVideo && !state.sourceVideoHash) return;
   if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) return;
   if (state.sourceType === "url" && !state.sourceUrl) return;
+  if (state.sourceType === "video") {
+    await submitChatMessage(currentLang === "en"
+      ? "Please analyze this video. Summarize the key scenes, visible details, temporal structure, and actionable follow-up ideas."
+      : "请分析这个视频，总结关键画面、可见细节、时间结构和可继续展开的行动建议。", {
+        forcedThinkingMode: mode === "explore" ? "thinking" : state.thinkingMode
+      });
+    return;
+  }
 
   setStatus(t("status.busy"), "busy");
   setResearchButtonBusy(true, t("research.analyze"));
@@ -3918,8 +4066,8 @@ function buildSelectedNodeContext(nodeId = state.selectedNodeId) {
   else if (node.generated) type = "generated";
   else if (node.option) type = "option";
 
-  const title = node.sourceCard?.title || node.option?.title || node.id;
-  const summary = node.explanation || node.sourceCard?.summary || node.sourceCard?.sourceText || node.option?.description || state.latestAnalysis?.summary || "";
+  const title = nodeId === "source" ? getNodeTitle(node) : (node.sourceCard?.title || node.option?.title || node.id);
+  const summary = nodeId === "source" ? getNodeSummary(node) : (node.explanation || node.sourceCard?.summary || node.sourceCard?.sourceText || node.option?.description || state.latestAnalysis?.summary || "");
   const prompt = node.option?.prompt || node.sourceCard?.summary || node.sourceCard?.sourceText || "";
 
   const context = {
@@ -3948,7 +4096,10 @@ async function handleChatSubmit(event) {
   if (!message && pendingChatAttachment?.kind === "image") {
     message = currentLang === "en" ? "Please look at this image and help me understand it." : "请先看看这张图片，并帮我理解它。";
   }
-  if (!message && pendingChatAttachment && pendingChatAttachment.kind !== "image") {
+  if (!message && pendingChatAttachment?.kind === "video") {
+    message = currentLang === "en" ? "Please analyze this video and summarize the key moments." : "请分析这个视频，并总结关键片段。";
+  }
+  if (!message && pendingChatAttachment && !["image", "video"].includes(pendingChatAttachment.kind)) {
     message = currentLang === "en" ? "Please analyze this document and summarize the key points." : "请分析这个文档，并总结关键要点。";
   }
   if (!message) return;
@@ -3982,6 +4133,7 @@ async function submitChatMessage(message, options = {}) {
   const effectiveThinkingMode = options.forcedThinkingMode || (agentMode ? "no-thinking" : state.thinkingMode);
   const chatAttachment = pendingChatAttachment;
   const attachmentImageDataUrl = chatAttachment?.kind === "image" ? chatAttachment.dataUrl : "";
+  const attachmentVideoDataUrl = chatAttachment?.kind === "video" ? chatAttachment.dataUrl : "";
   const chatAttachmentsPayload = buildChatAttachmentPayload(chatAttachment);
 
   chatInput.value = "";
@@ -3994,13 +4146,20 @@ async function submitChatMessage(message, options = {}) {
     mimeType: chatAttachment?.mimeType || "",
     size: chatAttachment?.size || 0,
     imageUrl: attachmentImageDataUrl
+  }] : (attachmentVideoDataUrl ? [{
+    type: "video",
+    name: chatAttachment?.fileName || "",
+    mimeType: chatAttachment?.mimeType || "",
+    size: chatAttachment?.size || 0,
+    videoUrl: chatAttachment?.assetUrl || "",
+    url: chatAttachment?.assetUrl || ""
   }] : (chatAttachment ? [{
     type: "file",
     name: chatAttachment.fileName || "",
     mimeType: chatAttachment.mimeType || "",
     size: chatAttachment.size || 0,
     text: chatAttachment.text || ""
-  }] : []);
+  }] : []));
   appendChatMessage("user", text, { attachments: userAttachments });
   const pendingAssistant = appendChatMessage("assistant", "", {
     pending: true,
@@ -4012,7 +4171,8 @@ async function submitChatMessage(message, options = {}) {
   updateChatPrimaryButtonMode();
 
   try {
-    const sourceImageDataUrl = attachmentImageDataUrl || await getSourceImageDataUrl();
+    const sourceImageDataUrl = attachmentImageDataUrl || (attachmentVideoDataUrl ? "" : await getSourceImageDataUrl());
+    const sourceVideoDataUrl = attachmentVideoDataUrl || await getSourceVideoDataUrl();
     const selectedContext = buildSelectedNodeContext();
 
     let systemContext = t("chat.systemContext");
@@ -4034,6 +4194,7 @@ async function submitChatMessage(message, options = {}) {
     const chatPayload = {
       message: text,
       imageDataUrl: sourceImageDataUrl,
+      videoDataUrl: sourceVideoDataUrl,
       analysis: state.latestAnalysis,
       messages: getChatHistoryPayload(),
       systemContext,
@@ -4059,13 +4220,15 @@ async function submitChatMessage(message, options = {}) {
       references: data.references || [],
       responseId: data.responseId || data.previousResponseId || ""
     };
-    if (data.responseId || data.previousResponseId) {
+    if (data.resetPreviousResponseId) {
+      ensureActiveChatThread().previousResponseId = "";
+    } else if (data.responseId || data.previousResponseId) {
       ensureActiveChatThread().previousResponseId = data.responseId || data.previousResponseId;
     }
     const returnedActions = data?.actions || data?.action;
     let actionResults = [];
     if (returnedActions) {
-      actionResults = await applyVoiceActions(returnedActions, { imageDataUrl: attachmentImageDataUrl, message: text });
+      actionResults = await applyVoiceActions(returnedActions, { imageDataUrl: attachmentImageDataUrl, videoDataUrl: sourceVideoDataUrl, message: text });
     }
     assistantMeta.actionResults = actionResults;
     const failureNote = formatActionFailureNote(actionResults);
@@ -4545,7 +4708,7 @@ async function processAsrQueue() {
   setStatus(t("voice.asrTranscribing"), "busy");
 
   try {
-    const audioDataUrl = await blobToDataUrl(blob);
+    const audioDataUrl = await blobToAudioDataUrl(blob);
     const data = await postJson("/api/asr", {
       audioDataUrl,
       mimeType: blob.type || "audio/webm",
@@ -4853,6 +5016,7 @@ function buildVoiceCanvasContext() {
       fileName: state.fileName || "",
       hasImage: Boolean(state.sourceImage),
       hasText: Boolean(state.sourceText || state.sourceDataUrl),
+      hasVideo: Boolean(state.sourceVideo || state.sourceVideoHash),
       url: state.sourceUrl || ""
     },
     capabilities: CANVAS_TOOL_TYPES,
@@ -5037,7 +5201,7 @@ function getNodeTitle(node) {
 function getNodeSummary(node) {
   if (!node) return "";
   if (node.id === "analysis") return state.latestAnalysis?.summary || analysisSummary?.textContent || "";
-  if (node.id === "source") return state.fileName || state.sourceUrl || state.sourceText || "";
+  if (node.id === "source") return state.fileName || state.sourceUrl || state.sourceText || (state.sourceType === "video" ? "Video source" : "");
   if (node.sourceCard) return node.sourceCard.summary || node.sourceCard.fileName || "";
   if (node.option?.nodeType && node.option.nodeType !== "image") {
     const nt = node.option.nodeType;
@@ -5896,7 +6060,7 @@ function hasAudiblePcm(samples, threshold = 0.012) {
   return Math.sqrt(sum / samples.length) > threshold;
 }
 
-function blobToDataUrl(blob) {
+function blobToAudioDataUrl(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ""));
@@ -6635,8 +6799,16 @@ function sourceCardLocalImageUrl(imageHash) {
   return imageHash ? `/api/assets/${imageHash}?kind=upload` : "";
 }
 
+function sourceCardLocalVideoUrl(videoHash) {
+  return videoHash ? `/api/assets/${videoHash}?kind=upload` : "";
+}
+
 function sourceCardDisplayImageUrl(sourceCard = {}) {
   return sourceCard.imageUrl || sourceCard.remoteImageUrl || sourceCardLocalImageUrl(sourceCard.imageHash) || "";
+}
+
+function sourceCardDisplayVideoUrl(sourceCard = {}) {
+  return sourceCard.sourceVideoUrl || sourceCard.videoUrl || sourceCardLocalVideoUrl(sourceCard.sourceVideoHash || sourceCard.videoHash) || "";
 }
 
 function sourceCardReferenceImageUrl(sourceCard = {}) {
@@ -6681,11 +6853,12 @@ function setSourceCardResearchActionsDisabled(element, disabled) {
   });
 }
 
-function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash = "", fileName = "", avoidOverlap = true }) {
+function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash = "", sourceType = "", sourceVideoUrl = "", sourceVideoHash = "", sourceVideoMimeType = "", fileName = "", avoidOverlap = true }) {
   const nodeId = id || `source-card-${Date.now().toString(36)}`;
   if (state.nodes.has(nodeId)) return nodeId;
   let newX = Number.isFinite(x) ? x : 520;
   let newY = Number.isFinite(y) ? y : 120;
+  const hasInitialContent = Boolean(imageUrl || imageHash || sourceVideoUrl || sourceVideoHash);
 
   const element = document.createElement("section");
   element.className = "node source-node standalone-source-node";
@@ -6708,12 +6881,12 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   tabs.append(fileTab, urlTab);
 
   const upload = document.createElement("label");
-  upload.className = `upload-target${imageUrl ? " has-source-image" : ""}`;
+  upload.className = `upload-target${imageUrl ? " has-source-image" : ""}${sourceVideoUrl || sourceVideoHash ? " has-video-preview" : ""}`;
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = "image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.doc,.docx,.pdf,.ppt,.pptx,text/plain,application/msword,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  input.accept = "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v,.txt,.md,.json,.doc,.docx,.pdf,.ppt,.pptx,text/plain,application/msword,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation";
   const empty = document.createElement("span");
-  empty.className = `empty-state${imageUrl ? " hidden" : ""}`;
+  empty.className = `empty-state${hasInitialContent ? " hidden" : ""}`;
   empty.innerHTML = `<strong>${t("source.uploadPrompt")}</strong><span>${t("source.uploadHint")}</span>`;
   const img = document.createElement("img");
   img.className = `source-preview${imageUrl ? " has-image" : ""}`;
@@ -6722,6 +6895,9 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   if (imageUrl) img.src = imageUrl;
   upload.append(input, empty, img);
   attachImageCardActions(upload, nodeId);
+  if (sourceVideoUrl || sourceVideoHash) {
+    renderVideoPreview(fileName || title || "", sourceVideoUrl || sourceCardLocalVideoUrl(sourceVideoHash), sourceVideoMimeType, upload);
+  }
 
   const urlPanel = document.createElement("div");
   urlPanel.className = "url-input-panel hidden";
@@ -6745,8 +6921,8 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   research.className = "research-button";
   research.type = "button";
   research.textContent = t("research.button");
-  research.disabled = !imageUrl;
-  const researchMenu = createSourceCardResearchMenu(nodeId, research, !imageUrl);
+  research.disabled = !hasInitialContent;
+  const researchMenu = createSourceCardResearchMenu(nodeId, research, !hasInitialContent);
   caption.append(name, researchMenu);
 
   element.append(tabs, upload, urlPanel, caption);
@@ -6767,7 +6943,10 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
     fileName: fileName || "",
     imageHash: imageHash || "",
     imageUrl: imageUrl || "",
-    sourceType: imageUrl || imageHash ? "image" : "empty",
+    sourceType: sourceType || (sourceVideoUrl || sourceVideoHash ? "video" : (imageUrl || imageHash ? "image" : "empty")),
+    sourceVideoHash: sourceVideoHash || "",
+    sourceVideoUrl: sourceVideoUrl || "",
+    sourceVideoMimeType: sourceVideoMimeType || "",
     sourceText: "",
     sourceDataUrl: "",
     sourceDataUrlHash: ""
@@ -6842,20 +7021,24 @@ function syncSourceCardImageActionState(nodeId) {
   const upload = node?.element?.querySelector(".upload-target");
   if (!upload) return;
   const hasImage = Boolean(node?.sourceCard?.imageUrl || node?.sourceCard?.imageHash);
+  const hasVideo = Boolean(node?.sourceCard?.sourceVideoUrl || node?.sourceCard?.sourceVideoHash);
   const hasFile = Boolean(
     hasImage ||
+    hasVideo ||
     node?.sourceCard?.sourceText ||
     node?.sourceCard?.sourceDataUrl ||
     node?.sourceCard?.sourceDataUrlHash ||
     node?.sourceCard?.sourceUrl
   );
   upload.classList.toggle("has-source-image", hasImage);
+  upload.classList.toggle("has-video-preview", hasVideo);
   upload.classList.toggle("has-source-file", hasFile);
 }
 
 async function handleStandaloneSourceFile(nodeId, file) {
   const isDocumentFile = /\.(txt|md|json|doc|docx|pdf|ppt|pptx)$/i.test(file?.name || "");
-  if (!file?.type?.startsWith("image/") && !isDocumentFile) {
+  const isVideo = isSupportedVideoFile(file);
+  if (!file?.type?.startsWith("image/") && !isDocumentFile && !isVideo) {
     showToast(t("file.unsupported"));
     return;
   }
@@ -6884,6 +7067,9 @@ async function handleStandaloneSourceFile(nodeId, file) {
         imageHash: stored.hash,
         imageUrl,
         sourceType: "image",
+        sourceVideoHash: "",
+        sourceVideoUrl: "",
+        sourceVideoMimeType: "",
         sourceText: "",
         sourceDataUrl: "",
         sourceDataUrlHash: ""
@@ -6892,6 +7078,34 @@ async function handleStandaloneSourceFile(nodeId, file) {
         img.src = imageUrl;
         img.classList.add("has-image");
       }
+    } else if (isVideo) {
+      clearDocumentPreview(node.element.querySelector(".upload-target"));
+      const video = await compressVideoFile(file);
+      const stored = await postJson("/api/assets", {
+        dataUrl: video.dataUrl,
+        kind: "upload",
+        fileName: file.name
+      });
+      const videoUrl = `/api/assets/${stored.hash}?kind=upload`;
+      node.sourceCard = {
+        ...node.sourceCard,
+        title: file.name,
+        fileName: file.name,
+        imageHash: "",
+        imageUrl: "",
+        sourceType: "video",
+        sourceVideoHash: stored.hash,
+        sourceVideoUrl: videoUrl,
+        sourceVideoMimeType: video.mimeType || sourceVideoMimeType(file.name, file.type),
+        sourceText: "",
+        sourceDataUrl: "",
+        sourceDataUrlHash: ""
+      };
+      if (img) {
+        img.src = "";
+        img.classList.remove("has-image");
+      }
+      renderVideoPreview(file.name, videoUrl, node.sourceCard.sourceVideoMimeType, node.element.querySelector(".upload-target"));
     } else {
       const ext = file.name.split(".").pop()?.toLowerCase() || "";
       const isPlainText = isPlainTextDocument(file.name);
@@ -6910,6 +7124,9 @@ async function handleStandaloneSourceFile(nodeId, file) {
         imageHash: "",
         imageUrl: "",
         sourceType: "text",
+        sourceVideoHash: "",
+        sourceVideoUrl: "",
+        sourceVideoMimeType: "",
         sourceText: text,
         sourceDataUrl: isPlainText ? "" : dataUrl,
         sourceDataUrlHash: stored?.hash || ""
@@ -6938,10 +7155,19 @@ async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
     await ensureSourceCardDocumentDataUrl(sourceCard);
   }
   if (sourceCard?.sourceType === "image" && !sourceCard?.imageUrl && !sourceCard?.imageHash) return;
+  if (sourceCard?.sourceType === "video" && !sourceCard?.sourceVideoUrl && !sourceCard?.sourceVideoHash) return;
   if (sourceCard?.sourceType === "text" && !sourceCard?.sourceText && !sourceCard?.sourceDataUrl) return;
   if (!sourceCard?.sourceType || sourceCard.sourceType === "empty") return;
   forceSelectNode(nodeId);
   const useExplore = mode === "explore";
+  if (sourceCard.sourceType === "video") {
+    await submitChatMessage(useExplore
+      ? (currentLang === "en" ? "Please deeply explore this video source card and propose useful canvas directions." : "请深入探索这张视频源卡片，并提出适合继续生成画布卡片的方向。")
+      : (currentLang === "en" ? "Please analyze this video source card and summarize the key moments." : "请分析这张视频源卡片，并总结关键片段。"), {
+        forcedThinkingMode: useExplore ? "thinking" : state.thinkingMode
+      });
+    return;
+  }
   setStatus(useExplore ? t("research.exploring") : t("status.busy"), "busy");
   const activeButton = node.element.querySelector(useExplore ? ".source-card-explore-button" : ".source-card-analyze-button");
   setSourceCardResearchActionsDisabled(node.element, true);
@@ -7566,7 +7792,7 @@ function renderChatAttachments(attachments) {
   const list = document.createElement("div");
   list.className = "chat-message-attachments";
   attachments.forEach((attachment) => {
-    const href = attachment.url || attachment.imageUrl || "";
+    const href = attachment.type === "video" ? "" : (attachment.url || attachment.imageUrl || "");
     const item = document.createElement(href ? "a" : (attachment.text ? "button" : "div"));
     item.className = `chat-message-attachment type-${attachment.type || "file"}`;
     if (item.tagName === "BUTTON") item.type = "button";
@@ -7588,6 +7814,14 @@ function renderChatAttachments(attachments) {
       image.alt = attachment.name || "";
       image.loading = "lazy";
       item.appendChild(image);
+    } else if (attachment.type === "video" && (attachment.videoUrl || attachment.url)) {
+      const video = document.createElement("video");
+      video.src = attachment.videoUrl || attachment.url;
+      video.controls = true;
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = "metadata";
+      item.appendChild(video);
     } else {
       const icon = document.createElement("strong");
       icon.className = "chat-message-attachment-icon";
@@ -7605,6 +7839,7 @@ function renderChatAttachments(attachments) {
 }
 
 function documentAttachmentLabel(attachment) {
+  if (attachment?.type === "video" || String(attachment?.mimeType || "").startsWith("video/")) return "VID";
   const name = String(attachment?.name || "");
   const ext = sourceDocumentExtension(name);
   if (ext) return ext.toUpperCase();
@@ -11339,7 +11574,7 @@ function setChatActionMenuOpen(open) {
 function handleAttachClick() {
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = "image/png,image/jpeg,image/webp,image/gif,.txt,.md,.json,.doc,.docx,.pdf,.ppt,.pptx,text/plain,application/msword,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  input.accept = "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v,.txt,.md,.json,.doc,.docx,.pdf,.ppt,.pptx,text/plain,application/msword,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation";
   input.onchange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -11360,6 +11595,35 @@ async function handleAttachment(file) {
         width: image.width,
         height: image.height,
         size: file.size || 0
+      };
+      showChatAttachmentPreview(file, pendingChatAttachment);
+      updateChatPrimaryButtonMode();
+      chatInput?.focus();
+    } catch (err) {
+      alert(t("file.readError") + (err instanceof Error ? err.message : String(err)));
+    }
+  } else if (isSupportedVideoFile(file)) {
+    try {
+      const video = await compressVideoFile(file);
+      let stored = null;
+      try {
+        stored = await postJson("/api/assets", {
+          dataUrl: video.dataUrl,
+          kind: "upload",
+          fileName: file.name
+        });
+      } catch {}
+      pendingChatAttachment = {
+        kind: "video",
+        fileName: file.name,
+        mimeType: video.mimeType || sourceVideoMimeType(file.name, file.type),
+        dataUrl: video.dataUrl,
+        assetUrl: stored?.hash ? `/api/assets/${stored.hash}?kind=upload` : "",
+        hash: stored?.hash || "",
+        width: video.width || 0,
+        height: video.height || 0,
+        duration: video.duration || 0,
+        size: video.size || file.size || 0
       };
       showChatAttachmentPreview(file, pendingChatAttachment);
       updateChatPrimaryButtonMode();
@@ -11399,6 +11663,17 @@ async function handleAttachment(file) {
 
 function buildChatAttachmentPayload(attachment) {
   if (!attachment || attachment.kind === "image") return [];
+  if (attachment.kind === "video") {
+    return [{
+      type: "video",
+      name: attachment.fileName || "",
+      fileName: attachment.fileName || "",
+      mimeType: attachment.mimeType || "",
+      size: attachment.size || 0,
+      duration: attachment.duration || 0,
+      assetUrl: attachment.assetUrl || ""
+    }];
+  }
   return [{
     type: "file",
     name: attachment.fileName || "",
@@ -11424,6 +11699,14 @@ function showChatAttachmentPreview(file, attachment = null) {
     img.alt = file.name;
     img.className = "chat-attachment-thumb";
     chip.appendChild(img);
+  } else if (isSupportedVideoFile(file) || attachment?.kind === "video") {
+    const video = document.createElement("video");
+    video.src = attachment?.dataUrl || attachment?.assetUrl || URL.createObjectURL(file);
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+    video.className = "chat-attachment-thumb";
+    chip.appendChild(video);
   } else {
     const icon = document.createElement("span");
     icon.className = "chat-attachment-icon";
@@ -11448,7 +11731,7 @@ function showChatAttachmentPreview(file, attachment = null) {
   chip.appendChild(remove);
 
   chip.addEventListener("click", () => {
-    if (file.type.startsWith("image/")) {
+    if (file.type.startsWith("image/") || file.type.startsWith("video/") || attachment?.kind === "video") {
       openAttachmentPreviewModal(file);
     } else if (attachment?.text || attachment?.dataUrl) {
       openAttachmentPreviewModal(file, attachment);
@@ -11463,11 +11746,14 @@ function openAttachmentPreviewModal(file, attachment = pendingChatAttachment) {
   const ext = sourceDocumentExtension(attachment?.fileName || file?.name || "");
   const isPdfPreview = !isTextPreview && ext === "pdf" && attachment?.dataUrl;
   const isDocumentCoverPreview = !isTextPreview && !isPdfPreview && attachment?.kind === "document";
+  const isVideoPreview = !isTextPreview && (attachment?.kind === "video" || file?.type?.startsWith("video/"));
   let objectUrl = "";
   let url = "";
   if (!isTextPreview) {
     if (attachment?.fileName === file.name && attachment?.kind === "image") {
       url = attachment.dataUrl;
+    } else if (attachment?.kind === "video") {
+      url = attachment.dataUrl || attachment.assetUrl || "";
     } else if (attachment?.dataUrl) {
       url = attachment.dataUrl;
     } else if (file instanceof Blob) {
@@ -11498,6 +11784,12 @@ function openAttachmentPreviewModal(file, attachment = pendingChatAttachment) {
         <strong>${escapeHtml((ext || "file").toUpperCase())}</strong>
         <span>${escapeHtml(file.name || attachment?.fileName || "document")}</span>
       </div>
+    </div>
+  ` : isVideoPreview ? `
+    <div class="attachment-preview-backdrop"></div>
+    <div class="attachment-preview-content">
+      <button class="attachment-preview-close" type="button" aria-label="关闭">×</button>
+      <video src="${url}" class="attachment-preview-video" controls autoplay muted playsinline></video>
     </div>
   ` : `
     <div class="attachment-preview-backdrop"></div>
@@ -11562,6 +11854,139 @@ function loadImage(src) {
     img.onerror = () => reject(new Error(t("image.error")));
     img.src = src;
   });
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(t("file.readError")));
+    reader.onloadend = () => resolve(reader.result);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function fileToDataUrl(file) {
+  return blobToDataUrl(file);
+}
+
+function selectVideoRecorderMimeType() {
+  const candidates = [
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm"
+  ];
+  return candidates.find((mimeType) => window.MediaRecorder?.isTypeSupported?.(mimeType)) || "";
+}
+
+function evenVideoDimension(value) {
+  return Math.max(2, Math.floor(value / 2) * 2);
+}
+
+function loadVideoMetadata(src) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    video.onloadedmetadata = () => resolve(video);
+    video.onerror = () => reject(new Error(t("file.readError")));
+    video.src = src;
+  });
+}
+
+async function readVideoFile(file) {
+  return {
+    dataUrl: await fileToDataUrl(file),
+    mimeType: sourceVideoMimeType(file.name, file.type),
+    size: file.size || 0,
+    width: 0,
+    height: 0,
+    duration: 0,
+    compressed: false
+  };
+}
+
+async function compressVideoFile(file) {
+  if (!isSupportedVideoFile(file)) throw new Error(t("file.unsupported"));
+  if ((file.size || 0) > VIDEO_UPLOAD_MAX_BYTES) {
+    throw new Error(currentLang === "en" ? "Please choose a video under 100MB." : "请选择 100MB 以内的视频。");
+  }
+  const fallback = () => readVideoFile(file);
+  if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) return fallback();
+
+  const objectUrl = URL.createObjectURL(file);
+  let video;
+  let tracks = [];
+  try {
+    video = await loadVideoMetadata(objectUrl);
+    const sourceWidth = video.videoWidth || 1280;
+    const sourceHeight = video.videoHeight || 720;
+    const ratio = Math.min(1, VIDEO_TARGET_LONG_EDGE / Math.max(sourceWidth, sourceHeight));
+    const width = evenVideoDimension(sourceWidth * ratio);
+    const height = evenVideoDimension(sourceHeight * ratio);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return fallback();
+
+    const mimeType = selectVideoRecorderMimeType();
+    if (!mimeType) return fallback();
+    const stream = canvas.captureStream(VIDEO_CAPTURE_FPS);
+    tracks = stream.getTracks();
+    const chunks = [];
+    const recorder = new MediaRecorder(stream, {
+      mimeType,
+      videoBitsPerSecond: VIDEO_TARGET_BITRATE
+    });
+    let drawing = true;
+    const recordDone = new Promise((resolve, reject) => {
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) chunks.push(event.data);
+      };
+      recorder.onerror = () => reject(new Error(t("file.readError")));
+      recorder.onstop = () => {
+        drawing = false;
+        resolve();
+      };
+      video.onended = () => {
+        if (recorder.state !== "inactive") recorder.stop();
+      };
+    });
+    const drawFrame = () => {
+      if (!drawing) return;
+      try {
+        ctx.drawImage(video, 0, 0, width, height);
+      } catch {}
+      if (!video.ended) requestAnimationFrame(drawFrame);
+    };
+    recorder.start(1000);
+    await video.play();
+    drawFrame();
+    await recordDone;
+    const cleanMime = mimeType.split(";")[0] || "video/webm";
+    const blob = new Blob(chunks, { type: cleanMime });
+    if (!blob.size) return fallback();
+    return {
+      dataUrl: await blobToDataUrl(blob),
+      mimeType: cleanMime,
+      size: blob.size,
+      width,
+      height,
+      duration: Number.isFinite(video.duration) ? video.duration : 0,
+      compressed: true
+    };
+  } catch {
+    return fallback();
+  } finally {
+    if (video) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+    }
+    tracks.forEach((track) => track.stop());
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 async function getJson(url) {
@@ -11985,6 +12410,9 @@ function computeStateHash() {
     sourceUrl: state.sourceUrl || null,
     fileName: state.fileName || "",
     sourceImage: state.sourceImage ? state.sourceImage.slice(0, 200) : null,
+    sourceVideo: state.sourceVideo ? state.sourceVideo.slice(0, 200) : null,
+    sourceVideoHash: state.sourceVideoHash || null,
+    sourceVideoMimeType: state.sourceVideoMimeType || "",
     latestAnalysis: state.latestAnalysis,
     blueprints: Object.fromEntries(state.blueprints),
     groups: Object.fromEntries(state.groups)
@@ -11999,6 +12427,9 @@ async function prepareStateForSave() {
     sourceText: state.sourceText,
     sourceDataUrl: state.sourceDataUrl,
     sourceDataUrlHash: state.sourceDataUrlHash || null,
+    sourceVideo: state.sourceVideo,
+    sourceVideoHash: state.sourceVideoHash || null,
+    sourceVideoMimeType: state.sourceVideoMimeType || "",
     sourceUrl: state.sourceUrl,
     fileName: state.fileName,
     latestAnalysis: state.latestAnalysis,
@@ -12055,6 +12486,23 @@ async function getSourceImageDataUrl() {
   return state.sourceImage;
 }
 
+async function getSourceVideoDataUrl() {
+  const selected = state.selectedNodeId ? state.nodes.get(state.selectedNodeId) : null;
+  if (selected?.sourceCard?.sourceType === "video") {
+    const videoUrl = sourceCardDisplayVideoUrl(selected.sourceCard);
+    if (videoUrl) return assetUrlToDataUrl(videoUrl);
+  }
+  if (state.sourceType !== "video") return "";
+  if (state.sourceVideo && state.sourceVideo.startsWith("data:")) return state.sourceVideo;
+  if (state.sourceVideoHash) {
+    return assetUrlToDataUrl(`/api/assets/${state.sourceVideoHash}?kind=upload`);
+  }
+  if (state.sourceVideo && !state.sourceVideo.startsWith("data:")) {
+    return assetUrlToDataUrl(state.sourceVideo);
+  }
+  return "";
+}
+
 async function getImageDataUrlForNode(nodeId) {
   if (nodeId === "source") return getSourceImageDataUrl();
   const info = getImageNodeInfo(nodeId);
@@ -12103,6 +12551,7 @@ async function ensureSourceCardDocumentDataUrl(sourceCard) {
 
 function getSourceBadgeClass() {
   if (state.sourceType === "url") return "link";
+  if (state.sourceType === "video") return "video";
   if (state.sourceType === "text") {
     const ext = (state.fileName || "").split(".").pop()?.toLowerCase();
     if (["doc", "docx", "pdf", "ppt", "pptx"].includes(ext)) return "document";
@@ -12115,6 +12564,7 @@ function getSourceBadgeLabel() {
   if (state.sourceType === "url") {
     return state.fileName || "LINK";
   }
+  if (state.sourceType === "video") return "VID";
   if (state.sourceType === "text") {
     const ext = (state.fileName || "").split(".").pop()?.toLowerCase();
     const map = { txt: "TXT", md: "MD", json: "JSON", doc: "DOC", docx: "DOCX", pdf: "PDF", ppt: "PPT", pptx: "PPTX" };
@@ -12173,6 +12623,16 @@ async function saveSession({ isAuto = false } = {}) {
       } catch (err) {
         console.warn("Failed to sync document to material library:", err);
       }
+    }
+
+    if (state.sourceVideo && state.sourceVideo.startsWith("data:") && !state.sourceVideoHash) {
+      const videoAsset = await postJson("/api/assets", {
+        dataUrl: state.sourceVideo,
+        kind: "upload",
+        fileName: state.fileName
+      });
+      state.sourceVideoHash = videoAsset.hash;
+      state.sourceVideo = `/api/assets/${videoAsset.hash}?kind=upload`;
     }
 
     const payloadState = await prepareStateForSave();
@@ -12247,6 +12707,9 @@ async function loadSession(sessionId) {
     state.sourceText = null;
     state.sourceDataUrl = null;
     state.sourceDataUrlHash = null;
+    state.sourceVideo = null;
+    state.sourceVideoHash = null;
+    state.sourceVideoMimeType = "";
     state.sourceUrl = null;
     state.fileName = "";
     state.latestAnalysis = null;
@@ -12267,7 +12730,7 @@ async function loadSession(sessionId) {
     const assets = Array.isArray(data.assets) ? data.assets : [];
     const sourceNodeRecord = Array.isArray(data.nodes) ? data.nodes.find((node) => node.nodeId === "source" || node.type === "source") : null;
     const sourceNodeData = sourceNodeRecord?.data || {};
-    const desiredSourceHash = sessionState?.sourceImageHash || sessionState?.sourceDataUrlHash || sourceNodeData.imageHash || null;
+    const desiredSourceHash = sessionState?.sourceImageHash || sessionState?.sourceDataUrlHash || sessionState?.sourceVideoHash || sourceNodeData.imageHash || sourceNodeData.sourceVideoHash || null;
     const sourceAsset = (
       desiredSourceHash
         ? assets.find((asset) => asset.kind === "upload" && asset.hash === desiredSourceHash)
@@ -12275,8 +12738,9 @@ async function loadSession(sessionId) {
     ) || assets.find((asset) => asset.kind === "upload" && asset.fileName && asset.fileName === (sessionState?.fileName || sourceNodeData.fileName))
       || assets.find(a => a.kind === "upload");
     if (sourceAsset) {
+      const isVideo = sessionState?.sourceType === "video" || sourceAsset.mimeType?.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/i.test(sourceAsset.fileName || "");
       const isText = sessionState?.sourceType === "text" || sourceAsset.mimeType?.startsWith("text/") || /\.(txt|md|json|doc|docx|pdf|ppt|pptx)$/i.test(sourceAsset.fileName || "");
-      state.sourceType = isText ? "text" : "image";
+      state.sourceType = isVideo ? "video" : (isText ? "text" : "image");
       state.fileName = sourceAsset.fileName || "";
 
       if (state.sourceType === "image") {
@@ -12286,11 +12750,29 @@ async function loadSession(sessionId) {
         state.sourceText = null;
         state.sourceDataUrl = null;
         state.sourceDataUrlHash = null;
+        state.sourceVideo = null;
+        state.sourceVideoHash = null;
+        state.sourceVideoMimeType = "";
         sourcePreview.src = state.sourceImage;
         sourcePreview.classList.add("has-image");
+      } else if (state.sourceType === "video") {
+        state.sourceImage = null;
+        state.sourceImageHash = null;
+        state.sourceText = null;
+        state.sourceDataUrl = null;
+        state.sourceDataUrlHash = null;
+        state.sourceVideo = `/api/assets/${sourceAsset.hash}?kind=upload`;
+        state.sourceVideoHash = sourceAsset.hash;
+        state.sourceVideoMimeType = sourceAsset.mimeType || sourceVideoMimeType(sourceAsset.fileName || "");
+        sourcePreview.src = "";
+        sourcePreview.classList.remove("has-image");
+        renderVideoPreview(state.fileName, state.sourceVideo, state.sourceVideoMimeType, document.querySelector("#sourceNode .upload-target"));
       } else {
         state.sourceImage = null;
         state.sourceImageHash = null;
+        state.sourceVideo = null;
+        state.sourceVideoHash = null;
+        state.sourceVideoMimeType = "";
         state.sourceText = sessionState?.sourceText || null;
         state.sourceDataUrl = sessionState?.sourceDataUrl || null;
         state.sourceDataUrlHash = sourceAsset?.hash || null;
@@ -12323,6 +12805,9 @@ async function loadSession(sessionId) {
       state.sourceText = null;
       state.sourceDataUrl = null;
       state.sourceDataUrlHash = null;
+      state.sourceVideo = null;
+      state.sourceVideoHash = null;
+      state.sourceVideoMimeType = "";
       state.sourceUrl = null;
       clearDocumentPreview(document.querySelector("#sourceNode .upload-target"));
       sourcePreview.src = "";
@@ -12364,6 +12849,16 @@ async function loadSession(sessionId) {
     if (sessionState?.sourceDataUrlHash) {
       state.sourceDataUrlHash = sessionState.sourceDataUrlHash;
     }
+    if (sessionState?.sourceVideo) {
+      state.sourceVideo = sessionState.sourceVideo;
+    }
+    if (sessionState?.sourceVideoHash) {
+      state.sourceVideoHash = sessionState.sourceVideoHash;
+      if (!state.sourceVideo) state.sourceVideo = `/api/assets/${state.sourceVideoHash}?kind=upload`;
+    }
+    if (sessionState?.sourceVideoMimeType) {
+      state.sourceVideoMimeType = sessionState.sourceVideoMimeType;
+    }
     if (sessionState?.sourceUrl) {
       state.sourceUrl = sessionState.sourceUrl;
     }
@@ -12374,6 +12869,15 @@ async function loadSession(sessionId) {
       sourceName.textContent = trimMiddle(state.fileName, 28);
       if (researchButton) researchButton.disabled = false;
       renderSourceDocumentPreviewFromState();
+      updateSourceBadge();
+    }
+    if (state.sourceType === "video" && state.fileName && (state.sourceVideo || state.sourceVideoHash)) {
+      sourcePreview.src = "";
+      sourcePreview.classList.remove("has-image");
+      emptyState.classList.add("hidden");
+      sourceName.textContent = trimMiddle(state.fileName, 28);
+      if (researchButton) researchButton.disabled = false;
+      renderSourceVideoPreviewFromState();
       updateSourceBadge();
     }
     if (sessionState?.fileUnderstanding) {
@@ -12388,8 +12892,10 @@ async function loadSession(sessionId) {
     for (const n of sourceCardNodes) {
       const sourceCard = n.data?.sourceCard || {};
       const imageHash = sourceCard.imageHash || n.data?.imageHash || "";
+      const videoHash = sourceCard.sourceVideoHash || sourceCard.videoHash || n.data?.sourceVideoHash || "";
       const remoteImageUrl = sourceCard.remoteImageUrl || (sourceCard.imageUrl && !String(sourceCard.imageUrl).startsWith("/api/assets/") ? sourceCard.imageUrl : "");
       const imageUrl = sourceCardDisplayImageUrl({ ...sourceCard, imageHash });
+      const videoUrl = sourceCardDisplayVideoUrl({ ...sourceCard, sourceVideoHash: videoHash });
       createStandaloneSourceCard({
         id: n.nodeId,
         title: sourceCard.title || sourceCard.fileName || (currentLang === "en" ? "Source card" : "源卡片"),
@@ -12397,13 +12903,17 @@ async function loadSession(sessionId) {
         y: n.y,
         imageUrl,
         imageHash,
+        sourceType: sourceCard.sourceType || (videoUrl ? "video" : undefined),
+        sourceVideoUrl: videoUrl,
+        sourceVideoHash: videoHash,
+        sourceVideoMimeType: sourceCard.sourceVideoMimeType || sourceCard.mimeType || "",
         fileName: sourceCard.fileName || "",
         avoidOverlap: false
       });
       const restored = state.nodes.get(n.nodeId);
       if (restored?.sourceCard) {
-        restored.sourceCard = { ...restored.sourceCard, ...sourceCard, imageHash, imageUrl, remoteImageUrl };
-        const hasContent = Boolean(restored.sourceCard.imageUrl || restored.sourceCard.imageHash || restored.sourceCard.sourceText || restored.sourceCard.sourceDataUrl || restored.sourceCard.sourceDataUrlHash || restored.sourceCard.sourceUrl);
+        restored.sourceCard = { ...restored.sourceCard, ...sourceCard, imageHash, imageUrl, remoteImageUrl, sourceVideoHash: videoHash, sourceVideoUrl: videoUrl };
+        const hasContent = Boolean(restored.sourceCard.imageUrl || restored.sourceCard.imageHash || restored.sourceCard.sourceVideoUrl || restored.sourceCard.sourceVideoHash || restored.sourceCard.sourceText || restored.sourceCard.sourceDataUrl || restored.sourceCard.sourceDataUrlHash || restored.sourceCard.sourceUrl);
         restored.element.querySelector(".empty-state")?.classList.toggle("hidden", hasContent);
         const research = restored.element.querySelector(".research-button");
         if (research) research.disabled = !hasContent;
@@ -12420,6 +12930,14 @@ async function loadSession(sessionId) {
             sourceDocumentPreviewRef(restored.sourceCard.fileName || "", restored.sourceCard.sourceDataUrl, restored.sourceCard.sourceDataUrlHash),
             restored.sourceCard.sourceText || "",
             DOCUMENT_MIME_TYPES[sourceDocumentExtension(restored.sourceCard.fileName || "")] || "",
+            restored.element.querySelector(".upload-target")
+          );
+        }
+        if (restored.sourceCard.sourceType === "video" || restored.sourceCard.sourceVideoUrl || restored.sourceCard.sourceVideoHash) {
+          renderVideoPreview(
+            restored.sourceCard.fileName || restored.sourceCard.title || "",
+            sourceCardDisplayVideoUrl(restored.sourceCard),
+            restored.sourceCard.sourceVideoMimeType || restored.sourceCard.mimeType || "",
             restored.element.querySelector(".upload-target")
           );
         }
