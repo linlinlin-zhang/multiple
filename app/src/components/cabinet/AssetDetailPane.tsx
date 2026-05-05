@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { File, ExternalLink, Sparkles, Image as ImageIcon } from "lucide-react";
+import { File, ExternalLink, Sparkles, Image as ImageIcon, Video } from "lucide-react";
 import { buildAssetUrl } from "../../hooks/useHistory";
 import { useI18n } from "@/lib/i18n";
 import MarkdownContent from "./MarkdownContent";
@@ -98,6 +98,41 @@ function ImageAssetDetail({ asset, nodes }: { asset: Asset; nodes?: Node[] }) {
       {explanation && (
         <div className="mt-4 p-4 bg-cabinet-bg rounded-3xl border border-cabinet-border">
           <p className="text-xs font-medium text-cabinet-inkMuted mb-1">{t("detail.explanation")}</p>
+          <MarkdownContent content={explanation} className="text-sm" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VideoAssetDetail({ asset, nodes }: { asset: Asset; nodes?: Node[] }) {
+  const { t } = useI18n();
+  const url = buildAssetUrl(asset.hash, asset.kind);
+  const title = asset.fileName || t("asset.generatedVideo");
+  const matchingNode = nodes?.find((n) => n.data?.videoHash === asset.hash);
+  const explanation = matchingNode?.data?.explanation as string | undefined;
+  return (
+    <div className="flex flex-col px-8 pb-12">
+      <video
+        src={url}
+        controls
+        playsInline
+        preload="metadata"
+        className="max-w-full rounded-[19px] border border-cabinet-border shadow-[0_8px_16px_rgba(0,0,0,0.08)] bg-black"
+      />
+      <h2 className="text-[18px] font-medium text-cabinet-ink leading-tight mt-5 break-words">{title}</h2>
+      <MetadataGrid
+        rows={[
+          { label: t("detail.fileName"), value: asset.fileName || "—" },
+          { label: t("detail.mimeType"), value: asset.mimeType },
+          { label: t("detail.size"), value: formatBytes(asset.fileSize) },
+          { label: t("detail.hash"), value: `${asset.hash.slice(0, 16)}...` },
+          { label: t("detail.created"), value: new Date(asset.createdAt).toLocaleString() },
+        ]}
+      />
+      {explanation && (
+        <div className="mt-4 p-4 bg-cabinet-bg rounded-3xl border border-cabinet-border">
+          <p className="text-xs font-medium text-cabinet-inkMuted mb-1">{t("detail.prompt")}</p>
           <MarkdownContent content={explanation} className="text-sm" />
         </div>
       )}
@@ -420,6 +455,9 @@ function SourceCardDetail({ node }: { node: Node }) {
   const sourceUrl = firstText(card.sourceUrl, node.data?.sourceUrl);
   const title = readableTitle(card.title, card.fileName, node.data?.fileName, sourceUrl, t("asset.uploadedFile"));
   const summary = firstText(card.summary, node.data?.summary);
+  const sourceVideoHash = firstText(card.sourceVideoHash, card.videoHash, node.data?.sourceVideoHash);
+  const sourceVideoUrl = firstText(card.sourceVideoUrl, card.videoUrl, node.data?.sourceVideoUrl);
+  const videoUrl = sourceVideoHash ? `/api/assets/${sourceVideoHash}?kind=upload` : sourceVideoUrl;
   const remoteImageUrl = typeof card.imageUrl === "string" ? card.imageUrl : (typeof node.data?.imageUrl === "string" ? node.data.imageUrl : "");
   const imageHash = typeof card.imageHash === "string" ? card.imageHash : (typeof node.data?.imageHash === "string" ? node.data.imageHash : "");
   const localImageUrl = imageHash && /^[a-f0-9]{64}$/i.test(imageHash) ? `/api/assets/${imageHash}?kind=upload` : "";
@@ -429,7 +467,15 @@ function SourceCardDetail({ node }: { node: Node }) {
 
   return (
     <div className="flex flex-col px-8 pb-12">
-      {imageUrl ? (
+      {videoUrl ? (
+        <video
+          src={videoUrl}
+          controls
+          playsInline
+          preload="metadata"
+          className="max-w-full rounded-[19px] border border-cabinet-border shadow-[0_8px_16px_rgba(0,0,0,0.08)] bg-black mt-2"
+        />
+      ) : imageUrl ? (
         <img
           src={imageUrl}
           alt={title}
@@ -438,7 +484,7 @@ function SourceCardDetail({ node }: { node: Node }) {
         />
       ) : (
         <div className="flex flex-col items-center justify-center py-10">
-          <File size={64} className="text-cabinet-inkMuted" />
+          {card.sourceType === "video" ? <Video size={64} className="text-cabinet-inkMuted" /> : <File size={64} className="text-cabinet-inkMuted" />}
         </div>
       )}
       <h2 className="text-[18px] font-medium text-cabinet-ink leading-tight mt-5 break-words">{title}</h2>
@@ -529,6 +575,13 @@ export default function AssetDetailPane({ session, selectedAssetId, emptyMessage
   // Look up in assets
   const asset = session.assets.find((a: Asset) => a.id === selectedAssetId);
   if (asset) {
+    if (asset.mimeType.startsWith("video/")) {
+      return (
+        <div className="bg-cabinet-paper">
+          <VideoAssetDetail asset={asset} nodes={session.nodes} />
+        </div>
+      );
+    }
     if (asset.kind === "generated") {
       return (
         <div className="bg-cabinet-paper">

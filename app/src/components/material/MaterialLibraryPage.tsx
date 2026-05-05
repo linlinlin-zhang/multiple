@@ -376,6 +376,7 @@ function MaterialPreviewModal({ items, previewItem, previewItemId, onSelect, onC
       <div className="flex-shrink-0 w-[88px] h-full overflow-y-auto bg-black/40 border-r border-white/10 py-2 space-y-2 px-1.5">
         {items.map((item) => {
           const isImage = item.mimeType.startsWith("image/");
+          const isVideo = item.mimeType.startsWith("video/");
           const selected = item.id === previewItemId;
           return (
             <button
@@ -394,6 +395,14 @@ function MaterialPreviewModal({ items, previewItem, previewItemId, onSelect, onC
                   alt={item.fileName}
                   className="w-full h-full object-cover"
                   loading="lazy"
+                />
+              ) : isVideo ? (
+                <video
+                  src={`/api/materials/${item.id}/file`}
+                  className="w-full h-full object-cover"
+                  muted
+                  playsInline
+                  preload="metadata"
                 />
               ) : (
                 <div className="w-full h-full bg-cabinet-paper flex items-center justify-center">
@@ -457,6 +466,20 @@ function PreviewContent({
           src={`/api/materials/${item.id}/file`}
           alt={item.fileName}
           className="max-w-full max-h-full object-contain"
+        />
+      </div>
+    );
+  }
+
+  if (item.mimeType.startsWith("video/")) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <video
+          src={`/api/materials/${item.id}/file`}
+          controls
+          playsInline
+          preload="metadata"
+          className="max-w-full max-h-full rounded bg-black"
         />
       </div>
     );

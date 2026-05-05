@@ -1498,6 +1498,15 @@ body.nav-collapsed .nav-settings {
   background: var(--ice);
 }
 
+.generated-node .generated-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 19px;
+  background: var(--ice);
+}
+
 .generated-image-wrap {
   position: relative;
   border-radius: 19px;

@@ -4,11 +4,12 @@ import { useHistory } from "../../hooks/useHistory";
 import HistoryPage from "./HistoryPage";
 import AppNavigation from "@/components/AppNavigation";
 import { useI18n } from "@/lib/i18n";
-import { Clock, FileText, Globe2, Image, Menu, MessageSquare, Search, Trash2, X } from "lucide-react";
+import { Clock, FileText, Globe2, Image, Menu, MessageSquare, Search, Trash2, Video, X } from "lucide-react";
 import type { HistorySession, OutputKind } from "@/types";
 
 const OUTPUT_TABS: { kind: OutputKind; labelKey: string; icon: ReactNode }[] = [
   { kind: "image", labelKey: "history.tabImages", icon: <Image size={16} /> },
+  { kind: "video", labelKey: "history.tabVideos", icon: <Video size={16} /> },
   { kind: "web", labelKey: "history.tabWeb", icon: <Globe2 size={16} /> },
   { kind: "document", labelKey: "history.tabDocuments", icon: <FileText size={16} /> },
   { kind: "chat", labelKey: "history.tabChat", icon: <MessageSquare size={16} /> },

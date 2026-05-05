@@ -349,6 +349,7 @@ const CANVAS_TOOL_DEFINITIONS = [
   { type: "web_search", risk: "network" },
   { type: "create_agent", risk: "agent" },
   { type: "generate_image", risk: "api_cost" },
+  { type: "generate_video", risk: "api_cost" },
   { type: "image_search", risk: "network" },
   { type: "reverse_image_search", risk: "network" },
   { type: "text_image_search", risk: "network" },
@@ -568,6 +569,7 @@ const i18n = {
     "chat.selectedCardPrompt": "提示词：{prompt}",
     "generated.download": "下载",
     "generated.result": "生成结果",
+    "generated.videoResult": "生成视频",
     "viewer.title": "图片详情",
     "viewer.close": "关闭",
     "viewer.modify": "修改",
@@ -666,6 +668,7 @@ const i18n = {
     "fileUnderstanding.pages": "{count} 页",
     "fileUnderstanding.scannedWarning": "这似乎是扫描版文档。建议使用 OCR 获取完整文本。",
     "generated.regenerate": "重生成",
+    "option.generateVideo": "生成视频",
     "viewer.regenerate": "重生成",
     "viewer.aspect": "宽高比",
     "viewer.aspectMenuTitle": "用不同宽高比生成此图片",
@@ -702,6 +705,7 @@ const i18n = {
     "chat.actionFeedback.select_source": "已选择来源卡片",
     "chat.actionFeedback.delete_node": "已删除卡片",
     "chat.actionFeedback.generate_image": "已生成图片",
+    "chat.actionFeedback.generate_video": "已生成视频",
     "chat.actionFeedback.web_search": "已创建网页搜索卡片",
     "chat.actionFeedback.image_search": "已搜索图片",
     "chat.actionFeedback.reverse_image_search": "已搜索相似图片",
@@ -948,6 +952,7 @@ const i18n = {
     "chat.actionFeedback.select_analysis": "Selected analysis card",
     "chat.actionFeedback.delete_node": "Deleted card",
     "chat.actionFeedback.generate_image": "Generated image",
+    "chat.actionFeedback.generate_video": "Generated video",
     "chat.actionFeedback.web_search": "Created web search card",
     "chat.actionFeedback.image_search": "Searched images",
     "chat.actionFeedback.reverse_image_search": "Searched similar images",
@@ -1006,6 +1011,7 @@ const i18n = {
     "status.error": "Save failed",
     "counts.label": "Options {options} / Generated {generated}",
     "option.generate": "Generate this image",
+    "option.generateVideo": "Generate video",
     "option.viewContent": "View content",
     "analysis.title": "Image Understanding",
     "analysis.eyebrow": "MODEL READ",
@@ -1057,6 +1063,7 @@ const i18n = {
     "generated.download": "Download",
     "generated.regenerate": "Regenerate",
     "generated.result": "Generated Result",
+    "generated.videoResult": "Generated Video",
     "viewer.title": "Image Details",
     "viewer.close": "Close",
     "viewer.regenerate": "Regenerate",
@@ -2735,6 +2742,7 @@ const ACTION_FEEDBACK_ICONS = {
   select_analysis: "📌",
   delete_node: "🗑",
   generate_image: "🖼",
+  generate_video: "🎬",
   web_search: "🌐",
   image_search: "🖼",
   reverse_image_search: "🖼",
@@ -2783,7 +2791,9 @@ function formatActionFailureNote(actionResults = []) {
   const lines = failures.map((item) => {
     const label = item.type === "generate_image"
       ? (currentLang === "en" ? "Image generation" : "成图")
-      : (item.title || item.type);
+      : item.type === "generate_video"
+        ? (currentLang === "en" ? "Video generation" : "视频生成")
+        : (item.title || item.type);
     return item.error ? `- ${label}: ${item.error}` : `- ${label}`;
   });
   return currentLang === "en"
@@ -5109,7 +5119,7 @@ async function applyVoiceActions(value, context = {}) {
       creationIndex += 1;
     }
     if (String(type) === "create_agent" && state.subagentsEnabled) normalized.userConfirmed = true;
-    if ((String(type) === "image_search" || String(type) === "reverse_image_search" || String(type) === "text_image_search" || String(type) === "generate_image") && context.imageDataUrl && !normalized.imageDataUrl) {
+    if ((String(type) === "image_search" || String(type) === "reverse_image_search" || String(type) === "text_image_search" || String(type) === "generate_image" || String(type) === "generate_video") && context.imageDataUrl && !normalized.imageDataUrl) {
       normalized.imageDataUrl = context.imageDataUrl;
     }
     if (String(type) === "create_agent") {
@@ -5156,6 +5166,7 @@ async function executeCanvasAction(action) {
   }
   if (type === "create_agent") return runSubagentAction(action);
   if (type === "generate_image") return generateImageFromAction(action);
+  if (type === "generate_video") return generateVideoFromAction(action);
   if (type === "image_search" || type === "reverse_image_search" || type === "text_image_search") return searchImagesFromAction(action);
   if (type === "analyze_source") return analyzeSource(action.mode || "analyze");
   if (type === "explore_source" || type === "research_source") return exploreSource();
@@ -5700,6 +5711,44 @@ async function generateImageFromAction(action) {
   return result;
 }
 
+async function generateVideoFromAction(action) {
+  const explicitTargetId = resolveDirectNodeId(action?.nodeId) || resolveNodeIdByText(action?.nodeName) || resolveNodeIdByText(action?.target);
+  const parentNodeId = resolveParentNodeId(action, null);
+  const hasPromptText = Boolean(action?.prompt || action?.title || action?.query);
+  const selectedReferenceNodeId = state.selectedNodeId;
+  const referenceImageUrl = action?.referenceImageUrl || action?.imageUrl || publicImageUrlForNode(selectedReferenceNodeId) || publicImageUrlForNode(parentNodeId);
+  let referenceImageDataUrl = typeof action?.imageDataUrl === "string" ? action.imageDataUrl : "";
+  if (!referenceImageDataUrl && selectedReferenceNodeId) {
+    try {
+      referenceImageDataUrl = await getImageDataUrlForNode(selectedReferenceNodeId);
+    } catch {
+      referenceImageDataUrl = "";
+    }
+  }
+  let nodeId = explicitTargetId || resolveActionNodeId(action, state.selectedNodeId);
+  if (!explicitTargetId && parentNodeId && parentNodeId !== state.selectedNodeId && hasPromptText) {
+    nodeId = createDirectionFromAction({ ...action, parentNodeId, mode: action.mode || "video", layoutHint: action.layoutHint || "video" });
+  }
+  const target = nodeId ? state.nodes.get(nodeId) : null;
+  if ((!target || target.id === "source" || target.id === "analysis") && (action.prompt || action.title || action.query)) {
+    nodeId = createDirectionFromAction({ ...action, parentNodeId: target?.id || state.selectedNodeId || "analysis", mode: action.mode || "video", layoutHint: action.layoutHint || "video" });
+  }
+
+  const node = nodeId ? state.nodes.get(nodeId) : null;
+  if (!node?.option) {
+    const error = currentLang === "en" ? "Select a direction card before generating video." : "请先选择一个方向卡片再生成视频。";
+    showSelectionToast(error);
+    return { success: false, error };
+  }
+  if (node.generated && node.videoUrl) {
+    focusNodeById(nodeId, "center");
+    return { success: true, nodeId, title: node.option?.title || "" };
+  }
+  revealNode(nodeId);
+  forceSelectNode(nodeId);
+  return generateVideoForOption(nodeId, node.option, { ...action, referenceImageUrl, imageDataUrl: referenceImageDataUrl });
+}
+
 async function researchNodeFromAction(action) {
   const nodeId = resolveActionNodeId(action, state.selectedNodeId);
   const node = nodeId ? state.nodes.get(nodeId) : null;
@@ -6219,7 +6268,8 @@ function prepareOptionForCanvas(option, fallbackTaskType = "general") {
 function configureOptionPrimaryButton(button, option) {
   if (!button) return;
   const nodeType = String(option?.nodeType || "image").toLowerCase();
-  button.textContent = nodeType && nodeType !== "image" ? t("option.viewContent") : t("option.generate");
+  const isVideo = String(option?.layoutHint || option?.tone || "").toLowerCase().includes("video");
+  button.textContent = nodeType && nodeType !== "image" ? t("option.viewContent") : (isVideo ? t("option.generateVideo") : t("option.generate"));
 }
 
 function setupOptionCardElement(element, option, taskType = "general") {
@@ -6813,6 +6863,20 @@ function sourceCardDisplayVideoUrl(sourceCard = {}) {
 
 function sourceCardReferenceImageUrl(sourceCard = {}) {
   return sourceCardLocalImageUrl(sourceCard.imageHash) || sourceCard.imageUrl || sourceCard.remoteImageUrl || "";
+}
+
+function publicImageUrlForNode(nodeId) {
+  if (!nodeId) return "";
+  const node = state.nodes.get(nodeId);
+  let value = "";
+  if (node?.sourceCard) {
+    value = node.sourceCard.remoteImageUrl || node.sourceCard.imageUrl || "";
+  } else if (node?.generated && node.remoteImageUrl) {
+    value = node.remoteImageUrl;
+  } else if (nodeId === "source") {
+    value = state.sourceImage || "";
+  }
+  return /^https?:\/\//i.test(value) ? value : "";
 }
 
 function bindSourcePreviewFallback(img, empty, upload, imageHash = "") {
@@ -8300,6 +8364,150 @@ async function generateOptionWithReference(id, option, referenceImageDataUrl, ed
     setStatus(error.message || t("status.error"), "error");
     return { success: false, nodeId: id, title: option.title || "", error: error.message || t("status.error") };
   }
+}
+
+async function generateVideoForOption(id, option, action = {}) {
+  const node = state.nodes.get(id);
+  if (!node) return;
+  const element = node.element;
+  const wasGenerated = Boolean(node.generated);
+  const button = element.querySelector(".generate-button");
+  element.classList.add("loading");
+  if (button) button.disabled = true;
+  setStatus(currentLang === "en" ? "Generating video..." : "正在生成视频...", "busy");
+
+  try {
+    const blueprint = buildBlueprintContext(resolveBlueprintJunctionId(id));
+    const data = await postJson("/api/generate-video", {
+      imageDataUrl: action.imageDataUrl || "",
+      imageUrl: action.referenceImageUrl || "",
+      option: {
+        ...option,
+        prompt: action.prompt || option.prompt || action.description || option.description || option.title,
+        title: action.title || option.title,
+        description: action.description || option.description,
+        layoutHint: option.layoutHint || "video",
+        tone: option.tone || "video"
+      },
+      blueprint,
+      chatContext: blueprint ? getChatHistoryPayload() : [],
+      language: currentLang,
+      duration: action.duration,
+      resolution: action.resolution,
+      ratio: action.ratio,
+      seed: action.seed
+    }, {
+      timeoutMs: 12 * 60 * 1000,
+      timeoutMessage: currentLang === "en" ? "Video generation timed out." : "视频生成超时。"
+    });
+
+    let videoUrl = data.videoDataUrl || data.videoUrl || "";
+    if (data.videoDataUrl && data.videoDataUrl.startsWith("data:")) {
+      const asset = await postJson("/api/assets", {
+        dataUrl: data.videoDataUrl,
+        kind: "generated",
+        fileName: `${option.id || "generated"}.mp4`
+      });
+      node.videoHash = asset.hash;
+      node.videoMimeType = asset.mimeType || "video/mp4";
+      videoUrl = `/api/assets/${asset.hash}?kind=generated`;
+    } else if (data.hash) {
+      node.videoHash = data.hash;
+      node.videoMimeType = data.mimeType || "video/mp4";
+      videoUrl = `/api/assets/${data.hash}?kind=generated`;
+    }
+    if (!videoUrl) {
+      throw new Error(currentLang === "en" ? "Video generation did not return a displayable video." : "视频生成接口没有返回可显示的视频。");
+    }
+    node.videoUrl = videoUrl;
+    node.videoRemoteUrl = data.videoUrl || "";
+    node.explanation = data.prompt || option.prompt || option.description || "";
+    turnIntoGeneratedVideoNode(element, option, videoUrl, node.videoMimeType || data.mimeType || "video/mp4");
+    node.width = element.offsetWidth;
+    node.height = element.offsetHeight;
+    node.generated = true;
+    if (!wasGenerated) state.generatedCount += 1;
+
+    const generatedSummary = [
+      option?.title ? `标题：${option.title}` : "",
+      data?.prompt || option?.prompt ? `Prompt：${data?.prompt || option?.prompt}` : "",
+      node.videoHash ? `Video hash：${node.videoHash}` : ""
+    ].filter(Boolean).join("\n");
+    if (generatedSummary) {
+      ingestSessionContext({
+        kind: "generated",
+        text: generatedSummary,
+        sourceId: id,
+        sourceMeta: {
+          nodeId: id,
+          title: option?.title || "",
+          videoHash: node.videoHash || ""
+        },
+        snippet: true,
+        replace: true
+      });
+    }
+
+    applyCollapseState();
+    updateCounts();
+    setStatus(t("status.ready"), "ready");
+    autoSave();
+    return { success: true, nodeId: id, title: option.title || "", videoUrl, videoHash: node.videoHash || "" };
+  } catch (error) {
+    setStatus(error.message || t("status.error"), "error");
+    return { success: false, nodeId: id, title: option.title || "", error: error.message || t("status.error") };
+  } finally {
+    element.classList.remove("loading");
+    if (button) button.disabled = false;
+  }
+}
+
+function turnIntoGeneratedVideoNode(element, option, videoUrl, mimeType = "video/mp4") {
+  element.className = "node option-node generated-node generated-video-node";
+  element.innerHTML = "";
+  ensureCollapseControl(element.dataset.nodeId, element);
+  const nodeId = element.dataset.nodeId;
+
+  const videoWrap = document.createElement("div");
+  videoWrap.className = "generated-image-wrap generated-video-wrap";
+  const video = document.createElement("video");
+  video.className = "generated-video";
+  video.src = videoUrl;
+  video.controls = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+  if (mimeType) video.type = mimeType;
+  videoWrap.appendChild(video);
+  element.appendChild(videoWrap);
+
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = `${option.tone || "video"} / ${t("generated.videoResult")}`;
+  element.appendChild(eyebrow);
+
+  const title = document.createElement("h3");
+  title.textContent = option.title || t("generated.videoResult");
+  element.appendChild(title);
+  makeTitleEditable(nodeId, title);
+
+  const desc = document.createElement("p");
+  desc.className = "generated-description";
+  desc.textContent = option.description || "";
+  element.appendChild(desc);
+
+  const actions = document.createElement("div");
+  actions.className = "generated-actions";
+  const download = document.createElement("button");
+  download.className = "secondary-button";
+  download.textContent = t("generated.download");
+  download.addEventListener("click", () => downloadImage(videoUrl, `${option.id || "generated"}.mp4`));
+  const regenerate = document.createElement("button");
+  regenerate.className = "secondary-button";
+  regenerate.textContent = t("generated.regenerate");
+  regenerate.addEventListener("click", () => generateVideoForOption(nodeId, option));
+  actions.append(download, regenerate);
+  element.appendChild(actions);
+  addEdgeHandles(element, nodeId);
 }
 
 function turnIntoGeneratedNode(element, option, imageDataUrl) {
@@ -12461,6 +12669,9 @@ async function prepareStateForSave() {
       option: node.option || null,
       sourceCard: node.sourceCard || null,
       imageHash: node.imageHash || null,
+      videoHash: node.videoHash || null,
+      videoUrl: node.videoUrl || null,
+      videoMimeType: node.videoMimeType || null,
       explanation: node.explanation || null
     };
   }
@@ -12998,6 +13209,20 @@ async function loadSession(sessionId) {
           const node = state.nodes.get(nodeId);
           if (node) {
             node.generated = true;
+            node.width = element.offsetWidth;
+            node.height = element.offsetHeight;
+          }
+          state.generatedCount += 1;
+        } else if (n.data?.videoHash || n.data?.videoUrl) {
+          const videoUrl = n.data?.videoHash ? `/api/assets/${n.data.videoHash}?kind=generated` : n.data.videoUrl;
+          turnIntoGeneratedVideoNode(element, option, videoUrl, n.data?.videoMimeType || "video/mp4");
+          const node = state.nodes.get(nodeId);
+          if (node) {
+            node.generated = true;
+            node.videoHash = n.data?.videoHash || null;
+            node.videoUrl = videoUrl;
+            node.videoMimeType = n.data?.videoMimeType || "video/mp4";
+            node.explanation = n.data?.explanation || "";
             node.width = element.offsetWidth;
             node.height = element.offsetHeight;
           }

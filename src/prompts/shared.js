@@ -45,7 +45,7 @@ export const CANVAS_ACTION_TYPES = [
   "auto_layout", "tidy_canvas", "group_selection", "ungroup_selection",
   "search_card", "export_report", "deselect", "select_source", "select_analysis",
   "create_card", "new_card", "create_direction", "create_web_card",
-  "web_search", "create_agent", "generate_image", "image_search",
+  "web_search", "create_agent", "generate_image", "generate_video", "image_search",
   "reverse_image_search", "text_image_search", "analyze_source",
   "explore_source", "research_source", "research_node", "open_references",
   "save_session", "new_chat", "open_chat_history", "close_chat",

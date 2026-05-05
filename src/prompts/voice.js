@@ -33,7 +33,7 @@ export function buildRealtimeInstruction(context) {
     "- Navigation/layout: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, arrange_canvas/auto_layout/tidy_canvas, move_node.",
     "- Selection: select_node, select_source, select_analysis, deselect, group_selection, ungroup_selection, search_card.",
     "- Rich card creation: create_note, create_plan, create_todo, create_weather, create_map, create_link, create_code, create_table, create_timeline, create_comparison, create_metric, create_quote, create_web_card.",
-    "- Generation/research: generate_image, image_search, reverse_image_search, text_image_search, analyze_source, explore_source, research_source, research_node, open_references, web_search.",
+    "- Generation/research: generate_image, generate_video, image_search, reverse_image_search, text_image_search, analyze_source, explore_source, research_source, research_node, open_references, web_search.",
     "- Workspace/UI: export_report, save_session, new_chat, open_chat, close_chat, open_chat_history, open_history, open_settings, open_upload, set_thinking_mode, set_deep_think_mode.",
     "- Agent/destructive: create_agent only for explicit autonomous/subagent requests; delete_node ONLY when explicitly asked.",
     "",

@@ -8,7 +8,7 @@ export interface HistorySession {
   assetCount: number;
 }
 
-export type OutputKind = "image" | "web" | "document" | "chat";
+export type OutputKind = "image" | "video" | "web" | "document" | "chat";
 
 export interface ReferenceItem {
   title?: string;
@@ -137,7 +137,7 @@ export interface SidebarAssetItem {
   title: string;
   summary: string;
   groupLabel: string;
-  assetType: "image" | "link" | "file" | "chat";
+  assetType: "image" | "video" | "link" | "file" | "chat";
   data: unknown;
 }
 

@@ -3,7 +3,7 @@ import { Menu } from "lucide-react";
 import AppNavigation from "@/components/AppNavigation";
 import { useI18n, type Lang } from "@/lib/i18n";
 
-type ApiRole = "analysis" | "chat" | "image" | "asr" | "realtime" | "deepthink";
+type ApiRole = "analysis" | "chat" | "image" | "video" | "asr" | "realtime" | "deepthink";
 type RoleOptionValue = string | number | boolean;
 
 interface RoleSettings {
@@ -19,7 +19,7 @@ type SettingsPayload = Record<ApiRole, RoleSettings> & {
   language?: Lang;
 };
 
-const roles: ApiRole[] = ["analysis", "chat", "image", "asr", "realtime", "deepthink"];
+const roles: ApiRole[] = ["analysis", "chat", "image", "video", "asr", "realtime", "deepthink"];
 
 const emptyRole: RoleSettings = {
   endpoint: "",
@@ -63,6 +63,18 @@ const optionFields: Record<ApiRole, OptionField[]> = {
     { key: "watermark", type: "checkbox" },
     { key: "seed", type: "number", min: 0, max: 2147483647, step: 1 },
     { key: "useReferenceImage", type: "checkbox" },
+  ],
+  video: [
+    { key: "resolution", type: "select", options: [["720P", "720P"], ["1080P", "1080P"]] },
+    { key: "ratio", type: "select", options: [["16:9", "16:9"], ["9:16", "9:16"], ["1:1", "1:1"], ["4:3", "4:3"], ["3:4", "3:4"]] },
+    { key: "duration", type: "number", min: 3, max: 15, step: 1 },
+    { key: "watermark", type: "checkbox" },
+    { key: "seed", type: "number", min: 0, max: 2147483647, step: 1 },
+    { key: "useReferenceImage", type: "checkbox" },
+    { key: "imageModel", type: "text", placeholder: "happyhorse-1.0-i2v" },
+    { key: "textModel", type: "text", placeholder: "happyhorse-1.0-t2v" },
+    { key: "pollIntervalMs", type: "number", min: 1000, max: 60000, step: 1000 },
+    { key: "pollAttempts", type: "number", min: 1, max: 120, step: 1 },
   ],
   asr: [
     { key: "targetLanguage", type: "select", options: [["auto", "Auto"], ["zh", "中文"], ["en", "English"]] },
@@ -116,6 +128,7 @@ export default function SettingsPage() {
     analysis: { ...emptyRole },
     chat: { ...emptyRole },
     image: { ...emptyRole },
+    video: { ...emptyRole },
     asr: { ...emptyRole, temperature: 0 },
     realtime: { ...emptyRole },
     deepthink: { ...emptyRole },
@@ -132,6 +145,7 @@ export default function SettingsPage() {
           analysis: normalizeRole(data.analysis),
           chat: normalizeRole(data.chat),
           image: normalizeRole(data.image),
+          video: normalizeRole(data.video),
           asr: normalizeRole(data.asr),
           realtime: normalizeRole(data.realtime),
           deepthink: normalizeRole(data.deepthink),

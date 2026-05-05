@@ -16,6 +16,10 @@ function isImageMime(mimeType: string): boolean {
   return mimeType.startsWith("image/");
 }
 
+function isVideoMime(mimeType: string): boolean {
+  return mimeType.startsWith("video/");
+}
+
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -25,6 +29,7 @@ function formatFileSize(bytes: number): string {
 export default function MaterialCard({ item, onDelete, onRename, onToggleFavorite, onPreview }: MaterialCardProps) {
   const { t } = useI18n();
   const isImage = isImageMime(item.mimeType);
+  const isVideo = isVideoMime(item.mimeType);
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(item.fileName);
 
@@ -56,6 +61,14 @@ export default function MaterialCard({ item, onDelete, onRename, onToggleFavorit
             alt={item.fileName}
             className="w-full h-full object-cover"
             loading="lazy"
+          />
+        ) : isVideo ? (
+          <video
+            src={`/api/materials/${item.id}/file`}
+            className="w-full h-full object-cover"
+            muted
+            playsInline
+            preload="metadata"
           />
         ) : (
           <FileIcon mimeType={item.mimeType} fileName={item.fileName} />

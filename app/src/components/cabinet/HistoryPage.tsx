@@ -40,11 +40,15 @@ function SkeletonHistoryPage() {
 }
 
 function isImageAsset(asset: Asset) {
-  return asset.kind === "generated" || asset.mimeType.startsWith("image/");
+  return asset.mimeType.startsWith("image/");
+}
+
+function isVideoAsset(asset: Asset) {
+  return asset.mimeType.startsWith("video/");
 }
 
 function isDocumentAsset(asset: Asset) {
-  return asset.kind === "upload" && !isImageAsset(asset);
+  return asset.kind === "upload" && !isImageAsset(asset) && !isVideoAsset(asset);
 }
 
 function nodeImageUrl(node: SessionDetail["nodes"][number]): string | null {
@@ -53,6 +57,15 @@ function nodeImageUrl(node: SessionDetail["nodes"][number]): string | null {
   const card = node.data?.sourceCard?.imageUrl;
   if (typeof card === "string" && card) return card;
   const hash = node.data?.imageHash || node.data?.sourceCard?.imageHash;
+  return typeof hash === "string" && hash ? hash : null;
+}
+
+function nodeVideoUrl(node: SessionDetail["nodes"][number]): string | null {
+  const direct = node.data?.videoUrl;
+  if (typeof direct === "string" && direct) return direct;
+  const card = node.data?.sourceCard?.sourceVideoUrl || node.data?.sourceCard?.videoUrl;
+  if (typeof card === "string" && card) return card;
+  const hash = node.data?.videoHash || node.data?.sourceVideoHash || node.data?.sourceCard?.sourceVideoHash || node.data?.sourceCard?.videoHash;
   return typeof hash === "string" && hash ? hash : null;
 }
 
@@ -89,6 +102,20 @@ function outputIdsForKind(session: SessionDetail | null, outputKind: OutputKind)
           if (node.type !== "source-card") return false;
           if (!nodeImageUrl(node)) return false;
           const hash = node.data?.imageHash || node.data?.sourceCard?.imageHash;
+          return !(typeof hash === "string" && referencedHashes.has(hash));
+        })
+        .map((node) => node.id)
+    ];
+  }
+  if (outputKind === "video") {
+    const referencedHashes = new Set(session.assets.map((asset) => asset.hash));
+    return [
+      ...session.assets.filter(isVideoAsset).map((asset) => asset.id),
+      ...session.nodes
+        .filter((node) => {
+          if (node.type !== "source-card") return false;
+          if (!nodeVideoUrl(node)) return false;
+          const hash = node.data?.sourceVideoHash || node.data?.sourceCard?.sourceVideoHash || node.data?.sourceCard?.videoHash;
           return !(typeof hash === "string" && referencedHashes.has(hash));
         })
         .map((node) => node.id)

@@ -31,6 +31,10 @@ const DEMO_MODE = process.env.DEMO_MODE === "true";
 const IMAGE_POLL_INTERVAL_MS = Number(process.env.IMAGE_POLL_INTERVAL_MS || 2000);
 const IMAGE_POLL_ATTEMPTS = Number(process.env.IMAGE_POLL_ATTEMPTS || 30);
 const IMAGE_INCLUDE_DATA_URL = process.env.IMAGE_INCLUDE_DATA_URL === "true";
+const VIDEO_POLL_INTERVAL_MS = Number(process.env.VIDEO_POLL_INTERVAL_MS || 15000);
+const VIDEO_POLL_ATTEMPTS = Number(process.env.VIDEO_POLL_ATTEMPTS || 30);
+const VIDEO_SUBMIT_TIMEOUT_MS = Number(process.env.VIDEO_SUBMIT_TIMEOUT_MS || 60000);
+const VIDEO_DOWNLOAD_TIMEOUT_MS = Number(process.env.VIDEO_DOWNLOAD_TIMEOUT_MS || 180000);
 const MAX_BODY_BYTES = 150 * 1024 * 1024;
 const CHAT_COMPLETION_TIMEOUT_MS = Number(process.env.CHAT_COMPLETION_TIMEOUT_MS || 120000);
 const CHAT_STREAM_IDLE_TIMEOUT_MS = Number(process.env.CHAT_STREAM_IDLE_TIMEOUT_MS || process.env.CHAT_STREAM_TIMEOUT_MS || 240000);
@@ -84,6 +88,23 @@ let runtimeConfigs = {
       useReferenceImage: true
     }
   }),
+  video: buildModelConfig("VIDEO", {
+    provider: "dashscope-happyhorse-video",
+    model: "happyhorse-1.0-i2v",
+    baseUrl: "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+    apiKeyEnv: ["DASHSCOPE_API_KEY", "VIDEO_API_KEY"],
+    options: {
+      resolution: "720P",
+      ratio: "16:9",
+      duration: 5,
+      watermark: false,
+      useReferenceImage: true,
+      imageModel: "happyhorse-1.0-i2v",
+      textModel: "happyhorse-1.0-t2v",
+      pollIntervalMs: VIDEO_POLL_INTERVAL_MS,
+      pollAttempts: VIDEO_POLL_ATTEMPTS
+    }
+  }),
   asr: buildModelConfig("ASR", {
     provider: "dashscope-livetranslate",
     model: "qwen3-livetranslate-flash-2025-12-01",
@@ -133,7 +154,7 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
         type: { type: "string", enum: CANVAS_ACTION_TYPES, description: "The action type to execute" },
         title: { type: "string", description: "Title for the new card or action" },
         description: { type: "string", description: "Description or body text" },
-        prompt: { type: "string", description: "Prompt for image generation or detailed instruction. Required for generate_image unless title/description already form a complete visual prompt." },
+        prompt: { type: "string", description: "Prompt for image/video generation or detailed instruction. Required for generate_image/generate_video unless title/description already form a complete visual prompt." },
         query: { type: "string", description: "Search query. For image_search this is the internet image search query; for reverse_image_search it can refine the visual search." },
         url: { type: "string", description: "URL for link or web card" },
         imageDataUrl: { type: "string", description: "Optional data URL for image-to-image generation or reverse image search. Usually omitted because the app passes attached/selected images automatically." },
@@ -231,6 +252,7 @@ const ACTION_REPLY_TEMPLATES = {
     create_direction: (a) => `已添加方向卡片${a.title ? `「${a.title}」` : ""}。`,
     create_agent: (a) => `已启动子 Agent${a.title ? `「${a.title}」` : ""}，将以 ${a.role || "worker"} 角色执行独立任务。`,
     generate_image: () => "已开始生成图片,稍候请查看画布上的新节点。",
+    generate_video: () => "已开始生成视频,稍候请查看画布上的新节点。",
     zoom_in: () => "已放大画布。",
     zoom_out: () => "已缩小画布。",
     reset_view: () => "已重置视图。"
@@ -254,6 +276,7 @@ const ACTION_REPLY_TEMPLATES = {
     create_direction: (a) => `Added a direction card${a.title ? ` "${a.title}"` : ""}.`,
     create_agent: (a) => `Started a subagent${a.title ? ` "${a.title}"` : ""} as ${a.role || "worker"}.`,
     generate_image: () => "Image generation started — check the canvas for the new node.",
+    generate_video: () => "Video generation started — check the canvas for the new node.",
     zoom_in: () => "Zoomed in.",
     zoom_out: () => "Zoomed out.",
     reset_view: () => "View reset."
@@ -479,6 +502,7 @@ const server = http.createServer(async (req, res) => {
         chat: roleHealth(runtimeConfigs.chat),
         analysis: roleHealth(runtimeConfigs.analysis),
         image: roleHealth(runtimeConfigs.image),
+        video: roleHealth(runtimeConfigs.video),
         asr: roleHealth(runtimeConfigs.asr),
         realtime: roleHealth(runtimeConfigs.realtime),
         deepthink: roleHealth(runtimeConfigs.deepthink)
@@ -549,6 +573,11 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/generate") {
       const body = await readJson(req);
       return await handleGenerate(body, res);
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/generate-video") {
+      const body = await readJson(req);
+      return await handleGenerateVideo(body, res);
     }
 
     if (req.method === "POST" && url.pathname === "/api/explain") {
@@ -764,6 +793,24 @@ async function refreshConfigs() {
       }
     }, dbMap.image);
 
+    runtimeConfigs.video = buildModelConfig("VIDEO", {
+      provider: "dashscope-happyhorse-video",
+      model: "happyhorse-1.0-i2v",
+      baseUrl: "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+      apiKeyEnv: ["DASHSCOPE_API_KEY", "VIDEO_API_KEY"],
+      options: {
+        resolution: "720P",
+        ratio: "16:9",
+        duration: 5,
+        watermark: false,
+        useReferenceImage: true,
+        imageModel: "happyhorse-1.0-i2v",
+        textModel: "happyhorse-1.0-t2v",
+        pollIntervalMs: VIDEO_POLL_INTERVAL_MS,
+        pollAttempts: VIDEO_POLL_ATTEMPTS
+      }
+    }, dbMap.video);
+
     runtimeConfigs.asr = buildModelConfig("ASR", {
       provider: "dashscope-livetranslate",
       model: "qwen3-livetranslate-flash-2025-12-01",
@@ -847,6 +894,7 @@ function buildModelConfig(role, defaults, dbSettings = null) {
 function inferProviderFromEndpoint(endpoint, fallback) {
   const normalized = String(endpoint || "").toLowerCase();
   if (normalized.includes("/api/v1/services/aigc/multimodal-generation/generation")) return "dashscope-qwen-image";
+  if (normalized.includes("/api/v1/services/aigc/video-generation/video-synthesis")) return "dashscope-happyhorse-video";
   if (normalized.includes("/api/v1/services/aigc/text-generation/generation")) return "dashscope-deep-research";
   if (normalized.includes("dashscope.aliyuncs.com")) return "dashscope-qwen";
   return fallback;
@@ -939,6 +987,22 @@ function normalizeModelOptions(role, value) {
       negative_prompt: cleanString(raw.negative_prompt, 500),
       seed: cleanOptionalInteger(raw.seed, 0, 2147483647),
       useReferenceImage: cleanBoolean(raw.useReferenceImage, true)
+    });
+  }
+  if (role === "video") {
+    const resolution = String(raw.resolution || "720P").toUpperCase();
+    const ratio = String(raw.ratio || "16:9");
+    return dropUndefined({
+      resolution: ["720P", "1080P"].includes(resolution) ? resolution : "720P",
+      ratio: ["16:9", "9:16", "1:1", "4:3", "3:4"].includes(ratio) ? ratio : "16:9",
+      duration: cleanInteger(raw.duration, 3, 15, 5),
+      watermark: cleanBoolean(raw.watermark, false),
+      seed: cleanOptionalInteger(raw.seed, 0, 2147483647),
+      useReferenceImage: cleanBoolean(raw.useReferenceImage, true),
+      imageModel: cleanString(raw.imageModel, 120) || "happyhorse-1.0-i2v",
+      textModel: cleanString(raw.textModel, 120) || "happyhorse-1.0-t2v",
+      pollIntervalMs: cleanInteger(raw.pollIntervalMs, 1000, 60000, VIDEO_POLL_INTERVAL_MS),
+      pollAttempts: cleanInteger(raw.pollAttempts, 1, 120, VIDEO_POLL_ATTEMPTS)
     });
   }
   if (role === "analysis") {
@@ -1089,6 +1153,14 @@ function isDashScopeQwenImageConfig(config) {
   );
 }
 
+function isDashScopeHappyHorseVideoConfig(config) {
+  return (
+    config?.provider === "dashscope-happyhorse-video" ||
+    /happyhorse/i.test(config?.model || "") ||
+    /\/api\/v1\/services\/aigc\/video-generation\/video-synthesis/i.test(config?.baseUrl || "")
+  );
+}
+
 function isDashScopeDeepResearchConfig(config) {
   return config?.provider === "dashscope-deep-research" || /qwen-deep-research/i.test(config?.model || "") || /\/api\/v1\/services\/aigc\/text-generation\/generation/i.test(config?.baseUrl || "");
 }
@@ -1228,7 +1300,7 @@ function shouldRetryExploreWithoutThinking(error) {
 }
 
 function appMode() {
-  const modes = [runtimeConfigs.chat, runtimeConfigs.analysis, runtimeConfigs.image, runtimeConfigs.asr, runtimeConfigs.realtime, runtimeConfigs.deepthink].map((config) => roleHealth(config).mode);
+  const modes = [runtimeConfigs.chat, runtimeConfigs.analysis, runtimeConfigs.image, runtimeConfigs.video, runtimeConfigs.asr, runtimeConfigs.realtime, runtimeConfigs.deepthink].map((config) => roleHealth(config).mode);
   if (modes.every((mode) => mode === "demo")) return "demo";
   if (modes.some((mode) => mode === "demo")) return "mixed";
   return "api";
@@ -3129,6 +3201,91 @@ async function handleGenerate(body, res) {
   });
 }
 
+async function handleGenerateVideo(body, res) {
+  const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
+  const imageUrl = publicHttpUrl(body?.imageUrl || body?.referenceImageUrl || "");
+  const rawOption = body?.option && typeof body.option === "object" ? body.option : {};
+  const option = normalizeOption(body?.option);
+  if (!option) {
+    return sendJson(res, 400, { error: "option is required" });
+  }
+
+  const lang = body?.language === "en" ? "en" : "zh";
+  const publicReferenceImageUrl = imageUrl && runtimeConfigs.video.options?.useReferenceImage !== false ? imageUrl : "";
+  const blueprint = normalizeBlueprintPayload(body?.blueprint);
+  const chatContext = normalizeGenerateChatContext(body?.chatContext);
+  const prompt = buildVideoGenerationPrompt(lang, {
+    ...option,
+    generationMode: publicReferenceImageUrl ? "image-to-video" : "text-to-video",
+    blueprint,
+    chatContext,
+    hasLocalReferenceImage: Boolean(imageDataUrl && !publicReferenceImageUrl)
+  });
+
+  if (isDemoRole(runtimeConfigs.video)) {
+    return sendJson(res, 503, {
+      error: "Video generation requires a DashScope API key.",
+      provider: "demo",
+      model: runtimeConfigs.video.model,
+      prompt
+    });
+  }
+
+  if (!isDashScopeHappyHorseVideoConfig(runtimeConfigs.video)) {
+    return sendJson(res, 400, { error: "Configured video provider is not supported." });
+  }
+
+  let result;
+  try {
+    result = await generateDashScopeHappyHorseVideo(prompt, publicReferenceImageUrl, {
+      duration: body?.duration ?? rawOption?.duration,
+      resolution: body?.resolution ?? rawOption?.resolution,
+      ratio: body?.ratio ?? rawOption?.ratio,
+      watermark: body?.watermark ?? rawOption?.watermark,
+      seed: body?.seed ?? rawOption?.seed
+    });
+  } catch (error) {
+    console.error("[handleGenerateVideo] generation failed:", error);
+    return sendJson(res, 502, {
+      error: "Video generation failed.",
+      message: error.message || String(error)
+    });
+  }
+
+  const generatedVideo = result.videoUrl || result.videoDataUrl || "";
+  if (!generatedVideo) {
+    return sendJson(res, 502, { error: "Video generation did not return a video." });
+  }
+
+  let stored;
+  try {
+    stored = await storeGeneratedVideo(generatedVideo);
+  } catch (storeError) {
+    console.error("[handleGenerateVideo] failed to store generated video:", storeError);
+    return sendJson(res, 502, {
+      error: "Generated video could not be downloaded or cached.",
+      message: storeError.message || String(storeError)
+    });
+  }
+  if (!stored?.hash) {
+    return sendJson(res, 502, { error: "Generated video could not be cached." });
+  }
+
+  return sendJson(res, 200, {
+    provider: "api",
+    model: result.model || runtimeConfigs.video.model,
+    prompt,
+    videoDataUrl: `/api/assets/${stored.hash}?kind=generated`,
+    videoUrl: result.videoUrl || "",
+    hash: stored.hash,
+    mimeType: stored.mimeType || "video/mp4",
+    taskId: result.taskId || "",
+    status: result.status || "SUCCEEDED",
+    usage: result.usage || null,
+    revisedPrompt: result.revisedPrompt || ""
+  });
+}
+
 async function storeGeneratedImage(imageReference) {
   if (typeof imageReference !== "string" || !imageReference) {
     return null;
@@ -3151,6 +3308,138 @@ async function storeGeneratedImage(imageReference) {
   const ext = extensionFromContentType(contentType) || extensionFromUrl(imageReference) || "jpg";
   const buffer = Buffer.from(await response.arrayBuffer());
   return storeFile(buffer, { kind: "generated", ext });
+}
+
+async function storeGeneratedVideo(videoReference) {
+  if (typeof videoReference !== "string" || !videoReference) {
+    return null;
+  }
+
+  if (videoReference.startsWith("data:")) {
+    const parsed = parseDataUrl(videoReference);
+    if (!/^video\//i.test(parsed.mimeType)) {
+      throw new Error("Generated asset is not a video.");
+    }
+    const stored = await storeFile(parsed.buffer, { kind: "generated", ext: parsed.ext || "mp4" });
+    return { ...stored, mimeType: parsed.mimeType };
+  }
+
+  if (!/^https?:\/\//i.test(videoReference)) {
+    return null;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), VIDEO_DOWNLOAD_TIMEOUT_MS);
+  try {
+    const response = await fetch(videoReference, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`Failed to download generated video ${response.status}: ${response.statusText}`);
+    }
+    const contentType = (response.headers.get("content-type") || "").split(";")[0].trim();
+    const ext = extensionFromContentType(contentType) || extensionFromUrl(videoReference) || "mp4";
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const stored = await storeFile(buffer, { kind: "generated", ext });
+    return { ...stored, mimeType: contentType || mimeTypeFromExtension(ext) || "video/mp4" };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function buildVideoGenerationPrompt(lang, option = {}) {
+  const blueprintContext = formatVideoBlueprintContext(lang, option.blueprint);
+  const chatContext = formatVideoChatContext(lang, option.chatContext);
+  const localReferenceHint = option.hasLocalReferenceImage
+    ? (lang === "en" ? "A local reference image was selected, but only text can be sent to the video model unless the image has a public URL. Reflect the user's described intent instead of claiming exact pixel fidelity." : "用户选中了本地参考图，但视频模型只能接收公网首帧 URL；请根据用户描述意图生成，不要承诺精确保留本地图像像素。")
+    : "";
+  return lang === "en"
+    ? [
+        "# Role",
+        "You are a video generation prompt engineer.",
+        "",
+        "# Mission",
+        option.generationMode === "image-to-video"
+          ? "Generate a short video from the provided first-frame image and user direction, preserving the key subject while adding coherent motion."
+          : "Generate a short video from the user's text direction with coherent motion, camera movement, and visual continuity.",
+        "",
+        "# Direction",
+        "Title:",
+        option.title || "",
+        "",
+        "Description:",
+        option.description || "",
+        "",
+        "Detailed prompt:",
+        option.prompt || "",
+        "",
+        localReferenceHint,
+        "",
+        blueprintContext,
+        "",
+        chatContext,
+        "",
+        "# Output Requirements",
+        "- Cinematic, physically plausible motion.",
+        "- Keep the main subject clear and temporally stable.",
+        "- Avoid captions, watermarks, UI frames, or explanatory text unless explicitly requested."
+      ].join("\n")
+    : [
+        "# 角色",
+        "你是视频生成提示词工程师。",
+        "",
+        "# 使命",
+        option.generationMode === "image-to-video"
+          ? "请基于提供的首帧图片和用户方向生成一段短视频，保留关键主体，并加入连贯自然的运动。"
+          : "请根据用户的文字方向生成一段短视频，保证运动、镜头和视觉连续性自然可信。",
+        "",
+        "# 方向",
+        "标题：",
+        option.title || "",
+        "",
+        "说明：",
+        option.description || "",
+        "",
+        "详细提示词：",
+        option.prompt || "",
+        "",
+        localReferenceHint,
+        "",
+        blueprintContext,
+        "",
+        chatContext,
+        "",
+        "# 输出要求",
+        "- 电影感、物理运动自然可信。",
+        "- 主体清晰，时序稳定。",
+        "- 除非用户明确要求，不要出现字幕、水印、UI 边框或说明文字。"
+      ].join("\n");
+}
+
+function formatVideoBlueprintContext(lang, blueprint) {
+  if (!blueprint || typeof blueprint !== "object") return "";
+  const cards = Array.isArray(blueprint.cards) ? blueprint.cards : [];
+  const relationships = Array.isArray(blueprint.relationships) ? blueprint.relationships : [];
+  if (!cards.length && !relationships.length) return "";
+  const titleById = new Map(cards.map((card) => [card.id, card.title || card.id]));
+  const lines = [
+    lang === "en" ? "# Canvas Blueprint Context" : "# 画布蓝图上下文",
+    cards.length ? `${lang === "en" ? "Cards" : "卡片"}: ${cards.map((card) => card.title || card.id).join(lang === "en" ? "; " : "；")}` : "",
+    ...relationships.slice(0, 12).map((relationship) => {
+      const from = titleById.get(relationship.from) || relationship.from;
+      const to = titleById.get(relationship.to) || relationship.to;
+      const note = relationship.note ? ` — ${relationship.note}` : "";
+      return `- ${from} -> ${to}${note}`;
+    })
+  ];
+  return lines.filter(Boolean).join("\n");
+}
+
+function formatVideoChatContext(lang, messages) {
+  if (!Array.isArray(messages) || !messages.length) return "";
+  const lines = messages.slice(-6).map((message) => {
+    const role = message.role === "assistant" ? (lang === "en" ? "Assistant" : "助手") : (lang === "en" ? "User" : "用户");
+    return `- ${role}: ${String(message.content || "").slice(0, 500)}`;
+  });
+  return [lang === "en" ? "# Recent Chat Context" : "# 最近对话上下文", ...lines].join("\n");
 }
 
 async function ingestRemoteImageAsUpload(imageUrl) {
@@ -5208,6 +5497,175 @@ function buildMaskedEditPrompt(prompt) {
   ].join("\n");
 }
 
+async function generateDashScopeHappyHorseVideo(prompt, imageUrl, requestOptions = {}) {
+  const config = runtimeConfigs.video;
+  const options = config.options || {};
+  const referenceImageUrl = options.useReferenceImage !== false ? publicHttpUrl(imageUrl) : "";
+  const hasReferenceImage = Boolean(referenceImageUrl);
+  const model = happyHorseVideoModel(config, hasReferenceImage);
+  const payload = {
+    model,
+    input: {
+      prompt: String(prompt || "").slice(0, 5000)
+    },
+    parameters: normalizeHappyHorseVideoParameters({ ...options, ...requestOptions }, hasReferenceImage)
+  };
+  if (hasReferenceImage) {
+    payload.input.img_url = referenceImageUrl;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), VIDEO_SUBMIT_TIMEOUT_MS);
+  let json;
+  try {
+    const response = await fetch(dashScopeVideoEndpoint(config), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+        "X-DashScope-Async": "enable"
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { raw: text };
+    }
+    if (!response.ok || json?.code) {
+      const detail = json?.message || json?.error?.message || text || response.statusText;
+      throw new Error(`DashScope video API ${response.status}: ${detail}`);
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const taskId = json?.output?.task_id || json?.task_id || "";
+  const directVideoUrl = extractDashScopeVideoUrl(json);
+  if (directVideoUrl) {
+    return {
+      model,
+      taskId,
+      status: json?.output?.task_status || "SUCCEEDED",
+      videoUrl: directVideoUrl,
+      revisedPrompt: json?.output?.orig_prompt || "",
+      usage: json?.usage || null
+    };
+  }
+  if (!taskId) {
+    throw new Error("DashScope video response did not include a task_id.");
+  }
+  const result = await pollDashScopeVideoTask(config, taskId, {
+    intervalMs: options.pollIntervalMs,
+    attempts: options.pollAttempts
+  });
+  return {
+    model,
+    taskId,
+    ...result
+  };
+}
+
+function happyHorseVideoModel(config, hasReferenceImage) {
+  const options = config.options || {};
+  if (hasReferenceImage) {
+    return cleanString(options.imageModel, 120) || config.model || "happyhorse-1.0-i2v";
+  }
+  const configured = cleanString(options.textModel, 120) || config.model || "happyhorse-1.0-t2v";
+  if (/i2v/i.test(configured)) return "happyhorse-1.0-t2v";
+  return configured;
+}
+
+function normalizeHappyHorseVideoParameters(value, hasReferenceImage) {
+  const resolution = String(value?.resolution || "720P").toUpperCase();
+  const ratio = String(value?.ratio || "16:9");
+  return dropUndefined({
+    resolution: ["720P", "1080P"].includes(resolution) ? resolution : "720P",
+    ratio: hasReferenceImage ? undefined : (["16:9", "9:16", "1:1", "4:3", "3:4"].includes(ratio) ? ratio : "16:9"),
+    duration: cleanInteger(value?.duration, 3, 15, 5),
+    watermark: cleanBoolean(value?.watermark, false),
+    seed: cleanOptionalInteger(value?.seed, 0, 2147483647)
+  });
+}
+
+function dashScopeVideoEndpoint(config) {
+  const base = String(config.baseUrl || "").replace(/\/+$/, "");
+  if (/\/api\/v1\/services\/aigc\/video-generation\/video-synthesis$/i.test(base)) return base;
+  if (/\/api\/v1$/i.test(base)) return `${base}/services/aigc/video-generation/video-synthesis`;
+  if (/dashscope-intl\.aliyuncs\.com/i.test(base)) {
+    return "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis";
+  }
+  return "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis";
+}
+
+function dashScopeTaskEndpoint(config, taskId) {
+  try {
+    const parsed = new URL(config.baseUrl || "");
+    const host = /dashscope-intl\.aliyuncs\.com/i.test(parsed.hostname)
+      ? "https://dashscope-intl.aliyuncs.com"
+      : "https://dashscope.aliyuncs.com";
+    return `${host}/api/v1/tasks/${encodeURIComponent(taskId)}`;
+  } catch {
+    return `https://dashscope.aliyuncs.com/api/v1/tasks/${encodeURIComponent(taskId)}`;
+  }
+}
+
+async function pollDashScopeVideoTask(config, taskId, options = {}) {
+  const intervalMs = cleanInteger(options.intervalMs, 1000, 60000, VIDEO_POLL_INTERVAL_MS);
+  const attempts = cleanInteger(options.attempts, 1, 120, VIDEO_POLL_ATTEMPTS);
+  let lastStatus = "";
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) await delay(intervalMs);
+    const response = await fetch(dashScopeTaskEndpoint(config, taskId), {
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`
+      }
+    });
+    const text = await response.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { raw: text };
+    }
+    if (!response.ok || json?.code) {
+      const detail = json?.message || json?.error?.message || text || response.statusText;
+      throw new Error(`DashScope task API ${response.status}: ${detail}`);
+    }
+    const output = json?.output || {};
+    const status = output.task_status || json?.task_status || "";
+    lastStatus = status || lastStatus;
+    if (status === "SUCCEEDED") {
+      const videoUrl = extractDashScopeVideoUrl(json);
+      if (!videoUrl) throw new Error("DashScope video task succeeded without video_url.");
+      return {
+        status,
+        videoUrl,
+        revisedPrompt: output.orig_prompt || "",
+        usage: json?.usage || null
+      };
+    }
+    if (status === "FAILED" || status === "UNKNOWN") {
+      const detail = output.message || output.error_message || json?.message || status;
+      throw new Error(`DashScope video task ${status}: ${detail}`);
+    }
+  }
+  throw new Error(`DashScope video task did not finish after ${attempts} polls${lastStatus ? ` (last status: ${lastStatus})` : ""}.`);
+}
+
+function extractDashScopeVideoUrl(response) {
+  const output = response?.output || {};
+  if (typeof output.video_url === "string" && output.video_url) return output.video_url;
+  const results = output.results || response?.results || response?.data;
+  if (Array.isArray(results)) {
+    const item = results.find((part) => typeof part?.video_url === "string" || typeof part?.url === "string" || typeof part?.video === "string");
+    if (item) return item.video_url || item.url || item.video;
+  }
+  return "";
+}
+
 async function generateDashScopeQwenImage(prompt, imageUrl, imageDataUrl, requestOptions = {}) {
   const options = runtimeConfigs.image.options || {};
   const content = [];
@@ -5352,6 +5810,23 @@ function extensionFromContentType(contentType) {
   }[normalized] || "";
 }
 
+function mimeTypeFromExtension(ext) {
+  const normalized = String(ext || "").replace(/^\./, "").toLowerCase();
+  return {
+    mp4: "video/mp4",
+    webm: "video/webm",
+    mov: "video/quicktime",
+    m4v: "video/x-m4v",
+    ogv: "video/ogg",
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    gif: "image/gif",
+    svg: "image/svg+xml"
+  }[normalized] || "";
+}
+
 function extensionFromUrl(url) {
   try {
     const ext = path.extname(new URL(url).pathname).replace(/^\./, "").toLowerCase();
@@ -5361,6 +5836,22 @@ function extensionFromUrl(url) {
   } catch {
   }
   return "";
+}
+
+function publicHttpUrl(value) {
+  const raw = String(value || "").trim();
+  if (!/^https?:\/\//i.test(raw)) return "";
+  try {
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase();
+    if (host === "localhost" || host === "0.0.0.0" || host === "::1" || host.endsWith(".local")) return "";
+    if (/^127\./.test(host) || /^10\./.test(host) || /^192\.168\./.test(host)) return "";
+    const private172 = /^172\.(1[6-9]|2\d|3[0-1])\./.test(host);
+    if (private172) return "";
+    return raw;
+  } catch {
+    return "";
+  }
 }
 
 function isLikelyImageUrl(url) {

@@ -1,4 +1,4 @@
-import { FileText, Globe2, Image, MessageSquare, Sparkles } from "lucide-react";
+import { FileText, Globe2, Image, MessageSquare, Sparkles, Video } from "lucide-react";
 import type { ReactNode } from "react";
 import Sidebar from "./Sidebar";
 import { useI18n } from "@/lib/i18n";
@@ -28,11 +28,15 @@ function formatBytes(bytes: number): string {
 }
 
 function isImageAsset(asset: Asset) {
-  return asset.kind === "generated" || asset.mimeType.startsWith("image/");
+  return asset.mimeType.startsWith("image/");
+}
+
+function isVideoAsset(asset: Asset) {
+  return asset.mimeType.startsWith("video/");
 }
 
 function isDocumentAsset(asset: Asset) {
-  return asset.kind === "upload" && !isImageAsset(asset);
+  return asset.kind === "upload" && !isImageAsset(asset) && !isVideoAsset(asset);
 }
 
 function titleFromUrl(url: string, fallback: string) {
@@ -83,6 +87,18 @@ function nodeImageUrl(node: Node): string | null {
   return null;
 }
 
+function nodeVideoUrl(node: Node): string | null {
+  const direct = node.data?.videoUrl;
+  if (typeof direct === "string" && direct) return direct;
+  const card = node.data?.sourceCard?.sourceVideoUrl || node.data?.sourceCard?.videoUrl;
+  if (typeof card === "string" && card) return card;
+  const hash = node.data?.videoHash || node.data?.sourceVideoHash || node.data?.sourceCard?.sourceVideoHash || node.data?.sourceCard?.videoHash;
+  if (typeof hash === "string" && /^[a-f0-9]{64}$/i.test(hash)) {
+    return `/api/assets/${hash}?kind=${node.type === "generated" ? "generated" : "upload"}`;
+  }
+  return null;
+}
+
 function nodeWebUrl(node: Node): string | null {
   const contentUrl = node.data?.option?.content?.url;
   if (typeof contentUrl === "string" && contentUrl) return contentUrl;
@@ -124,6 +140,40 @@ function imageItems(session: SessionDetail, t: (key: string) => string): OutputS
         summary: summarizeText(summary),
         groupLabel: t("history.imageRefGroup"),
         icon: <Image size={16} className="text-cabinet-blue" />,
+      };
+    });
+
+  return [...fromAssets, ...fromNodes];
+}
+
+function videoItems(session: SessionDetail, t: (key: string) => string): OutputSidebarItem[] {
+  const fromAssets = session.assets.filter(isVideoAsset).map((asset) => ({
+    id: asset.id,
+    title: asset.fileName || (asset.kind === "generated" ? t("asset.generatedVideo") : t("asset.video")),
+    summary: `${asset.mimeType} · ${formatBytes(asset.fileSize)}`,
+    groupLabel: t("history.tabVideos"),
+    icon: <Video size={16} className="text-cabinet-blue" />,
+  }));
+
+  const referencedHashes = new Set(session.assets.map((a) => a.hash));
+  const fromNodes = session.nodes
+    .filter((node) => {
+      if (node.type !== "source-card") return false;
+      if (!nodeVideoUrl(node)) return false;
+      const hash = node.data?.sourceVideoHash || node.data?.sourceCard?.sourceVideoHash || node.data?.sourceCard?.videoHash;
+      if (typeof hash === "string" && referencedHashes.has(hash)) return false;
+      return true;
+    })
+    .map((node) => {
+      const card = node.data?.sourceCard || {};
+      const title = String(card.fileName || card.title || node.data?.fileName || t("asset.video"));
+      const summary = String(card.summary || card.sourceUrl || node.data?.summary || t("asset.video"));
+      return {
+        id: node.id,
+        title,
+        summary: summarizeText(summary),
+        groupLabel: t("history.tabVideos"),
+        icon: <Video size={16} className="text-cabinet-blue" />,
       };
     });
 
@@ -224,6 +274,7 @@ function buildOutputItems(
 ): OutputSidebarItem[] {
   if (!session) return [];
   if (outputKind === "image") return imageItems(session, t);
+  if (outputKind === "video") return videoItems(session, t);
   if (outputKind === "web") return webItems(session, t);
   if (outputKind === "chat") return chatItems(session, t);
   return documentItems(session, t);

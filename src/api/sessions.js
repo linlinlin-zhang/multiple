@@ -50,6 +50,9 @@ function serializeState(state) {
             option: n.option,
             imageHash: n.imageHash || null,
             imageDataUrl: n.imageDataUrl || null,
+            videoHash: n.videoHash || null,
+            videoUrl: n.videoUrl || null,
+            videoMimeType: n.videoMimeType || null,
             explanation: n.explanation || null,
             references: Array.isArray(n.option?.references) ? n.option.references : [],
             layoutHint: n.option?.layoutHint || null,
@@ -255,6 +258,14 @@ async function collectGeneratedAssets(nodes, assetRecords) {
 
     if (node.data?.imageHash) {
       const record = await assetRecordFromStoredHash(node.data.imageHash, { kind: "generated" });
+      addAssetRecord(assetRecords, record);
+    }
+
+    if (node.data?.videoHash) {
+      const record = await assetRecordFromStoredHash(node.data.videoHash, {
+        kind: "generated",
+        mimeType: node.data.videoMimeType || "video/mp4"
+      });
       addAssetRecord(assetRecords, record);
     }
 

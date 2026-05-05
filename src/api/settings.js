@@ -18,6 +18,23 @@ const DEFAULTS = {
       useReferenceImage: true
     }
   },
+  video: {
+    endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/video-generation/video-synthesis",
+    model: "happyhorse-1.0-i2v",
+    apiKey: "",
+    temperature: 0.7,
+    options: {
+      resolution: "720P",
+      ratio: "16:9",
+      duration: 5,
+      watermark: false,
+      useReferenceImage: true,
+      imageModel: "happyhorse-1.0-i2v",
+      textModel: "happyhorse-1.0-t2v",
+      pollIntervalMs: 15000,
+      pollAttempts: 30
+    }
+  },
   asr: {
     endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     model: "qwen3-livetranslate-flash-2025-12-01",
@@ -56,7 +73,7 @@ const DEFAULTS = {
   }
 };
 
-const ROLES = ["analysis", "chat", "image", "asr", "realtime", "deepthink"];
+const ROLES = ["analysis", "chat", "image", "video", "asr", "realtime", "deepthink"];
 
 export async function handleGetSettings(res) {
   const rows = await prisma.settings.findMany();
@@ -151,6 +168,23 @@ function normalizeOptions(role, value) {
       negative_prompt: cleanString(merged.negative_prompt, 500),
       seed: cleanOptionalInteger(merged.seed, 0, 2147483647),
       useReferenceImage: cleanBoolean(merged.useReferenceImage, true)
+    });
+  }
+
+  if (role === "video") {
+    const resolution = String(merged.resolution || "720P").toUpperCase();
+    const ratio = String(merged.ratio || "16:9");
+    return dropUndefined({
+      resolution: ["720P", "1080P"].includes(resolution) ? resolution : "720P",
+      ratio: ["16:9", "9:16", "1:1", "4:3", "3:4"].includes(ratio) ? ratio : "16:9",
+      duration: cleanInteger(merged.duration, 3, 15, 5),
+      watermark: cleanBoolean(merged.watermark, false),
+      seed: cleanOptionalInteger(merged.seed, 0, 2147483647),
+      useReferenceImage: cleanBoolean(merged.useReferenceImage, true),
+      imageModel: cleanString(merged.imageModel, 120) || "happyhorse-1.0-i2v",
+      textModel: cleanString(merged.textModel, 120) || "happyhorse-1.0-t2v",
+      pollIntervalMs: cleanInteger(merged.pollIntervalMs, 1000, 60000, 15000),
+      pollAttempts: cleanInteger(merged.pollAttempts, 1, 120, 30)
     });
   }
 
