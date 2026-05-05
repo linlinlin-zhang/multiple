@@ -4562,11 +4562,12 @@ html[data-theme="dark"] .ref-type-badge {
 
 .blueprint-guide {
   position: absolute;
-  left: 24px;
-  top: 62px;
+  right: 24px;
+  top: 190px;
   z-index: 12;
   width: 250px;
   pointer-events: none;
+  text-align: right;
   color: color-mix(in srgb, var(--body) 58%, transparent);
 }
 
