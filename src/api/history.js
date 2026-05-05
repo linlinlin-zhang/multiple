@@ -12,13 +12,14 @@ function sendJson(res, status, data) {
 /**
  * GET /api/history?limit=20&offset=0&includeDemo=false
  */
-export async function handleListHistory(query, res) {
+export async function handleListHistory(query, res, options = {}) {
   try {
     const limit = Math.min(Number(query?.limit) || 20, 100);
     const offset = Math.max(Number(query?.offset) || 0, 0);
     const includeDemo = query?.includeDemo === "true";
+    const visitorId = options.visitorId || "legacy";
 
-    const where = {};
+    const where = { visitorId };
     if (!includeDemo) {
       where.isDemo = false;
     }
@@ -77,7 +78,7 @@ export async function handleListHistory(query, res) {
 /**
  * PATCH /api/sessions/:id/title
  */
-export async function handleRenameSession(sessionId, body, res) {
+export async function handleRenameSession(sessionId, body, res, options = {}) {
   try {
     if (!sessionId || typeof sessionId !== "string") {
       return sendJson(res, 400, { error: "sessionId is required" });
@@ -85,6 +86,14 @@ export async function handleRenameSession(sessionId, body, res) {
     const title = typeof body?.title === "string" ? body.title.trim().slice(0, 160) : "";
     if (!title) {
       return sendJson(res, 400, { error: "title is required" });
+    }
+
+    const existing = await prisma.session.findFirst({
+      where: { id: sessionId, visitorId: options.visitorId || "legacy" },
+      select: { id: true }
+    });
+    if (!existing) {
+      return sendJson(res, 404, { error: "Session not found" });
     }
 
     const session = await prisma.session.update({
@@ -104,15 +113,18 @@ export async function handleRenameSession(sessionId, body, res) {
   }
 }
 
-export async function handleDeleteSession(sessionId, res) {
+export async function handleDeleteSession(sessionId, res, options = {}) {
   try {
     if (!sessionId || typeof sessionId !== "string") {
       return sendJson(res, 400, { error: "sessionId is required" });
     }
 
-    await prisma.session.delete({
-      where: { id: sessionId }
+    const result = await prisma.session.deleteMany({
+      where: { id: sessionId, visitorId: options.visitorId || "legacy" }
     });
+    if (result.count === 0) {
+      return sendJson(res, 404, { error: "Session not found" });
+    }
 
     return sendJson(res, 200, { ok: true });
   } catch (error) {

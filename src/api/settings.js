@@ -81,6 +81,7 @@ export async function handleGetSettings(res) {
   const result = {};
   for (const role of ROLES) {
     result[role] = isLegacyDefault(role, map[role]) ? defaultSettings(role) : (map[role] || defaultSettings(role));
+    result[role] = publicSettings(result[role]);
   }
   const globalRow = rows.find(r => r.role === "global");
   result.theme = globalRow?.theme || "light";
@@ -107,6 +108,14 @@ function defaultSettings(role) {
     apiKey: base.apiKey || "",
     temperature: typeof base.temperature === "number" ? base.temperature : 0.7,
     options: normalizeOptions(role, base.options)
+  };
+}
+
+function publicSettings(settings) {
+  return {
+    ...settings,
+    apiKey: "",
+    hasApiKey: Boolean(settings.apiKey)
   };
 }
 
@@ -297,13 +306,19 @@ function dropUndefined(value) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
 }
 
-export async function handleUpdateSettings(body, res) {
+export async function handleUpdateSettings(body, res, req = null) {
   if (!body || typeof body !== "object") {
     res.writeHead(400, { "Content-Type": "application/json; charset=utf-8" });
     res.end(JSON.stringify({ error: "Invalid body" }));
     return;
   }
   const result = {};
+  const hasRoleSettings = ROLES.some((role) => body[role] && typeof body[role] === "object");
+  if (hasRoleSettings && !isSettingsAdmin(req)) {
+    res.writeHead(403, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" });
+    res.end(JSON.stringify({ error: "Settings updates are disabled for public visitors" }));
+    return;
+  }
 
   // Handle theme update (global row)
   if (typeof body.theme === "string") {
@@ -341,8 +356,17 @@ export async function handleUpdateSettings(body, res) {
       update: { endpoint, model, apiKey, temperature, options },
       create: { role, endpoint, model, apiKey, temperature, options }
     });
-    result[role] = rowToSettings(upserted);
+    result[role] = publicSettings(rowToSettings(upserted));
   }
   res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-cache" });
   res.end(JSON.stringify(result));
+}
+
+function isSettingsAdmin(req) {
+  const token = process.env.SETTINGS_ADMIN_TOKEN || "";
+  if (!token || !req) return false;
+  const headerToken = req.headers["x-settings-token"];
+  if (typeof headerToken === "string" && headerToken === token) return true;
+  const auth = req.headers.authorization || "";
+  return auth === `Bearer ${token}`;
 }

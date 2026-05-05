@@ -19,13 +19,14 @@ const MATERIAL_FILE_LIMIT = 100;
 /**
  * GET /api/materials?q=keyword&sort=date|added|name|size&favorited=1
  */
-export async function handleListMaterials(query, res) {
+export async function handleListMaterials(query, res, options = {}) {
   try {
     const q = typeof query?.q === "string" ? query.q.trim() : "";
     const sort = query?.sort || "added";
     const favoritedOnly = query?.favorited === "1" || query?.favorited === "true";
+    const visitorId = options.visitorId || "legacy";
 
-    const where = {};
+    const where = { visitorId };
     if (q) {
       where.fileName = { contains: q, mode: "insensitive" };
     }
@@ -57,18 +58,19 @@ export async function handleListMaterials(query, res) {
  * POST /api/materials
  * Body: { fileName, mimeType, fileSize, dataUrl }
  */
-export async function handleCreateMaterial(body, res) {
+export async function handleCreateMaterial(body, res, options = {}) {
   try {
     const fileName = typeof body?.fileName === "string" ? body.fileName.trim() : "";
     const mimeType = typeof body?.mimeType === "string" ? body.mimeType.trim() : "application/octet-stream";
     const dataUrl = typeof body?.dataUrl === "string" ? body.dataUrl : "";
+    const visitorId = options.visitorId || "legacy";
 
     if (!fileName || !dataUrl) {
       return sendJson(res, 400, { error: "fileName and dataUrl are required" });
     }
 
     // Check file count limit (LIB-03, D-09)
-    const count = await prisma.materialItem.count();
+    const count = await prisma.materialItem.count({ where: { visitorId } });
     if (count >= MATERIAL_FILE_LIMIT) {
       return sendJson(res, 409, { error: "Material library is full (100 items max)" });
     }
@@ -91,6 +93,7 @@ export async function handleCreateMaterial(body, res) {
     // Create DB record
     const item = await prisma.materialItem.create({
       data: {
+        visitorId,
         fileName,
         mimeType,
         fileSize,
@@ -113,12 +116,13 @@ export async function handleCreateMaterial(body, res) {
  * Both fields are optional; whichever is supplied is updated. Sending neither
  * is rejected so the client doesn't accidentally produce a no-op call.
  */
-export async function handleUpdateMaterial(materialId, body, res) {
+export async function handleUpdateMaterial(materialId, body, res, options = {}) {
   try {
     if (!materialId || typeof materialId !== "string") {
       return sendJson(res, 400, { error: "materialId is required" });
     }
 
+    const visitorId = options.visitorId || "legacy";
     const data = {};
     if (typeof body?.fileName === "string") {
       const fileName = body.fileName.trim().slice(0, 240);
@@ -133,6 +137,14 @@ export async function handleUpdateMaterial(materialId, body, res) {
 
     if (Object.keys(data).length === 0) {
       return sendJson(res, 400, { error: "fileName or favorited is required" });
+    }
+
+    const existing = await prisma.materialItem.findFirst({
+      where: { id: materialId, visitorId },
+      select: { id: true }
+    });
+    if (!existing) {
+      return sendJson(res, 404, { error: "Material not found" });
     }
 
     const item = await prisma.materialItem.update({
@@ -150,26 +162,27 @@ export async function handleUpdateMaterial(materialId, body, res) {
 /**
  * DELETE /api/materials/:id
  */
-export async function handleDeleteMaterial(materialId, res) {
+export async function handleDeleteMaterial(materialId, res, options = {}) {
   try {
     if (!materialId || typeof materialId !== "string") {
       return sendJson(res, 400, { error: "materialId is required" });
     }
 
-    const item = await prisma.materialItem.findUnique({ where: { id: materialId } });
+    const visitorId = options.visitorId || "legacy";
+    const item = await prisma.materialItem.findFirst({ where: { id: materialId, visitorId } });
     if (!item) {
       return sendJson(res, 404, { error: "Material not found" });
     }
 
-    // Delete file from disk (D-08)
-    try {
-      await fs.unlink(item.filePath);
-    } catch (unlinkError) {
-      console.warn("[handleDeleteMaterial] file unlink failed:", unlinkError.message);
-    }
-
-    // Delete DB record
     await prisma.materialItem.delete({ where: { id: materialId } });
+    const remainingRefs = await prisma.materialItem.count({ where: { filePath: item.filePath } });
+    if (remainingRefs === 0 && item.filePath.startsWith(MATERIAL_DIR)) {
+      try {
+        await fs.unlink(item.filePath);
+      } catch (unlinkError) {
+        console.warn("[handleDeleteMaterial] file unlink failed:", unlinkError.message);
+      }
+    }
 
     return sendJson(res, 200, { ok: true });
   } catch (error) {
@@ -207,7 +220,7 @@ export async function handleGetMaterialFile(materialId, res, options = {}) {
       return sendJson(res, 400, { error: "materialId is required" });
     }
 
-    const item = await prisma.materialItem.findUnique({ where: { id: materialId } });
+    const item = await prisma.materialItem.findFirst({ where: { id: materialId, visitorId: options.visitorId || "legacy" } });
     if (!item) {
       return sendJson(res, 404, { error: "Material not found" });
     }
@@ -281,27 +294,27 @@ function isSupportedMaterialMime(mimeType) {
  * Sync an uploaded asset to the material library.
  * Best-effort: returns null on failure without throwing.
  */
-export async function syncToMaterialLibrary({ hash, fileName, mimeType, fileSize, filePath }) {
+export async function syncToMaterialLibrary({ hash, fileName, mimeType, fileSize, filePath, visitorId = "legacy" }) {
   try {
     if (!isSupportedMaterialMime(mimeType)) {
       return null;
     }
 
     // Dedup: if MaterialItem with same hash exists, skip
-    const existing = await prisma.materialItem.findFirst({ where: { hash } });
+    const existing = await prisma.materialItem.findFirst({ where: { hash, visitorId } });
     if (existing) {
       return existing;
     }
 
     // 100-item limit check
-    const count = await prisma.materialItem.count();
+    const count = await prisma.materialItem.count({ where: { visitorId } });
     if (count >= MATERIAL_FILE_LIMIT) {
       console.warn("[syncToMaterialLibrary] Material library full (100 items), skipping sync for", fileName);
       return null;
     }
 
     const item = await prisma.materialItem.create({
-      data: { fileName, mimeType, fileSize, hash, filePath }
+      data: { visitorId, fileName, mimeType, fileSize, hash, filePath }
     });
 
     return item;

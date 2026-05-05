@@ -364,7 +364,7 @@ function detectMimeType(buffer) {
 /**
  * POST /api/sessions
  */
-export async function handleCreateSession(body, res) {
+export async function handleCreateSession(body, res, options = {}) {
   try {
     const state = body?.state;
     if (!state || typeof state !== "object") {
@@ -373,6 +373,7 @@ export async function handleCreateSession(body, res) {
 
     const title = typeof body?.title === "string" ? body.title.trim() : "";
     const isDemo = body?.isDemo === true;
+    const visitorId = options.visitorId || "legacy";
     const viewState = buildPersistedViewState(state);
 
     const { nodes, links, chatMessages } = serializeState(state);
@@ -384,6 +385,7 @@ export async function handleCreateSession(body, res) {
     const session = await prisma.$transaction(async (tx) => {
       const session = await tx.session.create({
         data: {
+          visitorId,
           title: resolvedTitle,
           isDemo,
           viewState
@@ -452,14 +454,14 @@ export async function handleCreateSession(body, res) {
 /**
  * GET /api/sessions/:id
  */
-export async function handleGetSession(sessionId, res) {
+export async function handleGetSession(sessionId, res, options = {}) {
   try {
     if (!sessionId || typeof sessionId !== "string") {
       return sendJson(res, 400, { error: "sessionId is required" });
     }
 
-    const session = await prisma.session.findUnique({
-      where: { id: sessionId },
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, visitorId: options.visitorId || "legacy" },
       include: {
         nodes: true,
         links: true,
@@ -490,7 +492,7 @@ export async function handleGetSession(sessionId, res) {
 /**
  * PUT /api/sessions/:id
  */
-export async function handleUpdateSession(sessionId, body, res) {
+export async function handleUpdateSession(sessionId, body, res, options = {}) {
   try {
     if (!sessionId || typeof sessionId !== "string") {
       return sendJson(res, 400, { error: "sessionId is required" });
@@ -502,6 +504,7 @@ export async function handleUpdateSession(sessionId, body, res) {
     }
 
     const title = typeof body?.title === "string" ? body.title.trim() : undefined;
+    const visitorId = options.visitorId || "legacy";
     const viewState = buildPersistedViewState(state);
 
     const { nodes, links, chatMessages } = serializeState(state);
@@ -510,8 +513,8 @@ export async function handleUpdateSession(sessionId, body, res) {
     await collectGeneratedAssets(nodes, assetRecords);
 
     const session = await prisma.$transaction(async (tx) => {
-      const existing = await tx.session.findUnique({
-        where: { id: sessionId },
+      const existing = await tx.session.findFirst({
+        where: { id: sessionId, visitorId },
         select: { title: true }
       });
       if (!existing) {
@@ -595,14 +598,14 @@ export async function handleUpdateSession(sessionId, body, res) {
 /**
  * GET /api/sessions/:id/export
  */
-export async function handleExportSession(sessionId, res) {
+export async function handleExportSession(sessionId, res, options = {}) {
   try {
     if (!sessionId || typeof sessionId !== "string") {
       return sendJson(res, 400, { error: "sessionId is required" });
     }
 
-    const session = await prisma.session.findUnique({
-      where: { id: sessionId },
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, visitorId: options.visitorId || "legacy" },
       include: {
         nodes: true,
         links: true,

@@ -14,6 +14,7 @@ import { handleContextIngest, handleContextRetrieve, handleContextStats, handleC
 import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js";
 import { extractTextFromBuffer } from "./src/lib/textExtract.js";
 import { parseFileStructured } from "./src/lib/fileParser.js";
+import { resolveVisitor } from "./src/lib/visitor.js";
 import { PrismaClient } from "@prisma/client";
 import WebSocket from "ws";
 import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt, buildChatSystemContext, buildChatUserPrompt, buildGeneratePrompt, buildExplainPrompt, buildExplainSystemPrompt, buildRealtimeInstruction, buildDeepThinkSystemPrompt, buildDeepThinkUserPrompt, buildExploreContent, CANVAS_ACTION_TYPES, CANVAS_ACTION_TYPES_TEXT } from "./src/prompts/index.js";
@@ -27,6 +28,7 @@ const publicDir = path.join(__dirname, "public");
 loadDotEnv(path.join(__dirname, ".env"));
 
 const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || "127.0.0.1";
 const DEMO_MODE = process.env.DEMO_MODE === "true";
 const IMAGE_POLL_INTERVAL_MS = Number(process.env.IMAGE_POLL_INTERVAL_MS || 2000);
 const IMAGE_POLL_ATTEMPTS = Number(process.env.IMAGE_POLL_ATTEMPTS || 30);
@@ -494,6 +496,7 @@ function formatReferenceSection(references = [], lang) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host}`);
+    const visitor = resolveVisitor(req, res);
 
     if (req.method === "GET" && url.pathname === "/api/health") {
       return sendJson(res, 200, {
@@ -515,7 +518,7 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "PUT" && url.pathname === "/api/settings") {
       const body = await readJson(req);
-      const result = await handleUpdateSettings(body, res);
+      const result = await handleUpdateSettings(body, res, req);
       await refreshConfigs();
       return result;
     }
@@ -588,7 +591,7 @@ const server = http.createServer(async (req, res) => {
     // Asset routes
     if (req.method === "POST" && url.pathname === "/api/assets") {
       const body = await readJson(req);
-      return await handleStoreAsset(body, res);
+      return await handleStoreAsset(body, res, visitor);
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/assets/")) {
       return await handleGetAsset(req, res);
@@ -597,36 +600,36 @@ const server = http.createServer(async (req, res) => {
     // Session routes
     if (req.method === "POST" && url.pathname === "/api/sessions") {
       const body = await readJson(req);
-      return await handleCreateSession(body, res);
+      return await handleCreateSession(body, res, visitor);
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/export")) {
       const id = url.pathname.split("/")[3];
-      return await handleExportSession(id, res);
+      return await handleExportSession(id, res, visitor);
     }
     if (req.method === "GET" && /^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
       const id = url.pathname.split("/")[3];
-      return await handleGetSession(id, res);
+      return await handleGetSession(id, res, visitor);
     }
     if (req.method === "PUT" && /^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
       const id = url.pathname.split("/")[3];
       const body = await readJson(req);
-      return await handleUpdateSession(id, body, res);
+      return await handleUpdateSession(id, body, res, visitor);
     }
     if (req.method === "DELETE" && /^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
       const id = url.pathname.split("/")[3];
-      return await handleDeleteSession(id, res);
+      return await handleDeleteSession(id, res, visitor);
     }
 
     // Import route
     if (req.method === "POST" && url.pathname === "/api/import") {
       const body = await readJson(req);
-      return await handleImportSession(body, res);
+      return await handleImportSession(body, res, visitor);
     }
 
     // Share routes
     if (req.method === "POST" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/share")) {
       const id = url.pathname.split("/")[3];
-      return await handleCreateShare(id, res);
+      return await handleCreateShare(id, res, visitor);
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/share/")) {
       const token = url.pathname.split("/")[3];
@@ -634,7 +637,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/share-image") {
       const body = await readJson(req);
-      return await handleCreateImageShare(body, res);
+      return await handleCreateImageShare(body, res, visitor);
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/share-image/")) {
       const token = url.pathname.split("/")[3];
@@ -643,34 +646,35 @@ const server = http.createServer(async (req, res) => {
 
     // History route
     if (req.method === "GET" && url.pathname === "/api/history") {
-      return await handleListHistory(Object.fromEntries(url.searchParams), res);
+      return await handleListHistory(Object.fromEntries(url.searchParams), res, visitor);
     }
     if (req.method === "PATCH" && /^\/api\/sessions\/[^/]+\/title$/.test(url.pathname)) {
       const id = url.pathname.split("/")[3];
       const body = await readJson(req);
-      return await handleRenameSession(id, body, res);
+      return await handleRenameSession(id, body, res, visitor);
     }
 
     // Material library routes
     if (req.method === "GET" && url.pathname === "/api/materials") {
-      return await handleListMaterials(Object.fromEntries(url.searchParams), res);
+      return await handleListMaterials(Object.fromEntries(url.searchParams), res, visitor);
     }
     if (req.method === "POST" && url.pathname === "/api/materials") {
       const body = await readJson(req);
-      return await handleCreateMaterial(body, res);
+      return await handleCreateMaterial(body, res, visitor);
     }
     if (req.method === "PUT" && /^\/api\/materials\/[^/]+$/.test(url.pathname)) {
       const id = url.pathname.split("/")[3];
       const body = await readJson(req);
-      return await handleUpdateMaterial(id, body, res);
+      return await handleUpdateMaterial(id, body, res, visitor);
     }
     if (req.method === "DELETE" && /^\/api\/materials\/[^/]+$/.test(url.pathname)) {
       const id = url.pathname.split("/")[3];
-      return await handleDeleteMaterial(id, res);
+      return await handleDeleteMaterial(id, res, visitor);
     }
     if (req.method === "GET" && /^\/api\/materials\/[^/]+\/file$/.test(url.pathname)) {
       const id = url.pathname.split("/")[3];
       return await handleGetMaterialFile(id, res, {
+        ...visitor,
         download: url.searchParams.get("download") === "1"
       });
     }
@@ -687,18 +691,18 @@ const server = http.createServer(async (req, res) => {
     // Context (session-scoped RAG) routes
     if (req.method === "POST" && url.pathname === "/api/context/ingest") {
       const body = await readJson(req);
-      return await handleContextIngest(body, res);
+      return await handleContextIngest(body, res, visitor);
     }
     if (req.method === "POST" && url.pathname === "/api/context/retrieve") {
       const body = await readJson(req);
-      return await handleContextRetrieve(body, res);
+      return await handleContextRetrieve(body, res, visitor);
     }
     if (req.method === "GET" && url.pathname === "/api/context/stats") {
-      return await handleContextStats(req, res);
+      return await handleContextStats(req, res, visitor);
     }
     if (req.method === "DELETE" && url.pathname.startsWith("/api/context/")) {
       const id = url.pathname.split("/")[3];
-      return await handleContextWipe(id, res);
+      return await handleContextWipe(id, res, visitor);
     }
 
     if (req.method === "GET") {
@@ -734,8 +738,8 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`ThoughtGrid running at http://localhost:${PORT}`);
+server.listen(PORT, HOST, () => {
+  console.log(`ThoughtGrid running at http://${HOST}:${PORT}`);
   console.log(`Model mode: ${appMode()}`);
 });
 

@@ -11,6 +11,7 @@ datasource db {
 
 model Session {
   id        String   @id @default(uuid())
+  visitorId String   @default("legacy")
   title     String   @default("未命名会话")
   isDemo    Boolean  @default(false)
   createdAt DateTime @default(now())
@@ -21,6 +22,8 @@ model Session {
   chatMessages ChatMessage[]
   shareTokens ShareToken[]
   viewState Json?    // { x, y, scale }
+
+  @@index([visitorId, updatedAt])
 }
 
 model Node {
@@ -109,6 +112,7 @@ model Settings {
 
 model MaterialItem {
   id        String   @id @default(uuid())
+  visitorId String   @default("legacy")
   fileName  String
   mimeType  String
   fileSize  Int
@@ -122,6 +126,8 @@ model MaterialItem {
   @@index([fileName])
   @@index([addedAt])
   @@index([favorited])
+  @@index([visitorId, addedAt])
+  @@index([visitorId, hash])
 }
 
 model FileUnderstanding {

@@ -17,6 +17,7 @@ import {
   isEmbeddingConfigured,
   CONTEXT_KINDS
 } from "../lib/rag/index.js";
+import { prisma } from "../lib/prisma.js";
 
 function sendJson(res, status, data) {
   res.writeHead(status, {
@@ -34,7 +35,7 @@ function sendJson(res, status, data) {
  *     sourceId?, sourceMeta?, replace?, snippet? (true → no chunking)
  *   }
  */
-export async function handleContextIngest(body, res) {
+export async function handleContextIngest(body, res, options = {}) {
   try {
     if (!isEmbeddingConfigured()) {
       return sendJson(res, 503, { error: "Embedding API key not configured" });
@@ -53,6 +54,9 @@ export async function handleContextIngest(body, res) {
     if (text.length > 200000) {
       return sendJson(res, 413, { error: "text too large (>200K chars)" });
     }
+    if (!(await canAccessSession(sessionId, options))) {
+      return sendJson(res, 404, { error: "Session not found" });
+    }
 
     const fn = snippet ? ingestSnippet : ingestText;
     const result = await fn({ sessionId, kind, text, sourceId, sourceMeta, replace });
@@ -67,7 +71,7 @@ export async function handleContextIngest(body, res) {
  * POST /api/context/retrieve
  * Body: { sessionId, query, topK?, kinds?, minScore? }
  */
-export async function handleContextRetrieve(body, res) {
+export async function handleContextRetrieve(body, res, options = {}) {
   try {
     const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
     const query = typeof body?.query === "string" ? body.query : "";
@@ -77,6 +81,9 @@ export async function handleContextRetrieve(body, res) {
 
     if (!sessionId || !query.trim()) {
       return sendJson(res, 400, { error: "sessionId and query are required" });
+    }
+    if (!(await canAccessSession(sessionId, options))) {
+      return sendJson(res, 404, { error: "Session not found" });
     }
 
     const rows = await retrieveContext({ sessionId, query, topK, kinds, minScore });
@@ -101,12 +108,15 @@ export async function handleContextRetrieve(body, res) {
 /**
  * GET /api/context/stats?sessionId=...
  */
-export async function handleContextStats(req, res) {
+export async function handleContextStats(req, res, options = {}) {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host}`);
     const sessionId = url.searchParams.get("sessionId") || "";
     if (!sessionId) {
       return sendJson(res, 400, { error: "sessionId is required" });
+    }
+    if (!(await canAccessSession(sessionId, options))) {
+      return sendJson(res, 404, { error: "Session not found" });
     }
     const count = await countChunks(sessionId);
     return sendJson(res, 200, {
@@ -125,10 +135,13 @@ export async function handleContextStats(req, res) {
 /**
  * DELETE /api/context/:sessionId
  */
-export async function handleContextWipe(sessionId, res) {
+export async function handleContextWipe(sessionId, res, options = {}) {
   try {
     if (!sessionId) {
       return sendJson(res, 400, { error: "sessionId is required" });
+    }
+    if (!(await canAccessSession(sessionId, options))) {
+      return sendJson(res, 404, { error: "Session not found" });
     }
     await deleteChunksFor({ sessionId });
     return sendJson(res, 200, { ok: true, sessionId });
@@ -136,4 +149,12 @@ export async function handleContextWipe(sessionId, res) {
     console.error("[handleContextWipe]", error);
     return sendJson(res, 500, { error: error.message || "wipe failed" });
   }
+}
+
+async function canAccessSession(sessionId, options = {}) {
+  const session = await prisma.session.findFirst({
+    where: { id: sessionId, visitorId: options.visitorId || "legacy" },
+    select: { id: true }
+  });
+  return Boolean(session);
 }

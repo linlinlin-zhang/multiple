@@ -17,14 +17,14 @@ function addDays(date, days) {
 /**
  * POST /api/sessions/:id/share
  */
-export async function handleCreateShare(sessionId, res) {
+export async function handleCreateShare(sessionId, res, options = {}) {
   try {
     if (!sessionId || typeof sessionId !== "string") {
       return sendJson(res, 400, { error: "sessionId is required" });
     }
 
-    const session = await prisma.session.findUnique({
-      where: { id: sessionId },
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, visitorId: options.visitorId || "legacy" },
       include: {
         nodes: true,
         links: true,
@@ -129,7 +129,7 @@ export async function handleGetShare(token, res) {
 /**
  * POST /api/share-image
  */
-export async function handleCreateImageShare(body, res) {
+export async function handleCreateImageShare(body, res, options = {}) {
   try {
     const nodeId = typeof body?.nodeId === "string" ? body.nodeId.trim() : "";
     const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
@@ -138,8 +138,8 @@ export async function handleCreateImageShare(body, res) {
       return sendJson(res, 400, { error: "nodeId and sessionId are required" });
     }
 
-    const session = await prisma.session.findUnique({
-      where: { id: sessionId },
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, visitorId: options.visitorId || "legacy" },
       include: { nodes: true, assets: true }
     });
 

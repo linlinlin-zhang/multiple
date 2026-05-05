@@ -15,7 +15,7 @@ function sendJson(res, status, data) {
  * POST /api/assets
  * Body: { dataUrl, kind?: "upload" | "generated", fileName? }
  */
-export async function handleStoreAsset(body, res) {
+export async function handleStoreAsset(body, res, options = {}) {
   try {
     const dataUrl = typeof body?.dataUrl === "string" ? body.dataUrl : "";
     const kind = body?.kind === "generated" ? "generated" : "upload";
@@ -42,7 +42,8 @@ export async function handleStoreAsset(body, res) {
         fileName: fileName || `upload-${result.hash.slice(0, 8)}`,
         mimeType,
         fileSize: result.size,
-        filePath: result.filePath
+        filePath: result.filePath,
+        visitorId: options.visitorId || "legacy"
       }).catch(err => console.error("[handleStoreAsset] material sync failed:", err));
     }
 

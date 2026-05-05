@@ -12,7 +12,7 @@ function sendJson(res, status, data) {
 /**
  * POST /api/import
  */
-export async function handleImportSession(body, res) {
+export async function handleImportSession(body, res, options = {}) {
   try {
     if (!body || typeof body !== "object") {
       return sendJson(res, 400, { error: "Invalid request body" });
@@ -58,6 +58,7 @@ export async function handleImportSession(body, res) {
     const newSession = await prisma.$transaction(async (tx) => {
       const sessionRecord = await tx.session.create({
         data: {
+          visitorId: options.visitorId || "legacy",
           title: session.title || "导入的会话",
           isDemo: session.isDemo || false,
           viewState: session.viewState || { x: 0, y: 0, scale: 0.86 }
