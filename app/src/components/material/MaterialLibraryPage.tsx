@@ -323,36 +323,37 @@ interface MaterialPreviewModalProps {
   onClose: () => void;
 }
 
+interface TextPreviewState {
+  itemId: string;
+  content: string | null;
+  error: string | null;
+}
+
 function MaterialPreviewModal({ items, previewItem, previewItemId, onSelect, onClose }: MaterialPreviewModalProps) {
   const { t } = useI18n();
-  const [textContent, setTextContent] = useState<string | null>(null);
-  const [textError, setTextError] = useState<string | null>(null);
+  const [textPreview, setTextPreview] = useState<TextPreviewState | null>(null);
+  const previewTextId = previewItem && isTextMime(previewItem.mimeType) ? previewItem.id : null;
+  const activeTextPreview = textPreview?.itemId === previewTextId ? textPreview : null;
 
   useEffect(() => {
-    if (!previewItem || !isTextMime(previewItem.mimeType)) {
-      setTextContent(null);
-      setTextError(null);
-      return;
-    }
+    if (!previewTextId) return;
 
     let cancelled = false;
-    setTextContent(null);
-    setTextError(null);
 
-    fetch(`/api/materials/${previewItem.id}/file`)
+    fetch(`/api/materials/${previewTextId}/file`)
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const text = await res.text();
-        if (!cancelled) setTextContent(text.slice(0, 10000));
+        if (!cancelled) setTextPreview({ itemId: previewTextId, content: text.slice(0, 10000), error: null });
       })
       .catch((err) => {
-        if (!cancelled) setTextError(err instanceof Error ? err.message : String(err));
+        if (!cancelled) setTextPreview({ itemId: previewTextId, content: null, error: err instanceof Error ? err.message : String(err) });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [previewItem]);
+  }, [previewTextId]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -424,8 +425,8 @@ function MaterialPreviewModal({ items, previewItem, previewItemId, onSelect, onC
           {previewItem ? (
             <PreviewContent
               item={previewItem}
-              textContent={textContent}
-              textError={textError}
+              textContent={activeTextPreview?.content ?? null}
+              textError={activeTextPreview?.error ?? null}
             />
           ) : (
             <div className="flex h-full items-center justify-center text-white/60 text-sm">

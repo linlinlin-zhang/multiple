@@ -3,7 +3,7 @@ import { File, ExternalLink, Sparkles, Image as ImageIcon } from "lucide-react";
 import { buildAssetUrl } from "../../hooks/useHistory";
 import { useI18n } from "@/lib/i18n";
 import MarkdownContent from "./MarkdownContent";
-import type { SessionDetail, Asset, Node, ChatMessage } from "@/types";
+import type { SessionDetail, Asset, Node, ChatMessage, CanvasContent } from "@/types";
 
 interface AssetDetailPaneProps {
   session: SessionDetail | null;
@@ -58,12 +58,16 @@ function readableTitle(...values: unknown[]) {
   return candidates[0] ? urlHost(candidates[0]) : "";
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? value as Record<string, unknown> : {};
+}
+
 function webReferences(node: Node) {
   const refs = node.data?.option?.references || node.data?.references || node.data?.sourceCard?.references;
   return Array.isArray(refs) ? refs : [];
 }
 
-function webContentText(content: any) {
+function webContentText(content: CanvasContent | null | undefined) {
   if (!content || typeof content !== "object") return "";
   return firstText(content.mainContent, content.markdown, content.text, content.body, content.content, content.summary, content.description);
 }
@@ -271,41 +275,60 @@ function ReferenceList({ references, label }: { references: Array<{ title?: stri
   );
 }
 
-function optionContentPreview(content: any): string {
+function optionContentPreview(content: CanvasContent | null): string {
   if (!content || typeof content !== "object") return "";
   const direct = String(content.mainContent || content.markdown || content.text || content.body || content.content || content.summary || content.description || "").trim();
   if (direct) return direct;
   if (Array.isArray(content.sections)) {
     return content.sections
-      .map((section: any) => [`## ${section?.title || ""}`.trim(), String(section?.body || section?.text || "").trim()].filter(Boolean).join("\n\n"))
+      .map((section) => {
+        const record = asRecord(section);
+        return [`## ${record.title || ""}`.trim(), String(record.body || record.text || "").trim()].filter(Boolean).join("\n\n");
+      })
       .filter(Boolean)
       .join("\n\n");
   }
   if (Array.isArray(content.steps)) {
     return content.steps
-      .map((step: any, index: number) => `${index + 1}. ${String(step?.title || step?.name || step || "").trim()}${step?.description ? `\n   ${String(step.description).trim()}` : ""}`)
+      .map((step, index: number) => {
+        const record = asRecord(step);
+        const label = String(record.title || record.name || (typeof step === "string" ? step : "")).trim();
+        return `${index + 1}. ${label}${record.description ? `\n   ${String(record.description).trim()}` : ""}`;
+      })
       .join("\n");
   }
   if (Array.isArray(content.items)) {
     return content.items
-      .map((item: any) => `- ${String(item?.text || item?.title || item?.label || item || "").trim()}${item?.description ? ` — ${String(item.description).trim()}` : ""}`)
+      .map((item) => {
+        const record = asRecord(item);
+        const label = String(record.text || record.title || record.label || (typeof item === "string" ? item : "")).trim();
+        return `- ${label}${record.description ? ` — ${String(record.description).trim()}` : ""}`;
+      })
       .join("\n");
   }
   if (Array.isArray(content.metrics)) {
     return content.metrics
-      .map((item: any) => `- ${String(item?.label || "").trim()}: ${String(item?.value || "").trim()}${item?.note ? ` — ${String(item.note).trim()}` : ""}`)
+      .map((item) => {
+        const record = asRecord(item);
+        return `- ${String(record.label || "").trim()}: ${String(record.value || "").trim()}${record.note ? ` — ${String(record.note).trim()}` : ""}`;
+      })
       .join("\n");
   }
   if (Array.isArray(content.quotes)) {
     return content.quotes
-      .map((item: any) => `> ${String(item?.text || item?.quote || item || "").trim()}${item?.source ? `\n— ${String(item.source).trim()}` : ""}`)
+      .map((item) => {
+        const record = asRecord(item);
+        const text = String(record.text || record.quote || (typeof item === "string" ? item : "")).trim();
+        return `> ${text}${record.source ? `\n— ${String(record.source).trim()}` : ""}`;
+      })
       .join("\n\n");
   }
   if (Array.isArray(content.columns) && Array.isArray(content.rows)) {
-    const columns = content.columns.map((column: any) => String(column || "").trim());
-    const rows = content.rows.slice(0, 80).map((row: any) => {
+    const columns = content.columns.map((column) => String(column || "").trim());
+    const rows = content.rows.slice(0, 80).map((row) => {
       if (Array.isArray(row)) return row.map((cell) => String(cell ?? "").trim());
-      return columns.map((column: string) => String(row?.[column] ?? row?.[column.toLowerCase()] ?? "").trim());
+      const record = asRecord(row);
+      return columns.map((column: string) => String(record[column] ?? record[column.toLowerCase()] ?? "").trim());
     });
     return [
       `| ${columns.join(" | ")} |`,

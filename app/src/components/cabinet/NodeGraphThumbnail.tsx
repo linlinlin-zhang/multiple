@@ -1,8 +1,25 @@
-import type { Node, Link } from "@/types";
+import type { NodeData } from "@/types";
+
+interface GraphNode {
+  id?: string;
+  nodeId: string;
+  type: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  data: NodeData;
+}
+
+interface GraphLink {
+  id?: string;
+  fromNodeId: string;
+  toNodeId: string;
+}
 
 interface NodeGraphThumbnailProps {
-  nodes: Node[];
-  links: Link[];
+  nodes: GraphNode[];
+  links: GraphLink[];
   width?: number;
   height?: number;
 }
@@ -28,7 +45,7 @@ function truncateLabel(label: string): string {
   return label.slice(0, 14) + "...";
 }
 
-function getNodeLabel(node: Node): string {
+function getNodeLabel(node: GraphNode): string {
   switch (node.type) {
     case "source": {
       const st = node.data?.sourceType;
@@ -69,7 +86,7 @@ export default function NodeGraphThumbnail({ nodes, links }: NodeGraphThumbnailP
   const pad = 40;
   const viewBox = `${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`;
 
-  const nodeMap = new Map<string, Node>();
+  const nodeMap = new Map<string, GraphNode>();
   for (const node of nodes) {
     nodeMap.set(node.nodeId, node);
   }
@@ -84,7 +101,7 @@ export default function NodeGraphThumbnail({ nodes, links }: NodeGraphThumbnailP
         </defs>
 
         {/* Links shadow layer */}
-        {links.map((link) => {
+        {links.map((link, index) => {
           const fromNode = nodeMap.get(link.fromNodeId);
           const toNode = nodeMap.get(link.toNodeId);
           if (!fromNode || !toNode) return null;
@@ -100,7 +117,7 @@ export default function NodeGraphThumbnail({ nodes, links }: NodeGraphThumbnailP
 
           return (
             <path
-              key={`${link.id}-shadow`}
+              key={`${link.id || `${link.fromNodeId}-${link.toNodeId}-${index}`}-shadow`}
               d={buildBezierPath(start, end)}
               stroke="#0070cc"
               strokeWidth={4}
@@ -111,7 +128,7 @@ export default function NodeGraphThumbnail({ nodes, links }: NodeGraphThumbnailP
         })}
 
         {/* Links main layer */}
-        {links.map((link) => {
+        {links.map((link, index) => {
           const fromNode = nodeMap.get(link.fromNodeId);
           const toNode = nodeMap.get(link.toNodeId);
           if (!fromNode || !toNode) return null;
@@ -126,7 +143,7 @@ export default function NodeGraphThumbnail({ nodes, links }: NodeGraphThumbnailP
           };
 
           return (
-            <g key={link.id}>
+            <g key={link.id || `${link.fromNodeId}-${link.toNodeId}-${index}`}>
               <path
                 d={buildBezierPath(start, end)}
                 stroke="#0070cc"
@@ -149,7 +166,7 @@ export default function NodeGraphThumbnail({ nodes, links }: NodeGraphThumbnailP
           const label = truncateLabel(getNodeLabel(node));
 
           return (
-            <g key={node.id}>
+            <g key={node.id || node.nodeId}>
               <rect
                 x={node.x}
                 y={node.y}

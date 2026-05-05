@@ -10,6 +10,74 @@ export interface HistorySession {
 
 export type OutputKind = "image" | "web" | "document" | "chat";
 
+export interface ReferenceItem {
+  title?: string;
+  url?: string;
+  description?: string;
+  type?: string;
+}
+
+export interface CanvasContent {
+  url?: string;
+  title?: string;
+  description?: string;
+  mainContent?: string;
+  markdown?: string;
+  text?: string;
+  body?: string;
+  content?: string;
+  summary?: string;
+  sections?: unknown[];
+  steps?: unknown[];
+  items?: unknown[];
+  metrics?: unknown[];
+  quotes?: unknown[];
+  columns?: unknown[];
+  rows?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface CanvasOption {
+  title?: string;
+  description?: string;
+  prompt?: string;
+  tone?: string;
+  layoutHint?: string;
+  nodeType?: string;
+  references?: ReferenceItem[];
+  content?: CanvasContent;
+  [key: string]: unknown;
+}
+
+export interface SourceCardData {
+  imageUrl?: string;
+  imageHash?: string;
+  fileName?: string;
+  title?: string;
+  summary?: string;
+  sourceUrl?: string;
+  sourceText?: string;
+  references?: ReferenceItem[];
+  [key: string]: unknown;
+}
+
+export interface NodeData {
+  sourceType?: string;
+  sourceUrl?: string;
+  sourceText?: string;
+  fileName?: string;
+  imageHash?: string;
+  imageUrl?: string;
+  title?: string;
+  summary?: string;
+  description?: string;
+  explanation?: string;
+  references?: ReferenceItem[];
+  option?: CanvasOption;
+  sourceCard?: SourceCardData;
+  [key: string]: unknown;
+}
+
 export interface Node {
   id: string;
   sessionId: string;
@@ -19,7 +87,7 @@ export interface Node {
   y: number;
   width: number;
   height: number;
-  data: any; // sourceType: "image" | "text" | "url"; fileName; sourceUrl; sourceText; etc.
+  data: NodeData; // sourceType: "image" | "text" | "url"; fileName; sourceUrl; sourceText; etc.
   collapsed: boolean;
   createdAt: string;
 }
@@ -70,7 +138,7 @@ export interface SidebarAssetItem {
   summary: string;
   groupLabel: string;
   assetType: "image" | "link" | "file" | "chat";
-  data: any;
+  data: unknown;
 }
 
 export interface MaterialItem {

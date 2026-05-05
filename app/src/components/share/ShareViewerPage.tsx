@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import NodeGraphThumbnail from "../cabinet/NodeGraphThumbnail";
 import { buildAssetUrl } from "../../hooks/useHistory";
 import { useI18n } from "@/lib/i18n";
+import type { NodeData } from "@/types";
 
 interface ShareSnapshot {
   title: string;
@@ -15,7 +16,7 @@ interface ShareSnapshot {
     y: number;
     width: number;
     height: number;
-    data: any;
+    data: NodeData;
     collapsed: boolean;
   }>;
   links: Array<{
@@ -142,7 +143,7 @@ export default function ShareViewerPage() {
           <>
             <section className="bg-white rounded-3xl border border-cabinet-border p-5 shadow-[0_8px_16px_rgba(0,0,0,0.08)]">
               <h2 className="text-base font-medium text-cabinet-ink mb-4">{t("share.nodeOverview")}</h2>
-              <NodeGraphThumbnail nodes={snapshot.nodes as any} links={snapshot.links as any} />
+              <NodeGraphThumbnail nodes={snapshot.nodes} links={snapshot.links} />
             </section>
 
             {snapshot.assets.length > 0 && (

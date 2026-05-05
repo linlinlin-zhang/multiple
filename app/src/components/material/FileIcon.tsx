@@ -1,4 +1,5 @@
 import { FileText, Presentation, Video, File } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 interface FileIconProps {
@@ -6,7 +7,7 @@ interface FileIconProps {
   fileName: string;
 }
 
-function getTypeLabel(mimeType: string): { icon: typeof File; label: string } {
+function getTypeLabel(mimeType: string): { icon: LucideIcon; label: string } {
   if (mimeType.startsWith("video/")) return { icon: Video, label: "Video" };
   if (mimeType === "application/pdf") return { icon: FileText, label: "PDF" };
   if (mimeType.includes("presentationml")) return { icon: Presentation, label: "PPT" };
@@ -15,7 +16,7 @@ function getTypeLabel(mimeType: string): { icon: typeof File; label: string } {
   return { icon: File, label: "File" };
 }
 
-export default function FileIcon({ mimeType, fileName: _fileName }: FileIconProps) {
+export default function FileIcon({ mimeType }: FileIconProps) {
   const { icon: Icon, label } = getTypeLabel(mimeType);
   return (
     <div className="flex flex-col items-center justify-center gap-2 h-full">
