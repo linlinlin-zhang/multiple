@@ -309,6 +309,7 @@ let generatedArrangeTimer = null;
 let workbenchTourState = null;
 let workbenchTourDemoImageOpen = false;
 let workbenchTourDemoImageCard = null;
+const linkRouteCache = new Map();
 const WORKBENCH_TOUR_DEMO_NODE_ID = "__workbenchTourDemoImage";
 const WORKBENCH_TOUR_DEMO_IMAGE_URL = "/home-assets/cards/26.jpg";
 const WORKBENCH_TOUR_DEMO_IMAGE_TITLE = "ThoughtGrid demo image";
@@ -12351,11 +12352,15 @@ function makeDraggable(element, id) {
 
 function drawLinks() {
   const fragments = document.createDocumentFragment();
+  const activeRouteKeys = new Set(state.links.map(linkRouteKey));
+  for (const key of linkRouteCache.keys()) {
+    if (!activeRouteKeys.has(key)) linkRouteCache.delete(key);
+  }
   const visibleLinks = state.links.map((link) => {
     const from = state.nodes.get(link.from);
     const to = state.nodes.get(link.to);
     if (!isNodeVisible(from) || !isNodeVisible(to)) return null;
-    return { link, from, to, sides: chooseLinkSides(from, to) };
+    return { link, from, to, sides: chooseStableLinkSides(link, from, to) };
   }).filter(Boolean);
 
   const fromGroups = groupLinkDescriptors(visibleLinks, (descriptor) => `${descriptor.link.from}:${descriptor.sides.fromSide}`);
@@ -12417,38 +12422,63 @@ function linkSpreadOffset(group, descriptor) {
   return (index - (group.length - 1) / 2) * step;
 }
 
+function linkRouteKey(link) {
+  return `${link.from}->${link.to}:${link.kind || "link"}`;
+}
 
-function chooseLinkSides(from, to) {
+function chooseStableLinkSides(link, from, to) {
+  const key = linkRouteKey(link);
+  const cached = linkRouteCache.get(key);
+  const sides = chooseLinkSides(from, to, cached);
+  linkRouteCache.set(key, sides);
+  return sides;
+}
+
+function chooseLinkSides(from, to, cached = null) {
   const fromCenter = nodeCenter(from);
   const toCenter = nodeCenter(to);
   const dx = toCenter.x - fromCenter.x;
   const dy = toCenter.y - fromCenter.y;
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
+  const isJunctionLink = from?.isJunction || to?.isJunction;
 
-  if (from?.isJunction || to?.isJunction) {
-    if (absDx >= 36) {
-      return {
-        fromSide: dx >= 0 ? "right" : "left",
-        toSide: dx >= 0 ? "left" : "right"
-      };
+  if (cached) {
+    const orientation = linkSideOrientation(cached.fromSide);
+    const verticalBreak = isJunctionLink ? Math.max(112, absDx * 1.48) : Math.max(240, absDx * 1.72);
+    const horizontalBreak = isJunctionLink ? Math.max(112, absDy * 1.38) : Math.max(240, absDy * 1.56);
+    if (orientation === "horizontal" && absDy <= verticalBreak) {
+      return orientLinkSides("horizontal", dx, dy, cached, isJunctionLink);
     }
+    if (orientation === "vertical" && absDx <= horizontalBreak) {
+      return orientLinkSides("vertical", dx, dy, cached, isJunctionLink);
+    }
+  }
+
+  if (isJunctionLink) {
+    return orientLinkSides(absDx >= Math.max(52, absDy * 0.78) ? "horizontal" : "vertical", dx, dy, cached, true);
+  }
+
+  return orientLinkSides(absDy > Math.max(180, absDx * 1.28) ? "vertical" : "horizontal", dx, dy, cached, false);
+}
+
+function linkSideOrientation(side) {
+  return side === "top" || side === "bottom" ? "vertical" : "horizontal";
+}
+
+function orientLinkSides(orientation, dx, dy, cached = null, isJunctionLink = false) {
+  const threshold = isJunctionLink ? 34 : 96;
+  if (orientation === "vertical") {
+    if (cached && linkSideOrientation(cached.fromSide) === "vertical" && Math.abs(dy) < threshold) return cached;
     return {
       fromSide: dy >= 0 ? "bottom" : "top",
       toSide: dy >= 0 ? "top" : "bottom"
     };
   }
-
-  if (absDx >= 110 || absDx >= absDy * 0.62) {
-    return {
-      fromSide: dx >= 0 ? "right" : "left",
-      toSide: dx >= 0 ? "left" : "right"
-    };
-  }
-
+  if (cached && linkSideOrientation(cached.fromSide) === "horizontal" && Math.abs(dx) < threshold) return cached;
   return {
-    fromSide: dy >= 0 ? "bottom" : "top",
-    toSide: dy >= 0 ? "top" : "bottom"
+    fromSide: dx >= 0 ? "right" : "left",
+    toSide: dx >= 0 ? "left" : "right"
   };
 }
 
@@ -12550,12 +12580,12 @@ function routeLinkPath(start, end, descriptor, groups = {}) {
   const bundled = fromGroupSize > 2 || toGroupSize > 2 || descriptor?.link?.kind === "junction";
   const firstAxisDistance = start.side === "left" || start.side === "right" ? absDx : absDy;
   const lastAxisDistance = end.side === "left" || end.side === "right" ? absDx : absDy;
-  const firstLeg = clamp(firstAxisDistance * 0.28, bundled ? 86 : 58, bundled ? 168 : 126);
-  const lastLeg = clamp(lastAxisDistance * 0.24, 48, bundled ? 126 : 112);
+  const firstLeg = clamp(firstAxisDistance * 0.2, bundled ? 68 : 46, bundled ? 128 : 92);
+  const lastLeg = clamp(lastAxisDistance * 0.18, bundled ? 58 : 42, bundled ? 112 : 82);
   const fromLane = linkLaneOffset(groups.fromGroup, descriptor, bundled ? 18 : 14);
   const toLane = linkLaneOffset(groups.toGroup, descriptor, bundled ? 18 : 14);
-  const sharedLane = clamp((fromLane + toLane) * 0.45, -72, 72);
-  const lanePadding = bundled ? 92 + Math.abs(sharedLane) : 58 + Math.abs(sharedLane) * 0.5;
+  const sharedLane = clamp((fromLane + toLane) * 0.5, -86, 86);
+  const lanePadding = bundled ? 72 + Math.abs(sharedLane) : 46 + Math.abs(sharedLane) * 0.42;
   const points = [{ x: start.x, y: start.y }];
   const p1 = { x: start.x + startTangent.x * firstLeg, y: start.y + startTangent.y * firstLeg };
   const p4 = { x: end.x + endTangent.x * lastLeg, y: end.y + endTangent.y * lastLeg };
@@ -12589,38 +12619,23 @@ function routeLinkPath(start, end, descriptor, groups = {}) {
         : Math.min(p1.y, p4.y) - lanePadding;
     }
     points.push({ x: p1.x, y: midY }, { x: p4.x, y: midY });
+  } else if (startHorizontal) {
+    const cornerY = p4.y + sharedLane;
+    points.push({ x: p1.x, y: cornerY }, { x: p4.x, y: cornerY });
   } else {
-    const viaA = [p1, { x: p4.x, y: p1.y }, p4];
-    const viaB = [p1, { x: p1.x, y: p4.y }, p4];
-    const chosen = routeObstaclePenalty(viaA, descriptor) <= routeObstaclePenalty(viaB, descriptor) ? viaA : viaB;
-    points.push(...chosen.slice(1, -1));
+    const cornerX = p4.x + sharedLane;
+    points.push({ x: cornerX, y: p1.y }, { x: cornerX, y: p4.y });
   }
 
   points.push(p4, { x: end.x, y: end.y });
   const snapped = points.map((point, index) => index === 0 || index === points.length - 1 ? point : snapRoutePoint(point));
-  return roundedPolylinePath(avoidLinkObstacles(snapped, descriptor), bundled ? 18 : 14);
+  return roundedPolylinePath(simplifyPolyline(snapped), bundled ? 16 : 12);
 }
 
 function linkLaneOffset(group, descriptor, step = 18) {
   if (!group || group.length <= 1) return 0;
-  const ordered = group.slice().sort((a, b) => {
-    const aCenter = nodeCenter(a.to || state.nodes.get(a.link.to));
-    const bCenter = nodeCenter(b.to || state.nodes.get(b.link.to));
-    if (Math.abs(aCenter.y - bCenter.y) > 4) return aCenter.y - bCenter.y;
-    return aCenter.x - bCenter.x;
-  });
-  const index = ordered.indexOf(descriptor);
-  return (index - (ordered.length - 1) / 2) * step;
-}
-
-function routeObstaclePenalty(points, descriptor) {
-  const fromId = descriptor?.link?.from;
-  const toId = descriptor?.link?.to;
-  let penalty = 0;
-  for (let i = 0; i < points.length - 1; i += 1) {
-    if (firstIntersectingNode(points[i], points[i + 1], fromId, toId)) penalty += 1;
-  }
-  return penalty;
+  const index = group.indexOf(descriptor);
+  return (index - (group.length - 1) / 2) * step;
 }
 
 function snapRoutePoint(point, grid = 8) {
@@ -12629,66 +12644,6 @@ function snapRoutePoint(point, grid = 8) {
     y: Math.round(point.y / grid) * grid
   };
 }
-
-function avoidLinkObstacles(points, descriptor) {
-  const fromId = descriptor?.link?.from;
-  const toId = descriptor?.link?.to;
-  let routed = points;
-  for (let pass = 0; pass < 2; pass += 1) {
-    let changed = false;
-    const next = [];
-    for (let i = 0; i < routed.length - 1; i += 1) {
-      const a = routed[i];
-      const b = routed[i + 1];
-      next.push(a);
-      const obstacle = firstIntersectingNode(a, b, fromId, toId);
-      if (!obstacle) continue;
-      const rect = getNodeBounds(obstacle);
-      const pad = 28;
-      if (Math.abs(a.y - b.y) < 1) {
-        const y = Math.abs(a.y - (rect.y - pad)) < Math.abs(a.y - (rect.bottom + pad)) ? rect.y - pad : rect.bottom + pad;
-        next.push({ x: a.x, y }, { x: b.x, y });
-      } else if (Math.abs(a.x - b.x) < 1) {
-        const x = Math.abs(a.x - (rect.x - pad)) < Math.abs(a.x - (rect.right + pad)) ? rect.x - pad : rect.right + pad;
-        next.push({ x, y: a.y }, { x, y: b.y });
-      }
-      changed = true;
-    }
-    next.push(routed[routed.length - 1]);
-    routed = simplifyPolyline(next);
-    if (!changed) break;
-  }
-  return routed;
-}
-
-function firstIntersectingNode(a, b, fromId, toId) {
-  for (const [id, node] of state.nodes.entries()) {
-    if (id === fromId || id === toId || !isNodeVisible(node)) continue;
-    const rect = getNodeBounds(node);
-    if (!rect) continue;
-    const pad = 18;
-    const expanded = {
-      x: rect.x - pad,
-      y: rect.y - pad,
-      right: rect.right + pad,
-      bottom: rect.bottom + pad
-    };
-    if (segmentIntersectsRect(a, b, expanded)) return node;
-  }
-  return null;
-}
-
-function segmentIntersectsRect(a, b, rect) {
-  const minX = Math.min(a.x, b.x);
-  const maxX = Math.max(a.x, b.x);
-  const minY = Math.min(a.y, b.y);
-  const maxY = Math.max(a.y, b.y);
-  if (maxX < rect.x || minX > rect.right || maxY < rect.y || minY > rect.bottom) return false;
-  if (Math.abs(a.x - b.x) < 1) return a.x >= rect.x && a.x <= rect.right;
-  if (Math.abs(a.y - b.y) < 1) return a.y >= rect.y && a.y <= rect.bottom;
-  return false;
-}
-
 
 function simplifyPolyline(points) {
   const compact = points.filter((point, index) => {
