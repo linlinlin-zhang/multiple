@@ -196,23 +196,23 @@ export function resolveTaskType(classificationResult, fallbackResult, threshold 
   };
 }
 
-export function getPromptForTaskType(taskType, lang) {
+export function getPromptForTaskType(taskType, lang, contentType = '') {
   switch (taskType) {
     case 'image_generation':
-      return () => buildAnalysisPrompt(lang);
+      return () => buildAnalysisPrompt(lang, taskType, contentType || 'image');
     case 'research':
-      return () => buildExplorePrompt(lang);
+      return () => buildExplorePrompt(lang, taskType, contentType);
     case 'planning':
-      return () => buildAnalysisPrompt(lang);
+      return () => buildAnalysisPrompt(lang, taskType, contentType);
     case 'creative':
-      return () => buildAnalysisPrompt(lang);
+      return () => buildAnalysisPrompt(lang, taskType, contentType);
     case 'content':
-      return () => buildAnalysisPrompt(lang);
+      return () => buildAnalysisPrompt(lang, taskType, contentType);
     case 'tool':
-      return () => buildAnalysisPrompt(lang);
+      return () => buildAnalysisPrompt(lang, taskType, contentType);
     case 'general':
     default:
-      return () => buildAnalysisPrompt(lang);
+      return () => buildAnalysisPrompt(lang, taskType, contentType);
   }
 }
 

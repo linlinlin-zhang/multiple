@@ -2752,7 +2752,7 @@ async function handleAnalyze(body, res) {
   });
   console.log(`[route] ${taskType} (confidence: ${confidence}, fallback: ${wasFallback})`);
 
-  const prompt = buildAnalysisPrompt(lang, taskType);
+  const prompt = buildAnalysisPrompt(lang, taskType, body?.contentType || "image");
 
   const analysisPayload = {
     messages: [
@@ -2895,7 +2895,7 @@ async function handleAnalyzeExplore(body, res) {
   });
   console.log(`[route] ${taskType} (confidence: ${confidence}, fallback: ${wasFallback})`);
 
-  const prompt = buildExplorePrompt(lang, taskType);
+  const prompt = buildExplorePrompt(lang, taskType, contentType);
 
   let content;
   let pageText = "";
@@ -6323,10 +6323,29 @@ function serveStatic(requestPath, res) {
     }
     res.writeHead(200, {
       "Content-Type": mimeType(targetPath),
-      "Cache-Control": "no-cache"
+      ...staticCacheHeaders(relativePath)
     });
     res.end(data);
   });
+}
+
+function staticCacheHeaders(relativePath) {
+  const normalized = String(relativePath || "").replace(/\\/g, "/");
+  if (/^home-assets\/cards\/.+\.(?:jpe?g|png|webp|gif|avif)$/i.test(normalized)) {
+    return {
+      "Cache-Control": "public, max-age=31536000, immutable",
+      "Access-Control-Allow-Origin": "*",
+      "Timing-Allow-Origin": "*"
+    };
+  }
+  if (/\.(?:css|js|mjs|png|jpe?g|webp|gif|svg|ico|woff2?)$/i.test(normalized)) {
+    return {
+      "Cache-Control": "public, max-age=604800"
+    };
+  }
+  return {
+    "Cache-Control": "no-cache"
+  };
 }
 
 function sendJson(res, status, data) {

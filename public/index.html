@@ -247,35 +247,52 @@
             bg: '#9FB1C1'
         };
 
+        const HOME_CARD_LOCAL_BASE_URL = '/home-assets/cards/';
+        const HOME_CARD_REMOTE_BASE_URL = window.HOME_CARD_REMOTE_BASE_URL || (window.location.protocol === 'https:' ? HOME_CARD_LOCAL_BASE_URL : 'http://39.108.139.62/home-assets/cards/');
+
+        function homeCardImageUrl(fileName) {
+            const baseUrl = HOME_CARD_REMOTE_BASE_URL.endsWith('/') ? HOME_CARD_REMOTE_BASE_URL : `${HOME_CARD_REMOTE_BASE_URL}/`;
+            if (/^https?:\/\//i.test(baseUrl)) return new URL(fileName, baseUrl).toString();
+            return `${baseUrl}${fileName}`;
+        }
+
+        function homeCardLocalImageUrl(fileName) {
+            return `${HOME_CARD_LOCAL_BASE_URL}${fileName}`;
+        }
+
+        function homeCard(fileName, data) {
+            return { ...data, img: homeCardImageUrl(fileName), fallbackImg: homeCardLocalImageUrl(fileName) };
+        }
+
         const CARD_DATA = [
-            { type: 'creative', title: 'Nike Air Max', client: 'Nike', img: '/home-assets/cards/01.jpg', desc: 'Creative direction for the global launch campaign. Focused on urban motion and kinetic energy.', metrics: true },
-            { type: 'personal', title: 'Studio Vibes', client: 'Life', img: '/home-assets/cards/02.jpg', desc: 'Late nights in the studio. Coffee, synthesizers, and code.', bio: true },
-            { type: 'media', title: 'Spotify Wrapped', client: 'Spotify', img: '/home-assets/cards/03.jpg', desc: 'Paid social strategy for end-of-year campaigns across 14 markets.', metrics: true },
-            { type: 'dog', title: 'Barkley at the Park', client: 'Personal', img: '/home-assets/cards/04.jpg', desc: 'Barkley loves the golden hour just as much as any photographer.', bio: true },
-            { type: 'coding', title: 'ThreeJS Portfolio', client: 'Self', img: '/home-assets/cards/05.jpg', desc: 'Developing immersive 3D web experiences using WebGL and GLSL shaders.', metrics: false },
-            { type: 'editing', title: 'Fashion Week Cut', client: 'Vogue', img: '/home-assets/cards/06.jpg', desc: 'Fast-paced editing for social reels covering NYFW backstage moments.', metrics: true },
-            { type: 'creative', title: 'Abstract Geometry', client: 'Personal Art', img: '/home-assets/cards/07.jpg', desc: 'Exploration of form and color in digital medium.', metrics: false },
-            { type: 'dog', title: 'Nap Time', client: 'Personal', img: '/home-assets/cards/08.jpg', desc: 'Productivity levels drop to zero when he looks like this.', bio: true },
-            { type: 'media', title: 'Tech Launch', client: 'Samsung', img: '/home-assets/cards/09.jpg', desc: 'Global display campaign management with dynamic creative optimization.', metrics: true },
-            { type: 'personal', title: 'Travel Diaries', client: 'Tokyo', img: '/home-assets/cards/10.jpg', desc: 'Lost in translation, found in the neon lights of Shinjuku.', bio: true },
-            { type: 'coding', title: 'Crypto Dashboard', client: 'FinTech Co', img: '/home-assets/cards/11.jpg', desc: 'React-based dashboard with real-time websocket data visualization.', metrics: true },
-            { type: 'creative', title: 'Brand Identity', client: 'Lumina', img: '/home-assets/cards/12.jpg', desc: 'Complete rebrand including logo, typography, and motion guidelines.', metrics: false },
-            { type: 'dog', title: 'Snow Day', client: 'Personal', img: '/home-assets/cards/13.jpg', desc: 'His first time seeing snow. Pure chaos ensued.', bio: true },
-            { type: 'media', title: 'Search Strategy', client: 'Google', img: '/home-assets/cards/14.jpg', desc: 'SEO and SEM integration project for enterprise cloud solutions.', metrics: true },
-            { type: 'editing', title: 'Music Video', client: 'Indie Label', img: '/home-assets/cards/15.jpg', desc: 'Color grading and VFX for a psychedelic rock music video.', metrics: false },
-            { type: 'personal', title: 'Coffee Run', client: 'Routine', img: '/home-assets/cards/16.jpg', desc: 'The most important meeting of the day.', bio: true },
-            { type: 'coding', title: 'AI Integration', client: 'Startup', img: '/home-assets/cards/17.jpg', desc: 'Integrating LLMs into customer support workflows.', metrics: true },
-            { type: 'creative', title: 'Editorial Shoot', client: 'Magazine', img: '/home-assets/cards/18.jpg', desc: 'Art direction for the Fall/Winter cover story.', metrics: false },
-            { type: 'dog', title: 'Good Boy', client: 'Personal', img: '/home-assets/cards/19.jpg', desc: 'Just a really good boy.', bio: true },
-            { type: 'media', title: 'Retargeting', client: 'E-comm', img: '/home-assets/cards/20.jpg', desc: 'Dynamic product ads setup for cart abandoners.', metrics: true },
-            { type: 'creative', title: 'Minimalist UX', client: 'App', img: '/home-assets/cards/21.jpg', desc: 'User experience design for a productivity application.', metrics: true },
-            { type: 'personal', title: 'Hiking Trip', client: 'Nature', img: '/home-assets/cards/22.jpg', desc: 'Disconnected for the weekend. 10,000ft elevation.', bio: true },
-            { type: 'media', title: 'Influencer Ops', client: 'Beauty Brand', img: '/home-assets/cards/23.jpg', desc: 'Coordinating 50+ micro-influencers for a synchronized launch.', metrics: true },
-            { type: 'dog', title: 'Beach Day', client: 'Personal', img: '/home-assets/cards/24.jpg', desc: 'Sand everywhere. Absolutely everywhere.', bio: true },
-            { type: 'coding', title: 'WebGL Shader', client: 'Experiment', img: '/home-assets/cards/25.jpg', desc: 'Custom vertex shader experiments for fluid simulation.', metrics: false },
+            homeCard('01.jpg', { type: 'creative', title: 'Nike Air Max', client: 'Nike', desc: 'Creative direction for the global launch campaign. Focused on urban motion and kinetic energy.', metrics: true }),
+            homeCard('02.jpg', { type: 'personal', title: 'Studio Vibes', client: 'Life', desc: 'Late nights in the studio. Coffee, synthesizers, and code.', bio: true }),
+            homeCard('03.jpg', { type: 'media', title: 'Spotify Wrapped', client: 'Spotify', desc: 'Paid social strategy for end-of-year campaigns across 14 markets.', metrics: true }),
+            homeCard('04.jpg', { type: 'dog', title: 'Barkley at the Park', client: 'Personal', desc: 'Barkley loves the golden hour just as much as any photographer.', bio: true }),
+            homeCard('05.jpg', { type: 'coding', title: 'ThreeJS Portfolio', client: 'Self', desc: 'Developing immersive 3D web experiences using WebGL and GLSL shaders.', metrics: false }),
+            homeCard('06.jpg', { type: 'editing', title: 'Fashion Week Cut', client: 'Vogue', desc: 'Fast-paced editing for social reels covering NYFW backstage moments.', metrics: true }),
+            homeCard('07.jpg', { type: 'creative', title: 'Abstract Geometry', client: 'Personal Art', desc: 'Exploration of form and color in digital medium.', metrics: false }),
+            homeCard('08.jpg', { type: 'dog', title: 'Nap Time', client: 'Personal', desc: 'Productivity levels drop to zero when he looks like this.', bio: true }),
+            homeCard('09.jpg', { type: 'media', title: 'Tech Launch', client: 'Samsung', desc: 'Global display campaign management with dynamic creative optimization.', metrics: true }),
+            homeCard('10.jpg', { type: 'personal', title: 'Travel Diaries', client: 'Tokyo', desc: 'Lost in translation, found in the neon lights of Shinjuku.', bio: true }),
+            homeCard('11.jpg', { type: 'coding', title: 'Crypto Dashboard', client: 'FinTech Co', desc: 'React-based dashboard with real-time websocket data visualization.', metrics: true }),
+            homeCard('12.jpg', { type: 'creative', title: 'Brand Identity', client: 'Lumina', desc: 'Complete rebrand including logo, typography, and motion guidelines.', metrics: false }),
+            homeCard('13.jpg', { type: 'dog', title: 'Snow Day', client: 'Personal', desc: 'His first time seeing snow. Pure chaos ensued.', bio: true }),
+            homeCard('14.jpg', { type: 'media', title: 'Search Strategy', client: 'Google', desc: 'SEO and SEM integration project for enterprise cloud solutions.', metrics: true }),
+            homeCard('15.jpg', { type: 'editing', title: 'Music Video', client: 'Indie Label', desc: 'Color grading and VFX for a psychedelic rock music video.', metrics: false }),
+            homeCard('16.jpg', { type: 'personal', title: 'Coffee Run', client: 'Routine', desc: 'The most important meeting of the day.', bio: true }),
+            homeCard('17.jpg', { type: 'coding', title: 'AI Integration', client: 'Startup', desc: 'Integrating LLMs into customer support workflows.', metrics: true }),
+            homeCard('18.jpg', { type: 'creative', title: 'Editorial Shoot', client: 'Magazine', desc: 'Art direction for the Fall/Winter cover story.', metrics: false }),
+            homeCard('19.jpg', { type: 'dog', title: 'Good Boy', client: 'Personal', desc: 'Just a really good boy.', bio: true }),
+            homeCard('20.jpg', { type: 'media', title: 'Retargeting', client: 'E-comm', desc: 'Dynamic product ads setup for cart abandoners.', metrics: true }),
+            homeCard('21.jpg', { type: 'creative', title: 'Minimalist UX', client: 'App', desc: 'User experience design for a productivity application.', metrics: true }),
+            homeCard('22.jpg', { type: 'personal', title: 'Hiking Trip', client: 'Nature', desc: 'Disconnected for the weekend. 10,000ft elevation.', bio: true }),
+            homeCard('23.jpg', { type: 'media', title: 'Influencer Ops', client: 'Beauty Brand', desc: 'Coordinating 50+ micro-influencers for a synchronized launch.', metrics: true }),
+            homeCard('24.jpg', { type: 'dog', title: 'Beach Day', client: 'Personal', desc: 'Sand everywhere. Absolutely everywhere.', bio: true }),
+            homeCard('25.jpg', { type: 'coding', title: 'WebGL Shader', client: 'Experiment', desc: 'Custom vertex shader experiments for fluid simulation.', metrics: false }),
         ];
 
-        let scene, camera, renderer, vortexGroup, cards = [], raycaster, mouse;
+        let scene, camera, renderer, vortexGroup, cards = [];
         let isDragging = false, previousMousePosition = { x: 0, y: 0 }, targetRotationY = 0, currentRotationY = 0, scrollPos = 0, targetScrollPos = 0;
         function init() {
             scene = new THREE.Scene();
@@ -286,9 +303,9 @@
             camera.position.set(0, 0, 22);
             camera.lookAt(0, 0, 0);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
             document.getElementById('canvas-container').appendChild(renderer.domElement);
 
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
@@ -302,9 +319,6 @@
             vortexGroup.position.x = 4;
             scene.add(vortexGroup);
 
-            raycaster = new THREE.Raycaster();
-            mouse = new THREE.Vector2();
-
             createVortex();
             createWireframe();
 
@@ -317,8 +331,39 @@
             animate();
         }
 
+        const HOME_TEXTURE_MAX_SIDE = 720;
+
+        function createDisplayTexture(image) {
+            const sourceWidth = image.naturalWidth || image.width || 1;
+            const sourceHeight = image.naturalHeight || image.height || 1;
+            const scale = Math.min(1, HOME_TEXTURE_MAX_SIDE / Math.max(sourceWidth, sourceHeight));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+            canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+            const ctx = canvas.getContext('2d', { alpha: false });
+            if (ctx) {
+                ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+            }
+            const texture = ctx ? new THREE.CanvasTexture(canvas) : new THREE.Texture(image);
+            texture.minFilter = THREE.LinearFilter;
+            texture.magFilter = THREE.LinearFilter;
+            texture.generateMipmaps = false;
+            texture.needsUpdate = true;
+            return texture;
+        }
+
+        function loadCardTexture(src, onLoad, fallbackSrc = '') {
+            const image = new Image();
+            if (/^https?:\/\//i.test(src)) image.crossOrigin = 'anonymous';
+            image.decoding = 'async';
+            image.onload = () => onLoad(createDisplayTexture(image), image);
+            image.onerror = () => {
+                if (fallbackSrc && fallbackSrc !== src) loadCardTexture(fallbackSrc, onLoad, '');
+            };
+            image.src = src;
+        }
+
         function createVortex() {
-            const textureLoader = new THREE.TextureLoader();
 
             const radius = 6;
             const heightStep = 1.8;
@@ -329,12 +374,12 @@
             const maxCardLongSide = 4.16;
             const borderPadding = 0.08;
 
-            CARD_DATA.forEach((data, i) => {
+            const loadOrder = CARD_DATA.map((_, i) => i).sort((a, b) => Math.abs(a - 2) - Math.abs(b - 2));
+            loadOrder.forEach((i, order) => {
+                const data = CARD_DATA[i];
                 let borderColor = COLORS[data.type] || '#ffffff';
 
-                textureLoader.load(data.img, (texture) => {
-                    texture.minFilter = THREE.LinearFilter;
-                    const image = texture.image || {};
+                setTimeout(() => loadCardTexture(data.img, (texture, image) => {
                     const imageWidth = image.naturalWidth || image.width || defaultCardWidth;
                     const imageHeight = image.naturalHeight || image.height || defaultCardHeight;
                     const fallbackAspect = defaultCardWidth / defaultCardHeight;
@@ -382,7 +427,7 @@
 
                     vortexGroup.add(card);
                     cards.push(card);
-                });
+                }, data.fallbackImg), order * 85);
             });
         }
 
@@ -419,9 +464,6 @@
         }
 
         function onMouseMove(event) {
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
             if (isDragging) {
                 const deltaX = event.clientX - previousMousePosition.x;
                 const deltaY = event.clientY - previousMousePosition.y;
@@ -438,15 +480,8 @@
             previousMousePosition = { x: event.clientX, y: event.clientY };
         }
 
-        function onMouseUp(event) {
+        function onMouseUp() {
             isDragging = false;
-
-            raycaster.setFromCamera(mouse, camera);
-            const intersects = raycaster.intersectObjects(cards);
-
-            if (intersects.length > 0) {
-                openModal(intersects[0].object.userData);
-            }
         }
 
         function onWheel(event) {

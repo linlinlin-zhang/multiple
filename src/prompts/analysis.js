@@ -24,7 +24,26 @@ function getTaskTypeBias(taskType, lang) {
   return '';
 }
 
-export function buildAnalysisPrompt(lang, taskType = 'general') {
+function getVisualMediaDirectionRequirement(contentType, taskType, lang) {
+  const ct = String(contentType || '').toLowerCase();
+  const isVisualMedia = ct === 'image' || ct === 'video' || ct.startsWith('image/') || ct.startsWith('video/') || taskType === 'image_generation';
+  if (!isVisualMedia) return '';
+  return lang === 'en'
+    ? [
+        '# Visual Media Expansion Requirement',
+        'The current source is an uploaded image or video. Return 5-8 options. At least half of all options (ceil(total_options / 2)) must be smart image-generation expansion directions with purpose "visual". For visually rich or explicitly creative material, visual directions may occupy 50%-100% of the options.',
+        'Visual options must be ready-to-generate directions: describe subject transformation, composition, framing, lighting, color palette, mood, style, reference continuity, and what should change or extend from the uploaded media. Do not set rich-content nodeType for visual options unless it is explicitly "image".',
+        'Non-visual options are still allowed when useful, but must use purpose "research", "content", "plan", or "tool" and set a rich nodeType when appropriate, so they do not render as image-generation cards.'
+      ].join('\n')
+    : [
+        '# 视觉媒体方向占比要求',
+        '当前来源是用户上传的图片或视频。请返回 5-8 个 options。至少一半（ceil(total_options / 2)）必须是智能成图方向发散扩展，purpose 必须设为 "visual"。如果素材本身视觉信息丰富或用户意图明显偏创意，visual 方向可以占 50%-100%。',
+        'visual 方案必须是可直接成图的方向：说明主体如何变化或延展、构图、景别、镜头/画幅、光线、色彩、氛围、风格、与原素材的参考延续，以及要新增或改变什么。visual 方案不要设置富内容 nodeType，除非明确设为 "image"。',
+        '非 visual 方案仍可保留，但必须使用 "research"、"content"、"plan" 或 "tool" 等 purpose，并在适合时设置富内容 nodeType，避免它们被渲染成“生成这张图”的卡片。'
+      ].join('\n');
+}
+
+export function buildAnalysisPrompt(lang, taskType = 'general', contentType = '') {
   return lang === "en"
     ? [
         "# Role",
@@ -57,6 +76,7 @@ export function buildAnalysisPrompt(lang, taskType = 'general') {
         "12. NEVER force image generation when visual output would not add value.",
         "",
         getTaskTypeBias(taskType, "en"),
+        getVisualMediaDirectionRequirement(contentType, taskType, "en"),
         "",
         "# Purpose Guide (set purpose per option)",
         '- "visual" — leads to image generation or visual design',
@@ -130,6 +150,7 @@ export function buildAnalysisPrompt(lang, taskType = 'general') {
         "12. 视觉输出不能增值时，绝对不要强行提供图片生成方案。",
         "",
         getTaskTypeBias(taskType, "zh"),
+        getVisualMediaDirectionRequirement(contentType, taskType, "zh"),
         "",
         "# Purpose 说明（每个 option 设置 purpose）",
         '- "visual" — 导向图片生成或视觉设计',
@@ -174,7 +195,7 @@ export function buildAnalysisPrompt(lang, taskType = 'general') {
       ].join("\n");
 }
 
-export function buildExplorePrompt(lang, taskType = 'general') {
+export function buildExplorePrompt(lang, taskType = 'general', contentType = '') {
   return lang === "en"
     ? [
         "# Role",
@@ -190,6 +211,7 @@ export function buildExplorePrompt(lang, taskType = 'general') {
         THINKING_FRAMEWORKS.en,
         "",
         getTaskTypeBias(taskType, "en"),
+        getVisualMediaDirectionRequirement(contentType, taskType, "en"),
         "",
         "# Purpose Guide",
         '- "visual" — image generation or visual design',
@@ -254,6 +276,7 @@ export function buildExplorePrompt(lang, taskType = 'general') {
         THINKING_FRAMEWORKS.zh,
         "",
         getTaskTypeBias(taskType, "zh"),
+        getVisualMediaDirectionRequirement(contentType, taskType, "zh"),
         "",
         "# Purpose 说明",
         '- "visual" — 图片生成或视觉设计',
