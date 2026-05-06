@@ -83,7 +83,7 @@ const STORAGE_KEYS = {
   chatInputHeight: ["thoughtgrid.chatInputHeight", "oryzae.chatInputHeight"],
   subagentsEnabled: ["thoughtgrid-subagents-enabled", "oryzae-subagents-enabled"],
   thinkingMode: ["thoughtgrid-thinking-mode", "oryzae-thinking-mode"],
-  workbenchTourSeen: ["thoughtgrid.workbenchTourSeen", "oryzae.workbenchTourSeen"]
+  workbenchTourSeen: ["thoughtgrid.workbenchTourSeen.v2", "oryzae.workbenchTourSeen.v2"]
 };
 
 function getStoredItem(keys, storage = localStorage) {
@@ -2948,30 +2948,78 @@ function getWorkbenchTourSteps() {
       target: "#sourceNode",
       focusNodeId: "source",
       position: "upper-left",
-      title: isEn ? "Source card" : "源卡片",
-      body: isEn ? "Upload images, videos, documents, or switch to Link to analyze a URL. This is where a canvas session starts." : "从这里上传图片、视频、文档，或切到“链接”分析网页。一次画布会话通常从源卡片开始。"
+      before: () => {
+        closeCommandMenu();
+        closeChatActionMenu();
+      },
+      title: isEn ? "Start from material or a blank idea" : "从素材或一个想法开始",
+      body: isEn ? "Upload images, videos, documents, paste a URL, or skip material and type your goal in chat. The AI can create cards by itself." : "可以上传图片、视频、文档，粘贴网页链接；也可以什么都不选，直接在聊天框说你的目标，让 AI 自己生成卡片。"
     },
     {
       target: "#researchButton",
       focusNodeId: "source",
       position: "upper-left",
-      title: isEn ? "Research actions" : "研究入口",
-      body: isEn ? "After adding material, use Research to analyze quickly or explore deeply. New cards will be arranged automatically." : "添加素材后点击“研究”，可快速分析或深入探索。生成出的卡片会自动整理，连线更清晰。"
+      title: isEn ? "Research existing material" : "研究已有素材",
+      body: isEn ? "When a source is ready, use Research to summarize, analyze, or explore. New cards are arranged automatically so links stay readable." : "有素材后点击“研究”可摘要、分析或探索。生成出的卡片会自动整理，连线会更清晰。"
     },
     {
       target: "#viewport",
+      before: () => {
+        closeCommandMenu();
+        closeChatActionMenu();
+      },
       title: isEn ? "Canvas and links" : "画布与连线",
       body: isEn ? "Drag blank space to pan, use the wheel to move, Ctrl or Command plus wheel to zoom, and drag card side handles to link cards." : "拖动画布空白处平移，滚轮移动，Ctrl/Command + 滚轮缩放；拖卡片左右小把手可以手动连线。"
     },
     {
       target: ".chatbar",
-      before: () => setChatSidebarOpen(true),
-      title: isEn ? "Chat workspace" : "对话工作区",
-      body: isEn ? "Double-click a card first, then ask follow-up questions, type / for commands, or use + to upload, import materials, open the minimap, and start deep research." : "先双击卡片选上下文，再追问、输入 / 使用命令，或点 + 上传、导入素材、打开小地图和启动深入研究。"
+      before: () => {
+        setChatSidebarOpen(true);
+        closeCommandMenu();
+        closeChatActionMenu();
+      },
+      title: isEn ? "Chat without selecting a card" : "不选卡片也能直接对话",
+      body: isEn ? "You can ask directly and let AI plan, create, and connect cards. Double-clicking a card is optional; it only narrows the context to that card." : "可以直接提问，让 AI 规划、创建并连接卡片。双击卡片不是必需操作，只是在你想围绕某张卡深入时用来限定上下文。"
+    },
+    {
+      target: "#commandMenu",
+      before: () => {
+        setChatSidebarOpen(true);
+        closeChatActionMenu();
+        openCommandMenu();
+      },
+      title: isEn ? "/ command area" : "/ 命令区",
+      body: isEn ? "Type / or open this menu to save, import/export sessions, search cards, create cards, start a blank canvas, fit view, or auto-arrange." : "输入 / 会打开命令区，可保存、导入/导出会话、搜索卡片、新建卡片/画布、适配视图或自动整理。"
+    },
+    {
+      target: "#chatActionMenu",
+      before: () => {
+        setChatSidebarOpen(true);
+        closeCommandMenu();
+        setChatActionMenuOpen(true);
+      },
+      title: isEn ? "+ action area" : "+ 功能区",
+      body: isEn ? "Use + to upload images or files, import from the material library, open the minimap, start deep research, or enable Subagents." : "点 + 可上传图片或文件、从素材库导入、打开小地图、启动深入研究，或开启 Subagents 处理复杂任务。"
+    },
+    {
+      target: "#viewport",
+      before: () => {
+        closeCommandMenu();
+        closeChatActionMenu();
+      },
+      title: isEn ? "Image editing" : "图片编辑界面",
+      body: isEn ? "Open a generated image to enter Image Details. You can regenerate, describe edits, brush a local region, change aspect ratio, and download the result." : "生成图片后打开图片详情，可重生成、输入修改要求、涂抹局部区域、切换宽高比重新生成，并下载结果。"
+    },
+    {
+      target: "#viewport",
+      title: isEn ? "Image sharing" : "分享界面",
+      body: isEn ? "Use the share button in Image Details to name one image, create a share link, copy it, rename it, or download it from the share panel." : "在图片详情里点分享按钮，可给单张图片命名、生成并复制分享链接，也能在分享面板里重命名或下载。"
     },
     {
       target: ".nav-links",
       before: () => {
+        closeCommandMenu();
+        closeChatActionMenu();
         document.body.classList.remove("nav-collapsed");
         navToggle?.setAttribute("aria-expanded", "true");
       },
@@ -3091,6 +3139,8 @@ function advanceWorkbenchTour() {
 function finishWorkbenchTour(markSeen = true) {
   if (!workbenchTourState) return;
   if (markSeen) setStoredItem(STORAGE_KEYS.workbenchTourSeen, "true");
+  closeCommandMenu();
+  closeChatActionMenu();
   window.removeEventListener("resize", workbenchTourState.update);
   window.removeEventListener("keydown", workbenchTourState.keydown);
   workbenchTourState.overlay.remove();
