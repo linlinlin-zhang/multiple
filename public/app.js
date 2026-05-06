@@ -53,6 +53,7 @@ const subagentsToggle = document.querySelector("#subagentsToggle");
 const agentPrompt = document.querySelector("#agentPrompt");
 const runAgentButton = document.querySelector("#runAgentButton");
 const chatNewButton = document.querySelector("#chatNewButton");
+const chatNewCanvasButton = document.querySelector("#chatNewCanvasButton");
 const chatHistoryButton = document.querySelector("#chatHistoryButton");
 const chatCloseButton = document.querySelector("#chatCloseButton");
 const chatSidebarToggle = document.querySelector("#chatSidebarToggle");
@@ -296,9 +297,11 @@ const voiceState = {
 let currentSessionId = null;
 let autoSaveTimer = null;
 let lastSavedStateHash = "";
+let suppressSessionPersistence = false;
 let currentViewerNodeId = null;
 let currentShareNodeId = null;
 const imageShareLinks = new Map();
+const imageShareLinkPromises = new Map();
 let activeCommandIndex = 0;
 let currentHealthMode = "checking";
 let liveResearchCards = new Map();
@@ -1322,6 +1325,10 @@ function renderAllText() {
   if (chatNewButton) {
     chatNewButton.title = t("chat.newConversation");
     chatNewButton.setAttribute("aria-label", t("chat.newConversation"));
+  }
+  if (chatNewCanvasButton) {
+    chatNewCanvasButton.title = t("command.newCanvas");
+    chatNewCanvasButton.setAttribute("aria-label", t("command.newCanvas"));
   }
   if (chatHistoryButton) {
     chatHistoryButton.title = t("chat.historyConversations");
@@ -2448,6 +2455,7 @@ function wireControls() {
   chatScrollBottom?.addEventListener("click", () => scrollChatToBottom());
   navToggle?.addEventListener("click", toggleNav);
   chatNewButton?.addEventListener("click", startNewChat);
+  chatNewCanvasButton?.addEventListener("click", createNewCanvas);
   chatHistoryButton?.addEventListener("click", toggleChatConversationPanel);
   chatCloseButton?.addEventListener("click", () => setChatSidebarOpen(false));
   chatAgentButton?.addEventListener("click", toggleAgentPanel);
@@ -7851,10 +7859,23 @@ function createNewCardNode(seedText = "") {
 }
 
 function createNewCanvas() {
+  suppressSessionPersistence = true;
+  if (autoSaveTimer) {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = null;
+  }
+  currentSessionId = null;
+  lastSavedStateHash = "";
   removeStoredItem(STORAGE_KEYS.lastSessionId, sessionStorage);
   const url = new URL(window.location.href);
   url.searchParams.delete("session");
-  window.location.href = url.pathname + url.search;
+  const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+  const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (nextUrl === currentUrl) {
+    window.location.reload();
+  } else {
+    window.location.replace(nextUrl);
+  }
 }
 
 function sourceCardLocalImageUrl(imageHash) {
@@ -8403,6 +8424,35 @@ function updateJunctionCount(junctionId) {
   if (countEl) {
     countEl.textContent = String(junction.connectedCardIds.length);
   }
+}
+
+function normalizeJunctionData(value = {}, fallbackCardIds = []) {
+  const rawIds = Array.isArray(value?.connectedCardIds) ? value.connectedCardIds : fallbackCardIds;
+  const connectedCardIds = [...new Set(rawIds.map((id) => String(id || "").trim()).filter(Boolean))];
+  const maxCapacity = Number.isFinite(value?.maxCapacity) ? value.maxCapacity : 5;
+  return { connectedCardIds, maxCapacity };
+}
+
+function restoreJunctionNode(id, x, y, width = 40, height = 40, count = 0) {
+  if (!id || state.nodes.has(id)) return;
+  const element = document.createElement("section");
+  element.className = "node junction-node";
+  element.dataset.nodeId = id;
+  element.style.left = `${Number.isFinite(x) ? x : 0}px`;
+  element.style.top = `${Number.isFinite(y) ? y : 0}px`;
+  const countEl = document.createElement("span");
+  countEl.className = "junction-count";
+  countEl.textContent = String(count);
+  element.appendChild(countEl);
+  board.appendChild(element);
+  registerNode(id, element, {
+    x: Number.isFinite(x) ? x : 0,
+    y: Number.isFinite(y) ? y : 0,
+    width: Number.isFinite(width) ? width : 40,
+    height: Number.isFinite(height) ? height : 40,
+    isJunction: true
+  });
+  makeDraggable(element, id);
 }
 
 // --- Connection mode: edge drag handles ---
@@ -10455,16 +10505,30 @@ function openImageShareModal(nodeId) {
   if (!info || !imageShareModal) return;
 
   currentShareNodeId = nodeId;
+  const cachedUrl = imageShareLinks.get(nodeId) || "";
   if (sharePreviewImage) {
     sharePreviewImage.src = info.imageUrl;
     sharePreviewImage.alt = info.title || "Shared image";
   }
   if (shareTitle) shareTitle.textContent = info.title || "分享图片";
   if (shareNameInput) shareNameInput.value = suggestImageFileName(info);
-  if (shareLinkInput) shareLinkInput.value = imageShareLinks.get(nodeId) || "";
+  if (shareLinkInput) shareLinkInput.value = cachedUrl;
+  setShareCopyButtonBusy(!cachedUrl);
   imageShareModal.classList.remove("hidden");
   document.body.style.overflow = "hidden";
   shareCopyButton?.focus();
+  if (!cachedUrl) {
+    ensureImageShareLink(nodeId)
+      .then((url) => {
+        if (currentShareNodeId !== nodeId) return;
+        if (shareLinkInput) shareLinkInput.value = url;
+        setShareCopyButtonBusy(false);
+      })
+      .catch((error) => {
+        console.warn("[openImageShareModal share link]", error);
+        if (currentShareNodeId === nodeId) setShareCopyButtonBusy(false);
+      });
+  }
 }
 
 function closeImageShareModal() {
@@ -10476,6 +10540,12 @@ function closeImageShareModal() {
   }
 }
 
+function setShareCopyButtonBusy(busy) {
+  if (!shareCopyButton) return;
+  shareCopyButton.disabled = Boolean(busy);
+  shareCopyButton.classList.toggle("is-loading", Boolean(busy));
+}
+
 async function ensureImageShareLink(nodeId) {
   if (nodeId === WORKBENCH_TOUR_DEMO_NODE_ID) {
     const url = window.location.origin + WORKBENCH_TOUR_DEMO_IMAGE_URL;
@@ -10483,50 +10553,76 @@ async function ensureImageShareLink(nodeId) {
     return url;
   }
   if (imageShareLinks.has(nodeId)) return imageShareLinks.get(nodeId);
-  if (!currentSessionId) {
-    await saveSession();
-  } else {
-    await saveSession({ isAuto: true });
+  if (imageShareLinkPromises.has(nodeId)) return imageShareLinkPromises.get(nodeId);
+  const promise = (async () => {
+    if (!currentSessionId) {
+      await saveSession();
+    } else {
+      await saveSession({ isAuto: true });
+    }
+    if (!currentSessionId) throw new Error("Session is not saved yet");
+    const data = await postJson("/api/share-image", { nodeId, sessionId: currentSessionId });
+    if (!data?.ok || !data.shareUrl) throw new Error("Failed to create image share");
+    const fullUrl = window.location.origin + data.shareUrl;
+    imageShareLinks.set(nodeId, fullUrl);
+    return fullUrl;
+  })();
+  imageShareLinkPromises.set(nodeId, promise);
+  try {
+    return await promise;
+  } finally {
+    imageShareLinkPromises.delete(nodeId);
   }
-  if (!currentSessionId) throw new Error("Session is not saved yet");
-  const data = await postJson("/api/share-image", { nodeId, sessionId: currentSessionId });
-  if (!data?.ok || !data.shareUrl) throw new Error("Failed to create image share");
-  const fullUrl = window.location.origin + data.shareUrl;
-  imageShareLinks.set(nodeId, fullUrl);
-  return fullUrl;
 }
 
 async function copyImageShareLink(nodeId) {
-  showToast(t("viewer.shareInProgress"));
+  if (!imageShareLinks.has(nodeId)) showToast(t("viewer.shareInProgress"));
   let url = "";
   try {
-    url = await ensureImageShareLink(nodeId);
+    url = imageShareLinks.get(nodeId) || await ensureImageShareLink(nodeId);
     if (shareLinkInput) shareLinkInput.value = url;
   } catch (error) {
     console.error("[copyImageShareLink]", error);
     showToast(t("viewer.shareFailed"));
     return;
   }
+  const copied = await copyTextToClipboard(url, shareLinkInput);
+  showToast(copied ? t("viewer.shareCopied") : t("viewer.shareReadyManual"));
+}
+
+async function copyTextToClipboard(text, inputEl = null) {
+  if (!text) return false;
   try {
     if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
-    await navigator.clipboard.writeText(url);
-    showToast(t("viewer.shareCopied"));
+    await navigator.clipboard.writeText(text);
+    return true;
   } catch (error) {
-    console.warn("[copyImageShareLink clipboard]", error);
-    if (shareLinkInput) {
-      shareLinkInput.focus();
-      shareLinkInput.select();
-      try {
-        shareLinkInput.setSelectionRange(0, shareLinkInput.value.length);
-      } catch {}
-    }
-    let copied = false;
-    try {
-      copied = Boolean(document.execCommand?.("copy"));
-    } catch (fallbackError) {
-      console.warn("[copyImageShareLink fallback]", fallbackError);
-    }
-    showToast(copied ? t("viewer.shareCopied") : t("viewer.shareReadyManual"));
+    console.warn("[copyTextToClipboard clipboard]", error);
+  }
+  const target = inputEl || document.createElement("textarea");
+  const temporary = !inputEl;
+  if (temporary) {
+    target.value = text;
+    target.setAttribute("readonly", "");
+    target.style.position = "fixed";
+    target.style.left = "-9999px";
+    target.style.top = "0";
+    document.body.appendChild(target);
+  } else {
+    target.value = text;
+  }
+  target.focus();
+  target.select();
+  try {
+    target.setSelectionRange(0, target.value.length);
+  } catch {}
+  try {
+    return Boolean(document.execCommand?.("copy"));
+  } catch (fallbackError) {
+    console.warn("[copyTextToClipboard fallback]", fallbackError);
+    return false;
+  } finally {
+    if (temporary) target.remove();
   }
 }
 
@@ -13788,8 +13884,9 @@ function clamp(value, min, max) {
 
 function computeStateHash() {
   return JSON.stringify({
-    nodes: Array.from(state.nodes.entries()).map(([k, v]) => [k, { x: v.x, y: v.y, width: v.width, height: v.height, generated: v.generated, option: v.option, sourceCard: v.sourceCard }]),
+    nodes: Array.from(state.nodes.entries()).map(([k, v]) => [k, { x: v.x, y: v.y, width: v.width, height: v.height, generated: v.generated, isJunction: v.isJunction, option: v.option, sourceCard: v.sourceCard }]),
     links: state.links,
+    junctions: Object.fromEntries(state.junctions),
     collapsed: Array.from(state.collapsed),
     selectiveHidden: Array.from(state.selectiveHidden),
     chatMessages: state.chatMessages,
@@ -13842,6 +13939,7 @@ async function prepareStateForSave() {
       chatThreads: serializeChatThreads(),
       activeChatThreadId: state.activeChatThreadId
     },
+    junctions: Object.fromEntries(state.junctions),
     blueprints: Object.fromEntries(state.blueprints),
     groups: Object.fromEntries(state.groups)
   };
@@ -13854,6 +13952,8 @@ async function prepareStateForSave() {
       width: node.width,
       height: node.height,
       generated: node.generated || false,
+      isJunction: Boolean(node.isJunction),
+      junction: node.isJunction ? normalizeJunctionData(state.junctions.get(id)) : null,
       option: node.option || null,
       sourceCard: node.sourceCard || null,
       imageHash: node.imageHash || null,
@@ -14089,10 +14189,12 @@ async function saveSession({ isAuto = false } = {}) {
       result = await putJson(`/api/sessions/${currentSessionId}`, body);
     } else {
       result = await postJson("/api/sessions", body);
-      currentSessionId = result.sessionId;
-      const url = new URL(window.location.href);
-      url.searchParams.set("session", currentSessionId);
-      window.history.replaceState({}, "", url);
+      if (!suppressSessionPersistence) {
+        currentSessionId = result.sessionId;
+        const url = new URL(window.location.href);
+        url.searchParams.set("session", currentSessionId);
+        window.history.replaceState({}, "", url);
+      }
     }
 
     lastSavedStateHash = computeStateHash();
@@ -14100,7 +14202,7 @@ async function saveSession({ isAuto = false } = {}) {
       saveStatus.textContent = t("save.savedAt", { time: new Date(result.savedAt).toLocaleTimeString() });
       saveStatus.className = "save-status saved";
     }
-    if (currentSessionId) {
+    if (currentSessionId && !suppressSessionPersistence) {
       setStoredItem(STORAGE_KEYS.lastSessionId, currentSessionId, sessionStorage);
     }
   } catch (error) {
@@ -14156,6 +14258,8 @@ async function loadSession(sessionId) {
     state.fileName = "";
     state.latestAnalysis = null;
     state.fileUnderstanding = null;
+    state.junctions.clear();
+    state.blueprints.clear();
     state.groups.clear();
     groupLayer?.replaceChildren();
 
@@ -14330,6 +14434,29 @@ async function loadSession(sessionId) {
       }
     }
 
+    const rawLinks = Array.isArray(data.links) ? data.links : [];
+    const persistedJunctions = sessionState?.junctions && typeof sessionState.junctions === "object" ? sessionState.junctions : {};
+    const junctionNodeIds = new Set(Object.keys(persistedJunctions));
+    for (const link of rawLinks) {
+      if (link.kind !== "junction") continue;
+      const junctionId = link.toNodeId || link.to;
+      if (junctionId) junctionNodeIds.add(junctionId);
+    }
+    for (const n of data.nodes) {
+      if (n.type === "junction" || n.data?.junction || n.data?.isJunction || junctionNodeIds.has(n.nodeId)) {
+        junctionNodeIds.add(n.nodeId);
+      }
+    }
+    for (const n of data.nodes.filter((node) => junctionNodeIds.has(node.nodeId))) {
+      const fallbackCardIds = rawLinks
+        .filter((link) => link.kind === "junction" && (link.toNodeId || link.to) === n.nodeId)
+        .map((link) => link.fromNodeId || link.from)
+        .filter(Boolean);
+      const junction = normalizeJunctionData(n.data?.junction || persistedJunctions[n.nodeId] || n.data, fallbackCardIds);
+      state.junctions.set(n.nodeId, junction);
+      restoreJunctionNode(n.nodeId, n.x, n.y, n.width, n.height, junction.connectedCardIds.length);
+    }
+
     const sourceCardNodes = data.nodes.filter(n => n.type === "source-card" || n.data?.sourceCard);
     for (const n of sourceCardNodes) {
       const sourceCard = n.data?.sourceCard || {};
@@ -14389,7 +14516,7 @@ async function loadSession(sessionId) {
       }
     }
 
-    const optionNodes = data.nodes.filter(n => n.type === "option" || n.type === "generated");
+    const optionNodes = data.nodes.filter(n => (n.type === "option" || n.type === "generated") && !junctionNodeIds.has(n.nodeId));
     for (const n of optionNodes) {
       const option = n.data?.option || { title: t("generated.result"), description: "", tone: "cinematic", layoutHint: "square" };
       normalizeDeepThinkOption(option);
@@ -14478,7 +14605,7 @@ async function loadSession(sessionId) {
       makeDraggable(element, nodeId);
     }
 
-    state.links = data.links.map(l => ({ from: l.fromNodeId, to: l.toNodeId, kind: l.kind }));
+    state.links = rawLinks.map(l => ({ from: l.fromNodeId || l.from, to: l.toNodeId || l.to, kind: l.kind }));
     if (state.sourceNodeDeleted) {
       state.links = state.links.filter((link) => link.from !== "source" && link.to !== "source");
       sourceNode?.classList.add("hidden");
@@ -14488,6 +14615,7 @@ async function loadSession(sessionId) {
     }
 
     // Reconstruct junction state from links with kind: "junction"
+    const restoredJunctions = new Map(state.junctions);
     state.junctions.clear();
     for (const link of state.links) {
       if (link.kind !== "junction") continue;
@@ -14495,16 +14623,28 @@ async function loadSession(sessionId) {
       const junctionId = link.to;
       const cardId = link.from;
       if (!state.junctions.has(junctionId)) {
-        state.junctions.set(junctionId, { connectedCardIds: [], maxCapacity: 5 });
+        state.junctions.set(junctionId, normalizeJunctionData(restoredJunctions.get(junctionId) || persistedJunctions[junctionId]));
       }
       const junction = state.junctions.get(junctionId);
       if (!junction.connectedCardIds.includes(cardId)) {
         junction.connectedCardIds.push(cardId);
       }
     }
-
+    for (const [junctionId, junction] of restoredJunctions) {
+      if (!state.junctions.has(junctionId)) state.junctions.set(junctionId, junction);
+    }
     // Restore junction counts in DOM
     for (const [junctionId, junction] of state.junctions) {
+      for (const cardId of junction.connectedCardIds) {
+        if (!state.nodes.has(cardId)) continue;
+        const exists = state.links.some((link) => link.kind === "junction" && link.from === cardId && link.to === junctionId);
+        if (!exists) state.links.push({ from: cardId, to: junctionId, kind: "junction" });
+      }
+      if (!state.nodes.has(junctionId)) {
+        const linkedNodes = junction.connectedCardIds.map((id) => state.nodes.get(id)).filter(Boolean);
+        const point = linkedNodes.length >= 2 ? junctionMidpointForNodes(linkedNodes[0], linkedNodes[1]) : { x: 560, y: 320 };
+        restoreJunctionNode(junctionId, point.x - 20, point.y - 20, 40, 40, junction.connectedCardIds.length);
+      }
       const node = state.nodes.get(junctionId);
       if (node?.element) {
         const countEl = node.element.querySelector(".junction-count");

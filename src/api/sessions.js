@@ -13,78 +13,99 @@ function sendJson(res, status, data) {
 function serializeState(state) {
   const nodeEntries = normalizeNodeEntries(state.nodes);
   const collapsedIds = normalizeCollapsedIds(state.collapsed);
+  const junctions = normalizeRecordMap(state.junctions);
+  const rawLinks = Array.isArray(state.links) ? state.links : [];
+  const linkedJunctionIds = new Set(
+    rawLinks
+      .filter((l) => l?.kind === "junction")
+      .map((l) => l.to || l.toNodeId)
+      .filter(Boolean)
+  );
 
-  const nodes = nodeEntries.map((n) => ({
-    nodeId: n.id,
-    type:
-      n.id === "source"
-        ? "source"
-        : n.id === "analysis"
-          ? "analysis"
-          : n.sourceCard
-            ? "source-card"
-            : n.generated
-              ? "generated"
-              : "option",
-    x: Number.isFinite(n.x) ? n.x : 0,
-    y: Number.isFinite(n.y) ? n.y : 0,
-    width: n.width || 318,
-    height: n.height || 220,
-    data:
-      n.sourceCard
-        ? {
-            sourceCard: n.sourceCard,
-            imageHash: n.sourceCard?.imageHash || n.imageHash || null,
-            imageUrl: n.sourceCard?.imageUrl || null,
-            sourceVideoHash: n.sourceCard?.sourceVideoHash || n.sourceCard?.videoHash || null,
-            sourceVideoUrl: n.sourceCard?.sourceVideoUrl || n.sourceCard?.videoUrl || null,
-            sourceVideoMimeType: n.sourceCard?.sourceVideoMimeType || null,
-            sourceUrl: n.sourceCard?.sourceUrl || null,
-            fileName: n.sourceCard?.fileName || n.sourceCard?.title || null,
-            summary: n.sourceCard?.summary || null,
-            sourceType: n.sourceCard?.sourceType || null,
-            sourceText: n.sourceCard?.sourceText || null,
-            sourceDataUrlHash: n.sourceCard?.sourceDataUrlHash || null,
-            mimeType: n.sourceCard?.mimeType || null
-          }
-        : n.option
-        ? {
-            option: n.option,
-            imageHash: n.imageHash || null,
-            imageDataUrl: n.imageDataUrl || null,
-            videoHash: n.videoHash || null,
-            videoUrl: n.videoUrl || null,
-            videoMimeType: n.videoMimeType || null,
-            explanation: n.explanation || null,
-            references: Array.isArray(n.option?.references) ? n.option.references : [],
-            layoutHint: n.option?.layoutHint || null,
-            deepThinkType: n.option?.deepThinkType || null,
-            tone: n.option?.tone || null,
-            title: n.option?.title || null,
-            description: n.option?.description || null
-          }
-        : n.id === "source"
-          ? {
-              fileName: state.fileName || null,
-              imageHash: state.sourceImageHash || extractAssetHash(state.sourceImage) || null,
-              sourceVideoHash: state.sourceVideoHash || extractAssetHash(state.sourceVideo) || null,
-              sourceVideoMimeType: state.sourceVideoMimeType || null,
-              sourceType: state.sourceType || "image",
-              sourceUrl: state.sourceUrl || null,
-              sourceText: state.sourceText || null
-            }
+  const nodes = nodeEntries.map((n) => {
+    const junctionNode = isJunctionNode(n, junctions, linkedJunctionIds);
+    const junction = junctionNode ? normalizeJunctionRecord(n.junction || junctions[n.id] || n) : null;
+    return {
+      nodeId: n.id,
+      type:
+        n.id === "source"
+          ? "source"
           : n.id === "analysis"
+            ? "analysis"
+            : junctionNode
+              ? "junction"
+              : n.sourceCard
+                ? "source-card"
+                : n.generated
+                  ? "generated"
+                  : "option",
+      x: Number.isFinite(n.x) ? n.x : 0,
+      y: Number.isFinite(n.y) ? n.y : 0,
+      width: n.width || (junctionNode ? 40 : 318),
+      height: n.height || (junctionNode ? 40 : 220),
+      data:
+        junctionNode
+          ? {
+              isJunction: true,
+              junction,
+              connectedCardIds: junction.connectedCardIds,
+              maxCapacity: junction.maxCapacity
+            }
+          : n.sourceCard
             ? {
-                title: state.latestAnalysis?.title,
-                summary: state.latestAnalysis?.summary,
-                detectedSubjects: state.latestAnalysis?.detectedSubjects,
-                moodKeywords: state.latestAnalysis?.moodKeywords
+                sourceCard: n.sourceCard,
+                imageHash: n.sourceCard?.imageHash || n.imageHash || null,
+                imageUrl: n.sourceCard?.imageUrl || null,
+                sourceVideoHash: n.sourceCard?.sourceVideoHash || n.sourceCard?.videoHash || null,
+                sourceVideoUrl: n.sourceCard?.sourceVideoUrl || n.sourceCard?.videoUrl || null,
+                sourceVideoMimeType: n.sourceCard?.sourceVideoMimeType || null,
+                sourceUrl: n.sourceCard?.sourceUrl || null,
+                fileName: n.sourceCard?.fileName || n.sourceCard?.title || null,
+                summary: n.sourceCard?.summary || null,
+                sourceType: n.sourceCard?.sourceType || null,
+                sourceText: n.sourceCard?.sourceText || null,
+                sourceDataUrlHash: n.sourceCard?.sourceDataUrlHash || null,
+                mimeType: n.sourceCard?.mimeType || null
               }
-            : {},
-    collapsed: collapsedIds.has(n.id)
-  }));
+            : n.option
+              ? {
+                  option: n.option,
+                  imageHash: n.imageHash || null,
+                  imageDataUrl: n.imageDataUrl || null,
+                  videoHash: n.videoHash || null,
+                  videoUrl: n.videoUrl || null,
+                  videoMimeType: n.videoMimeType || null,
+                  explanation: n.explanation || null,
+                  references: Array.isArray(n.option?.references) ? n.option.references : [],
+                  layoutHint: n.option?.layoutHint || null,
+                  deepThinkType: n.option?.deepThinkType || null,
+                  tone: n.option?.tone || null,
+                  title: n.option?.title || null,
+                  description: n.option?.description || null
+                }
+              : n.id === "source"
+                ? {
+                    fileName: state.fileName || null,
+                    imageHash: state.sourceImageHash || extractAssetHash(state.sourceImage) || null,
+                    sourceVideoHash: state.sourceVideoHash || extractAssetHash(state.sourceVideo) || null,
+                    sourceVideoMimeType: state.sourceVideoMimeType || null,
+                    sourceType: state.sourceType || "image",
+                    sourceUrl: state.sourceUrl || null,
+                    sourceText: state.sourceText || null
+                  }
+                : n.id === "analysis"
+                  ? {
+                      title: state.latestAnalysis?.title,
+                      summary: state.latestAnalysis?.summary,
+                      detectedSubjects: state.latestAnalysis?.detectedSubjects,
+                      moodKeywords: state.latestAnalysis?.moodKeywords
+                    }
+                  : {},
+      collapsed: collapsedIds.has(n.id)
+    };
+  });
 
-  const links = (Array.isArray(state.links) ? state.links : []).map((l) => ({
+  const links = rawLinks.map((l) => ({
     fromNodeId: l.from || l.fromNodeId,
     toNodeId: l.to || l.toNodeId,
     kind: l.kind || "option"
@@ -123,6 +144,7 @@ function buildPersistedViewState(state) {
     selectedNodeIds: Array.isArray(state.selectedNodeIds) ? state.selectedNodeIds : [],
     collapsed: Array.isArray(state.collapsed) ? state.collapsed : [],
     selectiveHidden: Array.isArray(state.selectiveHidden) ? state.selectiveHidden : [],
+    junctions: state.junctions || {},
     blueprints: state.blueprints || {},
     groups: state.groups || {},
     chatThreads: view.chatThreads || state.chatThreads || [],
@@ -147,6 +169,26 @@ function normalizeCollapsedIds(collapsed) {
   if (typeof collapsed.has === "function") return collapsed;
   if (Array.isArray(collapsed)) return new Set(collapsed);
   return new Set();
+}
+
+function normalizeRecordMap(value) {
+  if (!value) return {};
+  if (typeof value.entries === "function") return Object.fromEntries(value);
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+  return {};
+}
+
+function normalizeJunctionRecord(value = {}) {
+  const connectedCardIds = Array.isArray(value.connectedCardIds)
+    ? [...new Set(value.connectedCardIds.map((id) => String(id || "").trim()).filter(Boolean))]
+    : [];
+  const maxCapacity = Number.isFinite(value.maxCapacity) ? value.maxCapacity : 5;
+  return { connectedCardIds, maxCapacity };
+}
+
+function isJunctionNode(node, junctions = {}, linkedJunctionIds = new Set()) {
+  if (!node?.id) return false;
+  return Boolean(node.isJunction || node.junction || junctions[node.id] || linkedJunctionIds.has(node.id));
 }
 
 function addAssetRecord(assetRecords, record) {

@@ -1747,6 +1747,14 @@ body.chat-sidebar-closed .statusbar > * {
   background: rgba(0, 112, 204, 0.1);
 }
 
+.chat-new-canvas-button {
+  color: var(--ps-blue);
+}
+
+.chat-new-canvas-button:hover {
+  background: rgba(0, 112, 204, 0.1);
+}
+
 .chat-panel-divider {
   width: 1px;
   height: 24px;
@@ -4394,6 +4402,11 @@ html[data-theme="dark"] .share-button:hover {
   color: var(--ink);
   background: transparent;
   cursor: pointer;
+}
+
+.share-round-action:disabled {
+  opacity: 0.58;
+  cursor: progress;
 }
 
 .share-round-action span {
