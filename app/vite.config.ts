@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react"
 import { defineConfig } from "vite"
 import { inspectAttr } from 'kimi-plugin-inspect-react'
 
+const lowResourceBuild = process.env.VITE_LOW_RESOURCE_BUILD === "1";
+
 // https://vite.dev/config/
 export default defineConfig({
   base: './',
@@ -19,6 +21,10 @@ export default defineConfig({
     },
   },
   build: {
+    minify: lowResourceBuild ? false : "esbuild",
+    cssMinify: lowResourceBuild ? false : "esbuild",
+    sourcemap: false,
+    chunkSizeWarningLimit: lowResourceBuild ? 2048 : 500,
     rollupOptions: {
       input: {
         history: path.resolve(__dirname, "index.html"),

@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "node server.js",
-    "build": "npm run build:app",
-    "build:app": "npm --prefix app run build",
+    "build": "node scripts/build-low-resource.js",
+    "build:app": "node scripts/build-low-resource.js",
+    "build:fast": "npm --prefix app run build:fast",
     "start": "node server.js",
     "test": "node scripts/test-integration.js",
     "test:db": "node scripts/test-db.js",

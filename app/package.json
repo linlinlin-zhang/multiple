@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && node ../scripts/copy-history-dist.js",
+    "build": "node ../scripts/build-low-resource.js",
+    "build:fast": "tsc -b && vite build && node ../scripts/copy-history-dist.js",
     "lint": "eslint .",
     "preview": "vite preview"
   },
