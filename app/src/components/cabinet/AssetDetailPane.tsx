@@ -75,7 +75,7 @@ function webContentText(content: CanvasContent | null | undefined) {
 function ImageAssetDetail({ asset, nodes }: { asset: Asset; nodes?: Node[] }) {
   const { t } = useI18n();
   const url = buildAssetUrl(asset.hash, asset.kind);
-  const title = asset.fileName || t("asset.generatedImage");
+  const title = asset.fileName || (asset.kind === "generated" ? t("asset.generatedImage") : t("asset.uploadedFile"));
   const matchingNode = nodes?.find((n) => n.data?.imageHash === asset.hash);
   const explanation = matchingNode?.data?.explanation as string | undefined;
   return (
@@ -582,7 +582,7 @@ export default function AssetDetailPane({ session, selectedAssetId, emptyMessage
         </div>
       );
     }
-    if (asset.kind === "generated") {
+    if (asset.mimeType.startsWith("image/")) {
       return (
         <div className="bg-cabinet-paper">
           <ImageAssetDetail asset={asset} nodes={session.nodes} />

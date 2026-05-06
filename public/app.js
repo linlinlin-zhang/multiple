@@ -83,7 +83,7 @@ const STORAGE_KEYS = {
   chatInputHeight: ["thoughtgrid.chatInputHeight", "oryzae.chatInputHeight"],
   subagentsEnabled: ["thoughtgrid-subagents-enabled", "oryzae-subagents-enabled"],
   thinkingMode: ["thoughtgrid-thinking-mode", "oryzae-thinking-mode"],
-  workbenchTourSeen: ["thoughtgrid.workbenchTourSeen.v3", "oryzae.workbenchTourSeen.v3"]
+  workbenchTourSeen: ["thoughtgrid.workbenchTourSeen.v4", "oryzae.workbenchTourSeen.v4"]
 };
 
 function getStoredItem(keys, storage = localStorage) {
@@ -308,9 +308,12 @@ let chatOperationBusy = false;
 let generatedArrangeTimer = null;
 let workbenchTourState = null;
 let workbenchTourDemoImageOpen = false;
+let workbenchTourDemoImageCard = null;
 const WORKBENCH_TOUR_DEMO_NODE_ID = "__workbenchTourDemoImage";
 const WORKBENCH_TOUR_DEMO_IMAGE_URL = "/home-assets/cards/26.jpg";
 const WORKBENCH_TOUR_DEMO_IMAGE_TITLE = "ThoughtGrid demo image";
+const WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID = "junction-workbench-tour-demo";
+const WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS = ["__workbenchTourBlueprintA", "__workbenchTourBlueprintB", "__workbenchTourBlueprintC"];
 
 const VIEWER_ASPECT_OPTIONS = {
   auto: { label: { zh: "宽高比", en: "Aspect" }, size: "" },
@@ -2965,10 +2968,162 @@ function openWorkbenchTourDemoImageShare() {
 }
 
 function closeWorkbenchTourDemoImage() {
-  if (!workbenchTourDemoImageOpen) return;
   if (currentShareNodeId === WORKBENCH_TOUR_DEMO_NODE_ID) closeImageShareModal();
   if (currentViewerNodeId === WORKBENCH_TOUR_DEMO_NODE_ID) closeImageViewer();
   workbenchTourDemoImageOpen = false;
+  removeWorkbenchTourDemoImageCard();
+  removeWorkbenchTourDemoBlueprint();
+}
+
+function focusWorkbenchTourElement(element, position = "center") {
+  if (!element || !viewport) return;
+  const rect = viewport.getBoundingClientRect();
+  const ratio = viewportRatiosForPosition(position);
+  const x = parseFloat(element.style.left || "0");
+  const y = parseFloat(element.style.top || "0");
+  const width = element.offsetWidth || 240;
+  const height = element.offsetHeight || 160;
+  state.view.x = rect.width * ratio.x - (x + width / 2) * state.view.scale;
+  state.view.y = rect.height * ratio.y - (y + height / 2) * state.view.scale;
+  updateBoardTransform();
+}
+
+function ensureWorkbenchTourDemoImageCard() {
+  if (!board) return null;
+  if (workbenchTourDemoImageCard?.isConnected) {
+    focusWorkbenchTourElement(workbenchTourDemoImageCard, "center");
+    return workbenchTourDemoImageCard;
+  }
+  const point = boardPointForViewportPosition("center");
+  const card = document.createElement("section");
+  card.className = "node option-node generated-node workbench-tour-demo-image-card workbench-tour-force-actions";
+  card.dataset.nodeId = WORKBENCH_TOUR_DEMO_NODE_ID;
+  card.style.left = `${Math.round(point.x - 180)}px`;
+  card.style.top = `${Math.round(point.y - 190)}px`;
+  const imageWrap = document.createElement("div");
+  imageWrap.className = "generated-image-wrap";
+  const img = document.createElement("img");
+  img.className = "generated-image";
+  img.src = WORKBENCH_TOUR_DEMO_IMAGE_URL;
+  img.alt = WORKBENCH_TOUR_DEMO_IMAGE_TITLE;
+  imageWrap.appendChild(img);
+  attachImageCardActions(imageWrap, WORKBENCH_TOUR_DEMO_NODE_ID);
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "eyebrow";
+  eyebrow.textContent = currentLang === "en" ? "demo / generated image" : "示例 / 生成图片";
+  const title = document.createElement("h3");
+  title.textContent = currentLang === "en" ? "Image card actions" : "图片卡片快捷操作";
+  const desc = document.createElement("p");
+  desc.className = "generated-description";
+  desc.textContent = currentLang === "en" ? "Use the floating buttons on image cards before opening the full viewer." : "先从图片卡片上的悬浮按钮进入编辑或分享，再打开完整界面。";
+  card.append(imageWrap, eyebrow, title, desc);
+  board.appendChild(card);
+  workbenchTourDemoImageCard = card;
+  focusWorkbenchTourElement(card, "center");
+  return card;
+}
+
+function removeWorkbenchTourDemoImageCard() {
+  workbenchTourDemoImageCard?.remove();
+  workbenchTourDemoImageCard = null;
+}
+
+function createWorkbenchTourDemoBlueprintCard(id, index, point) {
+  const element = document.createElement("section");
+  element.className = "node option-node workbench-tour-demo-blueprint-card";
+  element.dataset.nodeId = id;
+  const x = Math.round(point.x - 390 + index * 245);
+  const y = Math.round(point.y + (index === 1 ? -170 : 95));
+  element.style.left = `${x}px`;
+  element.style.top = `${y}px`;
+  const title = document.createElement("strong");
+  title.textContent = currentLang === "en" ? ["Mood board", "Shot logic", "Final direction"][index] : ["情绪参考", "镜头逻辑", "最终方向"][index];
+  const body = document.createElement("span");
+  body.textContent = currentLang === "en" ? "Blueprint input" : "蓝图输入";
+  element.append(title, body);
+  board.appendChild(element);
+  state.nodes.set(id, {
+    id,
+    element,
+    x,
+    y,
+    width: 220,
+    height: 92,
+    option: {
+      title: title.textContent,
+      description: body.textContent,
+      tone: currentLang === "en" ? "blueprint" : "蓝图"
+    }
+  });
+}
+
+function ensureWorkbenchTourDemoBlueprint() {
+  if (!board) return;
+  if (state.junctions.has(WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID)) {
+    const node = state.nodes.get(WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID);
+    focusWorkbenchTourElement(node?.element, "center");
+    return;
+  }
+  removeWorkbenchTourDemoBlueprint();
+  const point = boardPointForViewportPosition("center");
+  WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS.forEach((id, index) => createWorkbenchTourDemoBlueprintCard(id, index, point));
+  const junction = document.createElement("section");
+  junction.className = "node junction-node workbench-tour-demo-junction";
+  junction.dataset.nodeId = WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID;
+  const x = Math.round(point.x - 20);
+  const y = Math.round(point.y - 20);
+  junction.style.left = `${x}px`;
+  junction.style.top = `${y}px`;
+  const count = document.createElement("span");
+  count.className = "junction-count";
+  count.textContent = String(WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS.length);
+  junction.appendChild(count);
+  board.appendChild(junction);
+  state.nodes.set(WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID, {
+    id: WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID,
+    element: junction,
+    x,
+    y,
+    width: 40,
+    height: 40,
+    isJunction: true
+  });
+  state.junctions.set(WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID, {
+    connectedCardIds: [...WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS],
+    maxCapacity: 5
+  });
+  state.blueprints.set(WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID, {
+    positions: {
+      [WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS[0]]: { x: 36, y: 68 },
+      [WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS[1]]: { x: 292, y: 28 },
+      [WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS[2]]: { x: 548, y: 128 }
+    },
+    relationships: [
+      { from: WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS[0], to: WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS[1], type: "upstream", note: currentLang === "en" ? "Reference atmosphere informs shot logic." : "情绪参考影响镜头逻辑。" },
+      { from: WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS[1], to: WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS[2], type: "downstream", note: currentLang === "en" ? "Shot logic shapes the final visual direction." : "镜头逻辑塑造最终视觉方向。" }
+    ],
+    referenceStrength: DEFAULT_BLUEPRINT_REFERENCE_STRENGTH,
+    guideInteractions: BLUEPRINT_GUIDE_DISMISS_AFTER
+  });
+  state.links = state.links.filter((link) => ![WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID, ...WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS].includes(link.from) && ![WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID, ...WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS].includes(link.to));
+  WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS.forEach((id) => {
+    state.links.push({ from: id, to: WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID, kind: "junction" });
+  });
+  drawLinks();
+  focusWorkbenchTourElement(junction, "center");
+}
+
+function removeWorkbenchTourDemoBlueprint() {
+  if (blueprintModal?.dataset?.junctionId === WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID) closeBlueprintModal();
+  const ids = [WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID, ...WORKBENCH_TOUR_DEMO_BLUEPRINT_CARD_IDS];
+  ids.forEach((id) => {
+    state.nodes.get(id)?.element?.remove();
+    state.nodes.delete(id);
+  });
+  state.junctions.delete(WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID);
+  state.blueprints.delete(WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID);
+  state.links = state.links.filter((link) => !ids.includes(link.from) && !ids.includes(link.to));
+  drawLinks();
 }
 
 function getWorkbenchTourSteps() {
@@ -3037,14 +3192,36 @@ function getWorkbenchTourSteps() {
       body: isEn ? "Use + to upload images or files, import from the material library, open the minimap, start deep research, or enable Subagents." : "点 + 可上传图片或文件、从素材库导入、打开小地图、启动深入研究，或开启 Subagents 处理复杂任务。"
     },
     {
+      target: ".workbench-tour-demo-image-card .image-card-action-edit",
+      before: () => {
+        closeWorkbenchTourDemoImage();
+        closeCommandMenu();
+        closeChatActionMenu();
+        ensureWorkbenchTourDemoImageCard();
+      },
+      title: isEn ? "Edit from the image card" : "先从图片卡片编辑",
+      body: isEn ? "Image cards expose quick actions on the image itself. Start with the edit button at the lower-left of the card when you want to modify a visual." : "图片卡片本身会出现快捷操作。需要改图时，先高光并使用图片左下角的编辑按钮。"
+    },
+    {
       target: "#viewerModifyPanel",
       before: () => {
         closeCommandMenu();
         closeChatActionMenu();
         openWorkbenchTourDemoImageViewer({ editing: true });
       },
-      title: isEn ? "Image editing" : "图片编辑界面",
-      body: isEn ? "Open a generated image to enter Image Details. You can regenerate, describe edits, brush a local region, change aspect ratio, and download the result." : "生成图片后打开图片详情，可重生成、输入修改要求、涂抹局部区域、切换宽高比重新生成，并下载结果。"
+      title: isEn ? "Then refine in Image Details" : "再进入图片编辑大屏",
+      body: isEn ? "The full Image Details view lets you regenerate, describe edits, brush a local region, change aspect ratio, and download the result." : "进入图片详情大屏后，可重生成、输入修改要求、涂抹局部区域、切换宽高比重新生成，并下载结果。"
+    },
+    {
+      target: ".workbench-tour-demo-image-card .image-card-action-share",
+      before: () => {
+        closeWorkbenchTourDemoImage();
+        closeCommandMenu();
+        closeChatActionMenu();
+        ensureWorkbenchTourDemoImageCard();
+      },
+      title: isEn ? "Share from the image card" : "先从图片卡片分享",
+      body: isEn ? "Sharing follows the same pattern: start from the share button on the image card, then review the full share panel." : "图片分享也一样：先高光图片卡片上的分享按钮，再进入完整分享面板。"
     },
     {
       target: "#imageShareModal .image-share-content",
@@ -3053,8 +3230,30 @@ function getWorkbenchTourSteps() {
         closeChatActionMenu();
         openWorkbenchTourDemoImageShare();
       },
-      title: isEn ? "Image sharing" : "分享界面",
-      body: isEn ? "Use the share button in Image Details to name one image, create a share link, copy it, rename it, or download it from the share panel." : "在图片详情里点分享按钮，可给单张图片命名、生成并复制分享链接，也能在分享面板里重命名或下载。"
+      title: isEn ? "Then use the share panel" : "再进入分享界面",
+      body: isEn ? "In the share panel you can name one image, create and copy a share link, rename it later, or download it." : "在分享面板里可给单张图片命名、生成并复制分享链接，也能重命名或下载。"
+    },
+    {
+      target: ".workbench-tour-demo-junction",
+      before: () => {
+        closeWorkbenchTourDemoImage();
+        closeCommandMenu();
+        closeChatActionMenu();
+        ensureWorkbenchTourDemoBlueprint();
+      },
+      title: isEn ? "Multi-card junctions" : "多卡片聚合节点",
+      body: isEn ? "When multiple cards connect, they can gather into a small junction dot. It keeps dense relationships readable while preserving the cards as separate working materials." : "多张卡片互相连接时，会聚合成一个小圆点节点。它能让复杂关系更清晰，同时保留每张卡片作为独立素材。"
+    },
+    {
+      target: "#blueprintModal .modal-content",
+      before: () => {
+        closeCommandMenu();
+        closeChatActionMenu();
+        ensureWorkbenchTourDemoBlueprint();
+        openBlueprintModal(WORKBENCH_TOUR_DEMO_BLUEPRINT_JUNCTION_ID);
+      },
+      title: isEn ? "Blueprint for relationships" : "蓝图关系功能",
+      body: isEn ? "Double-click a junction to open Blueprint. Arrange mini-cards, draw upstream/downstream/parallel relationships, add notes, and use the reference strength when generating images from related cards." : "双击聚合节点可打开蓝图：在里面整理小卡片、拉上游/下游/并列关系、给关系写说明，并在相关卡片成图时控制蓝图参考强度。"
     },
     {
       target: ".nav-links",
@@ -4533,8 +4732,8 @@ async function exploreSource() {
   if (state.sourceType === "url" && !state.sourceUrl) return;
   if (state.sourceType === "video") {
     await submitChatMessage(currentLang === "en"
-      ? "Please deeply explore this video, summarize important moments, and propose useful canvas directions."
-      : "请深入探索这个视频，总结重要片段，并提出适合继续生成画布卡片的方向。", { forcedThinkingMode: "thinking" });
+      ? "Please deeply explore this uploaded video, summarize important moments, and create 5-8 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards."
+      : "请深入探索这个上传视频，总结重要片段，并创建 5-8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。", { forcedThinkingMode: "thinking" });
     return;
   }
 
@@ -4599,8 +4798,8 @@ async function analyzeSource(mode = "analyze") {
   if (state.sourceType === "url" && !state.sourceUrl) return;
   if (state.sourceType === "video") {
     await submitChatMessage(currentLang === "en"
-      ? "Please analyze this video. Summarize the key scenes, visible details, temporal structure, and actionable follow-up ideas."
-      : "请分析这个视频，总结关键画面、可见细节、时间结构和可继续展开的行动建议。", {
+      ? "Please analyze this uploaded video. Summarize the key scenes, visible details, temporal structure, and create 5-8 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards."
+      : "请分析这个上传视频，总结关键画面、可见细节、时间结构，并创建 5-8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。", {
         forcedThinkingMode: mode === "explore" ? "thinking" : state.thinkingMode
       });
     return;
@@ -6977,6 +7176,26 @@ function defaultLinkDescription(url, fallback = "") {
     : `来自 ${host || "网页"} 的参考页面，可用于核实来源信息、官方细节和继续阅读。`;
 }
 
+function inferToolNodeType(text) {
+  if (/(todo|checklist|task list|\u5f85\u529e|\u6e05\u5355|\u4efb\u52a1)/i.test(text)) return "todo";
+  if (/(code|script|snippet|\u4ee3\u7801|\u811a\u672c)/i.test(text)) return "code";
+  if (/(map|route|location|address|\u5730\u56fe|\u8def\u7ebf|\u5730\u70b9|\u5730\u5740)/i.test(text)) return "map";
+  if (/(weather|forecast|\u5929\u6c14|\u9884\u62a5)/i.test(text)) return "weather";
+  if (/(table|spreadsheet|dataset|\u8868\u683c|\u6570\u636e\u8868)/i.test(text)) return "table";
+  if (/(timeline|milestone|\u65f6\u95f4\u7ebf|\u91cc\u7a0b\u7891|\u9636\u6bb5)/i.test(text)) return "timeline";
+  if (/(compare|comparison|versus|\u5bf9\u6bd4|\u6bd4\u8f83)/i.test(text)) return "comparison";
+  if (/(metric|kpi|dashboard|\u6307\u6807|\u4eea\u8868\u76d8)/i.test(text)) return "metric";
+  if (/(quote|excerpt|\u5f15\u7528|\u6458\u5f55)/i.test(text)) return "quote";
+  return "note";
+}
+
+function nodeTypeFromPurpose(purpose, text) {
+  if (purpose === "plan") return "plan";
+  if (purpose === "tool") return inferToolNodeType(text);
+  if (purpose === "research" || purpose === "content" || purpose === "exploration") return "note";
+  return "";
+}
+
 function inferOptionNodeType(option, fallbackTaskType = "general") {
   const explicit = String(option?.nodeType || "").toLowerCase();
   if (explicit === "image" || RICH_CARD_NODE_TYPES.includes(explicit)) return explicit;
@@ -6985,10 +7204,16 @@ function inferOptionNodeType(option, fallbackTaskType = "general") {
   const layout = String(option?.layoutHint || "").toLowerCase();
   const tone = String(option?.tone || "").toLowerCase();
   const text = [option?.title, option?.description, option?.prompt].map((value) => String(value || "").toLowerCase()).join(" ");
-  const visualTerms = /(image|visual|picture|photo|illustration|poster|cover|render|sketch|style frame|storyboard|diagram|\u56fe\u7247|\u56fe\u50cf|\u89c6\u89c9|\u753b\u9762|\u6210\u56fe|\u63d2\u753b|\u6d77\u62a5|\u5c01\u9762|\u6e32\u67d3|\u8349\u56fe|\u5206\u955c|\u56fe\u89e3)/;
-  if (purpose === "visual" || taskType === "image_generation" || visualTerms.test(`${tone} ${layout} ${text}`)) return "image";
+  const combined = `${tone} ${layout} ${text}`;
+  const purposeType = nodeTypeFromPurpose(purpose, text);
+  if (purposeType) return purposeType;
+  const generationTerms = /(generate|text-to-image|image-to-image|make an image|create an image|draw|paint|render|illustrat|poster|cover|logo|icon|mockup|style frame|storyboard|concept art|visual design|\u751f\u6210|\u751f\u56fe|\u6210\u56fe|\u51fa\u56fe|\u7ed8\u5236|\u6e32\u67d3|\u63d2\u753b|\u6d77\u62a5|\u5c01\u9762|\u56fe\u6807|\u89c6\u89c9\u7a3f|\u6548\u679c\u56fe|\u6982\u5ff5\u56fe|\u5206\u955c|logo)/i;
+  const nonGenerationTerms = /(analy[sz]e|analysis|understand|research|study|investigat|compare|evaluate|summari[sz]e|extract|identify|classify|organize|plan|workflow|roadmap|checklist|note|brief|report|reference|source|fact|verify|\u5206\u6790|\u7406\u89e3|\u89e3\u8bfb|\u7814\u7a76|\u8c03\u7814|\u6bd4\u8f83|\u5bf9\u6bd4|\u8bc4\u4f30|\u603b\u7ed3|\u63d0\u53d6|\u8bc6\u522b|\u5206\u7c7b|\u6574\u7406|\u8ba1\u5212|\u6b65\u9aa4|\u6e05\u5355|\u7b14\u8bb0|\u62a5\u544a|\u8d44\u6599|\u53c2\u8003|\u6765\u6e90|\u4e8b\u5b9e|\u6838\u5b9e)/i;
+  if (purpose === "visual" && (!nonGenerationTerms.test(combined) || generationTerms.test(combined))) return "image";
   if (purpose === "plan" || /(plan|schedule|workflow|roadmap|\u6b65\u9aa4|\u8ba1\u5212|\u89c4\u5212|\u6d41\u7a0b|\u8def\u7ebf\u56fe|\u65e5\u7a0b)/.test(text)) return "plan";
-  if (purpose === "tool" && /(todo|checklist|浠诲姟|寰呭姙|娓呭崟)/.test(text)) return "todo";
+  if (purpose === "tool" && /(todo|checklist|\u4efb\u52a1|\u5f85\u529e|\u6e05\u5355)/.test(text)) return "todo";
+  if (generationTerms.test(combined) && !nonGenerationTerms.test(combined)) return "image";
+  if (taskType === "image_generation" && !nonGenerationTerms.test(combined)) return "image";
   if (purpose === "research" || purpose === "content" || purpose === "exploration" || ["research", "planning", "creative", "general"].includes(taskType)) return "note";
   return "note";
 }
@@ -7977,8 +8202,8 @@ async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
   const useExplore = mode === "explore";
   if (sourceCard.sourceType === "video") {
     await submitChatMessage(useExplore
-      ? (currentLang === "en" ? "Please deeply explore this video source card and propose useful canvas directions." : "请深入探索这张视频源卡片，并提出适合继续生成画布卡片的方向。")
-      : (currentLang === "en" ? "Please analyze this video source card and summarize the key moments." : "请分析这张视频源卡片，并总结关键片段。"), {
+      ? (currentLang === "en" ? "Please deeply explore this video source card and create 5-8 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请深入探索这张视频源卡片，并创建 5-8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。")
+      : (currentLang === "en" ? "Please analyze this video source card, summarize the key moments, and create 5-8 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请分析这张视频源卡片，总结关键片段，并创建 5-8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。"), {
         forcedThinkingMode: useExplore ? "thinking" : state.thinkingMode
       });
     return;
