@@ -41,6 +41,7 @@ const chatMaterialAction = document.querySelector("#chatMaterialAction");
 const chatMinimapAction = document.querySelector("#chatMinimapAction");
 const chatDeepThinkAction = document.querySelector("#chatDeepThinkAction");
 const chatSubagentsAction = document.querySelector("#chatSubagentsAction");
+const chatNewCanvasAction = document.querySelector("#chatNewCanvasAction");
 const deepThinkModeChip = document.querySelector("#deepThinkModeChip");
 const deepThinkModeCancel = document.querySelector("#deepThinkModeCancel");
 const chatSidebarResize = document.querySelector("#chatSidebarResize");
@@ -83,7 +84,7 @@ const STORAGE_KEYS = {
   chatInputHeight: ["thoughtgrid.chatInputHeight", "oryzae.chatInputHeight"],
   subagentsEnabled: ["thoughtgrid-subagents-enabled", "oryzae-subagents-enabled"],
   thinkingMode: ["thoughtgrid-thinking-mode", "oryzae-thinking-mode"],
-  workbenchTourSeen: ["thoughtgrid.workbenchTourSeen.v4", "oryzae.workbenchTourSeen.v4"]
+  workbenchTourSeen: ["thoughtgrid.workbenchTourSeen.v5", "oryzae.workbenchTourSeen.v5"]
 };
 
 function getStoredItem(keys, storage = localStorage) {
@@ -1371,6 +1372,12 @@ function renderAllText() {
     if (title) title.textContent = t("chat.deepThink");
     if (desc) desc.textContent = t("chat.deepThinkDesc");
   }
+  if (chatNewCanvasAction) {
+    const title = chatNewCanvasAction.querySelector(".chat-action-title");
+    const desc = chatNewCanvasAction.querySelector(".chat-action-desc");
+    if (title) title.textContent = t("command.newCanvas");
+    if (desc) desc.textContent = t("command.newCanvasDesc");
+  }
   if (deepThinkModeChip) {
     deepThinkModeChip.title = t("chat.deepThinkActive");
     deepThinkModeChip.setAttribute("aria-label", t("chat.deepThinkActive"));
@@ -1587,7 +1594,6 @@ function getWorkbenchCommands() {
     { id: "new-card", icon: "N", label: t("command.newCard"), description: t("command.newCardDesc") },
     { id: "search-card", icon: "Q", label: t("command.searchCard"), description: t("command.searchCardDesc") },
     { id: "import-material", icon: "L", label: t("command.importMaterial"), description: t("command.importMaterialDesc") },
-    { id: "new-canvas", icon: "C", label: t("command.newCanvas"), description: t("command.newCanvasDesc") },
     {
       id: "subagents",
       icon: "A",
@@ -1796,7 +1802,6 @@ async function executeWorkbenchCommand(commandId) {
     setTimeout(() => openMaterialSearchBar(commandArgument), 0);
     return;
   }
-  if (commandId === "new-canvas") return createNewCanvas();
   if (commandId === "subagents") return toggleSubagentsMode();
 }
 
@@ -2506,6 +2511,10 @@ function wireControls() {
     closeChatActionMenu();
     toggleSubagentsMode();
   });
+  chatNewCanvasAction?.addEventListener("click", () => {
+    closeChatActionMenu();
+    createNewCanvas();
+  });
   deepThinkModeCancel?.addEventListener("click", () => setDeepThinkModeActive(false));
   chatSidebarResize?.addEventListener("pointerdown", startChatSidebarResize);
   chatInputResize?.addEventListener("pointerdown", startChatInputResize);
@@ -3178,7 +3187,7 @@ function getWorkbenchTourSteps() {
         openCommandMenu();
       },
       title: isEn ? "/ command area" : "/ 命令区",
-      body: isEn ? "Type / or open this menu to save, import/export sessions, search cards, create cards, start a blank canvas, fit view, or auto-arrange." : "输入 / 会打开命令区，可保存、导入/导出会话、搜索卡片、新建卡片/画布、适配视图或自动整理。"
+      body: isEn ? "Type / or open this menu to save, import/export sessions, search cards, create cards, fit view, or auto-arrange." : "输入 / 会打开命令区，可保存、导入/导出会话、搜索卡片、新建卡片、适配视图或自动整理。"
     },
     {
       target: "#chatActionMenu",
@@ -3189,7 +3198,31 @@ function getWorkbenchTourSteps() {
         setChatActionMenuOpen(true);
       },
       title: isEn ? "+ action area" : "+ 功能区",
-      body: isEn ? "Use + to upload images or files, import from the material library, open the minimap, start deep research, or enable Subagents." : "点 + 可上传图片或文件、从素材库导入、打开小地图、启动深入研究，或开启 Subagents 处理复杂任务。"
+      body: isEn ? "Use + to upload images or files, import from the material library, open the minimap, start deep research, start a blank canvas, or enable Subagents." : "点 + 可上传图片或文件、从素材库导入、打开小地图、启动深入研究、新建空白画布，或开启 Subagents 处理复杂任务。"
+    },
+    {
+      target: "#agentPanel",
+      before: () => {
+        closeWorkbenchTourDemoImage();
+        setChatSidebarOpen(true);
+        closeCommandMenu();
+        closeChatActionMenu();
+        setAgentPanelOpen(true);
+      },
+      title: isEn ? "Agent task panel" : "Agent 任务面板",
+      body: isEn ? "Use the Agent panel for longer goals. Describe the task, allow Subagents when useful, and let the AI break work into canvas actions and follow-up steps." : "Agent 面板适合更长目标：描述任务，必要时允许 Subagents 拆解，AI 会把工作拆成画布操作和后续步骤。"
+    },
+    {
+      target: "#chatRealtimeButton",
+      before: () => {
+        closeWorkbenchTourDemoImage();
+        setChatSidebarOpen(true);
+        closeCommandMenu();
+        closeChatActionMenu();
+        setAgentPanelOpen(false);
+      },
+      title: isEn ? "Realtime voice control" : "实时语音控制",
+      body: isEn ? "The microphone buttons support speech-to-text and realtime voice control. When realtime is configured, you can speak instructions and let the workbench respond while keeping canvas context." : "麦克风区域支持语音转文字和实时语音控制。配置实时语音后，可以直接说出指令，让工作台结合画布上下文响应。"
     },
     {
       target: ".workbench-tour-demo-image-card .image-card-action-edit",
@@ -3261,6 +3294,7 @@ function getWorkbenchTourSteps() {
         closeWorkbenchTourDemoImage();
         closeCommandMenu();
         closeChatActionMenu();
+        setAgentPanelOpen(false);
         document.body.classList.remove("nav-collapsed");
         navToggle?.setAttribute("aria-expanded", "true");
       },
@@ -3392,6 +3426,7 @@ function finishWorkbenchTour(markSeen = true) {
   closeWorkbenchTourDemoImage();
   closeCommandMenu();
   closeChatActionMenu();
+  setAgentPanelOpen(false);
   window.removeEventListener("resize", workbenchTourState.update);
   window.removeEventListener("keydown", workbenchTourState.keydown);
   workbenchTourState.overlay.remove();
@@ -8516,11 +8551,10 @@ function createJunctionAtMidpoint(cardAId, cardBId) {
   if (!cardA || !cardB) return;
 
   // Calculate midpoint between the two cards
-  const midX = (cardA.x + (cardA.width || 300) / 2 + cardB.x + (cardB.width || 300) / 2) / 2;
-  const midY = (cardA.y + (cardA.height || 220) / 2 + cardB.y + (cardB.height || 220) / 2) / 2;
+  const midpoint = junctionMidpointForNodes(cardA, cardB);
 
   // Create junction node at midpoint
-  const junctionId = createJunctionNode(midX, midY);
+  const junctionId = createJunctionNode(midpoint.x, midpoint.y);
 
   // Add both cards to the junction
   const junction = state.junctions.get(junctionId);
@@ -8531,6 +8565,30 @@ function createJunctionAtMidpoint(cardAId, cardBId) {
 
   // Rewire links to go through junction
   rewireLinksThroughJunction(junctionId);
+}
+
+function junctionMidpointForNodes(cardA, cardB) {
+  const a = getNodeBounds(cardA);
+  const b = getNodeBounds(cardB);
+  const centerA = nodeCenter(cardA);
+  const centerB = nodeCenter(cardB);
+  if (!a || !b) {
+    return {
+      x: (centerA.x + centerB.x) / 2,
+      y: (centerA.y + centerB.y) / 2
+    };
+  }
+  const x = a.right <= b.x
+    ? (a.right + b.x) / 2
+    : b.right <= a.x
+      ? (b.right + a.x) / 2
+      : (Math.max(a.x, b.x) + Math.min(a.right, b.right)) / 2;
+  const y = a.bottom <= b.y
+    ? (a.bottom + b.y) / 2
+    : b.bottom <= a.y
+      ? (b.bottom + a.y) / 2
+      : (Math.max(a.y, b.y) + Math.min(a.bottom, b.bottom)) / 2;
+  return { x, y };
 }
 
 function addCardToJunction(junctionId, cardId) {
@@ -12421,10 +12479,34 @@ function linkSpreadOffset(group, descriptor) {
 function chooseLinkSides(from, to) {
   const fromCenter = nodeCenter(from);
   const toCenter = nodeCenter(to);
+  const fromBounds = getNodeBounds(from);
+  const toBounds = getNodeBounds(to);
   const dx = toCenter.x - fromCenter.x;
   const dy = toCenter.y - fromCenter.y;
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
+
+  if (fromBounds && toBounds) {
+    const overlapX = Math.min(fromBounds.right, toBounds.right) - Math.max(fromBounds.x, toBounds.x);
+    const overlapY = Math.min(fromBounds.bottom, toBounds.bottom) - Math.max(fromBounds.y, toBounds.y);
+    const rightGap = toBounds.x - fromBounds.right;
+    const leftGap = fromBounds.x - toBounds.right;
+    const downGap = toBounds.y - fromBounds.bottom;
+    const upGap = fromBounds.y - toBounds.bottom;
+    const edgeTolerance = from?.isJunction || to?.isJunction ? 30 : 18;
+    if (rightGap >= -edgeTolerance && (overlapY > -edgeTolerance || absDx >= absDy * 0.72)) {
+      return { fromSide: "right", toSide: "left" };
+    }
+    if (leftGap >= -edgeTolerance && (overlapY > -edgeTolerance || absDx >= absDy * 0.72)) {
+      return { fromSide: "left", toSide: "right" };
+    }
+    if (downGap >= -edgeTolerance && (overlapX > -edgeTolerance || absDy > absDx * 0.72)) {
+      return { fromSide: "bottom", toSide: "top" };
+    }
+    if (upGap >= -edgeTolerance && (overlapX > -edgeTolerance || absDy > absDx * 0.72)) {
+      return { fromSide: "top", toSide: "bottom" };
+    }
+  }
 
   if (from?.isJunction || to?.isJunction) {
     if (absDx >= 36) {
@@ -12543,6 +12625,8 @@ function routeLinkPath(start, end, descriptor, groups = {}) {
   const dy = end.y - start.y;
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
+  const compactPath = compactLinkPath(start, end, descriptor);
+  if (compactPath) return compactPath;
   const startTangent = tangentForSide(start.side);
   const endTangent = tangentForSide(end.side);
   const fromGroupSize = groups.fromGroup?.length || 0;
@@ -12599,6 +12683,27 @@ function routeLinkPath(start, end, descriptor, groups = {}) {
   points.push(p4, { x: end.x, y: end.y });
   const snapped = points.map((point, index) => index === 0 || index === points.length - 1 ? point : snapRoutePoint(point));
   return roundedPolylinePath(avoidLinkObstacles(snapped, descriptor), bundled ? 18 : 14);
+}
+
+function compactLinkPath(start, end, descriptor) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const horizontalFacing = (start.side === "right" && end.side === "left" && dx >= -4) || (start.side === "left" && end.side === "right" && dx <= 4);
+  const verticalFacing = (start.side === "bottom" && end.side === "top" && dy >= -4) || (start.side === "top" && end.side === "bottom" && dy <= 4);
+  if (!horizontalFacing && !verticalFacing) return "";
+  const axisDistance = horizontalFacing ? Math.abs(dx) : Math.abs(dy);
+  const crossDistance = horizontalFacing ? Math.abs(dy) : Math.abs(dx);
+  const isJunctionLink = descriptor?.link?.kind === "junction" || descriptor?.from?.isJunction || descriptor?.to?.isJunction;
+  if (!isJunctionLink && (axisDistance > 180 || crossDistance > 120)) return "";
+  if (axisDistance <= 36 && crossDistance <= 72) return `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
+  const startTangent = tangentForSide(start.side);
+  const endTangent = tangentForSide(end.side);
+  const bend = clamp(axisDistance * 0.36, 14, isJunctionLink ? 52 : 64);
+  const c1x = start.x + startTangent.x * bend;
+  const c1y = start.y + startTangent.y * bend;
+  const c2x = end.x + endTangent.x * bend;
+  const c2y = end.y + endTangent.y * bend;
+  return `M ${start.x} ${start.y} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${end.x} ${end.y}`;
 }
 
 function linkLaneOffset(group, descriptor, step = 18) {

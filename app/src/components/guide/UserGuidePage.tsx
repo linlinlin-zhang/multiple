@@ -87,14 +87,15 @@ const zhSections: GuideSection[] = [
   },
   {
     id: "chat",
-    title: "聊天区与 / 命令",
+    title: "聊天区、Agent 与 + 功能区",
     icon: <MessageSquare size={20} />,
     items: [
       { action: "直接输入问题", detail: "不选卡片也可以对话，让 AI 自己规划、生成卡片和连线；双击卡片只是把上下文限定到那张卡。" },
-      { action: "输入 /", detail: "打开命令区，可保存、导入/导出、搜索卡片、新建卡片/画布、适配视图或自动整理。" },
-      { action: "+ 功能区", detail: "上传素材、从素材库导入、打开小地图、启动深入研究或允许 Subagents 拆解复杂任务。" },
+      { action: "输入 /", detail: "打开命令区，可保存、导入/导出、搜索卡片、新建卡片、适配视图或自动整理。" },
+      { action: "+ 功能区", detail: "上传素材、从素材库导入、打开小地图、启动深入研究、新建空白画布或允许 Subagents 拆解复杂任务。" },
+      { action: "Agent 面板", detail: "适合更长目标；描述任务后可让 AI 拆解步骤、调用画布操作，并在需要时启用 Subagents。" },
       { action: "新建对话", detail: "聊天区顶部“+”开启新线程；历史按钮可回到旧线程。" },
-      { action: "语音按钮", detail: "支持语音转写或实时语音控制，取决于服务端配置。" },
+      { action: "实时语音控制", detail: "麦克风按钮支持语音转写；配置实时语音后，可直接说出指令并让工作台结合画布上下文响应。" },
     ],
   },
   {
@@ -167,14 +168,15 @@ const enSections: GuideSection[] = [
   },
   {
     id: "chat",
-    title: "Chat and / commands",
+    title: "Chat, Agent, and + actions",
     icon: <MessageSquare size={20} />,
     items: [
       { action: "Ask directly", detail: "You can chat without selecting a card and let AI plan, create cards, and connect them. Double-clicking only focuses context on one card." },
-      { action: "Type /", detail: "Open the command area for save, import/export, card search, new cards/canvas, fit view, and auto-arrange." },
-      { action: "+ action area", detail: "Upload files, import from materials, open the minimap, start deep research, or allow Subagents for complex tasks." },
+      { action: "Type /", detail: "Open the command area for save, import/export, card search, new cards, fit view, and auto-arrange." },
+      { action: "+ action area", detail: "Upload files, import from materials, open the minimap, start deep research, start a blank canvas, or allow Subagents for complex tasks." },
+      { action: "Agent panel", detail: "Use it for longer goals; describe a task and let AI break it into steps, canvas actions, and optional Subagents." },
       { action: "New thread", detail: "Use the chat header + button; history returns to previous threads." },
-      { action: "Voice buttons", detail: "Use speech-to-text or realtime voice if configured server-side." },
+      { action: "Realtime voice control", detail: "The microphone buttons support speech-to-text; when realtime is configured, speak instructions while keeping canvas context." },
     ],
   },
   {
@@ -202,7 +204,6 @@ const zhCommands: CommandRow[] = [
   { command: "/new-card 文本", detail: "新建一张文本卡片" },
   { command: "/search 关键词", detail: "搜索并定位画布卡片" },
   { command: "/material 关键词", detail: "从素材库导入" },
-  { command: "/new-canvas", detail: "新建空画布" },
 ];
 
 const enCommands: CommandRow[] = [
@@ -215,7 +216,6 @@ const enCommands: CommandRow[] = [
   { command: "/new-card text", detail: "Create a text card" },
   { command: "/search keyword", detail: "Find and focus a card" },
   { command: "/material keyword", detail: "Import from material library" },
-  { command: "/new-canvas", detail: "Start a blank canvas" },
 ];
 
 function contentFor(lang: Lang) {
@@ -233,6 +233,7 @@ function contentFor(lang: Lang) {
           { label: "Turn material into a map", detail: "Upload a file or paste a webpage; the source card can summarize it, pull out useful points, and suggest next directions." },
           { label: "Chat globally or focus a card", detail: "No card selection is required. Double-click a card only when you want the next question to focus on that specific card." },
           { label: "Make and revise visuals", detail: "Generate images/videos from direction cards, then open Image Details to regenerate, mask-edit, change ratio, download, or share." },
+          { label: "Use Agent or voice", detail: "Hand longer tasks to the Agent panel, allow Subagents when useful, or control the workbench with realtime voice if configured." },
           { label: "Keep the process", detail: "Sessions, materials, references, history, and share links make it easy to come back to the same project later." },
         ],
         projectUseCasesTitle: "Use it for",
@@ -257,9 +258,10 @@ function contentFor(lang: Lang) {
         projectFeatures: [
           { label: "空白也能开始", detail: "直接在聊天框输入想法，例如“帮我拆一个短片创意方案”，AI 可以自己生成第一批卡片和连线。" },
           { label: "资料变成地图", detail: "上传文件或粘贴网页后，源卡片能提炼摘要、重点、结构和后续可探索方向。" },
-          { label: "全局聊或聚焦聊", detail: "不选卡片也能对话；双击卡片只是告诉 AI 这次问题要围绕某张卡继续。" },
-          { label: "生成并修改视觉", detail: "从方向卡生成图片/视频，打开图片详情后可重生成、局部涂抹修改、换比例、下载或分享。" },
-          { label: "过程可沉淀", detail: "会话、素材、引用、历史记录和分享链接会保留下来，方便下次接着做。" },
+          { label: "全局聊天或聚焦卡片", detail: "不必先选卡；只有当你希望下一轮围绕某张卡深入时，才需要双击卡片。" },
+          { label: "生成并修改视觉", detail: "从方向卡生成图片/视频，再进入图片详情重生成、局部改图、换比例、下载或分享。" },
+          { label: "使用 Agent 或语音", detail: "长任务可交给 Agent 面板，必要时启用 Subagents；配置实时语音后也能直接说话控制工作台。" },
+          { label: "沉淀整个过程", detail: "会话、素材、引用、历史记录和分享链接都会留下，方便之后继续同一个项目。" },
         ],
         projectUseCasesTitle: "可以用来",
         projectUseCases: ["拆一个想法", "读资料找方向", "做视觉参考板", "生成和改图", "保存项目过程"],
