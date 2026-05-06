@@ -4351,8 +4351,10 @@ html[data-theme="dark"] .share-button:hover {
 .share-round-action {
   min-width: 0;
   display: grid;
+  align-items: center;
   justify-items: center;
   gap: 10px;
+  padding: 0;
   border: none;
   color: var(--ink);
   background: transparent;
@@ -4368,14 +4370,20 @@ html[data-theme="dark"] .share-button:hover {
   color: #ffffff;
   background: #000000;
   font-size: 0;
+  line-height: 0;
+  position: relative;
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.18);
   transition: transform 160ms ease, background 160ms ease;
 }
 
 .share-round-action span::before {
   content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
   width: 27px;
   height: 27px;
+  transform: translate(-50%, -50%);
   background: currentColor;
   -webkit-mask: var(--share-icon) center / contain no-repeat;
   mask: var(--share-icon) center / contain no-repeat;

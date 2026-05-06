@@ -83,7 +83,7 @@ const STORAGE_KEYS = {
   chatInputHeight: ["thoughtgrid.chatInputHeight", "oryzae.chatInputHeight"],
   subagentsEnabled: ["thoughtgrid-subagents-enabled", "oryzae-subagents-enabled"],
   thinkingMode: ["thoughtgrid-thinking-mode", "oryzae-thinking-mode"],
-  workbenchTourSeen: ["thoughtgrid.workbenchTourSeen.v2", "oryzae.workbenchTourSeen.v2"]
+  workbenchTourSeen: ["thoughtgrid.workbenchTourSeen.v3", "oryzae.workbenchTourSeen.v3"]
 };
 
 function getStoredItem(keys, storage = localStorage) {
@@ -307,6 +307,10 @@ let pendingChatAttachment = null;
 let chatOperationBusy = false;
 let generatedArrangeTimer = null;
 let workbenchTourState = null;
+let workbenchTourDemoImageOpen = false;
+const WORKBENCH_TOUR_DEMO_NODE_ID = "__workbenchTourDemoImage";
+const WORKBENCH_TOUR_DEMO_IMAGE_URL = "/home-assets/cards/26.jpg";
+const WORKBENCH_TOUR_DEMO_IMAGE_TITLE = "ThoughtGrid demo image";
 
 const VIEWER_ASPECT_OPTIONS = {
   auto: { label: { zh: "宽高比", en: "Aspect" }, size: "" },
@@ -618,6 +622,8 @@ const i18n = {
     "viewer.share": "分享",
     "viewer.shareInProgress": "生成分享链接中...",
     "viewer.shareFailed": "分享链接生成失败",
+    "viewer.shareReadyManual": "分享链接已生成，请手动复制",
+    "viewer.demoOnly": "这是引导示例，不会保存到当前会话。",
     "collapse.noChildren": "没有后续节点",
     "save.auto": "自动保存中...",
     "save.inProgress": "保存中...",
@@ -1140,6 +1146,8 @@ const i18n = {
     "viewer.shareInProgress": "Generating share link...",
     "viewer.shareCopied": "Share link copied to clipboard",
     "viewer.shareFailed": "Failed to generate share link",
+    "viewer.shareReadyManual": "Share link is ready. Copy it from the field.",
+    "viewer.demoOnly": "This is a tour example and will not be saved to the session.",
     "collapse.expand": "Expand {count} downstream nodes",
     "collapse.collapse": "Collapse {count} downstream nodes",
     "collapse.noChildren": "No downstream nodes",
@@ -2941,6 +2949,28 @@ function maybeStartWorkbenchTour() {
   startWorkbenchTour();
 }
 
+function openWorkbenchTourDemoImageViewer(options = {}) {
+  workbenchTourDemoImageOpen = true;
+  if (currentShareNodeId === WORKBENCH_TOUR_DEMO_NODE_ID) closeImageShareModal();
+  openImageViewer(WORKBENCH_TOUR_DEMO_NODE_ID, options);
+}
+
+function openWorkbenchTourDemoImageShare() {
+  workbenchTourDemoImageOpen = true;
+  if (currentViewerNodeId !== WORKBENCH_TOUR_DEMO_NODE_ID || imageViewerModal?.classList.contains("hidden")) {
+    openImageViewer(WORKBENCH_TOUR_DEMO_NODE_ID);
+  }
+  imageShareLinks.set(WORKBENCH_TOUR_DEMO_NODE_ID, window.location.origin + WORKBENCH_TOUR_DEMO_IMAGE_URL);
+  openImageShareModal(WORKBENCH_TOUR_DEMO_NODE_ID);
+}
+
+function closeWorkbenchTourDemoImage() {
+  if (!workbenchTourDemoImageOpen) return;
+  if (currentShareNodeId === WORKBENCH_TOUR_DEMO_NODE_ID) closeImageShareModal();
+  if (currentViewerNodeId === WORKBENCH_TOUR_DEMO_NODE_ID) closeImageViewer();
+  workbenchTourDemoImageOpen = false;
+}
+
 function getWorkbenchTourSteps() {
   const isEn = currentLang === "en";
   return [
@@ -2949,6 +2979,7 @@ function getWorkbenchTourSteps() {
       focusNodeId: "source",
       position: "upper-left",
       before: () => {
+        closeWorkbenchTourDemoImage();
         closeCommandMenu();
         closeChatActionMenu();
       },
@@ -2965,6 +2996,7 @@ function getWorkbenchTourSteps() {
     {
       target: "#viewport",
       before: () => {
+        closeWorkbenchTourDemoImage();
         closeCommandMenu();
         closeChatActionMenu();
       },
@@ -2974,6 +3006,7 @@ function getWorkbenchTourSteps() {
     {
       target: ".chatbar",
       before: () => {
+        closeWorkbenchTourDemoImage();
         setChatSidebarOpen(true);
         closeCommandMenu();
         closeChatActionMenu();
@@ -2984,6 +3017,7 @@ function getWorkbenchTourSteps() {
     {
       target: "#commandMenu",
       before: () => {
+        closeWorkbenchTourDemoImage();
         setChatSidebarOpen(true);
         closeChatActionMenu();
         openCommandMenu();
@@ -2994,6 +3028,7 @@ function getWorkbenchTourSteps() {
     {
       target: "#chatActionMenu",
       before: () => {
+        closeWorkbenchTourDemoImage();
         setChatSidebarOpen(true);
         closeCommandMenu();
         setChatActionMenuOpen(true);
@@ -3002,22 +3037,29 @@ function getWorkbenchTourSteps() {
       body: isEn ? "Use + to upload images or files, import from the material library, open the minimap, start deep research, or enable Subagents." : "点 + 可上传图片或文件、从素材库导入、打开小地图、启动深入研究，或开启 Subagents 处理复杂任务。"
     },
     {
-      target: "#viewport",
+      target: "#viewerModifyPanel",
       before: () => {
         closeCommandMenu();
         closeChatActionMenu();
+        openWorkbenchTourDemoImageViewer({ editing: true });
       },
       title: isEn ? "Image editing" : "图片编辑界面",
       body: isEn ? "Open a generated image to enter Image Details. You can regenerate, describe edits, brush a local region, change aspect ratio, and download the result." : "生成图片后打开图片详情，可重生成、输入修改要求、涂抹局部区域、切换宽高比重新生成，并下载结果。"
     },
     {
-      target: "#viewport",
+      target: "#imageShareModal .image-share-content",
+      before: () => {
+        closeCommandMenu();
+        closeChatActionMenu();
+        openWorkbenchTourDemoImageShare();
+      },
       title: isEn ? "Image sharing" : "分享界面",
       body: isEn ? "Use the share button in Image Details to name one image, create a share link, copy it, rename it, or download it from the share panel." : "在图片详情里点分享按钮，可给单张图片命名、生成并复制分享链接，也能在分享面板里重命名或下载。"
     },
     {
       target: ".nav-links",
       before: () => {
+        closeWorkbenchTourDemoImage();
         closeCommandMenu();
         closeChatActionMenu();
         document.body.classList.remove("nav-collapsed");
@@ -3064,8 +3106,16 @@ function startWorkbenchTour() {
     if (event.key === "Enter") advanceWorkbenchTour();
   };
   workbenchTourState = { index: 0, overlay, spotlight, card, progress, skip, next, title, body, update, keydown };
-  skip.addEventListener("click", () => finishWorkbenchTour(true));
-  next.addEventListener("click", advanceWorkbenchTour);
+  overlay.addEventListener("pointerdown", (event) => event.stopPropagation());
+  overlay.addEventListener("click", (event) => event.stopPropagation());
+  skip.addEventListener("click", (event) => {
+    event.stopPropagation();
+    finishWorkbenchTour(true);
+  });
+  next.addEventListener("click", (event) => {
+    event.stopPropagation();
+    advanceWorkbenchTour();
+  });
   window.addEventListener("resize", update);
   window.addEventListener("keydown", keydown);
   renderWorkbenchTourStep();
@@ -3095,6 +3145,7 @@ function renderWorkbenchTourStep() {
   workbenchTourState.next.textContent = workbenchTourState.index === steps.length - 1 ? (isEn ? "Done" : "完成") : (isEn ? "Next" : "下一步");
   workbenchTourState.title.textContent = step.title;
   workbenchTourState.body.textContent = step.body;
+  workbenchTourState.next.focus({ preventScroll: true });
   requestAnimationFrame(() => positionWorkbenchTourStep(step));
 }
 
@@ -3139,6 +3190,7 @@ function advanceWorkbenchTour() {
 function finishWorkbenchTour(markSeen = true) {
   if (!workbenchTourState) return;
   if (markSeen) setStoredItem(STORAGE_KEYS.workbenchTourSeen, "true");
+  closeWorkbenchTourDemoImage();
   closeCommandMenu();
   closeChatActionMenu();
   window.removeEventListener("resize", workbenchTourState.update);
@@ -9676,6 +9728,19 @@ function createImageActionButton(kind, label, onClick) {
 }
 
 function getImageNodeInfo(nodeId) {
+  if (nodeId === WORKBENCH_TOUR_DEMO_NODE_ID) {
+    return {
+      nodeId,
+      isSource: true,
+      isTourDemo: true,
+      node: null,
+      imageUrl: WORKBENCH_TOUR_DEMO_IMAGE_URL,
+      title: WORKBENCH_TOUR_DEMO_IMAGE_TITLE,
+      explanation: currentLang === "en" ? "Example image used only for the onboarding tour." : "仅用于工作台引导展示的示例图片。",
+      prompt: "",
+      imageHash: null
+    };
+  }
   if (nodeId === "source") {
     if (state.sourceType !== "image" || !state.sourceImage) return null;
     return {
@@ -9729,6 +9794,7 @@ function syncSourceImageActionState() {
 
 function getAllImageNodeIds() {
   const ids = [];
+  if (workbenchTourDemoImageOpen) ids.push(WORKBENCH_TOUR_DEMO_NODE_ID);
   if (state.sourceType === "image" && state.sourceImage) ids.push("source");
   for (const [id, node] of state.nodes) {
     if (node?.generated) {
@@ -10048,6 +10114,10 @@ async function submitViewerImageEdit(prompt) {
   if (!currentViewerNodeId) return;
   const info = getImageNodeInfo(currentViewerNodeId);
   if (!info) return;
+  if (info.isTourDemo) {
+    showSelectionToast(t("viewer.demoOnly"));
+    return;
+  }
   if (viewerEditState.brushActive && !viewerEditState.hasMask) {
     showSelectionToast(t("viewer.maskRequired"));
     return;
@@ -10123,6 +10193,11 @@ function closeImageShareModal() {
 }
 
 async function ensureImageShareLink(nodeId) {
+  if (nodeId === WORKBENCH_TOUR_DEMO_NODE_ID) {
+    const url = window.location.origin + WORKBENCH_TOUR_DEMO_IMAGE_URL;
+    imageShareLinks.set(nodeId, url);
+    return url;
+  }
   if (imageShareLinks.has(nodeId)) return imageShareLinks.get(nodeId);
   if (!currentSessionId) {
     await saveSession();
@@ -10139,14 +10214,35 @@ async function ensureImageShareLink(nodeId) {
 
 async function copyImageShareLink(nodeId) {
   showToast(t("viewer.shareInProgress"));
+  let url = "";
   try {
-    const url = await ensureImageShareLink(nodeId);
+    url = await ensureImageShareLink(nodeId);
     if (shareLinkInput) shareLinkInput.value = url;
-    await navigator.clipboard.writeText(url);
-    showToast(t("viewer.shareCopied"));
   } catch (error) {
     console.error("[copyImageShareLink]", error);
     showToast(t("viewer.shareFailed"));
+    return;
+  }
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error("Clipboard API unavailable");
+    await navigator.clipboard.writeText(url);
+    showToast(t("viewer.shareCopied"));
+  } catch (error) {
+    console.warn("[copyImageShareLink clipboard]", error);
+    if (shareLinkInput) {
+      shareLinkInput.focus();
+      shareLinkInput.select();
+      try {
+        shareLinkInput.setSelectionRange(0, shareLinkInput.value.length);
+      } catch {}
+    }
+    let copied = false;
+    try {
+      copied = Boolean(document.execCommand?.("copy"));
+    } catch (fallbackError) {
+      console.warn("[copyImageShareLink fallback]", fallbackError);
+    }
+    showToast(copied ? t("viewer.shareCopied") : t("viewer.shareReadyManual"));
   }
 }
 
