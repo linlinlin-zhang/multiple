@@ -1,8 +1,8 @@
-import { History, Home, LayoutDashboard, Settings, FolderOpen, X } from "lucide-react";
+import { BookOpen, History, Home, LayoutDashboard, Settings, FolderOpen, X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useI18n } from "@/lib/i18n";
 
-type ActivePage = "workbench" | "history" | "home" | "settings" | "library";
+type ActivePage = "workbench" | "history" | "home" | "settings" | "library" | "guide";
 
 interface NavigationItem {
   key: string;
@@ -20,6 +20,7 @@ interface AppNavigationProps {
 
 const historyHref = "/history/";
 const settingsHref = "/history/?view=settings";
+const guideHref = "/history/?view=guide";
 
 export default function AppNavigation({ activePage, open, onClose }: AppNavigationProps) {
   const { t } = useI18n();
@@ -30,6 +31,7 @@ export default function AppNavigation({ activePage, open, onClose }: AppNavigati
     { key: "workbench", labelKey: "nav.workbench", href: "/app.html", icon: <LayoutDashboard size={18} />, active: "workbench" },
     { key: "library", labelKey: "nav.materialLibrary", href: "/history/?view=library", icon: <FolderOpen size={18} />, active: "library" },
     { key: "history", labelKey: "nav.history", href: historyHref, icon: <History size={18} />, active: "history" },
+    { key: "guide", labelKey: "nav.guide", href: guideHref, icon: <BookOpen size={18} />, active: "guide" },
     { key: "settings", labelKey: "nav.settings", href: settingsHref, icon: <Settings size={18} />, active: "settings" },
   ];
 
