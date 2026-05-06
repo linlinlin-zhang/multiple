@@ -6477,3 +6477,107 @@ html[data-theme="dark"] .rich-inline-code {
   white-space: nowrap;
   max-width: 220px;
 }
+
+.workbench-tour {
+  position: fixed;
+  inset: 0;
+  z-index: 320;
+  pointer-events: auto;
+}
+
+.workbench-tour-spotlight {
+  position: fixed;
+  z-index: 321;
+  border: 2px solid var(--ps-blue);
+  border-radius: 26px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.58), 0 18px 42px rgba(0, 112, 204, 0.24);
+  pointer-events: none;
+  transition: left 220ms ease, top 220ms ease, width 220ms ease, height 220ms ease;
+}
+
+.workbench-tour-card {
+  position: fixed;
+  z-index: 322;
+  width: min(370px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid var(--divider);
+  border-radius: 18px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: var(--shadow-16);
+  backdrop-filter: blur(18px);
+  transition: left 220ms ease, top 220ms ease;
+}
+
+.workbench-tour-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.workbench-tour-progress {
+  color: var(--inkMuted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.workbench-tour-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workbench-tour-skip,
+.workbench-tour-next {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.workbench-tour-skip {
+  color: var(--inkMuted);
+  background: var(--ice);
+}
+
+.workbench-tour-next {
+  color: var(--paper);
+  background: var(--ps-blue);
+}
+
+.workbench-tour-skip:hover {
+  color: var(--ink);
+}
+
+.workbench-tour-next:hover {
+  background: var(--ps-blue-hover);
+}
+
+.workbench-tour-card h3 {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.workbench-tour-card p {
+  margin: 0;
+  color: var(--inkMuted);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+html[data-theme="dark"] .workbench-tour-card {
+  background: rgba(20, 20, 20, 0.98);
+}
+
+@media (max-width: 720px) {
+  .workbench-tour-card {
+    left: 16px !important;
+    right: 16px;
+    bottom: 16px;
+    top: auto !important;
+  }
+}

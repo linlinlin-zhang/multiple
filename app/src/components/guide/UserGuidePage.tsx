@@ -220,6 +220,16 @@ function contentFor(lang: Lang) {
         title: "ThoughtGrid quick guide",
         kicker: "Operation cheat sheet",
         intro: "A concise reference for the actions that are easy to miss on the canvas.",
+        projectTitle: "What ThoughtGrid is for",
+        projectIntro: "ThoughtGrid is a multimodal AI canvas workbench for turning images, videos, documents, links, and conversations into connected research cards and generation tasks.",
+        projectFeatures: [
+          { label: "Understand materials", detail: "Upload or link source material, then let AI summarize, extract structure, and propose directions." },
+          { label: "Think in cards", detail: "Break research into draggable cards, connect ideas, group branches, and use each card as chat context." },
+          { label: "Generate and iterate", detail: "Create image/video prompts from selected cards, refine outputs, and keep useful references on the canvas." },
+          { label: "Save and reuse", detail: "Sessions, materials, history, references, and share links help you revisit and continue work later." },
+        ],
+        projectUseCasesTitle: "Best for",
+        projectUseCases: ["Creative research", "Document-to-action planning", "Visual concept development", "Reference collection", "Reusable project memory"],
         openWorkbench: "Open workbench",
         openHistory: "Open history",
         sectionLabel: "Jump to section",
@@ -235,6 +245,16 @@ function contentFor(lang: Lang) {
         title: "织境操作速查",
         kicker: "使用介绍",
         intro: "只保留最容易漏掉的动作细节。第一次使用时，按这页查操作即可。",
+        projectTitle: "织境能做什么",
+        projectIntro: "织境（ThoughtGrid）是一个多模态 AI 画布工作台，用来把图片、视频、文档、网页链接和对话整理成可连接、可追问、可生成、可沉淀的研究卡片网络。",
+        projectFeatures: [
+          { label: "理解素材", detail: "上传或粘贴资料后，AI 会提炼摘要、结构、关键词和可继续展开的方向。" },
+          { label: "卡片化研究", detail: "把想法拆成卡片，在画布上移动、连接、分组，并把任意卡片作为对话上下文。" },
+          { label: "生成与迭代", detail: "围绕选中卡片生成图片/视频方向，结合参考资料、蓝图关系和局部修改继续优化。" },
+          { label: "沉淀与复用", detail: "会话、素材、历史记录、参考来源和分享链接会保留下来，方便下次继续。" },
+        ],
+        projectUseCasesTitle: "适合用来",
+        projectUseCases: ["创意调研", "文档拆解", "视觉方案推演", "参考资料收集", "项目过程沉淀"],
         openWorkbench: "进入工作台",
         openHistory: "查看历史记录",
         sectionLabel: "跳转目录",
@@ -314,6 +334,32 @@ export default function UserGuidePage() {
           </aside>
 
           <section className="p-5 md:p-8">
+            <article className="mb-5 rounded-[18px] border border-cabinet-border bg-cabinet-itemBg p-5 shadow-sm">
+              <div className="flex items-start gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cabinet-blue text-cabinet-paper">
+                  <BookOpen size={20} />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-xl font-medium tracking-[0]">{copy.projectTitle}</h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-cabinet-inkMuted">{copy.projectIntro}</p>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {copy.projectFeatures.map((item) => (
+                  <div key={item.label} className="rounded-[14px] bg-cabinet-paper p-4 ring-1 ring-cabinet-border">
+                    <h3 className="text-sm font-medium">{item.label}</h3>
+                    <p className="mt-2 text-sm leading-6 text-cabinet-inkMuted">{item.detail}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-5 flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium text-cabinet-inkMuted">{copy.projectUseCasesTitle}</span>
+                {copy.projectUseCases.map((item) => (
+                  <span key={item} className="rounded-full bg-cabinet-paper px-3 py-1 text-xs text-cabinet-inkMuted ring-1 ring-cabinet-border">{item}</span>
+                ))}
+              </div>
+            </article>
+
             <div className="grid gap-4 md:grid-cols-2">
               {copy.sections.map((section) => (
                 <article key={section.id} id={section.id} className="scroll-mt-8 rounded-[18px] border border-cabinet-border bg-cabinet-paper p-5 shadow-sm">

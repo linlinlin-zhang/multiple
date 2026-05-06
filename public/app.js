@@ -82,7 +82,8 @@ const STORAGE_KEYS = {
   chatSidebarWidth: ["thoughtgrid.chatSidebarWidth", "oryzae.chatSidebarWidth"],
   chatInputHeight: ["thoughtgrid.chatInputHeight", "oryzae.chatInputHeight"],
   subagentsEnabled: ["thoughtgrid-subagents-enabled", "oryzae-subagents-enabled"],
-  thinkingMode: ["thoughtgrid-thinking-mode", "oryzae-thinking-mode"]
+  thinkingMode: ["thoughtgrid-thinking-mode", "oryzae-thinking-mode"],
+  workbenchTourSeen: ["thoughtgrid.workbenchTourSeen", "oryzae.workbenchTourSeen"]
 };
 
 function getStoredItem(keys, storage = localStorage) {
@@ -304,6 +305,8 @@ let deepThinkBusy = false;
 let deepThinkModeActive = false;
 let pendingChatAttachment = null;
 let chatOperationBusy = false;
+let generatedArrangeTimer = null;
+let workbenchTourState = null;
 
 const VIEWER_ASPECT_OPTIONS = {
   auto: { label: { zh: "宽高比", en: "Aspect" }, size: "" },
@@ -1559,6 +1562,7 @@ async function init() {
       }
     }
   }
+  window.setTimeout(maybeStartWorkbenchTour, 360);
 }
 
 function getWorkbenchCommands() {
@@ -2928,6 +2932,169 @@ function setChatSidebarOpen(open) {
 function restoreChatSidebarState() {
   const saved = getStoredItem(STORAGE_KEYS.chatSidebarOpen);
   setChatSidebarOpen(saved !== "false");
+}
+
+
+function maybeStartWorkbenchTour() {
+  if (getStoredItem(STORAGE_KEYS.workbenchTourSeen) === "true") return;
+  if (workbenchTourState) return;
+  startWorkbenchTour();
+}
+
+function getWorkbenchTourSteps() {
+  const isEn = currentLang === "en";
+  return [
+    {
+      target: "#sourceNode",
+      focusNodeId: "source",
+      position: "upper-left",
+      title: isEn ? "Source card" : "源卡片",
+      body: isEn ? "Upload images, videos, documents, or switch to Link to analyze a URL. This is where a canvas session starts." : "从这里上传图片、视频、文档，或切到“链接”分析网页。一次画布会话通常从源卡片开始。"
+    },
+    {
+      target: "#researchButton",
+      focusNodeId: "source",
+      position: "upper-left",
+      title: isEn ? "Research actions" : "研究入口",
+      body: isEn ? "After adding material, use Research to analyze quickly or explore deeply. New cards will be arranged automatically." : "添加素材后点击“研究”，可快速分析或深入探索。生成出的卡片会自动整理，连线更清晰。"
+    },
+    {
+      target: "#viewport",
+      title: isEn ? "Canvas and links" : "画布与连线",
+      body: isEn ? "Drag blank space to pan, use the wheel to move, Ctrl or Command plus wheel to zoom, and drag card side handles to link cards." : "拖动画布空白处平移，滚轮移动，Ctrl/Command + 滚轮缩放；拖卡片左右小把手可以手动连线。"
+    },
+    {
+      target: ".chatbar",
+      before: () => setChatSidebarOpen(true),
+      title: isEn ? "Chat workspace" : "对话工作区",
+      body: isEn ? "Double-click a card first, then ask follow-up questions, type / for commands, or use + to upload, import materials, open the minimap, and start deep research." : "先双击卡片选上下文，再追问、输入 / 使用命令，或点 + 上传、导入素材、打开小地图和启动深入研究。"
+    },
+    {
+      target: ".nav-links",
+      before: () => {
+        document.body.classList.remove("nav-collapsed");
+        navToggle?.setAttribute("aria-expanded", "true");
+      },
+      title: isEn ? "Navigation" : "导航与沉淀",
+      body: isEn ? "Use the left navigation to return home, open the workbench, manage materials, revisit history, read the guide, or adjust settings." : "左侧导航可回到主页、进入工作台、管理素材、回看历史、阅读使用介绍或调整设置。"
+    }
+  ];
+}
+
+function startWorkbenchTour() {
+  const overlay = document.createElement("div");
+  overlay.className = "workbench-tour";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  const spotlight = document.createElement("div");
+  spotlight.className = "workbench-tour-spotlight";
+  const card = document.createElement("div");
+  card.className = "workbench-tour-card";
+  const header = document.createElement("div");
+  header.className = "workbench-tour-header";
+  const progress = document.createElement("span");
+  progress.className = "workbench-tour-progress";
+  const actions = document.createElement("div");
+  actions.className = "workbench-tour-actions";
+  const skip = document.createElement("button");
+  skip.type = "button";
+  skip.className = "workbench-tour-skip";
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "workbench-tour-next";
+  actions.append(skip, next);
+  header.append(progress, actions);
+  const title = document.createElement("h3");
+  const body = document.createElement("p");
+  card.append(header, title, body);
+  overlay.append(spotlight, card);
+  document.body.appendChild(overlay);
+
+  const update = () => renderWorkbenchTourStep();
+  const keydown = (event) => {
+    if (event.key === "Escape") finishWorkbenchTour(true);
+    if (event.key === "Enter") advanceWorkbenchTour();
+  };
+  workbenchTourState = { index: 0, overlay, spotlight, card, progress, skip, next, title, body, update, keydown };
+  skip.addEventListener("click", () => finishWorkbenchTour(true));
+  next.addEventListener("click", advanceWorkbenchTour);
+  window.addEventListener("resize", update);
+  window.addEventListener("keydown", keydown);
+  renderWorkbenchTourStep();
+}
+
+function resolveWorkbenchTourTarget(step) {
+  const target = document.querySelector(step.target);
+  if (target?.getClientRects?.().length) return target;
+  return viewport || document.body;
+}
+
+function renderWorkbenchTourStep() {
+  if (!workbenchTourState) return;
+  const steps = getWorkbenchTourSteps();
+  const step = steps[workbenchTourState.index];
+  if (!step) {
+    finishWorkbenchTour(true);
+    return;
+  }
+  step.before?.();
+  if (step.focusNodeId && state.nodes.has(step.focusNodeId) && isNodeVisible(state.nodes.get(step.focusNodeId))) {
+    focusNodeInViewport(step.focusNodeId, step.position || "center");
+  }
+  const isEn = currentLang === "en";
+  workbenchTourState.progress.textContent = `${workbenchTourState.index + 1} / ${steps.length}`;
+  workbenchTourState.skip.textContent = isEn ? "Skip" : "跳过";
+  workbenchTourState.next.textContent = workbenchTourState.index === steps.length - 1 ? (isEn ? "Done" : "完成") : (isEn ? "Next" : "下一步");
+  workbenchTourState.title.textContent = step.title;
+  workbenchTourState.body.textContent = step.body;
+  requestAnimationFrame(() => positionWorkbenchTourStep(step));
+}
+
+function positionWorkbenchTourStep(step) {
+  if (!workbenchTourState) return;
+  const target = resolveWorkbenchTourTarget(step);
+  const rect = target.getBoundingClientRect();
+  const margin = 12;
+  const left = clamp(rect.left - margin, 12, window.innerWidth - 24);
+  const top = clamp(rect.top - margin, 12, window.innerHeight - 24);
+  const width = clamp(rect.width + margin * 2, 64, window.innerWidth - left - 12);
+  const height = clamp(rect.height + margin * 2, 56, window.innerHeight - top - 12);
+  Object.assign(workbenchTourState.spotlight.style, {
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${width}px`,
+    height: `${height}px`
+  });
+  const cardRect = workbenchTourState.card.getBoundingClientRect();
+  const gap = 18;
+  let cardLeft = left + width + gap;
+  let cardTop = top;
+  if (cardLeft + cardRect.width > window.innerWidth - 16) cardLeft = left - cardRect.width - gap;
+  if (cardLeft < 16) cardLeft = Math.min(window.innerWidth - cardRect.width - 16, Math.max(16, left));
+  if (cardTop + cardRect.height > window.innerHeight - 16) cardTop = window.innerHeight - cardRect.height - 16;
+  if (cardTop < 16) cardTop = 16;
+  workbenchTourState.card.style.left = `${Math.round(cardLeft)}px`;
+  workbenchTourState.card.style.top = `${Math.round(cardTop)}px`;
+}
+
+function advanceWorkbenchTour() {
+  if (!workbenchTourState) return;
+  const total = getWorkbenchTourSteps().length;
+  if (workbenchTourState.index >= total - 1) {
+    finishWorkbenchTour(true);
+    return;
+  }
+  workbenchTourState.index += 1;
+  renderWorkbenchTourStep();
+}
+
+function finishWorkbenchTour(markSeen = true) {
+  if (!workbenchTourState) return;
+  if (markSeen) setStoredItem(STORAGE_KEYS.workbenchTourSeen, "true");
+  window.removeEventListener("resize", workbenchTourState.update);
+  window.removeEventListener("keydown", workbenchTourState.keydown);
+  workbenchTourState.overlay.remove();
+  workbenchTourState = null;
 }
 
 function restoreChatSizing() {
@@ -4309,6 +4476,7 @@ async function exploreSource() {
 
     renderAnalysis(data);
     renderExploreOptions(data.options || [], data.references || [], data.taskType || "general");
+    scheduleGeneratedArrange({ delay: 120, duration: 520 });
     state.latestAnalysis = data;
     setStatus(data.warningCode === "explore_fallback" ? t("research.fallbackComplete") : t("research.exploreComplete"), "ready");
     autoSave();
@@ -4372,6 +4540,7 @@ async function analyzeSource(mode = "analyze") {
 
     renderAnalysis(data);
     renderOptions(data.options || [], data.taskType || "general");
+    scheduleGeneratedArrange({ delay: 120, duration: 520 });
     state.latestAnalysis = data;
     setStatus(t("status.ready"), "ready");
     autoSave();
@@ -4399,6 +4568,7 @@ async function analyzeUrl() {
     renderUrlSource(url, data.title);
     renderAnalysis(data);
     renderOptions(data.options || [], data.taskType || "general");
+    scheduleGeneratedArrange({ delay: 120, duration: 520 });
     setStatus(t("status.ready"), "ready");
     autoSave();
   } catch (error) {
@@ -4790,6 +4960,7 @@ function generateDirectionFromDialog() {
   // Auto-select the new option node
   if (newNodeId) {
     selectNode(newNodeId);
+    scheduleGeneratedArrange({ delay: 160, duration: 460 });
   }
 
   // Save session
@@ -4928,6 +5099,7 @@ function applyDeepThinkPlan(plan, parentNodeId) {
   applyCollapseState();
   updateCounts();
   drawLinks();
+  scheduleGeneratedArrange({ delay: 180, duration: 520 });
   return createdIds;
 }
 
@@ -5607,6 +5779,7 @@ async function applyVoiceActions(value, context = {}) {
     results.push({ ...normalized, result });
   }
   if (pendingAgents.length) await Promise.all(pendingAgents);
+  if (creationCount > 0) scheduleGeneratedArrange({ delay: 180, duration: 500 });
   autoSave();
   return results;
 }
@@ -6147,6 +6320,7 @@ async function searchImagesFromAction(action = {}) {
     : `已找到 ${createdIds.length} 张视觉参考卡片。`, { artifacts });
   if (createdIds[0]) focusNodeById(createdIds[0], "center");
   drawLinks();
+  scheduleGeneratedArrange({ delay: 160, duration: 500 });
   updateCounts();
   autoSave();
   setStatus(currentLang === "en" ? "Ready" : "就绪", "ready");
@@ -8552,6 +8726,8 @@ function renderOptions(options, taskType = "general") {
 
   applyCollapseState();
   updateCounts();
+  drawLinks();
+  scheduleGeneratedArrange({ delay: 120, duration: 520 });
 }
 
 function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
@@ -8634,6 +8810,7 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
   applyCollapseState();
   updateCounts();
   drawLinks();
+  scheduleGeneratedArrange({ delay: 120, duration: 520 });
 }
 
 function renderExploreOptions(options, references, taskType = "general") {
@@ -8684,6 +8861,8 @@ function renderExploreOptions(options, references, taskType = "general") {
 
   applyCollapseState();
   updateCounts();
+  drawLinks();
+  scheduleGeneratedArrange({ delay: 120, duration: 520 });
 }
 
 async function generateOption(id, option) {
@@ -13996,9 +14175,21 @@ async function renderSessionList() {
 }
 
 
+function scheduleGeneratedArrange(options = {}) {
+  if (generatedArrangeTimer) window.clearTimeout(generatedArrangeTimer);
+  const delay = Number.isFinite(options.delay) ? options.delay : 180;
+  const duration = Number.isFinite(options.duration) ? options.duration : 460;
+  generatedArrangeTimer = window.setTimeout(() => {
+    generatedArrangeTimer = null;
+    if (!state.nodes.size || board?.classList.contains("is-arranging")) return;
+    arrangeCanvasLayout({ duration });
+  }, delay);
+}
+
 function arrangeCanvasLayout(options = {}) {
   const opts = options && typeof options === "object" && !("target" in options) ? options : {};
   const selectionOnly = Boolean(opts.selectionOnly && state.selectedNodeIds.size >= 2);
+  const duration = Number.isFinite(opts.duration) ? opts.duration : 560;
   const selectableIds = selectionOnly ? new Set(state.selectedNodeIds) : null;
   const visibleNodeIds = Array.from(state.nodes.entries())
     .filter(([id, node]) => isNodeVisible(node) && (!selectableIds || selectableIds.has(id)))
@@ -14227,7 +14418,7 @@ function arrangeCanvasLayout(options = {}) {
     maxY: MAX_Y,
     maxRing: 12
   });
-  animateNodesToPositions(adjustedPositions, 560);
+  animateNodesToPositions(adjustedPositions, duration);
 }
 
 function animateNodesToPositions(targetPositions, duration = 400) {
@@ -14447,6 +14638,8 @@ function renderDocumentUnderstandingOptions(directions) {
 
   applyCollapseState();
   updateCounts();
+  drawLinks();
+  scheduleGeneratedArrange({ delay: 120, duration: 520 });
 }
 
 function getDirectionTypeLabel(type) {
