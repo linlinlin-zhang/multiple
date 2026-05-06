@@ -4721,7 +4721,7 @@ html[data-theme="dark"] .ref-type-badge {
   margin: 0;
   font-size: 10px;
   line-height: 1.45;
-  color: var(--muted);
+  color: #111827;
 }
 
 .blueprint-guide {
@@ -4732,7 +4732,7 @@ html[data-theme="dark"] .ref-type-badge {
   width: 250px;
   pointer-events: none;
   text-align: right;
-  color: color-mix(in srgb, var(--body) 58%, transparent);
+  color: #111827;
 }
 
 .blueprint-guide p {
