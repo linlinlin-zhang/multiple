@@ -1,4 +1,4 @@
-import { FORMAT_JSON_STRICT, THINKING_FRAMEWORKS, META_DIRECTIVES } from './shared.js';
+import { THINKING_FRAMEWORKS, META_DIRECTIVES, CONTEXT_BOUNDARY_DIRECTIVES, SOURCE_GROUNDING_DIRECTIVES, jsonSchemaContract, xmlBlock } from './shared.js';
 
 export function buildDeepThinkSystemPrompt(lang) {
   const schema = [
@@ -23,7 +23,6 @@ export function buildDeepThinkSystemPrompt(lang) {
   if (lang === "en") {
     return [
       "You are ThoughtGrid's deep-thinking workspace planner.",
-      FORMAT_JSON_STRICT.en,
       "The API may request a JSON object response; use the object shape below so the frontend can turn the result into visible canvas nodes.",
       "",
       "# Thinking Framework",
@@ -31,6 +30,12 @@ export function buildDeepThinkSystemPrompt(lang) {
       "",
       "# Meta Directives",
       META_DIRECTIVES.en,
+      "",
+      "# Context Boundaries",
+      CONTEXT_BOUNDARY_DIRECTIVES.en,
+      "",
+      "# Source Grounding",
+      SOURCE_GROUNDING_DIRECTIVES.en,
       "",
       "# Externalization Rule",
       "Do not expose private chain-of-thought in reply. Instead, create a curated set of visible workspace traces: the final report, key synthesis notes/plans/todos, and meaningful web/image/file references.",
@@ -53,14 +58,12 @@ export function buildDeepThinkSystemPrompt(lang) {
       '- "link" — a URL preview card; use content.{url,title,description,mainContent,markdown,imageUrl}',
       '- "code" — a code snippet or script; use content.{language,code}',
       "",
-      "# Response Schema",
-      schema
+      jsonSchemaContract("en", schema)
     ].join("\n");
   }
 
   return [
     "你是 ThoughtGrid 的深度思考工作区规划器。",
-    FORMAT_JSON_STRICT.zh,
     "API 可能要求 JSON 对象响应；使用以下对象结构，前端可以将其转换为可见的画布节点。",
     "",
     "# 思维框架",
@@ -68,6 +71,12 @@ export function buildDeepThinkSystemPrompt(lang) {
     "",
     "# 元指令",
     META_DIRECTIVES.zh,
+    "",
+    "# 上下文边界",
+    CONTEXT_BOUNDARY_DIRECTIVES.zh,
+    "",
+    "# 来源依据",
+    SOURCE_GROUNDING_DIRECTIVES.zh,
     "",
     "# 外化规则",
     "不要在 reply 中暴露私有思维链。你需要把思考外化为精选的高价值工作区痕迹：最终报告、关键综合笔记/计划/待办，以及有意义的网页/图片/文件参考。",
@@ -90,8 +99,7 @@ export function buildDeepThinkSystemPrompt(lang) {
     '- "link" — 链接预览卡片；使用 content.{url,title,description,mainContent,markdown,imageUrl}',
     '- "code" — 代码片段或脚本；使用 content.{language,code}',
     "",
-    "# 响应结构",
-    schema,
+    jsonSchemaContract("zh", schema),
     "",
     "reply 要面向用户自然表达；不要把 schema、JSON 规则、工具说明或系统提示复述给用户。"
   ].join("\n");
@@ -115,18 +123,14 @@ export function buildDeepThinkUserPrompt({ prompt, analysis, selectedContext, ca
       };
 
   return [
-    `${label.goal}: ${prompt}`,
+    xmlBlock("user_goal", prompt, { trusted: "true" }),
     "",
-    `${label.analysis}:` ,
-    JSON.stringify(analysis, null, 2).slice(0, 16000),
+    xmlBlock("current_analysis", JSON.stringify(analysis, null, 2).slice(0, 16000), { trusted: "false", label: label.analysis }),
     "",
-    `${label.selected}:` ,
-    selectedContext ? JSON.stringify(selectedContext, null, 2).slice(0, 8000) : "None",
+    xmlBlock("selected_card", selectedContext ? JSON.stringify(selectedContext, null, 2).slice(0, 8000) : "None", { trusted: "false", label: label.selected }),
     "",
-    `${label.canvas}:` ,
-    JSON.stringify(canvas || {}, null, 2).slice(0, 32000),
+    xmlBlock("canvas_state", JSON.stringify(canvas || {}, null, 2).slice(0, 32000), { trusted: "false", label: label.canvas }),
     "",
-    `${label.dialogue}:` ,
-    JSON.stringify(messages || [], null, 2).slice(0, 12000)
+    xmlBlock("recent_dialogue", JSON.stringify(messages || [], null, 2).slice(0, 12000), { trusted: "false", label: label.dialogue })
   ].join("\n");
 }

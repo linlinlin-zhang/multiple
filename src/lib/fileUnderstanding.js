@@ -8,6 +8,7 @@
  */
 
 import { parseFileStructured } from "./fileParser.js";
+import { CONTEXT_BOUNDARY_DIRECTIVES, jsonSchemaContract, xmlBlock } from "../prompts/index.js";
 
 const API_TIMEOUT_MS = 120000;
 const MAX_PAGES_FOR_PROMPT = 6;
@@ -137,8 +138,14 @@ function buildUnderstandingPrompt(parsed, fileName, lang) {
   ].join("\n");
 
   const system = isEn
-    ? "You are a document intelligence engine for a visual AI canvas. Analyze uploaded files and return a compact file-understanding card."
-    : "你是服务于可视化 AI 画布的文档理解引擎。请分析上传文件，并生成可被画布继续操作的文件理解卡。";
+    ? [
+        "You are a document intelligence engine for a visual AI canvas. Analyze uploaded files and return a compact file-understanding card.",
+        CONTEXT_BOUNDARY_DIRECTIVES.en
+      ].join("\n\n")
+    : [
+        "你是服务于可视化 AI 画布的文档理解引擎。请分析上传文件，并生成可被画布继续操作的文件理解卡。",
+        CONTEXT_BOUNDARY_DIRECTIVES.zh
+      ].join("\n\n");
 
   const user = isEn
     ? [
@@ -149,18 +156,16 @@ function buildUnderstandingPrompt(parsed, fileName, lang) {
         `Detected tables: ${totalTables}`,
         `Detected key phrases: ${phrases || "(none)"}`,
         "",
-        "Preview:",
-        pagePreviews || "(no extractable text)",
-        "",
-        "Return strict JSON only, with this schema:",
-        schema,
+        jsonSchemaContract("en", schema),
         "",
         "Requirements:",
         "- Provide 5 to 8 actionableDirections. Pick the count based on document complexity.",
         "- Do not limit directions to image generation. Include research, task planning, report structure, web analysis, or material collection when the document calls for them.",
         "- Ground every direction in the document content.",
         "- Use concise titles that can fit in a canvas card.",
-        "- Do not include Markdown fences."
+        "- Do not include Markdown fences.",
+        "",
+        xmlBlock("document_preview", pagePreviews || "(no extractable text)", { trusted: "false" })
       ].join("\n")
     : [
         `文件名：${fileName || "未命名文件"}`,
@@ -170,18 +175,16 @@ function buildUnderstandingPrompt(parsed, fileName, lang) {
         `检测到表格：${totalTables}`,
         `检测到关键词：${phrases || "无"}`,
         "",
-        "内容预览：",
-        pagePreviews || "未提取到可读文本",
-        "",
-        "只返回严格 JSON，不要 Markdown 代码块，结构如下：",
-        schema,
+        jsonSchemaContract("zh", schema),
         "",
         "要求：",
         "- actionableDirections 返回 5 到 8 个方向，数量由文档复杂度决定。",
         "- 方向不能只做成图，也可以是研究、任务计划、网页分析、汇报结构、素材收集。",
         "- 每个方向都必须基于文档实际内容。",
         "- 标题要短，适合显示在画布卡片上。",
-        "- 不要输出暴力、色情、仇恨或侵犯隐私的内容。"
+        "- 不要输出暴力、色情、仇恨或侵犯隐私的内容。",
+        "",
+        xmlBlock("document_preview", pagePreviews || "未提取到可读文本", { trusted: "false" })
       ].join("\n");
 
   return { system, user };

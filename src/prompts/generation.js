@@ -1,4 +1,4 @@
-import { SAFETY_DIRECTIVES } from './shared.js';
+import { CONTEXT_BOUNDARY_DIRECTIVES, xmlBlock } from './shared.js';
 
 function formatBlueprintGenerationContext(lang, blueprint) {
   if (!blueprint || typeof blueprint !== "object") return "";
@@ -34,7 +34,7 @@ function formatBlueprintGenerationContext(lang, blueprint) {
           return `- ${from} -> ${to}（${relationLabel(relationship.type)}）${note}`;
         })
       ];
-  return lines.filter(Boolean).join("\n");
+  return xmlBlock("canvas_blueprint", lines.filter(Boolean).join("\n"), { trusted: "false" });
 }
 
 function formatGenerateChatContext(lang, messages) {
@@ -45,10 +45,10 @@ function formatGenerateChatContext(lang, messages) {
       : (lang === "en" ? "User" : "用户");
     return `- ${role}: ${message.content}`;
   });
-  return [
+  return xmlBlock("recent_chat_context", [
     lang === "en" ? "# Recent Chat Context" : "# 最近对话上下文",
     ...lines
-  ].filter(Boolean).join("\n");
+  ].filter(Boolean).join("\n"), { trusted: "false" });
 }
 
 export function buildGeneratePrompt(lang, option) {
@@ -79,9 +79,14 @@ export function buildGeneratePrompt(lang, option) {
         "",
         chatContext,
         "",
+        "# Context Boundaries",
+        CONTEXT_BOUNDARY_DIRECTIVES.en,
+        "",
         "# Output Requirements",
         "- Complete, standalone image.",
         "- Clear composition.",
+        "- Resolve the direction into concrete subject, setting, composition, lighting, palette, camera/framing, material texture, and mood.",
+        "- Keep any text in the image absent unless the user explicitly requested readable text.",
         "- No watermarks, UI screenshot borders, or explanatory text."
       ].join("\n")
     : [
@@ -107,9 +112,14 @@ export function buildGeneratePrompt(lang, option) {
         "",
         chatContext,
         "",
+        "# 上下文边界",
+        CONTEXT_BOUNDARY_DIRECTIVES.zh,
+        "",
         "# 输出要求",
         "- 完整、可独立展示的图片。",
         "- 构图清晰。",
+        "- 将方向落实为具体主体、环境、构图、光线、色彩、镜头/景别、材质和氛围。",
+        "- 除非用户明确要求可读文字，否则画面中不要出现文字。",
         "- 不要添加水印、UI 截图边框或说明文字。"
       ].join("\n");
 }

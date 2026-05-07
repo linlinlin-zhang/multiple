@@ -17,7 +17,7 @@ import { parseFileStructured } from "./src/lib/fileParser.js";
 import { resolveVisitor } from "./src/lib/visitor.js";
 import { PrismaClient } from "@prisma/client";
 import WebSocket from "ws";
-import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt, buildChatSystemContext, buildChatUserPrompt, buildGeneratePrompt, buildExplainPrompt, buildExplainSystemPrompt, buildRealtimeInstruction, buildDeepThinkSystemPrompt, buildDeepThinkUserPrompt, buildExploreContent, CANVAS_ACTION_TYPES, CANVAS_ACTION_TYPES_TEXT } from "./src/prompts/index.js";
+import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt, buildChatSystemContext, buildChatUserPrompt, buildGeneratePrompt, buildExplainPrompt, buildExplainSystemPrompt, buildRealtimeInstruction, buildDeepThinkSystemPrompt, buildDeepThinkUserPrompt, buildExploreContent, CONTEXT_BOUNDARY_DIRECTIVES, SOURCE_GROUNDING_DIRECTIVES, xmlBlock, CANVAS_ACTION_TYPES, CANVAS_ACTION_TYPES_TEXT } from "./src/prompts/index.js";
 import { ingestText, ingestSnippet, retrieveContext, formatContextForPrompt, isEmbeddingConfigured, CONTEXT_KINDS } from "./src/lib/rag/index.js";
 import { classifyContent, getFallbackTaskType, resolveTaskType, routeContent } from "./src/lib/taskRouter.js";
 
@@ -3027,7 +3027,7 @@ async function handleAnalyzeUrl(body, res) {
   console.log(`[route] ${taskType} (confidence: ${confidence}, fallback: ${wasFallback})`);
 
   const pageText = await fetchPublicPageText(url).catch(() => "");
-  const prompt = buildUrlAnalysisPrompt({ url, domain, pageText });
+  const prompt = buildUrlAnalysisPrompt({ url, domain, pageText, lang, taskType });
 
   const analysisPayload = {
     messages: [
@@ -3120,7 +3120,12 @@ async function handleAnalyzeText(body, res) {
   });
   console.log(`[route] ${taskType} (confidence: ${confidence}, fallback: ${wasFallback})`);
 
-  const prompt = buildTextAnalysisPrompt({ extractedText });
+  const prompt = buildTextAnalysisPrompt({
+    extractedText,
+    lang,
+    taskType,
+    contentType: body?.contentType || "text"
+  });
 
   const analysisPayload = {
     messages: [
@@ -3403,6 +3408,9 @@ function buildVideoGenerationPrompt(lang, option = {}) {
         "",
         chatContext,
         "",
+        "# Context Boundaries",
+        CONTEXT_BOUNDARY_DIRECTIVES.en,
+        "",
         "# Output Requirements",
         "- Cinematic, physically plausible motion.",
         "- Keep the main subject clear and temporally stable.",
@@ -3432,6 +3440,9 @@ function buildVideoGenerationPrompt(lang, option = {}) {
         blueprintContext,
         "",
         chatContext,
+        "",
+        "# 上下文边界",
+        CONTEXT_BOUNDARY_DIRECTIVES.zh,
         "",
         "# 输出要求",
         "- 电影感、物理运动自然可信。",
@@ -4263,19 +4274,21 @@ function buildDeepResearchPrompt({ prompt, analysis, selectedContext, canvas, me
     zh ? "请以深入研究模式完成用户目标，并在研究过程中尽量给出可复用的网页、图片、文件或行动线索。" : "Complete the user goal in deep research mode and surface reusable web, image, file, or action leads as you work.",
     zh ? "如果用户目标略宽泛，请先做清晰、保守的工作假设并继续推进研究，不要只返回澄清问题。" : "If the user goal is broad, make clear conservative working assumptions and continue the research instead of returning only clarification questions.",
     "",
-    zh ? `用户目标：${prompt}` : `User goal: ${prompt}`,
+    zh ? "# 上下文边界" : "# Context Boundaries",
+    CONTEXT_BOUNDARY_DIRECTIVES[zh ? "zh" : "en"],
     "",
-    zh ? "当前图像/文件分析：" : "Current image/file analysis:",
-    JSON.stringify(analysis || {}, null, 2).slice(0, 16000),
+    zh ? "# 来源依据" : "# Source Grounding",
+    SOURCE_GROUNDING_DIRECTIVES[zh ? "zh" : "en"],
     "",
-    zh ? "当前选中卡片：" : "Selected canvas card:",
-    selectedContext ? JSON.stringify(selectedContext, null, 2).slice(0, 8000) : "None",
+    xmlBlock("user_goal", prompt, { trusted: "true" }),
     "",
-    zh ? "可见画布状态：" : "Visible canvas state:",
-    JSON.stringify(canvas || {}, null, 2).slice(0, 32000),
+    xmlBlock("current_analysis", JSON.stringify(analysis || {}, null, 2).slice(0, 16000), { trusted: "false" }),
     "",
-    zh ? "最近对话：" : "Recent dialogue:",
-    JSON.stringify(messages || [], null, 2).slice(0, 12000)
+    xmlBlock("selected_card", selectedContext ? JSON.stringify(selectedContext, null, 2).slice(0, 8000) : "None", { trusted: "false" }),
+    "",
+    xmlBlock("canvas_state", JSON.stringify(canvas || {}, null, 2).slice(0, 32000), { trusted: "false" }),
+    "",
+    xmlBlock("recent_dialogue", JSON.stringify(messages || [], null, 2).slice(0, 12000), { trusted: "false" })
   ].join("\n");
 }
 
@@ -5931,8 +5944,9 @@ function normalizeAnalysis(value, fileName = "source image") {
       prompt: stringOr(option?.prompt, fallback.options[index % fallback.options.length].prompt),
       tone: stringOr(option?.tone, fallback.options[index % fallback.options.length].tone),
       layoutHint: stringOr(option?.layoutHint, fallback.options[index % fallback.options.length].layoutHint),
-      nodeType: option?.nodeType || undefined,
-      content: option?.content || undefined
+      purpose: normalizeAnalysisPurpose(option?.purpose),
+      nodeType: normalizeAnalysisNodeType(option?.nodeType),
+      content: normalizeStructuredContent(option?.content)
     }))
   };
 }
@@ -5955,8 +5969,9 @@ function normalizeExplore(value, fileName = "source image") {
       prompt: stringOr(option?.prompt, fallback.options[index % fallback.options.length].prompt),
       tone: stringOr(option?.tone, fallback.options[index % fallback.options.length].tone),
       layoutHint: stringOr(option?.layoutHint, fallback.options[index % fallback.options.length].layoutHint),
-      nodeType: option?.nodeType || undefined,
-      content: option?.content || undefined
+      purpose: normalizeAnalysisPurpose(option?.purpose),
+      nodeType: normalizeAnalysisNodeType(option?.nodeType),
+      content: normalizeStructuredContent(option?.content)
     })),
     references: references.slice(0, 6).map((ref, index) => ({
       title: stringOr(ref?.title, fallback.references[index % fallback.references.length].title).slice(0, 80),
@@ -5966,6 +5981,48 @@ function normalizeExplore(value, fileName = "source image") {
     }))
   };
 }
+
+const ANALYSIS_PURPOSES = new Set(["visual", "exploration", "plan", "research", "content", "tool"]);
+const ANALYSIS_NODE_TYPES = new Set(["image", "note", "plan", "todo", "weather", "map", "link", "code", "table", "timeline", "comparison", "metric", "quote"]);
+
+function normalizeAnalysisPurpose(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ANALYSIS_PURPOSES.has(normalized) ? normalized : undefined;
+}
+
+function normalizeAnalysisNodeType(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ANALYSIS_NODE_TYPES.has(normalized) ? normalized : undefined;
+}
+
+function normalizeStructuredContent(value, depth = 0) {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed ? trimmed.slice(0, 4000) : undefined;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (depth >= 5) return undefined;
+  if (Array.isArray(value)) {
+    const items = value
+      .slice(0, 40)
+      .map((item) => normalizeStructuredContent(item, depth + 1))
+      .filter((item) => item !== undefined);
+    return items.length ? items : undefined;
+  }
+  if (typeof value === "object") {
+    const out = {};
+    for (const [key, item] of Object.entries(value).slice(0, 60)) {
+      const safeKey = String(key || "").trim().slice(0, 80);
+      if (!safeKey) continue;
+      const normalized = normalizeStructuredContent(item, depth + 1);
+      if (normalized !== undefined) out[safeKey] = normalized;
+    }
+    return Object.keys(out).length ? out : undefined;
+  }
+  return undefined;
+}
+
 function normalizeDeepThinkPlan(value, prompt, lang) {
   const fallback = buildDemoDeepThinkPlan(prompt, lang, runtimeConfigs.deepthink.model);
   const cards = Array.isArray(value?.cards) ? value.cards : fallback.cards;
@@ -5981,11 +6038,13 @@ function normalizeDeepThinkPlan(value, prompt, lang) {
       return {
         id: slug(card?.id || `${type}-${title}-${index + 1}`),
         type,
+        nodeType: normalizeAnalysisNodeType(card?.nodeType),
         title,
         summary,
         prompt: stringOr(card?.prompt, summary).slice(0, 1200),
         query: stringOr(card?.query, "").slice(0, 240),
-        url: stringOr(card?.url, "").slice(0, 512)
+        url: stringOr(card?.url, "").slice(0, 512),
+        content: normalizeStructuredContent(card?.content)
       };
     }),
     links: links.slice(0, MAX_DEEP_RESEARCH_CANVAS_CARDS).map((link) => ({
@@ -6115,7 +6174,9 @@ function normalizeChatAnalysis(value) {
           title: stringOr(option?.title, "生成方向"),
           description: stringOr(option?.description, ""),
           tone: stringOr(option?.tone, ""),
-          layoutHint: stringOr(option?.layoutHint, "")
+          layoutHint: stringOr(option?.layoutHint, ""),
+          purpose: normalizeAnalysisPurpose(option?.purpose),
+          nodeType: normalizeAnalysisNodeType(option?.nodeType)
         }))
       : []
   };
@@ -6160,7 +6221,9 @@ function buildDemoAnalysis(fileName = "source image") {
         description: "把原图转化成侦探线索墙：照片、便签、纸张和红线围绕主体展开，像在追踪一个尚未揭开的故事。",
         prompt: "基于参考图的主体与色彩，生成一张真实摄影质感的调查线索板，包含纸张、照片、便签、图钉和红色连接线，构图有层次，光线温暖，细节丰富，电影道具摄影风格。",
         tone: "documentary",
-        layoutHint: "board"
+        layoutHint: "board",
+        purpose: "visual",
+        nodeType: "image"
       },
       {
         id: "editorial-poster",
@@ -6168,7 +6231,9 @@ function buildDemoAnalysis(fileName = "source image") {
         description: "保留原图最强的视觉记忆点，重组成一张留白克制的编辑海报，适合做封面或视觉提案。",
         prompt: "将参考图转化为高端杂志编辑海报，保留主要主体轮廓和关键色彩，使用克制排版、自然颗粒、柔和阴影和精致留白，不要出现可读文字。",
         tone: "editorial",
-        layoutHint: "portrait"
+        layoutHint: "portrait",
+        purpose: "visual",
+        nodeType: "image"
       },
       {
         id: "cinematic-still",
@@ -6176,7 +6241,9 @@ function buildDemoAnalysis(fileName = "source image") {
         description: "把当前图片延展为一帧电影镜头，强调空间、灯光和情绪，让画面像故事中的关键一秒。",
         prompt: "基于参考图生成电影剧照风格图像，保留主体和场景关系，加入自然镜头景深、环境光、微妙雾气和叙事张力，真实摄影，35mm film still。",
         tone: "cinematic",
-        layoutHint: "landscape"
+        layoutHint: "landscape",
+        purpose: "visual",
+        nodeType: "image"
       },
       {
         id: "surreal-memory",
@@ -6184,7 +6251,9 @@ function buildDemoAnalysis(fileName = "source image") {
         description: "将原图中的物体和氛围抽离成梦境化场景，画面更诗性，像记忆被重新拼贴。",
         prompt: "把参考图转化为超现实梦境场景，保留核心主体但让背景、光影和比例产生诗性变化，细腻材质，柔和边缘，安静而神秘。",
         tone: "surreal",
-        layoutHint: "square"
+        layoutHint: "square",
+        purpose: "visual",
+        nodeType: "image"
       },
       {
         id: "product-system",
@@ -6192,7 +6261,9 @@ function buildDemoAnalysis(fileName = "source image") {
         description: "把原图拆成一套视觉资产：主图、色卡、材质片段和构图小样，适合继续做品牌或概念板。",
         prompt: "基于参考图生成一张视觉系统概念板，包含主视觉、局部材质切片、色彩样本、构图缩略图和整洁网格，现代设计工作室风格，不要出现真实文字。",
         tone: "graphic",
-        layoutHint: "board"
+        layoutHint: "board",
+        purpose: "visual",
+        nodeType: "image"
       }
     ]
   };

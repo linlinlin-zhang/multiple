@@ -1,4 +1,4 @@
-export { SAFETY_DIRECTIVES, FORMAT_JSON_STRICT, THINKING_FRAMEWORKS, META_DIRECTIVES, CANVAS_ACTION_TYPES, CANVAS_ACTION_TYPES_TEXT } from './shared.js';
+export { SAFETY_DIRECTIVES, FORMAT_JSON_STRICT, THINKING_FRAMEWORKS, META_DIRECTIVES, CONTEXT_BOUNDARY_DIRECTIVES, SOURCE_GROUNDING_DIRECTIVES, promptSection, xmlBlock, jsonSchemaContract, CANVAS_ACTION_TYPES, CANVAS_ACTION_TYPES_TEXT } from './shared.js';
 export { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt } from './analysis.js';
 export { buildChatSystemContext, buildChatUserPrompt } from './chat.js';
 export { buildGeneratePrompt, buildStyleTransferGenerationPrompt, buildVariantGenerationPrompt, buildMultimodalGenerationPrompt } from './generation.js';

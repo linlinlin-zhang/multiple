@@ -1,4 +1,4 @@
-import { SAFETY_DIRECTIVES, FORMAT_JSON_STRICT, THINKING_FRAMEWORKS, META_DIRECTIVES } from './shared.js';
+import { SAFETY_DIRECTIVES, jsonSchemaContract } from './shared.js';
 
 export function buildStyleTransferPrompt(lang, { sourceDescription, targetStyle, preserveElements = [] }) {
   const preserve = preserveElements.length > 0
@@ -107,16 +107,13 @@ export function buildVariantGenerationPrompt(lang, { basePrompt, variantAxes, co
         "# Variation Axes",
         ...variantAxes.map((axis, i) => `${i + 1}. ${axis}`),
         "",
-        "# Output Requirements",
-        FORMAT_JSON_STRICT.en,
-        "",
-        "```json",
-        "{",
-        '  "variants": [',
-        '    { "id": "v1", "title": "Variant title", "description": "What changes and why", "prompt": "Full generation prompt" }',
-        "  ]",
-        "}",
-        "```",
+        jsonSchemaContract("en", [
+          "{",
+          '  "variants": [',
+          '    { "id": "v1", "title": "Variant title", "description": "What changes and why", "prompt": "Full generation prompt" }',
+          "  ]",
+          "}"
+        ]),
         "",
         "- Each variant must be clearly different from the base and from each other.",
         "- Preserve the core essence while pushing one axis to a new extreme.",
@@ -136,16 +133,13 @@ export function buildVariantGenerationPrompt(lang, { basePrompt, variantAxes, co
         "# 变化维度",
         ...variantAxes.map((axis, i) => `${i + 1}. ${axis}`),
         "",
-        "# 输出要求",
-        FORMAT_JSON_STRICT.zh,
-        "",
-        "```json",
-        "{",
-        '  "variants": [',
-        '    { "id": "v1", "title": "变体标题", "description": "改变了什么以及为什么", "prompt": "完整生成提示词" }',
-        "  ]",
-        "}",
-        "```",
+        jsonSchemaContract("zh", [
+          "{",
+          '  "variants": [',
+          '    { "id": "v1", "title": "变体标题", "description": "改变了什么以及为什么", "prompt": "完整生成提示词" }',
+          "  ]",
+          "}"
+        ]),
         "",
         "- 每个变体必须与基础和彼此明显不同。",
         "- 保留核心本质，同时将一个维度推向新的极端。",

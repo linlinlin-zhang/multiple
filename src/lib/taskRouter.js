@@ -1,4 +1,4 @@
-import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt } from '../prompts/index.js';
+import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt, CONTEXT_BOUNDARY_DIRECTIVES, jsonSchemaContract, xmlBlock } from '../prompts/index.js';
 
 const TASK_TYPES = ['image_generation', 'research', 'planning', 'creative', 'content', 'tool', 'general'];
 
@@ -7,7 +7,20 @@ function buildClassificationPrompt({ content, contentType, fileName, lang }) {
   const isImage = contentType?.startsWith('image/') || String(content).startsWith('data:image/');
 
   if (lang === 'en') {
-    return [
+    return {
+      system: [
+        'You are a task router for ThoughtGrid.',
+        'Classify the user-provided content into exactly one available type.',
+        CONTEXT_BOUNDARY_DIRECTIVES.en,
+        jsonSchemaContract('en', [
+          '{',
+          '  "taskType": "image_generation|research|planning|creative|content|tool|general",',
+          '  "confidence": 0.0,',
+          '  "rationale": "1-2 sentence explanation of why this type was chosen"',
+          '}'
+        ])
+      ].join('\n\n'),
+      user: [
       '# Task',
       'Classify the uploaded content into exactly one task type.',
       '',
@@ -27,20 +40,25 @@ function buildClassificationPrompt({ content, contentType, fileName, lang }) {
       `fileName: ${fileName || 'unknown'}`,
       `contentType: ${contentType || 'unknown'}`,
       `isImage: ${isImage}`,
-      '',
-      preview ? `Content (first 2000 chars):\n${preview}` : 'No text preview available for this content.',
-      '',
-      '# Output Format',
-      'Return ONLY a JSON object with these exact keys (no markdown, no explanation):',
-      '{',
-      '  "taskType": "one of the available types",',
-      '  "confidence": 0.0 to 1.0,',
-      '  "rationale": "1-2 sentence explanation of why this type was chosen"',
-      '}'
-    ].join('\n');
+      xmlBlock('content_preview', preview || 'No text preview available for this content.', { trusted: 'false' })
+      ].join('\n')
+    };
   }
 
-  return [
+  return {
+    system: [
+      '你是 ThoughtGrid 的任务路由器。',
+      '请把用户提供的内容分类为唯一的可选类型。',
+      CONTEXT_BOUNDARY_DIRECTIVES.zh,
+      jsonSchemaContract('zh', [
+        '{',
+        '  "taskType": "image_generation|research|planning|creative|content|tool|general",',
+        '  "confidence": 0.0,',
+        '  "rationale": "1-2句话解释为什么选择此类型"',
+        '}'
+      ])
+    ].join('\n\n'),
+    user: [
     '# 任务',
     '将上传的内容分类到唯一的任务类型。',
     '',
@@ -61,16 +79,9 @@ function buildClassificationPrompt({ content, contentType, fileName, lang }) {
     `contentType: ${contentType || 'unknown'}`,
     `isImage: ${isImage}`,
     '',
-    preview ? `内容（前2000字符）：\n${preview}` : '此内容没有可用的文本预览。',
-    '',
-    '# 输出格式',
-    '仅返回一个 JSON 对象，包含以下精确键（不要 markdown，不要解释）：',
-    '{',
-    '  "taskType": "可选类型之一",',
-    '  "confidence": 0.0 到 1.0 的数字,',
-    '  "rationale": "1-2句话解释为什么选择此类型"',
-    '}'
-  ].join('\n');
+    xmlBlock('content_preview', preview || '此内容没有可用的文本预览。', { trusted: 'false' })
+    ].join('\n')
+  };
 }
 
 async function callChatCompletion(config, payload, timeoutMs = 30000) {
@@ -131,7 +142,10 @@ export async function classifyContent({ content, contentType, fileName, lang, co
 
   const prompt = buildClassificationPrompt({ content, contentType, fileName, lang });
   const payload = {
-    messages: [{ role: 'user', content: prompt }],
+    messages: [
+      { role: 'system', content: prompt.system },
+      { role: 'user', content: prompt.user }
+    ],
     temperature: 0.3,
     max_tokens: 256
   };
