@@ -1,4 +1,4 @@
-import { r as reactExports, j as jsxRuntimeExports, u as useI18n, b as buildAssetUrl, a as useSession, N as NodeGraphThumbnail, c as useHistory, R as React, d as requireReactDom, g as getDefaultExportFromCjs, e as React2, f as clientExports, I as I18nProvider } from "./NodeGraphThumbnail-CMPs-VBu.js";
+import { r as reactExports, j as jsxRuntimeExports, u as useI18n, b as buildAssetUrl, a as useSession, N as NodeGraphThumbnail, c as useHistory, R as React, g as getDefaultExportFromCjs, d as requireReactDom, e as React2, f as clientExports, I as I18nProvider } from "./NodeGraphThumbnail-CqhtW_dA.js";
 var PopStateEventType = "popstate";
 function isLocation(obj) {
   return typeof obj === "object" && obj != null && "pathname" in obj && "search" in obj && "hash" in obj && "state" in obj && "key" in obj;
@@ -4347,9 +4347,9 @@ const optionFields = {
     { key: "top_p", type: "number", min: 0.01, max: 1, step: 0.01 },
     { key: "max_tokens", type: "number", min: 1, step: 1 },
     { key: "sourceCardMode", type: "select", options: [["list", "List"], ["cards", "Cards"], ["off", "Off"]] },
-    { key: "maxCanvasCards", type: "number", min: 1, max: 25, step: 1 },
-    { key: "maxReferenceCards", type: "number", min: 0, max: 25, step: 1 },
-    { key: "liveCanvasCards", type: "number", min: 0, max: 25, step: 1 },
+    { key: "maxCanvasCards", type: "number", min: 1, max: 20, step: 1 },
+    { key: "maxReferenceCards", type: "number", min: 0, max: 20, step: 1 },
+    { key: "liveCanvasCards", type: "number", min: 0, max: 20, step: 1 },
     { key: "outputFormat", type: "text", placeholder: "model_summary_report" },
     { key: "incrementalOutput", type: "checkbox" }
   ]

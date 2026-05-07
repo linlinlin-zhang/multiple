@@ -19,6 +19,7 @@ const SERVER_ENV = { ...process.env, PORT: "3002", NODE_ENV: "test" };
 let server;
 let failed = 0;
 const errors = [];
+const cookieJar = new Map();
 
 function log(msg) { console.log("[test-rag] " + msg); }
 function pass(msg) { console.log("  [OK] " + msg); }
@@ -26,11 +27,14 @@ function fail(msg) { failed++; errors.push(msg); console.error("  [FAIL] " + msg
 
 async function request(method, path, body) {
   const opts = { method, headers: {} };
+  const cookieHeader = serializeCookies();
+  if (cookieHeader) opts.headers.Cookie = cookieHeader;
   if (body !== undefined) {
     opts.body = typeof body === "string" ? body : JSON.stringify(body);
     opts.headers["Content-Type"] = "application/json";
   }
   const res = await fetch(BASE_URL + path, opts);
+  captureCookies(res);
   const text = await res.text();
   let data = null;
   try {
@@ -39,6 +43,21 @@ async function request(method, path, body) {
     data = text;
   }
   return { status: res.status, data };
+}
+
+function captureCookies(res) {
+  const setCookies = typeof res.headers.getSetCookie === "function"
+    ? res.headers.getSetCookie()
+    : (res.headers.get("set-cookie") ? [res.headers.get("set-cookie")] : []);
+  for (const raw of setCookies) {
+    const pair = String(raw || "").split(";")[0];
+    const index = pair.indexOf("=");
+    if (index > 0) cookieJar.set(pair.slice(0, index).trim(), pair.slice(index + 1).trim());
+  }
+}
+
+function serializeCookies() {
+  return [...cookieJar.entries()].map(([key, value]) => `${key}=${value}`).join("; ");
 }
 
 function startServer() {
@@ -50,7 +69,11 @@ function startServer() {
     }, 15000);
     const check = setInterval(async () => {
       try {
-        const res = await fetch(BASE_URL + "/api/health");
+        const headers = {};
+        const cookieHeader = serializeCookies();
+        if (cookieHeader) headers.Cookie = cookieHeader;
+        const res = await fetch(BASE_URL + "/api/health", { headers });
+        captureCookies(res);
         if (res.status === 200) {
           clearInterval(check);
           clearTimeout(timer);
@@ -94,7 +117,8 @@ async function testMissingSessionId() {
 }
 
 async function testIngestRetrieveWipe() {
-  const sessionId = `test-${crypto.randomUUID()}`;
+  const sessionId = await createTestSession();
+  if (!sessionId) return;
   log(`session ${sessionId.slice(0, 16)}...`);
 
   let res = await request("GET", `/api/context/stats?sessionId=${sessionId}`);
@@ -103,6 +127,9 @@ async function testIngestRetrieveWipe() {
 
   if (!res.data?.embeddingConfigured) {
     log("Embedding API key is not configured; skipping ingest/retrieve round trip.");
+    res = await request("DELETE", `/api/context/${sessionId}`);
+    if (res.status === 200 && res.data?.ok) pass("wipe without chunks succeeds");
+    else fail(`wipe without chunks failed: ${JSON.stringify(res.data)}`);
     return;
   }
 
@@ -163,6 +190,29 @@ async function testIngestRetrieveWipe() {
   res = await request("GET", `/api/context/stats?sessionId=${sessionId}`);
   if (res.status === 200 && res.data?.chunks === 0) pass("session is empty after wipe");
   else fail(`expected empty after wipe, got ${JSON.stringify(res.data)}`);
+}
+
+async function createTestSession() {
+  const sampleState = {
+    sourceImage: null,
+    fileName: "rag-test.txt",
+    latestAnalysis: { summary: "RAG test session", detectedSubjects: [], moodKeywords: [], options: [] },
+    chatMessages: [{ role: "user", content: `RAG test ${crypto.randomUUID()}` }],
+    nodes: {
+      source: { id: "source", x: 0, y: 0, width: 320, height: 240, generated: false, option: null },
+      analysis: { id: "analysis", x: 360, y: 0, width: 320, height: 220, generated: false, option: null }
+    },
+    links: [{ from: "source", to: "analysis", kind: "analysis" }],
+    collapsed: [],
+    generatedCount: 0,
+    view: { x: 0, y: 0, scale: 1 }
+  };
+  const res = await request("POST", "/api/sessions", { state: sampleState, title: "RAG 测试会话" });
+  if (res.status === 200 && res.data?.ok && res.data?.sessionId) {
+    return res.data.sessionId;
+  }
+  fail(`failed to create test session: ${JSON.stringify(res.data)}`);
+  return "";
 }
 
 async function main() {

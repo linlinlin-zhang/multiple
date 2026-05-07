@@ -37,9 +37,6 @@ function sendJson(res, status, data) {
  */
 export async function handleContextIngest(body, res, options = {}) {
   try {
-    if (!isEmbeddingConfigured()) {
-      return sendJson(res, 503, { error: "Embedding API key not configured" });
-    }
     const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
     const kind = typeof body?.kind === "string" ? body.kind.trim() : "";
     const text = typeof body?.text === "string" ? body.text : "";
@@ -56,6 +53,9 @@ export async function handleContextIngest(body, res, options = {}) {
     }
     if (!(await canAccessSession(sessionId, options))) {
       return sendJson(res, 404, { error: "Session not found" });
+    }
+    if (!isEmbeddingConfigured()) {
+      return sendJson(res, 503, { error: "Embedding API key not configured" });
     }
 
     const fn = snippet ? ingestSnippet : ingestText;
