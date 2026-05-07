@@ -1006,6 +1006,11 @@ body.nav-collapsed .nav-settings {
   border: none;
 }
 
+.source-tab:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
 .source-tab.active {
   background: var(--itemBg);
   color: var(--ink);
@@ -1040,6 +1045,34 @@ body.nav-collapsed .nav-settings {
 
 .url-source-card:hover {
   background: var(--border);
+}
+
+.source-text-panel {
+  padding: 12px;
+}
+
+.source-text-input {
+  width: 100%;
+  min-height: 326px;
+  resize: vertical;
+  border: 1px solid var(--divider);
+  border-radius: 18px;
+  padding: 14px 16px;
+  color: var(--ink);
+  background: var(--paper);
+  box-shadow: var(--shadow-16);
+  font: inherit;
+  line-height: 1.6;
+  outline: none;
+}
+
+.source-text-input:focus {
+  border-color: var(--ps-blue);
+  box-shadow: 0 0 0 2px rgba(0, 112, 204, 0.14), var(--shadow-16);
+}
+
+.source-node.is-text-card .source-text-input {
+  border-color: rgba(0, 112, 204, 0.32);
 }
 
 .upload-target {
@@ -1505,96 +1538,6 @@ body.nav-collapsed .nav-settings {
   flex: 1;
 }
 
-.card-text-button {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  border: 1px solid rgba(0, 112, 204, 0.18);
-  border-radius: 50%;
-  color: var(--ps-blue);
-  background: rgba(0, 112, 204, 0.06);
-  cursor: pointer;
-  transition: background 160ms ease, transform 160ms ease;
-}
-
-.card-text-button:hover {
-  background: rgba(0, 112, 204, 0.12);
-  transform: scale(1.05);
-}
-
-.card-text-button svg {
-  width: 20px;
-  height: 20px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.card-text-editor {
-  margin: 18px 0 20px;
-  border: 1px solid rgba(0, 112, 204, 0.2);
-  border-radius: 18px;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.72);
-}
-
-.card-text-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 8px;
-  border-bottom: 1px solid rgba(0, 112, 204, 0.12);
-  background: rgba(0, 112, 204, 0.04);
-}
-
-.card-text-toolbar button {
-  min-width: 30px;
-  height: 30px;
-  border: none;
-  border-radius: 999px;
-  color: var(--ink);
-  background: rgba(255, 255, 255, 0.8);
-  cursor: pointer;
-}
-
-.card-text-toolbar button:hover {
-  color: var(--ps-blue);
-  background: #ffffff;
-}
-
-.card-text-input {
-  min-height: 150px;
-  max-height: 360px;
-  padding: 14px 16px;
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.65;
-  overflow: auto;
-  outline: none;
-  user-select: text;
-  touch-action: auto;
-}
-
-.card-text-input:empty::before {
-  content: attr(data-placeholder);
-  color: var(--inkMuted);
-}
-
-.card-text-preview {
-  margin: 14px 0 18px;
-  padding: 14px 16px;
-  border: 1px solid rgba(0, 112, 204, 0.12);
-  border-radius: 16px;
-  background: rgba(0, 112, 204, 0.035);
-}
-
-.card-text-preview:empty {
-  display: none;
-}
 .option-plan-steps {
   list-style: decimal;
   padding-left: 22px;

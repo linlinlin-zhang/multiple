@@ -73,6 +73,7 @@ const chatAsrAcceptButton = document.querySelector("#chatAsrAcceptButton");
 const navToggle = document.querySelector("#navToggle");
 const urlInput = document.querySelector("#urlInput");
 const urlAnalyzeButton = document.querySelector("#urlAnalyzeButton");
+const sourceTextInput = document.querySelector("#sourceTextInput");
 const cardSearchBar = document.querySelector("#cardSearchBar");
 const cardSearchInput = document.querySelector("#cardSearchInput");
 const cardSearchCloseButton = document.querySelector("#cardSearchCloseButton");
@@ -160,6 +161,7 @@ const state = {
   sourceImageHash: null,
   sourceType: "image",         // "image" | "text" | "url" | "video"
   sourceText: null,            // for txt/md/json
+  sourceTextMode: "",
   sourceDataUrl: null,         // for docx/pdf/pptx
   sourceVideo: null,
   sourceVideoHash: null,
@@ -712,6 +714,11 @@ const i18n = {
     "command.importMaterialDesc": "从素材库搜索并加入对话或画布",
     "junction.maxCapacity": "连接节点最多只能连接 {max} 张卡片",
     "source.defaultTitle": "源卡片",
+    "source.fileTab": "文件",
+    "source.linkTab": "链接",
+    "source.textTab": "文字",
+    "source.textPlaceholder": "输入文字内容",
+    "source.textCardTitle": "文字卡片",
     "source.uploadPrompt": "上传图片、视频或文档",
     "source.uploadHint": "选择图片、视频、Word、PDF、PPT 或 TXT，生成分支方向",
     "research.analyzeTooltip": "调用 no-thinking 模式，快速生成 5 到 8 张方向卡",
@@ -963,6 +970,11 @@ const i18n = {
     "settings.darkMode": "Dark Mode",
     "settings.language": "Language",
     "source.defaultTitle": "Source card",
+    "source.fileTab": "File",
+    "source.linkTab": "Link",
+    "source.textTab": "Text",
+    "source.textPlaceholder": "Type text content",
+    "source.textCardTitle": "Text card",
     "source.uploadPrompt": "Upload image, video or document",
     "source.uploadHint": "Select image, video, Word, PDF, PPT or TXT to generate branches",
     "source.analyze": "Analyze",
@@ -1320,6 +1332,12 @@ function renderAllText() {
   if (emptyStateSpan) emptyStateSpan.textContent = t("source.uploadHint");
   const researchBtn = document.querySelector("#researchButton");
   if (researchBtn) researchBtn.textContent = t("research.button");
+  document.querySelectorAll(".source-tab").forEach((tab) => {
+    tab.textContent = sourceTabLabel(tab.dataset.tab);
+  });
+  document.querySelectorAll(".source-text-input").forEach((input) => {
+    input.placeholder = t("source.textPlaceholder");
+  });
 
   document.querySelectorAll(".research-option").forEach((opt) => {
     const label = opt.querySelector(".option-label");
@@ -2222,6 +2240,7 @@ async function importMaterialAsSourceCard(item = {}) {
         fileName,
         sourceType: "text",
         sourceText: documentText,
+        sourceTextMode: "",
         sourceDataUrl: documentDataUrl,
         sourceDataUrlHash: "",
         mimeType
@@ -2236,6 +2255,7 @@ async function importMaterialAsSourceCard(item = {}) {
       node.element.querySelector(".empty-state")?.classList.add("hidden");
       setSourceCardResearchActionsDisabled(node.element, false);
       syncSourceCardImageActionState(nodeId);
+      syncSourceTextCardUi(nodeId, { mode: "file" });
     }
     autoSave();
     focusNodeById(nodeId, "center");
@@ -2321,14 +2341,206 @@ function renderCardSearchResults() {
   });
 }
 
-function locateCard(nodeId, title) {
+function locateCard(nodeId, title = "") {
   closeCardSearchUI();
   closeCommandMenu();
-  if (chatInput) chatInput.value = "";
-  updateChatPrimaryButtonMode();
-  selectNode(nodeId);
   focusNodeInViewport(nodeId, "upper-left");
   showToast(t("command.searchCardFound", { title }));
+}
+
+function sourceTabLabel(tab) {
+  if (tab === "url") return t("source.linkTab");
+  if (tab === "text") return t("source.textTab");
+  return t("source.fileTab");
+}
+
+function sourceTextCardTitle() {
+  return t("source.textCardTitle");
+}
+
+function sourceElementForNode(nodeId) {
+  return nodeId === "source" ? sourceNode : state.nodes.get(nodeId)?.element;
+}
+
+function manualSourceTextForNode(nodeId) {
+  if (nodeId === "source") {
+    return state.sourceTextMode === "manual" ? String(state.sourceText || "") : "";
+  }
+  const sourceCard = state.nodes.get(nodeId)?.sourceCard;
+  return sourceCard?.sourceTextMode === "manual" ? String(sourceCard.sourceText || "") : "";
+}
+
+function sourceTextCardHasText(nodeId) {
+  return Boolean(manualSourceTextForNode(nodeId).trim());
+}
+
+function setSourceCardPanelMode(nodeId, mode = "file") {
+  const element = sourceElementForNode(nodeId);
+  if (!element) return;
+  const activeMode = ["file", "url", "text"].includes(mode) ? mode : "file";
+  element.querySelectorAll(".source-tab").forEach((tab) => {
+    tab.classList.toggle("active", tab.dataset.tab === activeMode);
+  });
+  element.querySelector(".upload-target")?.classList.toggle("hidden", activeMode !== "file");
+  element.querySelector(".url-input-panel")?.classList.toggle("hidden", activeMode !== "url");
+  element.querySelector(".source-text-panel")?.classList.toggle("hidden", activeMode !== "text");
+}
+
+function syncSourceTextCardUi(nodeId, { mode = "" } = {}) {
+  const element = sourceElementForNode(nodeId);
+  if (!element) return;
+  const text = manualSourceTextForNode(nodeId);
+  const locked = Boolean(text.trim());
+  const textInput = element.querySelector(".source-text-input");
+  if (textInput && document.activeElement !== textInput && textInput.value !== text) {
+    textInput.value = text;
+  }
+  const activeMode = locked ? "text" : (mode || element.querySelector(".source-tab.active")?.dataset.tab || "file");
+  element.classList.toggle("is-text-card", locked);
+  element.querySelectorAll(".source-tab").forEach((tab) => {
+    const disabled = locked && tab.dataset.tab !== "text";
+    tab.disabled = disabled;
+    tab.textContent = sourceTabLabel(tab.dataset.tab);
+  });
+  const upload = element.querySelector(".upload-target");
+  const fileInputEl = upload?.querySelector('input[type="file"]');
+  if (fileInputEl) fileInputEl.disabled = locked;
+  const urlInputEl = element.querySelector('.url-input-panel input[type="url"]');
+  const urlAnalyzeBtn = element.querySelector(".url-input-panel .primary-button");
+  if (urlInputEl) urlInputEl.disabled = locked;
+  if (urlAnalyzeBtn) urlAnalyzeBtn.disabled = locked || !String(urlInputEl?.value || "").trim();
+  setSourceCardPanelMode(nodeId, activeMode);
+  if (nodeId === "source") {
+    updateSourceBadge();
+  } else {
+    syncSourceCardImageActionState(nodeId);
+  }
+}
+
+function switchSourceCardTab(nodeId, mode) {
+  if (sourceTextCardHasText(nodeId) && mode !== "text") return;
+  setSourceCardPanelMode(nodeId, mode);
+  if (mode === "text") {
+    sourceElementForNode(nodeId)?.querySelector(".source-text-input")?.focus();
+  }
+}
+
+function wireSourceCardTabs(nodeId, element) {
+  element?.querySelectorAll(".source-tab").forEach((tab) => {
+    if (tab.dataset.sourceTabWired === "true") return;
+    tab.dataset.sourceTabWired = "true";
+    tab.textContent = sourceTabLabel(tab.dataset.tab);
+    tab.addEventListener("click", () => switchSourceCardTab(nodeId, tab.dataset.tab));
+  });
+}
+
+function setPrimarySourceTextCard(text, { save = true } = {}) {
+  const value = String(text || "").trim();
+  const wasTextCard = sourceTextCardHasText("source");
+  const upload = document.querySelector("#sourceNode .upload-target");
+  if (value) {
+    if (!wasTextCard) {
+      clearOptions();
+      state.latestAnalysis = null;
+      state.fileUnderstanding = null;
+      analysisNode.classList.add("hidden");
+      state.links = state.links.filter((link) => link.from !== "source" && link.to !== "source");
+      applyCollapseState();
+      updateCounts();
+    }
+    clearDocumentPreview(upload);
+    document.querySelector(".url-source-card")?.remove();
+    state.sourceImage = null;
+    state.sourceImageHash = null;
+    state.sourceType = "text";
+    state.sourceText = value;
+    state.sourceTextMode = "manual";
+    state.sourceDataUrl = null;
+    state.sourceDataUrlHash = null;
+    state.sourceVideo = null;
+    state.sourceVideoHash = null;
+    state.sourceVideoMimeType = "";
+    state.sourceUrl = null;
+    state.fileName = sourceTextCardTitle();
+    sourcePreview.src = "";
+    sourcePreview.classList.remove("has-image");
+    emptyState.classList.add("hidden");
+    sourceName.textContent = trimMiddle(state.fileName, 28);
+    if (researchButton) researchButton.disabled = false;
+  } else if (state.sourceTextMode === "manual") {
+    state.sourceType = "image";
+    state.sourceText = null;
+    state.sourceTextMode = "";
+    state.sourceDataUrl = null;
+    state.sourceDataUrlHash = null;
+    state.fileName = "";
+    clearDocumentPreview(upload);
+    document.querySelector(".url-source-card")?.remove();
+    sourcePreview.src = "";
+    sourcePreview.classList.remove("has-image");
+    emptyState.classList.remove("hidden");
+    sourceName.textContent = defaultSourceCardTitle();
+    if (researchButton) researchButton.disabled = true;
+  }
+  syncSourceTextCardUi("source", { mode: "text" });
+  if (save) autoSave();
+}
+
+function setStandaloneSourceTextCard(nodeId, text, { save = true } = {}) {
+  const node = state.nodes.get(nodeId);
+  if (!node?.sourceCard) return;
+  const value = String(text || "").trim();
+  const element = node.element;
+  const upload = element.querySelector(".upload-target");
+  const img = element.querySelector(".source-preview");
+  const empty = element.querySelector(".empty-state");
+  const label = element.querySelector(".standalone-source-name");
+  if (value) {
+    clearDocumentPreview(upload);
+    node.sourceCard = {
+      ...node.sourceCard,
+      title: sourceTextCardTitle(),
+      fileName: sourceTextCardTitle(),
+      imageHash: "",
+      imageUrl: "",
+      sourceType: "text",
+      sourceText: value,
+      sourceTextMode: "manual",
+      sourceDataUrl: "",
+      sourceDataUrlHash: "",
+      sourceVideoHash: "",
+      sourceVideoUrl: "",
+      sourceVideoMimeType: "",
+      sourceUrl: ""
+    };
+    if (img) {
+      img.src = "";
+      img.classList.remove("has-image");
+    }
+    empty?.classList.add("hidden");
+    if (label) label.textContent = trimMiddle(node.sourceCard.fileName, 28);
+    setSourceCardResearchActionsDisabled(element, false);
+  } else if (node.sourceCard.sourceTextMode === "manual") {
+    node.sourceCard = {
+      ...node.sourceCard,
+      fileName: "",
+      sourceType: "empty",
+      sourceText: "",
+      sourceTextMode: "",
+      sourceDataUrl: "",
+      sourceDataUrlHash: ""
+    };
+    clearDocumentPreview(upload);
+    if (img) {
+      img.src = "";
+      img.classList.remove("has-image");
+    }
+    empty?.classList.remove("hidden");
+    if (label) label.textContent = trimMiddle(node.sourceCard.title || (currentLang === "en" ? "New source card" : "新建源卡片"), 28);
+    setSourceCardResearchActionsDisabled(element, true);
+  }
+  syncSourceTextCardUi(nodeId, { mode: "text" });
+  if (save) autoSave();
 }
 
 function wireControls() {
@@ -2506,19 +2718,14 @@ function wireControls() {
     chatInput?.focus();
   });
 
-  // Source tabs (file / url)
-  document.querySelectorAll(".source-tab").forEach(tab => {
-    tab.addEventListener("click", () => {
-      const target = tab.dataset.tab;
-      document.querySelectorAll(".source-tab").forEach(t => t.classList.toggle("active", t === tab));
-      document.querySelector(".upload-target").classList.toggle("hidden", target !== "file");
-      document.querySelector(".url-input-panel").classList.toggle("hidden", target !== "url");
-    });
+  wireSourceCardTabs("source", sourceNode);
+  sourceTextInput?.addEventListener("input", () => {
+    setPrimarySourceTextCard(sourceTextInput.value);
   });
+  syncSourceTextCardUi("source");
 
-  // URL input wiring
   urlInput?.addEventListener("input", () => {
-    if (urlAnalyzeButton) urlAnalyzeButton.disabled = !urlInput.value.trim();
+    if (urlAnalyzeButton) urlAnalyzeButton.disabled = sourceTextCardHasText("source") || !urlInput.value.trim();
   });
   urlAnalyzeButton?.addEventListener("click", analyzeUrl);
 
@@ -4645,6 +4852,7 @@ async function handleFile(event) {
       state.sourceImage = image.dataUrl;
       state.sourceType = "image";
       state.sourceText = null;
+      state.sourceTextMode = "";
       state.sourceDataUrl = null;
       state.sourceVideo = null;
       state.sourceVideoHash = null;
@@ -4671,6 +4879,7 @@ async function handleFile(event) {
       updateCounts();
       setStatus(t("status.ready"), "ready");
       updateSourceBadge();
+      syncSourceTextCardUi("source", { mode: "file" });
       autoSave();
     } catch (error) {
       setStatus(error.message || t("status.error"), "error");
@@ -4688,6 +4897,7 @@ async function handleFile(event) {
       state.sourceImageHash = null;
       state.sourceType = "video";
       state.sourceText = null;
+      state.sourceTextMode = "";
       state.sourceDataUrl = null;
       state.sourceDataUrlHash = null;
       state.sourceVideo = video.dataUrl;
@@ -4716,6 +4926,7 @@ async function handleFile(event) {
       updateCounts();
       setStatus(t("status.ready"), "ready");
       updateSourceBadge();
+      syncSourceTextCardUi("source", { mode: "file" });
       autoSave();
     } catch (error) {
       setStatus(error.message || t("status.error"), "error");
@@ -4728,6 +4939,7 @@ async function handleFile(event) {
     try {
       state.fileName = file.name;
       state.sourceType = "text";
+      state.sourceTextMode = "";
       state.sourceImage = null;
       state.sourceImageHash = null;
       state.sourceVideo = null;
@@ -4772,6 +4984,7 @@ async function handleFile(event) {
       applyCollapseState();
       updateCounts();
       updateSourceBadge();
+      syncSourceTextCardUi("source", { mode: "file" });
       setStatus(t("status.ready"), "ready");
       autoSave();
     } catch (error) {
@@ -4981,6 +5194,10 @@ async function analyzeUrl() {
     const data = await postJson("/api/analyze-url", { url, sessionId: currentSessionId || "" });
     state.sourceType = "url";
     state.sourceUrl = url;
+    state.sourceText = null;
+    state.sourceTextMode = "";
+    state.sourceDataUrl = null;
+    state.sourceDataUrlHash = null;
     state.fileName = new URL(url).hostname;
     state.latestAnalysis = data;
 
@@ -4990,6 +5207,7 @@ async function analyzeUrl() {
     renderOptions(data.options || [], data.taskType || "general");
     scheduleGeneratedArrange({ delay: 120, duration: 520 });
     setStatus(t("status.ready"), "ready");
+    syncSourceTextCardUi("source", { mode: "url" });
     autoSave();
   } catch (error) {
     setStatus(error.message || "URL analysis failed", "error");
@@ -7398,179 +7616,7 @@ function setupOptionCardElement(element, option, taskType = "general") {
   element.querySelector(".option-title").textContent = option.title || t("generated.result");
   element.querySelector(".option-description").textContent = option.description || "";
   renderRichNodeContent(element, option);
-  renderCardTextPreview(element, option);
-  wireCardTextButton(element, option);
   element.dataset.nodeType = option.nodeType || "image";
-}
-
-function wireCardTextButton(element, option) {
-  const button = element.querySelector(".card-text-button");
-  if (!button || button.dataset.cardTextWired === "true") return;
-  button.dataset.cardTextWired = "true";
-  button.title = currentLang === "en" ? "Edit text" : "输入文字";
-  button.setAttribute("aria-label", button.title);
-  button.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    toggleCardTextEditor(element, option);
-  });
-}
-
-function renderCardTextPreview(element, option) {
-  if (!element || !option) return;
-  let preview = element.querySelector(".card-text-preview");
-  const text = String(option.richText || option.textContent || "").trim();
-  if (!text) {
-    preview?.remove();
-    return;
-  }
-  if (!preview) {
-    preview = document.createElement("div");
-    preview.className = "card-text-preview markdown-body";
-    const anchor = element.querySelector(".option-rich-content") || element.querySelector(".option-action-row") || element.lastElementChild;
-    if (anchor?.parentElement) anchor.parentElement.insertBefore(preview, anchor.nextSibling);
-    else element.appendChild(preview);
-  }
-  preview.innerHTML = renderRichMarkdownHtml(text);
-}
-
-function toggleCardTextEditor(element, option) {
-  const existing = element.querySelector(".card-text-editor");
-  if (existing) {
-    closeCardTextEditor(element, option, true);
-    return;
-  }
-  openCardTextEditor(element, option);
-}
-
-function openCardTextEditor(element, option) {
-  if (!element || !option || element.querySelector(".card-text-editor")) return;
-  const editor = document.createElement("div");
-  editor.className = "card-text-editor";
-  const toolbar = document.createElement("div");
-  toolbar.className = "card-text-toolbar";
-  const input = document.createElement("div");
-  input.className = "card-text-input markdown-body";
-  input.contentEditable = "true";
-  input.setAttribute("role", "textbox");
-  input.setAttribute("aria-multiline", "true");
-  input.dataset.placeholder = currentLang === "en" ? "Type card text. Use toolbar for simple rich text." : "直接输入卡片文字，可用上方按钮做简单富文本。";
-  input.innerText = String(option.richText || option.textContent || option.description || "").trim();
-  const tools = [
-    ["B", "bold"],
-    ["I", "italic"],
-    ["H", "heading"],
-    ["•", "bullet"],
-    ["1.", "number"],
-    ["🔗", "link"],
-    ["✓", "done"]
-  ];
-  tools.forEach(([label, action]) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.textAction = action;
-    button.textContent = label;
-    button.tabIndex = -1;
-    button.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-    });
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      applyCardTextFormat(input, action);
-    });
-    toolbar.appendChild(button);
-  });
-  editor.append(toolbar, input);
-  const actionRow = element.querySelector(".option-action-row");
-  if (actionRow?.parentElement) actionRow.parentElement.insertBefore(editor, actionRow);
-  else element.appendChild(editor);
-  editor.addEventListener("pointerdown", (event) => event.stopPropagation());
-  input.addEventListener("blur", () => {
-    window.setTimeout(() => {
-      if (!editor.contains(document.activeElement)) closeCardTextEditor(element, option, true);
-    }, 0);
-  });
-  input.addEventListener("keydown", (event) => {
-    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
-      event.preventDefault();
-      closeCardTextEditor(element, option, true);
-    } else if (event.key === "Escape") {
-      event.preventDefault();
-      closeCardTextEditor(element, option, false);
-    }
-  });
-  input.focus();
-}
-
-function closeCardTextEditor(element, option, save) {
-  const editor = element.querySelector(".card-text-editor");
-  const input = editor?.querySelector(".card-text-input");
-  if (save && input) {
-    option.richText = input.innerText.trim();
-    if (!option.richText) delete option.richText;
-    renderCardTextPreview(element, option);
-    autoSave();
-  }
-  editor?.remove();
-}
-
-function createCardTextButton(element, option) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "card-text-button";
-  button.title = currentLang === "en" ? "Edit text" : "输入文字";
-  button.setAttribute("aria-label", button.title);
-  button.innerHTML = `
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 6h16"></path>
-      <path d="M12 6v12"></path>
-      <path d="M8 18h8"></path>
-    </svg>
-  `;
-  button.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    toggleCardTextEditor(element, option);
-  });
-  return button;
-}
-
-function applyCardTextFormat(input, action) {
-  input.focus();
-  const selection = window.getSelection();
-  const selected = selection && selection.rangeCount ? selection.toString() : "";
-  const wrappers = {
-    bold: ["**", "**"],
-    italic: ["*", "*"],
-    heading: ["### ", ""],
-    bullet: ["- ", ""],
-    number: ["1. ", ""],
-    done: ["- [ ] ", ""]
-  };
-  if (action === "link") {
-    insertTextAtSelection(input, selected ? `[${selected}](https://)` : "[link](https://)");
-    return;
-  }
-  const [prefix, suffix] = wrappers[action] || ["", ""];
-  insertTextAtSelection(input, selected ? `${prefix}${selected}${suffix}` : prefix);
-}
-
-function insertTextAtSelection(input, text) {
-  const selection = window.getSelection();
-  if (!selection || !selection.rangeCount || !input.contains(selection.anchorNode)) {
-    input.append(document.createTextNode(text));
-    return;
-  }
-  const range = selection.getRangeAt(0);
-  range.deleteContents();
-  const node = document.createTextNode(text);
-  range.insertNode(node);
-  range.setStartAfter(node);
-  range.setEndAfter(node);
-  selection.removeAllRanges();
-  selection.addRange(range);
 }
 
 function normalizeOptionContent(option) {
@@ -8240,13 +8286,18 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   fileTab.type = "button";
   fileTab.className = "source-tab active";
   fileTab.dataset.tab = "file";
-  fileTab.textContent = currentLang === "en" ? "File" : "文件";
+  fileTab.textContent = sourceTabLabel("file");
   const urlTab = document.createElement("button");
   urlTab.type = "button";
   urlTab.className = "source-tab";
   urlTab.dataset.tab = "url";
-  urlTab.textContent = currentLang === "en" ? "Link" : "链接";
-  tabs.append(fileTab, urlTab);
+  urlTab.textContent = sourceTabLabel("url");
+  const textTab = document.createElement("button");
+  textTab.type = "button";
+  textTab.className = "source-tab";
+  textTab.dataset.tab = "text";
+  textTab.textContent = sourceTabLabel("text");
+  tabs.append(fileTab, urlTab, textTab);
 
   const upload = document.createElement("label");
   upload.className = `upload-target${imageUrl ? " has-source-image" : ""}${sourceVideoUrl || sourceVideoHash ? " has-video-preview" : ""}`;
@@ -8280,6 +8331,13 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   urlAnalyzeBtn.disabled = true;
   urlPanel.append(urlInputEl, urlAnalyzeBtn);
 
+  const textPanel = document.createElement("div");
+  textPanel.className = "source-text-panel hidden";
+  const textInputEl = document.createElement("textarea");
+  textInputEl.className = "source-text-input";
+  textInputEl.placeholder = t("source.textPlaceholder");
+  textPanel.appendChild(textInputEl);
+
   const caption = document.createElement("div");
   caption.className = "node-caption";
   const name = document.createElement("span");
@@ -8293,7 +8351,7 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   const researchMenu = createSourceCardResearchMenu(nodeId, research, !hasInitialContent);
   caption.append(name, researchMenu);
 
-  element.append(tabs, upload, urlPanel, caption);
+  element.append(tabs, upload, urlPanel, textPanel, caption);
   board.appendChild(element);
   if (avoidOverlap) {
     const placement = findNonOverlappingPosition(newX, newY, {
@@ -8316,6 +8374,7 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
     sourceVideoUrl: sourceVideoUrl || "",
     sourceVideoMimeType: sourceVideoMimeType || "",
     sourceText: "",
+    sourceTextMode: "",
     sourceDataUrl: "",
     sourceDataUrlHash: ""
   };
@@ -8336,23 +8395,13 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
     if (file) await handleStandaloneSourceFile(nodeId, file);
     event.target.value = "";
   });
-  // Tab switching
-  fileTab.addEventListener("click", () => {
-    fileTab.classList.add("active");
-    urlTab.classList.remove("active");
-    upload.classList.remove("hidden");
-    urlPanel.classList.add("hidden");
-  });
-  urlTab.addEventListener("click", () => {
-    urlTab.classList.add("active");
-    fileTab.classList.remove("active");
-    upload.classList.add("hidden");
-    urlPanel.classList.remove("hidden");
+  wireSourceCardTabs(nodeId, element);
+  textInputEl.addEventListener("input", () => {
+    setStandaloneSourceTextCard(nodeId, textInputEl.value);
   });
 
-  // URL input wiring
   urlInputEl.addEventListener("input", () => {
-    urlAnalyzeBtn.disabled = !urlInputEl.value.trim();
+    urlAnalyzeBtn.disabled = sourceTextCardHasText(nodeId) || !urlInputEl.value.trim();
   });
   urlAnalyzeBtn.addEventListener("click", async () => {
     const url = urlInputEl.value.trim();
@@ -8365,22 +8414,26 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
       if (node?.sourceCard) {
         node.sourceCard.sourceType = "url";
         node.sourceCard.sourceUrl = url;
+        node.sourceCard.sourceText = "";
+        node.sourceCard.sourceTextMode = "";
         node.sourceCard.fileName = new URL(url).hostname;
         node.sourceCard.title = data.title || node.sourceCard.title || node.sourceCard.fileName;
       }
       name.textContent = trimMiddle(node.sourceCard.fileName, 28);
       setSourceCardResearchActionsDisabled(node.element, false);
       syncSourceCardImageActionState(nodeId);
+      syncSourceTextCardUi(nodeId, { mode: "url" });
       setStatus(t("status.ready"), "ready");
       autoSave();
     } catch (error) {
       setStatus(error.message || "URL analysis failed", "error");
     } finally {
-      urlAnalyzeBtn.disabled = !urlInputEl.value.trim();
+      urlAnalyzeBtn.disabled = sourceTextCardHasText(nodeId) || !urlInputEl.value.trim();
     }
   });
 
   if (!imageUrl) syncSourceCardImageActionState(nodeId);
+  syncSourceTextCardUi(nodeId);
   applyCollapseState();
   updateCounts();
   return nodeId;
@@ -8441,6 +8494,7 @@ async function handleStandaloneSourceFile(nodeId, file) {
         sourceVideoUrl: "",
         sourceVideoMimeType: "",
         sourceText: "",
+        sourceTextMode: "",
         sourceDataUrl: "",
         sourceDataUrlHash: ""
       };
@@ -8468,6 +8522,7 @@ async function handleStandaloneSourceFile(nodeId, file) {
         sourceVideoUrl: videoUrl,
         sourceVideoMimeType: video.mimeType || sourceVideoMimeType(file.name, file.type),
         sourceText: "",
+        sourceTextMode: "",
         sourceDataUrl: "",
         sourceDataUrlHash: ""
       };
@@ -8498,6 +8553,7 @@ async function handleStandaloneSourceFile(nodeId, file) {
         sourceVideoUrl: "",
         sourceVideoMimeType: "",
         sourceText: text,
+        sourceTextMode: "",
         sourceDataUrl: isPlainText ? "" : dataUrl,
         sourceDataUrlHash: stored?.hash || ""
       };
@@ -8511,6 +8567,7 @@ async function handleStandaloneSourceFile(nodeId, file) {
     if (name) name.textContent = trimMiddle(file.name, 28);
     setSourceCardResearchActionsDisabled(node.element, false);
     syncSourceCardImageActionState(nodeId);
+    syncSourceTextCardUi(nodeId, { mode: "file" });
     setStatus(t("status.ready"), "ready");
     autoSave();
   } catch (error) {
@@ -9889,9 +9946,8 @@ function turnIntoGeneratedVideoNode(element, option, videoUrl, mimeType = "video
   regenerate.className = "secondary-button";
   regenerate.textContent = t("generated.regenerate");
   regenerate.addEventListener("click", () => generateVideoForOption(nodeId, option));
-  actions.append(download, regenerate, createCardTextButton(element, option));
+  actions.append(download, regenerate);
   element.appendChild(actions);
-  renderCardTextPreview(element, option);
   addEdgeHandles(element, nodeId);
   addResizeHandles(element, nodeId);
 }
@@ -9945,9 +10001,8 @@ function turnIntoGeneratedNode(element, option, imageDataUrl) {
   regenerate.textContent = t("generated.regenerate");
   regenerate.addEventListener("click", () => generateOption(nodeId, option));
 
-  actions.append(download, regenerate, createCardTextButton(element, option));
+  actions.append(download, regenerate);
   element.appendChild(actions);
-  renderCardTextPreview(element, option);
 
   // Re-add edge handles since innerHTML wipe removed them
   addEdgeHandles(element, nodeId);
@@ -10310,11 +10365,10 @@ function turnIntoRichNode(element, option) {
   regen.textContent = t("generated.regenerate");
   regen.addEventListener("click", () => generateOption(nodeId, option));
 
-  actions.append(copyBtn, regen, createCardTextButton(element, option));
+  actions.append(copyBtn, regen);
   content.appendChild(actions);
 
   element.appendChild(content);
-  renderCardTextPreview(element, option);
 
   addEdgeHandles(element, nodeId);
   addResizeHandles(element, nodeId);
@@ -12333,7 +12387,7 @@ function registerNode(id, element, data) {
   element.addEventListener("dblclick", (event) => {
     if (event.target.closest(".collapse-dot")) return;
     if (event.target.closest("button, input, textarea, a, [contenteditable='true']")) return;
-    if (event.target.closest(".option-title, .generated-node h3, .analysis-node h2, #sourceName, .standalone-source-name, .node-title-input, .card-text-editor")) return;
+    if (event.target.closest(".option-title, .generated-node h3, .analysis-node h2, #sourceName, .standalone-source-name, .node-title-input")) return;
     const node = state.nodes.get(id);
     // Open blueprint modal for junction nodes
     if (node?.isJunction) {
@@ -12940,7 +12994,7 @@ function makeDraggable(element, id) {
   element.addEventListener("pointerdown", (event) => {
     const uploadTarget = event.target.closest(".upload-target");
     if (uploadTarget && !uploadTarget.classList.contains("has-source-image") && !uploadTarget.classList.contains("has-source-file")) return;
-    const interactive = event.target.closest("button, input, textarea, select, a, [contenteditable='true'], .option-title, .generated-node h3, .analysis-node h2, #sourceName, .standalone-source-name, .node-title-input, .card-text-editor, .image-card-action, .edge-handle, .node-resize-handle");
+    const interactive = event.target.closest("button, input, textarea, select, a, [contenteditable='true'], .option-title, .generated-node h3, .analysis-node h2, #sourceName, .standalone-source-name, .node-title-input, .image-card-action, .edge-handle, .node-resize-handle");
     if (interactive && event.target.tagName !== "SECTION") return;
     const node = state.nodes.get(id);
     if (!node) return;
@@ -14457,6 +14511,7 @@ function computeStateHash() {
     view: state.view,
     sourceType: state.sourceType,
     sourceText: state.sourceText ? state.sourceText.slice(0, 5000) : null,
+    sourceTextMode: state.sourceTextMode || "",
     sourceDataUrlHash: state.sourceDataUrlHash || null,
     sourceUrl: state.sourceUrl || null,
     fileName: state.fileName || "",
@@ -14495,6 +14550,7 @@ async function prepareStateForSave() {
     sourceImageHash: state.sourceImageHash,
     sourceType: state.sourceType,
     sourceText: state.sourceText,
+    sourceTextMode: state.sourceTextMode || "",
     sourceDataUrl: state.sourceDataUrl,
     sourceDataUrlHash: state.sourceDataUrlHash || null,
     sourceVideo: state.sourceVideo,
@@ -14826,6 +14882,7 @@ async function loadSession(sessionId) {
     state.sourceImage = null;
     state.sourceImageHash = null;
     state.sourceText = null;
+    state.sourceTextMode = "";
     state.sourceDataUrl = null;
     state.sourceDataUrlHash = null;
     state.sourceVideo = null;
@@ -14864,7 +14921,28 @@ async function loadSession(sessionId) {
         : null
     ) || assets.find((asset) => asset.kind === "upload" && asset.fileName && asset.fileName === (sessionState?.fileName || sourceNodeData.fileName))
       || assets.find(a => a.kind === "upload");
-    if (!state.sourceNodeDeleted && sourceAsset) {
+    const hasManualSourceText = sessionState?.sourceType === "text" && sessionState?.sourceTextMode === "manual" && String(sessionState?.sourceText || "").trim();
+    if (!state.sourceNodeDeleted && hasManualSourceText) {
+      clearDocumentPreview(document.querySelector("#sourceNode .upload-target"));
+      state.sourceType = "text";
+      state.sourceText = sessionState.sourceText;
+      state.sourceTextMode = "manual";
+      state.sourceDataUrl = null;
+      state.sourceDataUrlHash = null;
+      state.sourceImage = null;
+      state.sourceImageHash = null;
+      state.sourceVideo = null;
+      state.sourceVideoHash = null;
+      state.sourceVideoMimeType = "";
+      state.sourceUrl = null;
+      state.fileName = sessionState.fileName || sourceTextCardTitle();
+      sourcePreview.src = "";
+      sourcePreview.classList.remove("has-image");
+      emptyState.classList.add("hidden");
+      sourceName.textContent = trimMiddle(state.fileName, 28);
+      if (researchButton) researchButton.disabled = false;
+      updateSourceBadge();
+    } else if (!state.sourceNodeDeleted && sourceAsset) {
       const isVideo = sessionState?.sourceType === "video" || sourceAsset.mimeType?.startsWith("video/") || /\.(mp4|webm|mov|m4v)$/i.test(sourceAsset.fileName || "");
       const isText = sessionState?.sourceType === "text" || sourceAsset.mimeType?.startsWith("text/") || /\.(txt|md|json|doc|docx|pdf|ppt|pptx)$/i.test(sourceAsset.fileName || "");
       state.sourceType = isVideo ? "video" : (isText ? "text" : "image");
@@ -14875,6 +14953,7 @@ async function loadSession(sessionId) {
         state.sourceImage = `/api/assets/${sourceAsset.hash}?kind=upload`;
         state.sourceImageHash = sourceAsset.hash;
         state.sourceText = null;
+        state.sourceTextMode = "";
         state.sourceDataUrl = null;
         state.sourceDataUrlHash = null;
         state.sourceVideo = null;
@@ -14886,6 +14965,7 @@ async function loadSession(sessionId) {
         state.sourceImage = null;
         state.sourceImageHash = null;
         state.sourceText = null;
+        state.sourceTextMode = "";
         state.sourceDataUrl = null;
         state.sourceDataUrlHash = null;
         state.sourceVideo = `/api/assets/${sourceAsset.hash}?kind=upload`;
@@ -14901,6 +14981,7 @@ async function loadSession(sessionId) {
         state.sourceVideoHash = null;
         state.sourceVideoMimeType = "";
         state.sourceText = sessionState?.sourceText || null;
+        state.sourceTextMode = sessionState?.sourceTextMode || "";
         state.sourceDataUrl = sessionState?.sourceDataUrl || null;
         state.sourceDataUrlHash = sourceAsset?.hash || null;
         sourcePreview.src = "";
@@ -14918,6 +14999,7 @@ async function loadSession(sessionId) {
       state.sourceImage = null;
       state.sourceImageHash = null;
       state.sourceText = null;
+      state.sourceTextMode = "";
       state.sourceDataUrl = null;
       state.sourceDataUrlHash = null;
 
@@ -14930,6 +15012,7 @@ async function loadSession(sessionId) {
       state.sourceImage = null;
       state.sourceImageHash = null;
       state.sourceText = null;
+      state.sourceTextMode = "";
       state.sourceDataUrl = null;
       state.sourceDataUrlHash = null;
       state.sourceVideo = null;
@@ -14970,6 +15053,9 @@ async function loadSession(sessionId) {
     }
     if (sessionState?.sourceText) {
       state.sourceText = sessionState.sourceText;
+    }
+    if (sessionState?.sourceTextMode) {
+      state.sourceTextMode = sessionState.sourceTextMode;
     }
     if (sessionState?.sourceDataUrl) {
       state.sourceDataUrl = sessionState.sourceDataUrl;
@@ -15096,6 +15182,7 @@ async function loadSession(sessionId) {
         const label = restored.element.querySelector(".standalone-source-name");
         if (label) label.textContent = trimMiddle(restored.sourceCard.fileName || restored.sourceCard.title || "Source card", 28);
         syncSourceCardImageActionState(n.nodeId);
+        syncSourceTextCardUi(n.nodeId);
       }
     }
 
@@ -15260,6 +15347,7 @@ async function loadSession(sessionId) {
 
     applyCollapseState();
     updateCounts();
+    syncSourceTextCardUi("source");
 
     if (Array.isArray(sessionState?.selectedNodeIds) && sessionState.selectedNodeIds.length) {
       setMultiSelection(sessionState.selectedNodeIds, { primaryId: sessionState.selectedNodeId });

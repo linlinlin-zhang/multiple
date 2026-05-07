@@ -67,6 +67,7 @@
             <div class="source-tabs">
               <button type="button" class="source-tab active" data-tab="file">文件</button>
               <button type="button" class="source-tab" data-tab="url">链接</button>
+              <button type="button" class="source-tab" data-tab="text">文字</button>
             </div>
             <label class="upload-target" for="fileInput">
               <input id="fileInput" type="file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v,.txt,.md,.json,.doc,.docx,.pdf,.ppt,.pptx" />
@@ -79,6 +80,9 @@
             <div class="url-input-panel hidden">
               <input id="urlInput" type="url" placeholder="https://..." autocomplete="off" />
               <button id="urlAnalyzeButton" class="primary-button" disabled>分析链接</button>
+            </div>
+            <div class="source-text-panel hidden">
+              <textarea id="sourceTextInput" class="source-text-input" placeholder="输入文字内容"></textarea>
             </div>
             <div class="node-caption">
               <span id="sourceName">源卡片</span>
@@ -359,13 +363,6 @@
         <div class="option-rich-content" hidden></div>
         <div class="option-action-row">
           <button class="generate-button">生成这张图</button>
-          <button class="card-text-button" type="button" aria-label="输入文字" title="输入文字">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 6h16"/>
-              <path d="M12 6v12"/>
-              <path d="M8 18h8"/>
-            </svg>
-          </button>
         </div>
       </section>
     </template>
