@@ -8,6 +8,7 @@ const SERVER_ENV = { ...process.env, PORT: "3001", NODE_ENV: "test" };
 let server;
 let failed = 0;
 const errors = [];
+const cookieJar = new Map();
 
 function log(msg) {
   console.log("[test] " + msg);
@@ -22,14 +23,32 @@ function fail(msg) {
 async function request(method, path, body) {
   const url = BASE_URL + path;
   const opts = { method, headers: {} };
+  const cookieHeader = serializeCookies();
+  if (cookieHeader) opts.headers.Cookie = cookieHeader;
   if (body) {
     opts.body = typeof body === "string" ? body : JSON.stringify(body);
     opts.headers["Content-Type"] = "application/json";
   }
   const res = await fetch(url, opts);
+  captureCookies(res);
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
   return { status: res.status, data };
+}
+
+function captureCookies(res) {
+  const setCookies = typeof res.headers.getSetCookie === "function"
+    ? res.headers.getSetCookie()
+    : (res.headers.get("set-cookie") ? [res.headers.get("set-cookie")] : []);
+  for (const raw of setCookies) {
+    const pair = String(raw || "").split(";")[0];
+    const index = pair.indexOf("=");
+    if (index > 0) cookieJar.set(pair.slice(0, index).trim(), pair.slice(index + 1).trim());
+  }
+}
+
+function serializeCookies() {
+  return [...cookieJar.entries()].map(([key, value]) => `${key}=${value}`).join("; ");
 }
 
 function startServer() {
@@ -44,7 +63,11 @@ function startServer() {
     }, 10000);
     const check = setInterval(async () => {
       try {
-        const res = await fetch(BASE_URL + "/api/health");
+        const headers = {};
+        const cookieHeader = serializeCookies();
+        if (cookieHeader) headers.Cookie = cookieHeader;
+        const res = await fetch(BASE_URL + "/api/health", { headers });
+        captureCookies(res);
         if (res.status === 200) {
           clearInterval(check);
           clearTimeout(timer);

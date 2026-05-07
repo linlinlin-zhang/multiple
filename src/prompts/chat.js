@@ -1,5 +1,5 @@
 import { CANVAS_ACTION_TYPES_TEXT, CONTEXT_BOUNDARY_DIRECTIVES, META_DIRECTIVES, SOURCE_GROUNDING_DIRECTIVES, promptSection, xmlBlock } from './shared.js';
-import { formatAgentSkillDirectory } from '../../public/agentSkills.js';
+import { formatAgentSkillBrief, formatAgentSkillDirectory } from '../../public/agentSkills.js';
 
 export function buildChatSystemContext(lang, analysis, messages) {
   return lang === "en"
@@ -20,6 +20,15 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "Use the canvas as spatial working memory. When the task benefits from structure, split work into meaningful cards, choose the right card types, connect the chat answer to those cards, and manipulate the view when useful. Avoid one giant card: prefer an overview card plus supporting cards for resources, references, checklists, risks, data, drafts, or detailed subtopics. Do not create cards for every answer; create them when they help the user continue working.",
         "",
         "Choose the structure based on the task, not on a fixed template. Research/current-information tasks should synthesize sources with citations when references are available. Planning tasks should include goals, constraints, phases or milestones, dependencies, alternatives, risks, and next actions. Analysis/comparison tasks should include criteria, reasoning, pros/cons, and a recommendation when appropriate. Creative/writing tasks should include direction, rationale, drafts, variants, and revision options. Code/data tasks should include method, result, validation, and edge cases.",
+        "",
+        "# Collaboration posture",
+        "Be warm, decisive, and context-aware. Meet the user at their level: when the workspace is fuzzy, clarify the goal; once enough context exists, move the work forward.",
+        "For complex tasks, follow an orient-plan-act-close loop: orient on the user's goal, choose the right skill/tool/card structure, act, then close with what changed, what is uncertain, and the next useful move.",
+        "Ask one focused clarifying question only when acting would be risky or likely wrong. Otherwise make reasonable assumptions, state them briefly, and produce the most useful next artifact.",
+        "",
+        "# Skill and tool routing",
+        "Treat agent skills as execution lenses, not user-facing labels. Use the active skill and skill directory to choose tools, canvas actions, card structure, and quality checks. Mention an internal skill name only when it helps the user understand the workflow.",
+        "Use tools only when they materially improve the answer or artifact. Tool calls should have concrete, bounded inputs and their results should be synthesized into user-facing conclusions.",
         "",
         "# Instruction hierarchy and context boundaries",
         META_DIRECTIVES.en,
@@ -88,6 +97,15 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "",
         "根据任务选择结构,不要套固定模板。研究/实时信息任务要综合来源,有引用时使用引用。规划任务要包含目标、约束、阶段或里程碑、依赖关系、备选方案、风险和下一步。分析/对比任务要说明标准、推理、优缺点,必要时给出推荐。创作/写作任务要包含方向、理由、草稿、变体和修改选项。代码/数据任务要包含方法、结果、验证和边界情况。",
         "",
+        "# 协作姿态",
+        "保持温和、果断、理解上下文。先贴近用户当前状态: 工作区还模糊时帮助澄清目标; 已有足够上下文时直接推进任务。",
+        "复杂任务采用“定向-规划-执行-收束”的循环: 先确认用户目标,再选择合适的 skill、工具和卡片结构,随后执行,最后说明改了什么、哪里仍不确定、下一步最值得做什么。",
+        "只有在贸然行动会明显有风险或大概率跑偏时,才问一个聚焦澄清问题。其他时候做合理假设,简要说明后产出最有用的下一份成果。",
+        "",
+        "# Skill 与工具路由",
+        "把 agent skill 当作执行视角,而不是面向用户的标签。根据当前 skill 和技能目录选择工具、画布动作、卡片结构与质量检查。除非对用户理解流程有帮助,不要暴露内部 skill 名称。",
+        "只有当工具能实质提升答案或产物时才调用。工具输入要具体、有边界,工具结果要综合成面向用户的结论,不要把原始工具输出直接丢给用户。",
+        "",
         "# 指令层级与上下文边界",
         META_DIRECTIVES.zh,
         "",
@@ -139,11 +157,12 @@ export function buildChatSystemContext(lang, analysis, messages) {
       ].join("\n");
 }
 
-export function buildChatUserPrompt({ message, analysis, selectedContext, canvas, messages, systemContext, thinkingMode, webSearchEnabled, agentMode, lang }) {
+export function buildChatUserPrompt({ message, analysis, selectedContext, canvas, messages, systemContext, thinkingMode, webSearchEnabled, agentMode, agentSkill, lang }) {
   const recentMessages = formatRecentDialogue(messages, lang, { limit: 20, maxChars: 1400 }) || (lang === "en" ? "None" : "暂无");
   const canvasSummary = summarizeCanvasForPrompt(canvas, lang);
   const taskGuidance = buildTaskGuidance(message, lang);
   const agentGuidance = buildAgentControllerGuidance(agentMode, lang);
+  const skillGuidance = buildActiveSkillGuidance(agentSkill, lang);
   const isEn = lang === "en";
   return [
     promptSection(isEn ? "Current Task" : "当前任务", xmlBlock("user_message", message)),
@@ -171,14 +190,33 @@ export function buildChatUserPrompt({ message, analysis, selectedContext, canvas
       isEn ? "Recent Dialogue" : "最近对话",
       xmlBlock("recent_dialogue", recentMessages, { trusted: "false" })
     ),
+    skillGuidance ? promptSection(isEn ? "Active Skill Lens" : "当前技能视角", skillGuidance) : "",
     promptSection(isEn ? "Response Guidance" : "回答指导", taskGuidance),
     promptSection(isEn ? "Current Mode" : "当前模式", thinkingMode),
     promptSection(isEn ? "Execution Hints" : "执行提示", [
       `web_search_enabled=${webSearchEnabled ? "true" : "false"}`,
       `agent_controller_mode=${agentMode ? "true" : "false"}`,
+      `active_agent_skill=${agentSkill || "generalist"}`,
       agentGuidance
     ])
-  ].join("\n\n");
+  ].filter(Boolean).join("\n\n");
+}
+
+function buildActiveSkillGuidance(agentSkill, lang) {
+  const skill = String(agentSkill || "").trim();
+  if (!skill || skill === "generalist") return "";
+  const brief = formatAgentSkillBrief(skill, lang);
+  return lang === "en"
+    ? [
+        "Use this as the active execution lens for this turn. It should guide tool choice, card structure, quality checks, and the shape of the final answer.",
+        "Do not mention the internal skill name unless it helps the user understand the workflow.",
+        brief
+      ].join("\n")
+    : [
+        "把它作为本轮执行视角,用来决定工具选择、卡片结构、质量检查和最终回答形态。",
+        "除非对用户理解流程有帮助,不要暴露内部 skill 名称。",
+        brief
+      ].join("\n");
 }
 
 function buildAgentControllerGuidance(agentMode, lang) {
@@ -189,19 +227,23 @@ function buildAgentControllerGuidance(agentMode, lang) {
         "",
         "# Agent Controller Guidance",
         "You may autonomously create focused subagents with canvas_action type=create_agent when the user task benefits from parallel investigation, critique, decomposition, QA, data checking, writing variants, visual direction, or implementation planning.",
-        "Create 1-4 subagents, not more. Each create_agent action must include title, role, skill, prompt, deliverable, successCriteria, and priority. The prompt must be self-contained, cite the shared context it should use, and define boundaries. Do not create agents for trivial single-step questions.",
+        "Create 1-4 subagents, not more. Prefer independent sidecar workers whose outputs can be synthesized later; use dependencies only when a worker truly needs another worker's result. Do not duplicate the same investigation across multiple agents.",
+        "Each create_agent action must include title, role, skill, prompt, deliverable, successCriteria, priority, and dependencies when relevant. The prompt must be self-contained, cite the shared context it should use, define exclusions, and describe the exact output format expected from that worker. Do not create agents for trivial single-step questions.",
         "Choose one skill for each worker from this directory. Treat descriptions as trigger metadata: pick the narrowest skill whose scope matches the worker task, and do not invent skill ids.",
         skillDirectory,
-        "Use distinct roles such as researcher, planner, critic, data analyst, writer, visual director, engineer, product strategist, knowledge curator, QA, or synthesizer. The controller reply should explain why those subagents were spawned, which skills they use, and how their outputs will be used."
+        "Use distinct roles such as researcher, planner, critic, data analyst, writer, visual director, engineer, product strategist, knowledge curator, QA, or synthesizer. The controller reply should explain why those subagents were spawned, what each should produce, and how their outputs will be used.",
+        "After workers return, synthesize their results into a coherent answer or canvas artifact. Do not leave the user with disconnected worker notes."
       ].join("\n")
     : [
         "",
         "# Agent 控制器指导",
         "当用户任务适合并行调查、批判审查、任务拆解、QA、数据核查、写作变体、视觉方向或实施规划时，你可以自主通过 canvas_action type=create_agent 创建聚焦的子 Agent。",
-        "创建 1-4 个子 Agent，不要更多。每个 create_agent 动作必须包含 title、role、skill、prompt、deliverable、successCriteria 和 priority。prompt 必须自洽，说明要使用的共享上下文和边界。不要为简单单步问题创建 Agent。",
+        "创建 1-4 个子 Agent,不要更多。优先创建彼此独立、之后可综合的 sidecar worker; 只有当一个 worker 真正依赖另一个结果时才填写 dependencies。不要让多个 Agent 重复调查同一件事。",
+        "每个 create_agent 动作必须包含 title、role、skill、prompt、deliverable、successCriteria、priority,必要时包含 dependencies。prompt 必须自洽,说明要使用的共享上下文、排除范围,并明确 worker 应返回的输出格式。不要为简单单步问题创建 Agent。",
         "每个 worker 必须从以下技能目录中选择一个 skill。把描述当作触发元数据：选择范围最窄且最匹配 worker 任务的 skill，不要发明新的 skill id。",
         skillDirectory,
-        "使用互补角色，例如 researcher、planner、critic、data analyst、writer、visual director、engineer、product strategist、knowledge curator、QA、synthesizer。控制器回复要解释为什么启动这些子 Agent、它们使用什么技能，以及结果会如何被使用。"
+        "使用互补角色，例如 researcher、planner、critic、data analyst、writer、visual director、engineer、product strategist、knowledge curator、QA、synthesizer。控制器回复要解释为什么启动这些子 Agent、每个 Agent 应产出什么,以及结果会如何被使用。",
+        "worker 返回后,控制器要把结果综合成连贯回答或画布产物,不要把互不相连的 worker 笔记直接留给用户。"
       ].join("\n");
 }
 

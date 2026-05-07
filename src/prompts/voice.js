@@ -1,4 +1,5 @@
 import { CANVAS_ACTION_TYPES_TEXT, CONTEXT_BOUNDARY_DIRECTIVES, xmlBlock } from './shared.js';
+import { AGENT_SKILL_IDS } from '../../public/agentSkills.js';
 
 export function buildRealtimeInstruction(context) {
   const lang = context.language === "en" ? "English" : "Chinese";
@@ -45,7 +46,7 @@ export function buildRealtimeInstruction(context) {
     "- nodeId: exact ID from Canvas state.",
     "- nodeName: used only when exact ID uncertain.",
     "- position vocabulary: left, right, above, below, center, upper-left, upper-right, lower-left, lower-right, canvas-center, screen-center.",
-    "- For create_agent, include title, role, prompt, deliverable, successCriteria, and priority. Use only for explicit autonomous/subagent requests.",
+    `- For create_agent, include title, role, skill, prompt, deliverable, successCriteria, priority, and dependencies when relevant. skill must be one of: ${AGENT_SKILL_IDS.join(", ")}. Use only for explicit autonomous/subagent requests.`,
     "- For create_note/create_plan/create_todo/create_weather/create_map/create_link/create_code/create_table/create_timeline/create_comparison/create_metric/create_quote/create_web_card, include a self-contained `content` object. A title-only card is invalid.",
     "- Content shapes: note {text,sections}; plan {summary,steps:[{title,description,time,priority}]}; todo {items:[{text,done,priority,rationale}]}; weather {location,forecast,highlights}; map {location,address,points}; table {columns,rows}; timeline {items:[{phase,title,description,time}]}; comparison {items:[{title,summary,pros,cons}]}; metric {metrics:[{label,value,note}]}; quote {quotes:[{text,source}]}; link/web {title,url,description,mainContent,markdown,source,faviconUrl}; code {language,code,explanation,usage}.",
     "- For complex spoken requests, prefer a small bundle of useful cards rather than one giant card: e.g. plan+todo+timeline, comparison+metric, note+table+todo, or web_card+quote+note.",
@@ -53,7 +54,7 @@ export function buildRealtimeInstruction(context) {
     "- Use nodeId only when the exact ID appears in Canvas state. Otherwise use nodeName and a clear spoken title.",
     "",
     "# Output Format",
-    '{"transcript":"recognized user speech","reply":"short spoken response, not JSON","actions":[{"type":"action_type","nodeId":"exact optional id","nodeName":"optional spoken card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","scope":"optional scope","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url","role":"optional agent role","deliverable":"optional agent deliverable","successCriteria":"optional agent success criteria","priority":"optional priority","content":{"text":"structured payload for rich cards"}}]}',
+    '{"transcript":"recognized user speech","reply":"short spoken response, not JSON","actions":[{"type":"action_type","nodeId":"exact optional id","nodeName":"optional spoken card name","parentNodeId":"optional exact parent id","parentNodeName":"optional parent name","anchorNodeId":"optional exact anchor id","anchorNodeName":"optional anchor name","position":"optional position","x":0,"y":0,"dx":0,"dy":0,"scale":1,"amount":180,"mode":"optional mode","scope":"optional scope","title":"optional title","description":"optional description","prompt":"optional prompt","query":"optional research/search query","url":"optional url","role":"optional agent role","skill":"optional agent skill id","deliverable":"optional agent deliverable","successCriteria":"optional agent success criteria","priority":"optional priority","dependencies":["optional dependency note"],"content":{"text":"structured payload for rich cards"}}]}',
     "",
     "# Context",
     xmlBlock("selected_card", selected, { trusted: "false" }),

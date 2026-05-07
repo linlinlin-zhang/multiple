@@ -203,7 +203,7 @@ export function inferAgentSkill(role = "", text = "") {
   if (/product|ux|user journey|requirement|acceptance criteria|feature|priority|产品|体验|交互|用户旅程|需求|验收|功能|优先级/.test(haystack)) return "product";
   if (/code|implement|developer|debug|bug|api|sdk|integration|refactor|代码|实现|开发|调试|缺陷|接口|集成|重构/.test(haystack)) return "implementation";
   if (/knowledge|summari[sz]e|taxonomy|glossary|organize|meeting notes|知识|总结|摘要|整理|分类|术语|会议纪要|知识图谱/.test(haystack)) return "knowledge";
-  if (/visual|image|design|style|storyboard|video|prompt|视觉|图片|图像|设计|风格|分镜|视频/.test(haystack)) return "visual";
+  if (/visual|image|design|style|storyboard|video|image prompt|video prompt|visual prompt|视觉|图片|图像|设计|风格|分镜|视频|图像提示词|视频提示词|视觉提示词/.test(haystack)) return "visual";
   return "generalist";
 }
 
@@ -223,6 +223,9 @@ export function formatAgentSkillDirectory(lang = "zh") {
     `  When: ${skill.when[key]}`,
     `  Tools: ${skill.toolStrategy[key]}`,
     `  Output: ${skill.outputContract[key]}`,
+    key === "en"
+      ? "  Quality: produce synthesis-ready findings with evidence, assumptions, uncertainty, and a concrete next action."
+      : "  Quality: 产出可综合的结果,包含依据、假设、不确定性和具体下一步。",
     `  Canvas actions: ${skill.canvasActions.join(", ")}`
   ].join("\n")).join("\n");
 }
@@ -236,6 +239,12 @@ export function formatAgentSkillBrief(skillId, lang = "zh") {
     `When to use: ${skill.when[key]}`,
     `Tool strategy: ${skill.toolStrategy[key]}`,
     `Output contract: ${skill.outputContract[key]}`,
+    key === "en"
+      ? "Operating loop: clarify only if blocked; gather or verify evidence; produce the smallest useful artifact; state assumptions, uncertainty, and next action."
+      : "执行循环：只有被阻塞时才澄清；先收集或核验证据；产出最小但有用的成果；说明假设、不确定性和下一步。",
+    key === "en"
+      ? "Handoff quality: result must be synthesis-ready, scoped, and explicit about sources or tools used."
+      : "交接质量：结果必须可被综合、有明确边界,并说明使用过的来源或工具。",
     `Preferred canvas actions: ${skill.canvasActions.join(", ")}`
   ].join("\n");
 }

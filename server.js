@@ -1570,7 +1570,7 @@ async function handleChat(body, res) {
   }
 
   const chatOptions = runtimeConfigs.chat.options || {};
-  const activeAgentSkill = normalizeAgentSkill("", "", message);
+  const activeAgentSkill = normalizeAgentSkill(body?.agentSkill, "", message);
   const activeAgentSkillTools = agentSkillToolFlags(activeAgentSkill);
   const webSearchEnabled = chatOptions.enableWebSearch !== false && (activeAgentSkillTools.webSearch || shouldUseWebSearchReadable(message, canvas, selectedContext));
   const webSearchForced = chatOptions.enableWebSearch !== false && (activeAgentSkillTools.webSearch || shouldForceWebSearchReadable(message));
@@ -1590,6 +1590,7 @@ async function handleChat(body, res) {
     thinkingMode,
     webSearchEnabled,
     agentMode,
+    agentSkill: activeAgentSkill,
     lang
   });
 
@@ -2207,6 +2208,7 @@ function normalizeAgentAction(action, message, lang, index = 0) {
     stringOr(action.prompt || action.description || action.query, message),
     "",
     lang === "en" ? `Role: ${role}` : `角色：${role}`,
+    lang === "en" ? `Skill: ${skill}` : `技能：${skill}`,
     lang === "en" ? `Deliverable: ${deliverable}` : `交付物：${deliverable}`,
     lang === "en" ? `Success criteria: ${successCriteria}` : `成功标准：${successCriteria}`
   ].filter(Boolean).join("\n").slice(0, 1600);
