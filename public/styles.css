@@ -1993,6 +1993,23 @@ body.chat-sidebar-closed .statusbar > * {
   font-size: 13px;
 }
 
+.agent-skill-field {
+  display: grid;
+  gap: 6px;
+  color: var(--inkMuted);
+  font-size: 12px;
+}
+
+.agent-skill-select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--divider);
+  border-radius: 10px;
+  padding: 0 10px;
+  color: var(--ink);
+  background: var(--ice);
+}
+
 .agent-prompt {
   width: 100%;
   min-height: 86px;

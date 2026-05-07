@@ -18,6 +18,7 @@ import { resolveVisitor } from "./src/lib/visitor.js";
 import { PrismaClient } from "@prisma/client";
 import WebSocket from "ws";
 import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt, buildChatSystemContext, buildChatUserPrompt, buildGeneratePrompt, buildExplainPrompt, buildExplainSystemPrompt, buildRealtimeInstruction, buildDeepThinkSystemPrompt, buildDeepThinkUserPrompt, buildExploreContent, CONTEXT_BOUNDARY_DIRECTIVES, SOURCE_GROUNDING_DIRECTIVES, xmlBlock, CANVAS_ACTION_TYPES, CANVAS_ACTION_TYPES_TEXT } from "./src/prompts/index.js";
+import { AGENT_SKILL_IDS, agentSkillToolFlags, normalizeAgentSkill, normalizeAgentSkillId } from "./public/agentSkills.js";
 import { ingestText, ingestSnippet, retrieveContext, formatContextForPrompt, isEmbeddingConfigured, CONTEXT_KINDS } from "./src/lib/rag/index.js";
 import { classifyContent, getFallbackTaskType, resolveTaskType, routeContent } from "./src/lib/taskRouter.js";
 
@@ -190,6 +191,7 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
         mode: { type: "string", description: "Optional mode hint, e.g. text-to-image, image-to-image, reverse-image-search, style, edit, reference." },
         scope: { type: "string" },
         role: { type: "string", description: "For create_agent: the worker role or specialty, such as researcher, critic, planner, data analyst, writer, visual director, or QA." },
+        skill: { type: "string", enum: AGENT_SKILL_IDS, description: "For create_agent: the skill package to run with. Use one of generalist, research, analysis, planning, critique, writing, visual." },
         deliverable: { type: "string", description: "For create_agent: the concrete output the worker must return." },
         successCriteria: { type: "string", description: "For create_agent: how the controller should judge whether the subagent result is useful." },
         priority: { type: "string", description: "For create_agent: optional priority such as high, medium, or low." },
@@ -1564,8 +1566,11 @@ async function handleChat(body, res) {
   }
 
   const chatOptions = runtimeConfigs.chat.options || {};
-  const webSearchEnabled = chatOptions.enableWebSearch !== false && shouldUseWebSearchReadable(message, canvas, selectedContext);
-  const webSearchForced = chatOptions.enableWebSearch !== false && shouldForceWebSearchReadable(message);
+  const preferredAgentSkill = normalizeAgentSkillId(body?.preferredAgentSkill || body?.agentSkill);
+  const activeAgentSkill = normalizeAgentSkill(body?.agentSkill || preferredAgentSkill, "", message);
+  const activeAgentSkillTools = agentSkillToolFlags(activeAgentSkill);
+  const webSearchEnabled = chatOptions.enableWebSearch !== false && (activeAgentSkillTools.webSearch || shouldUseWebSearchReadable(message, canvas, selectedContext));
+  const webSearchForced = chatOptions.enableWebSearch !== false && (activeAgentSkillTools.webSearch || shouldForceWebSearchReadable(message));
   const subagentsEnabled = body?.subagentsEnabled === true;
   const agentMode = subagentsEnabled && (body?.agentMode === true || shouldUseAgentModeReadable(message));
   const hasVideoInput = Boolean(videoDataUrl);
@@ -1582,6 +1587,7 @@ async function handleChat(body, res) {
     thinkingMode,
     webSearchEnabled,
     agentMode,
+    preferredAgentSkill,
     lang
   });
 
@@ -1601,7 +1607,8 @@ async function handleChat(body, res) {
       message,
       webSearchEnabled: webSearchEnabled || webSearchForced,
       thinkingMode,
-      agentMode
+      agentMode,
+      agentSkill: activeAgentSkill
     });
     applyChatQualityRequestOptions(videoChatPayload, runtimeConfigs.chat, message, {
       webSearchEnabled: webSearchEnabled || webSearchForced,
@@ -1652,7 +1659,8 @@ async function handleChat(body, res) {
     previousResponseId: effectivePreviousResponseId,
     webSearchEnabled: webSearchEnabled || webSearchForced,
     thinkingMode,
-    agentMode
+    agentMode,
+    agentSkill: activeAgentSkill
   });
   applyChatQualityRequestOptions(chatPayload, runtimeConfigs.chat, message, {
     webSearchEnabled: webSearchEnabled || webSearchForced,
@@ -1886,8 +1894,8 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
   };
 }
 
-function buildChatResponsesPayload({ instructions, content, message, previousResponseId, webSearchEnabled, thinkingMode, agentMode = false, wrappedCanvasTool = false }) {
-  const tools = buildResponsesTools(message, webSearchEnabled, { wrappedCanvasTool, agentMode });
+function buildChatResponsesPayload({ instructions, content, message, previousResponseId, webSearchEnabled, thinkingMode, agentMode = false, wrappedCanvasTool = false, agentSkill = "" }) {
+  const tools = buildResponsesTools(message, webSearchEnabled, { wrappedCanvasTool, agentMode, agentSkill });
   const payload = {
     instructions,
     input: [
@@ -1909,7 +1917,7 @@ function buildChatResponsesPayload({ instructions, content, message, previousRes
   return payload;
 }
 
-function buildVideoChatCompletionsPayload({ instructions, userPrompt, imageDataUrl, videoDataUrl, message, webSearchEnabled, thinkingMode, agentMode = false }) {
+function buildVideoChatCompletionsPayload({ instructions, userPrompt, imageDataUrl, videoDataUrl, message, webSearchEnabled, thinkingMode, agentMode = false, agentSkill = "" }) {
   const content = [
     { type: "video_url", video_url: { url: videoDataUrl }, fps: 2 }
   ];
@@ -1925,21 +1933,28 @@ function buildVideoChatCompletionsPayload({ instructions, userPrompt, imageDataU
     ]
   };
   const chatOptions = runtimeConfigs.chat.options || {};
+  const skillTools = agentSkillToolFlags(agentSkill);
   if (chatOptions.enableCanvasTools !== false && (agentMode || !shouldSkipCanvasToolForCodeOnlyRequest(message))) {
     payload.tools = CANVAS_TOOLS;
     payload.tool_choice = "auto";
   }
   applyReasoningMode(payload, runtimeConfigs.chat, thinkingMode);
   applyWebSearchMode(payload, runtimeConfigs.chat, webSearchEnabled);
+  if (skillTools.codeInterpreter && chatOptions.enableCodeInterpreter !== false) {
+    payload.tools = payload.tools || [];
+    if (!payload.tools.some((tool) => tool.type === "code_interpreter")) payload.tools.push({ type: "code_interpreter" });
+    payload.tool_choice = "auto";
+  }
   return payload;
 }
 
 function buildResponsesTools(message, webSearchEnabled = false, options = {}) {
   const tools = [];
   const chatOptions = runtimeConfigs.chat.options || {};
-  if (webSearchEnabled && chatOptions.enableWebSearch !== false) tools.push({ type: "web_search" });
-  if (chatOptions.enableWebExtractor !== false && shouldUseWebExtractor(message)) tools.push({ type: "web_extractor" });
-  if (chatOptions.enableCodeInterpreter !== false && shouldUseCodeInterpreter(message)) tools.push({ type: "code_interpreter" });
+  const skillTools = agentSkillToolFlags(options.agentSkill);
+  if ((webSearchEnabled || skillTools.webSearch) && chatOptions.enableWebSearch !== false) tools.push({ type: "web_search" });
+  if (chatOptions.enableWebExtractor !== false && (skillTools.webExtractor || shouldUseWebExtractor(message))) tools.push({ type: "web_extractor" });
+  if (chatOptions.enableCodeInterpreter !== false && (skillTools.codeInterpreter || shouldUseCodeInterpreter(message))) tools.push({ type: "code_interpreter" });
   if (chatOptions.enableCanvasTools !== false && (options.agentMode || !shouldSkipCanvasToolForCodeOnlyRequest(message))) {
     tools.push(options.wrappedCanvasTool ? RESPONSES_CANVAS_TOOL_SCHEMA_WRAPPED : RESPONSES_CANVAS_TOOL_SCHEMA);
   }
@@ -2183,6 +2198,7 @@ function finalizeAgentControllerActions(actions, message, lang) {
 function normalizeAgentAction(action, message, lang, index = 0) {
   const title = stringOr(action.title || action.nodeName, lang === "en" ? `Subagent ${index + 1}` : `子 Agent ${index + 1}`).slice(0, 80);
   const role = stringOr(action.role, inferAgentRole(title, action.prompt || action.description || message, lang)).slice(0, 80);
+  const skill = normalizeAgentSkill(action.skill || action.agentSkill, role, `${title}\n${action.prompt || action.description || message}`);
   const deliverable = stringOr(action.deliverable, lang === "en" ? "A concise, evidence-aware result that the controller can synthesize." : "一份可供控制器综合使用的简洁、有依据的结果。").slice(0, 360);
   const successCriteria = stringOr(action.successCriteria, lang === "en" ? "Result is specific, bounded, actionable, and notes uncertainties." : "结果具体、有边界、可执行，并说明不确定性。").slice(0, 500);
   const prompt = [
@@ -2197,6 +2213,7 @@ function normalizeAgentAction(action, message, lang, index = 0) {
     type: "create_agent",
     title,
     role,
+    skill,
     prompt,
     description: stringOr(action.description, deliverable).slice(0, 700),
     deliverable,
@@ -3884,6 +3901,7 @@ function buildAgentArtifacts(actions, agentMode = false) {
       summary: action.description || action.deliverable || action.prompt || action.query || "",
       status: action.role || "no-thinking",
       role: action.role || "",
+      skill: action.skill || "",
       deliverable: action.deliverable || "",
       successCriteria: action.successCriteria || "",
       priority: action.priority || ""
@@ -3923,6 +3941,7 @@ function inferDemoChatActions(message) {
       type: "create_agent",
       title: "Demo subagent",
       role: "researcher",
+      skill: "research",
       prompt: String(message || "").slice(0, 500),
       deliverable: "A focused demo result for the controller.",
       successCriteria: "Specific, bounded, and actionable.",
@@ -4220,6 +4239,7 @@ function normalizeVoiceActions(value) {
         mode: normalizedActionString(action.mode, 80),
         scope: normalizedActionString(action.scope, 80),
         role: normalizedActionString(action.role, 80),
+        skill: normalizeAgentSkillId(action.skill || action.agentSkill),
         deliverable: normalizedActionString(action.deliverable, 360),
         successCriteria: normalizedActionString(action.successCriteria, 500),
         priority: normalizedActionString(action.priority, 40),

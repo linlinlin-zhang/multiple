@@ -194,6 +194,12 @@
               <input id="subagentsToggle" type="checkbox" />
               <span>允许模型自动创建 subagents</span>
             </label>
+            <label class="agent-skill-field">
+              <span>Agent skill</span>
+              <select id="agentSkillSelect" class="agent-skill-select">
+                <option value="">自动选择</option>
+              </select>
+            </label>
             <textarea id="agentPrompt" class="agent-prompt" rows="3" placeholder="描述希望 Agent 完成的任务"></textarea>
             <button id="runAgentButton" class="agent-run-button" type="button">运行 Agent</button>
           </div>

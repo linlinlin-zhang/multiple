@@ -1,5 +1,6 @@
 import { micromark } from "https://esm.sh/micromark@4";
 import { gfm, gfmHtml } from "https://esm.sh/micromark-extension-gfm@3";
+import { AGENT_SKILLS, agentSkillLabel, formatAgentSkillBrief, normalizeAgentSkill } from "./agentSkills.js";
 
 const viewport = document.querySelector("#viewport");
 const board = document.querySelector("#board");
@@ -52,6 +53,7 @@ const chatAgentButton = document.querySelector("#chatAgentButton");
 const agentPanel = document.querySelector("#agentPanel");
 const closeAgentPanel = document.querySelector("#closeAgentPanel");
 const subagentsToggle = document.querySelector("#subagentsToggle");
+const agentSkillSelect = document.querySelector("#agentSkillSelect");
 const agentPrompt = document.querySelector("#agentPrompt");
 const runAgentButton = document.querySelector("#runAgentButton");
 const chatNewButton = document.querySelector("#chatNewButton");
@@ -86,6 +88,7 @@ const STORAGE_KEYS = {
   chatSidebarWidth: ["thoughtgrid.chatSidebarWidth", "oryzae.chatSidebarWidth"],
   chatInputHeight: ["thoughtgrid.chatInputHeight", "oryzae.chatInputHeight"],
   subagentsEnabled: ["thoughtgrid-subagents-enabled", "oryzae-subagents-enabled"],
+  preferredAgentSkill: ["thoughtgrid-preferred-agent-skill", "oryzae-preferred-agent-skill"],
   thinkingMode: ["thoughtgrid-thinking-mode", "oryzae-thinking-mode"],
   workbenchTourSeen: ["thoughtgrid.workbenchTourSeen.v5", "oryzae.workbenchTourSeen.v5"]
 };
@@ -181,6 +184,7 @@ const state = {
   selectedNodeIds: new Set(),
   thinkingMode: "no-thinking",
   subagentsEnabled: false,
+  preferredAgentSkill: "",
   view: {
     x: 0,
     y: 0,
@@ -1402,6 +1406,15 @@ function renderAllText() {
     deepThinkModeCancel.title = t("chat.cancelDeepThink");
     deepThinkModeCancel.setAttribute("aria-label", t("chat.cancelDeepThink"));
   }
+  const agentPanelTitle = document.querySelector(".agent-panel-header strong");
+  if (agentPanelTitle) agentPanelTitle.textContent = currentLang === "en" ? "Agent" : "Agent";
+  const subagentsToggleLabel = document.querySelector(".agent-subagents-toggle span");
+  if (subagentsToggleLabel) subagentsToggleLabel.textContent = currentLang === "en" ? "Allow automatic subagents" : "允许模型自动创建 subagents";
+  const agentSkillLabelEl = document.querySelector(".agent-skill-field span");
+  if (agentSkillLabelEl) agentSkillLabelEl.textContent = currentLang === "en" ? "Agent skill" : "Agent 技能";
+  renderAgentSkillSelect();
+  if (agentPrompt) agentPrompt.placeholder = currentLang === "en" ? "Describe the task you want Agent to complete" : "描述希望 Agent 完成的任务";
+  if (runAgentButton) runAgentButton.textContent = currentLang === "en" ? "Run Agent" : "运行 Agent";
   const asrBtn = document.querySelector("#chatAsrButton");
   if (asrBtn) {
     asrBtn.title = t("voice.asr");
@@ -1568,6 +1581,7 @@ async function init() {
   await loadLanguage();
   loadThinkingMode();
   loadSubagentsMode();
+  loadPreferredAgentSkill();
   hydrateChatThreads();
   updateChatPrimaryButtonMode();
 
@@ -2469,6 +2483,7 @@ function wireControls() {
   chatAgentButton?.addEventListener("click", toggleAgentPanel);
   closeAgentPanel?.addEventListener("click", () => setAgentPanelOpen(false));
   subagentsToggle?.addEventListener("change", () => setSubagentsMode(Boolean(subagentsToggle.checked)));
+  agentSkillSelect?.addEventListener("change", () => setPreferredAgentSkill(agentSkillSelect.value));
   runAgentButton?.addEventListener("click", runCustomAgentTask);
   chatSidebarToggle?.addEventListener("click", () => {
     setChatSidebarOpen(true);
@@ -3720,6 +3735,8 @@ function normalizeChatArtifacts(value) {
       imageUrl: String(item.imageUrl || item.localImageUrl || item.thumbnailUrl || item.thumbnail_url || "").slice(0, 512),
       localImageUrl: String(item.localImageUrl || "").slice(0, 512),
       query: String(item.query || "").slice(0, 240),
+      role: String(item.role || "").slice(0, 80),
+      skill: String(item.skill || item.agentSkill || "").slice(0, 40),
       status: String(item.status || "").slice(0, 40)
     }));
 }
@@ -4060,6 +4077,39 @@ function loadSubagentsMode() {
   setSubagentsMode(getStoredItem(STORAGE_KEYS.subagentsEnabled) === "true", { silent: true });
 }
 
+function renderAgentSkillSelect() {
+  if (!agentSkillSelect) return;
+  const selected = state.preferredAgentSkill || "";
+  agentSkillSelect.innerHTML = "";
+  const autoOption = document.createElement("option");
+  autoOption.value = "";
+  autoOption.textContent = currentLang === "en" ? "Auto skill" : "自动选择";
+  agentSkillSelect.appendChild(autoOption);
+  AGENT_SKILLS.forEach((skill) => {
+    const option = document.createElement("option");
+    option.value = skill.id;
+    option.textContent = `${agentSkillLabel(skill.id, currentLang)} · ${skill.id}`;
+    agentSkillSelect.appendChild(option);
+  });
+  agentSkillSelect.value = selected;
+}
+
+function setPreferredAgentSkill(skillId, { silent = false } = {}) {
+  const normalized = AGENT_SKILLS.some((skill) => skill.id === skillId) ? skillId : "";
+  state.preferredAgentSkill = normalized;
+  if (agentSkillSelect) agentSkillSelect.value = normalized;
+  setStoredItem(STORAGE_KEYS.preferredAgentSkill, normalized);
+  if (!silent) {
+    const label = normalized ? agentSkillLabel(normalized, currentLang) : (currentLang === "en" ? "Auto skill" : "自动选择");
+    showToast(currentLang === "en" ? `Agent skill: ${label}` : `Agent 技能：${label}`);
+  }
+}
+
+function loadPreferredAgentSkill() {
+  renderAgentSkillSelect();
+  setPreferredAgentSkill(getStoredItem(STORAGE_KEYS.preferredAgentSkill) || "", { silent: true });
+}
+
 function toggleSubagentsMode() {
   setSubagentsMode(!state.subagentsEnabled);
   setAgentPanelOpen(true);
@@ -4092,6 +4142,7 @@ async function runCustomAgentTask() {
   await submitChatMessage(task, {
     agentMode: true,
     subagentsEnabled: true,
+    preferredAgentSkill: state.preferredAgentSkill || "",
     forcedThinkingMode: "no-thinking"
   });
 }
@@ -5222,6 +5273,7 @@ async function submitChatMessage(message, options = {}) {
       thinkingMode: effectiveThinkingMode,
       agentMode,
       subagentsEnabled,
+      preferredAgentSkill: agentMode ? String(options.preferredAgentSkill ?? state.preferredAgentSkill ?? "") : "",
       chatAttachments: chatAttachmentsPayload,
       sessionId: currentSessionId || "",
       previousResponseId: ensureActiveChatThread().previousResponseId || ""
@@ -6828,12 +6880,13 @@ async function exportCanvasReportFromAction(action = {}) {
   return true;
 }
 
-function agentActionMarkdown({ title, role, prompt, deliverable, successCriteria, priority, dependencies, status, result }) {
+function agentActionMarkdown({ title, role, skill, prompt, deliverable, successCriteria, priority, dependencies, status, result }) {
   const label = currentLang === "en";
   const lines = [
     `## ${title}`,
     `**${label ? "Status" : "状态"}**: ${status}`,
     role ? `**${label ? "Role" : "角色"}**: ${role}` : "",
+    skill ? `**${label ? "Skill" : "技能"}**: ${agentSkillLabel(skill, currentLang)} (${skill})` : "",
     priority ? `**${label ? "Priority" : "优先级"}**: ${priority}` : "",
     deliverable ? `**${label ? "Deliverable" : "交付物"}**: ${deliverable}` : "",
     successCriteria ? `**${label ? "Success criteria" : "成功标准"}**: ${successCriteria}` : "",
@@ -6865,10 +6918,14 @@ async function runSubagentAction(action) {
   const priority = String(action.priority || "medium").slice(0, 40);
   const dependencies = Array.isArray(action.dependencies) ? action.dependencies.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 6) : [];
   const basePrompt = String(action.prompt || action.description || action.query || title).trim();
+  const skill = normalizeAgentSkill(action.skill || action.agentSkill, role, `${title}\n${basePrompt}\n${deliverable}`);
+  const skillBrief = formatAgentSkillBrief(skill, currentLang);
   const prompt = [
     basePrompt,
     "",
     currentLang === "en" ? `Role: ${role}` : `角色：${role}`,
+    currentLang === "en" ? `Skill: ${skill}` : `技能：${skill}`,
+    skillBrief,
     currentLang === "en" ? `Deliverable: ${deliverable}` : `交付物：${deliverable}`,
     currentLang === "en" ? `Success criteria: ${successCriteria}` : `成功标准：${successCriteria}`,
     dependencies.length ? (currentLang === "en" ? `Dependencies: ${dependencies.join("; ")}` : `依赖：${dependencies.join("; ")}`) : ""
@@ -6916,6 +6973,8 @@ async function runSubagentAction(action) {
         ? [
             "Run this as an isolated no-thinking subagent for a ThoughtGrid controller.",
             `Worker role: ${role}`,
+            `Worker skill: ${skill}`,
+            skillBrief,
             `Deliverable: ${deliverable}`,
             `Success criteria: ${successCriteria}`,
             "Return a complete useful result and safe canvas actions when they help preserve reusable findings. Do not create further subagents."
@@ -6923,6 +6982,8 @@ async function runSubagentAction(action) {
         : [
             "请作为 ThoughtGrid 控制器下的隔离 no-thinking 子 Agent 执行任务。",
             `工作角色：${role}`,
+            `工作技能：${skill}`,
+            skillBrief,
             `交付物：${deliverable}`,
             `成功标准：${successCriteria}`,
             "返回完整有用的结果；如果有助于沉淀可复用发现，可以返回安全的画布动作。不要继续创建新的子 Agent。"
@@ -6931,6 +6992,7 @@ async function runSubagentAction(action) {
       thinkingMode: "no-thinking",
       selectedContext: buildSelectedNodeContext(parentNodeId),
       canvas: buildVoiceCanvasContext(),
+      agentSkill: skill,
       agentMode: false,
       subagentsEnabled: false,
       previousResponseId: ""
@@ -6942,7 +7004,7 @@ async function runSubagentAction(action) {
       node.option.description = reply.slice(0, 900);
       node.option.prompt = `${prompt}\n\n${reply}`.slice(0, 4000);
       node.option.content = {
-        text: agentActionMarkdown({ title, role, prompt, deliverable, successCriteria, priority, dependencies, status: currentLang === "en" ? "done" : "已完成", result: reply })
+        text: agentActionMarkdown({ title, role, skill, prompt, deliverable, successCriteria, priority, dependencies, status: currentLang === "en" ? "done" : "已完成", result: reply })
       };
       const descEl = node.element.querySelector(".option-description");
       if (descEl) descEl.textContent = node.option.description;
@@ -6960,6 +7022,7 @@ async function runSubagentAction(action) {
         summary: reply.slice(0, 900),
         status: role,
         role,
+        skill,
         deliverable,
         successCriteria
       }]
@@ -6983,7 +7046,7 @@ async function runSubagentAction(action) {
     if (node?.option) {
       node.option.description = message.slice(0, 280);
       node.option.content = {
-        text: agentActionMarkdown({ title, role, prompt, deliverable, successCriteria, priority, dependencies, status: currentLang === "en" ? "failed" : "失败", result: message })
+        text: agentActionMarkdown({ title, role, skill, prompt, deliverable, successCriteria, priority, dependencies, status: currentLang === "en" ? "failed" : "失败", result: message })
       };
       const descEl = node.element.querySelector(".option-description");
       if (descEl) descEl.textContent = node.option.description;
@@ -9233,7 +9296,9 @@ function renderChatArtifacts(artifacts) {
     }
     const meta = document.createElement("span");
     meta.className = "chat-artifact-type";
-    meta.textContent = artifact.status || artifact.type || "note";
+    meta.textContent = artifact.skill
+      ? `${artifact.status || artifact.role || artifact.type || "agent"} · ${agentSkillLabel(artifact.skill, currentLang)}`
+      : (artifact.status || artifact.type || "note");
     const title = document.createElement("strong");
     title.textContent = artifact.title || artifact.query || artifact.url || "Material";
     card.append(meta, title);

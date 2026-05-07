@@ -1,4 +1,5 @@
 import { CANVAS_ACTION_TYPES_TEXT, CONTEXT_BOUNDARY_DIRECTIVES, META_DIRECTIVES, SOURCE_GROUNDING_DIRECTIVES, promptSection, xmlBlock } from './shared.js';
+import { formatAgentSkillBrief, formatAgentSkillDirectory } from '../../public/agentSkills.js';
 
 export function buildChatSystemContext(lang, analysis, messages) {
   return lang === "en"
@@ -138,11 +139,11 @@ export function buildChatSystemContext(lang, analysis, messages) {
       ].join("\n");
 }
 
-export function buildChatUserPrompt({ message, analysis, selectedContext, canvas, messages, systemContext, thinkingMode, webSearchEnabled, agentMode, lang }) {
+export function buildChatUserPrompt({ message, analysis, selectedContext, canvas, messages, systemContext, thinkingMode, webSearchEnabled, agentMode, preferredAgentSkill, lang }) {
   const recentMessages = formatRecentDialogue(messages, lang, { limit: 20, maxChars: 1400 }) || (lang === "en" ? "None" : "暂无");
   const canvasSummary = summarizeCanvasForPrompt(canvas, lang);
   const taskGuidance = buildTaskGuidance(message, lang);
-  const agentGuidance = buildAgentControllerGuidance(agentMode, lang);
+  const agentGuidance = buildAgentControllerGuidance(agentMode, lang, preferredAgentSkill);
   const isEn = lang === "en";
   return [
     promptSection(isEn ? "Current Task" : "当前任务", xmlBlock("user_message", message)),
@@ -180,22 +181,30 @@ export function buildChatUserPrompt({ message, analysis, selectedContext, canvas
   ].join("\n\n");
 }
 
-function buildAgentControllerGuidance(agentMode, lang) {
+function buildAgentControllerGuidance(agentMode, lang, preferredAgentSkill = "") {
   if (!agentMode) return "";
+  const skillDirectory = formatAgentSkillDirectory(lang);
+  const preferredSkill = preferredAgentSkill ? formatAgentSkillBrief(preferredAgentSkill, lang) : "";
   return lang === "en"
     ? [
         "",
         "# Agent Controller Guidance",
         "You may autonomously create focused subagents with canvas_action type=create_agent when the user task benefits from parallel investigation, critique, decomposition, QA, data checking, writing variants, visual direction, or implementation planning.",
-        "Create 1-4 subagents, not more. Each create_agent action must include title, role, prompt, deliverable, successCriteria, and priority. The prompt must be self-contained, cite the shared context it should use, and define boundaries. Do not create agents for trivial single-step questions.",
-        "Use distinct roles such as researcher, planner, critic, data analyst, writer, visual director, QA, or synthesizer. The controller reply should explain why those subagents were spawned and how their outputs will be used."
+        "Create 1-4 subagents, not more. Each create_agent action must include title, role, skill, prompt, deliverable, successCriteria, and priority. The prompt must be self-contained, cite the shared context it should use, and define boundaries. Do not create agents for trivial single-step questions.",
+        "Choose one skill for each worker from this directory:",
+        skillDirectory,
+        preferredSkill ? `Preferred skill for this run:\n${preferredSkill}` : "",
+        "Use distinct roles such as researcher, planner, critic, data analyst, writer, visual director, QA, or synthesizer. The controller reply should explain why those subagents were spawned, which skills they use, and how their outputs will be used."
       ].join("\n")
     : [
         "",
         "# Agent 控制器指导",
         "当用户任务适合并行调查、批判审查、任务拆解、QA、数据核查、写作变体、视觉方向或实施规划时，你可以自主通过 canvas_action type=create_agent 创建聚焦的子 Agent。",
-        "创建 1-4 个子 Agent，不要更多。每个 create_agent 动作必须包含 title、role、prompt、deliverable、successCriteria 和 priority。prompt 必须自洽，说明要使用的共享上下文和边界。不要为简单单步问题创建 Agent。",
-        "使用互补角色，例如 researcher、planner、critic、data analyst、writer、visual director、QA、synthesizer。控制器回复要解释为什么启动这些子 Agent，以及它们的结果会如何被使用。"
+        "创建 1-4 个子 Agent，不要更多。每个 create_agent 动作必须包含 title、role、skill、prompt、deliverable、successCriteria 和 priority。prompt 必须自洽，说明要使用的共享上下文和边界。不要为简单单步问题创建 Agent。",
+        "每个 worker 必须从以下技能目录中选择一个 skill:",
+        skillDirectory,
+        preferredSkill ? `本次运行的优先技能:\n${preferredSkill}` : "",
+        "使用互补角色，例如 researcher、planner、critic、data analyst、writer、visual director、QA、synthesizer。控制器回复要解释为什么启动这些子 Agent、它们使用什么技能，以及结果会如何被使用。"
       ].join("\n");
 }
 
