@@ -46,9 +46,13 @@ const EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.EXPLORE_THINKING_TIMEOUT_
 const EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.EXPLORE_FALLBACK_TIMEOUT_MS || 150000);
 const CHAT_ATTACHMENT_MAX_CHARS = 32000;
 const IMAGE_SEARCH_MODEL = process.env.IMAGE_SEARCH_MODEL || "qwen3.5-plus";
-const MAX_QUICK_CANVAS_ACTIONS_PER_TURN = 10;
+const ANALYSIS_CANVAS_CARD_MIN = 5;
+const ANALYSIS_CANVAS_CARD_MAX = 8;
+const EXPLORE_CANVAS_CARD_MIN = 6;
+const EXPLORE_CANVAS_CARD_MAX = 10;
+const MAX_QUICK_CANVAS_ACTIONS_PER_TURN = 8;
 const MAX_THINKING_CANVAS_ACTIONS_PER_TURN = 12;
-const MAX_DEEP_RESEARCH_CANVAS_CARDS = 25;
+const MAX_DEEP_RESEARCH_CANVAS_CARDS = 20;
 
 const prisma = new PrismaClient();
 
@@ -5954,7 +5958,12 @@ function parseJsonFromText(text) {
 
 function normalizeAnalysis(value, fileName = "source image") {
   const fallback = buildDemoAnalysis(fileName);
-  const options = Array.isArray(value?.options) ? value.options : fallback.options;
+  const options = ensureOptionRange(
+    Array.isArray(value?.options) ? value.options : fallback.options,
+    fallback.options,
+    ANALYSIS_CANVAS_CARD_MIN,
+    ANALYSIS_CANVAS_CARD_MAX
+  );
 
   return {
     provider: "api",
@@ -5962,7 +5971,7 @@ function normalizeAnalysis(value, fileName = "source image") {
     summary: stringOr(value?.summary, fallback.summary),
     detectedSubjects: arrayOfStrings(value?.detectedSubjects, fallback.detectedSubjects).slice(0, 6),
     moodKeywords: arrayOfStrings(value?.moodKeywords, fallback.moodKeywords).slice(0, 8),
-    options: options.slice(0, 6).map((option, index) => ({
+    options: options.slice(0, ANALYSIS_CANVAS_CARD_MAX).map((option, index) => ({
       id: slug(option?.id || option?.title || `option-${index + 1}`),
       title: stringOr(option?.title, fallback.options[index % fallback.options.length].title).slice(0, 20),
       description: stringOr(option?.description, fallback.options[index % fallback.options.length].description),
@@ -5978,7 +5987,12 @@ function normalizeAnalysis(value, fileName = "source image") {
 
 function normalizeExplore(value, fileName = "source image") {
   const fallback = buildDemoExplore(fileName);
-  const options = Array.isArray(value?.options) ? value.options : fallback.options;
+  const options = ensureOptionRange(
+    Array.isArray(value?.options) ? value.options : fallback.options,
+    fallback.options,
+    EXPLORE_CANVAS_CARD_MIN,
+    EXPLORE_CANVAS_CARD_MAX
+  );
   const references = Array.isArray(value?.references) ? value.references : fallback.references;
 
   return {
@@ -5987,7 +6001,7 @@ function normalizeExplore(value, fileName = "source image") {
     summary: stringOr(value?.summary, fallback.summary),
     detectedSubjects: arrayOfStrings(value?.detectedSubjects, fallback.detectedSubjects).slice(0, 6),
     moodKeywords: arrayOfStrings(value?.moodKeywords, fallback.moodKeywords).slice(0, 8),
-    options: options.slice(0, 6).map((option, index) => ({
+    options: options.slice(0, EXPLORE_CANVAS_CARD_MAX).map((option, index) => ({
       id: slug(option?.id || option?.title || `option-${index + 1}`),
       title: stringOr(option?.title, fallback.options[index % fallback.options.length].title).slice(0, 20),
       description: stringOr(option?.description, fallback.options[index % fallback.options.length].description),
@@ -5998,13 +6012,28 @@ function normalizeExplore(value, fileName = "source image") {
       nodeType: normalizeAnalysisNodeType(option?.nodeType),
       content: normalizeStructuredContent(option?.content)
     })),
-    references: references.slice(0, 6).map((ref, index) => ({
+    references: references.slice(0, EXPLORE_CANVAS_CARD_MAX).map((ref, index) => ({
       title: stringOr(ref?.title, fallback.references[index % fallback.references.length].title).slice(0, 80),
       url: stringOr(ref?.url, fallback.references[index % fallback.references.length].url).slice(0, 512),
       description: stringOr(ref?.description, fallback.references[index % fallback.references.length].description).slice(0, 200),
       type: ["web", "doc", "image"].includes(ref?.type) ? ref.type : "web"
     }))
   };
+}
+
+function ensureOptionRange(options, fallbackOptions, min, max) {
+  const normalized = (Array.isArray(options) ? options : [])
+    .filter((option) => option && typeof option === "object")
+    .slice(0, max);
+  const seen = new Set(normalized.map((option) => slug(option?.id || option?.title || option?.prompt || "")));
+  for (const fallback of Array.isArray(fallbackOptions) ? fallbackOptions : []) {
+    if (normalized.length >= min || normalized.length >= max) break;
+    const key = slug(fallback?.id || fallback?.title || fallback?.prompt || "");
+    if (key && seen.has(key)) continue;
+    normalized.push(fallback);
+    if (key) seen.add(key);
+  }
+  return normalized.slice(0, max);
 }
 
 const ANALYSIS_PURPOSES = new Set(["visual", "exploration", "plan", "research", "content", "tool"]);
@@ -6198,7 +6227,7 @@ function normalizeChatAnalysis(value) {
     moodKeywords: arrayOfStrings(value.moodKeywords, []).slice(0, 8),
     detectedSubjects: arrayOfStrings(value.detectedSubjects, []).slice(0, 6),
     options: Array.isArray(value.options)
-      ? value.options.slice(0, 6).map((option) => ({
+      ? value.options.slice(0, ANALYSIS_CANVAS_CARD_MAX).map((option) => ({
           title: stringOr(option?.title, "生成方向"),
           description: stringOr(option?.description, ""),
           tone: stringOr(option?.tone, ""),
@@ -6292,6 +6321,54 @@ function buildDemoAnalysis(fileName = "source image") {
         layoutHint: "board",
         purpose: "visual",
         nodeType: "image"
+      },
+      {
+        id: "research-brief",
+        title: "背景线索",
+        description: "把原始素材转成一张研究简报，整理主体来源、可能语境、风格参照和下一步需要核实的问题。",
+        prompt: "围绕当前素材建立研究简报：主体可能语境、风格参照、关键观察、需要核实的问题和可继续探索的资料方向。",
+        tone: "research",
+        layoutHint: "board",
+        purpose: "research",
+        nodeType: "note",
+        content: {
+          text: "整理当前素材的背景线索、风格参照、关键观察和后续核实问题。"
+        }
+      },
+      {
+        id: "execution-plan",
+        title: "执行计划",
+        description: "把素材延展成可执行的小项目计划：目标、阶段、素材准备、生成/编辑步骤和验收标准。",
+        prompt: "基于当前素材制定一个可执行的视觉探索计划，包含目标、阶段、素材准备、生成与编辑步骤、验收标准。",
+        tone: "plan",
+        layoutHint: "board",
+        purpose: "plan",
+        nodeType: "plan",
+        content: {
+          summary: "把当前素材继续做成可执行项目。",
+          steps: [
+            { title: "明确目标", description: "确定这组卡片最终要服务于海报、提案、研究、故事板还是视觉系统。" },
+            { title: "补充素材", description: "列出需要继续收集的参考、色彩、构图和文字信息。" },
+            { title: "生成与筛选", description: "按方向生成候选图或富内容卡，并用统一标准筛掉弱分支。" }
+          ]
+        }
+      },
+      {
+        id: "comparison-matrix",
+        title: "方向对比",
+        description: "用对比矩阵评估各个方向的视觉冲击、执行难度、信息价值和后续扩展空间。",
+        prompt: "为当前素材的多个探索方向建立对比矩阵，比较视觉冲击、执行难度、信息价值和扩展空间。",
+        tone: "comparison",
+        layoutHint: "board",
+        purpose: "content",
+        nodeType: "comparison",
+        content: {
+          items: [
+            { title: "视觉方向", summary: "适合需要强画面记忆点的输出。" },
+            { title: "研究方向", summary: "适合需要证据、背景和来源支撑的输出。" },
+            { title: "计划方向", summary: "适合把素材推进成项目或交付流程。" }
+          ]
+        }
       }
     ]
   };

@@ -195,9 +195,11 @@ const state = {
 
 const DEFAULT_BLUEPRINT_REFERENCE_STRENGTH = 0.7;
 const BLUEPRINT_GUIDE_DISMISS_AFTER = 3;
-const MAX_QUICK_CANVAS_ACTIONS_PER_TURN = 10;
+const ANALYSIS_CANVAS_CARD_MAX = 8;
+const EXPLORE_CANVAS_CARD_MAX = 10;
+const MAX_QUICK_CANVAS_ACTIONS_PER_TURN = 8;
 const MAX_THINKING_CANVAS_ACTIONS_PER_TURN = 12;
-const MAX_DEEP_RESEARCH_CANVAS_CARDS = 25;
+const MAX_DEEP_RESEARCH_CANVAS_CARDS = 20;
 const MAX_CANVAS_ACTIONS_PER_TURN = MAX_THINKING_CANVAS_ACTIONS_PER_TURN;
 
 const settingsCache = {
@@ -324,6 +326,16 @@ let workbenchTourState = null;
 let workbenchTourDemoImageOpen = false;
 let workbenchTourDemoImageCard = null;
 const linkRouteCache = new Map();
+const LAYOUT_GRID = 24;
+const LINK_KIND_CLASS_ALLOWLIST = new Set([
+  "analysis",
+  "option",
+  "deep-think",
+  "image-search",
+  "connection",
+  "junction",
+  "generated"
+]);
 const WORKBENCH_TOUR_DEMO_NODE_ID = "__workbenchTourDemoImage";
 const WORKBENCH_TOUR_DEMO_IMAGE_URL = "/home-assets/cards/26.jpg";
 const WORKBENCH_TOUR_DEMO_IMAGE_TITLE = "ThoughtGrid demo image";
@@ -433,12 +445,16 @@ const RICH_CARD_ACTION_TYPES = ["create_note", "create_plan", "create_todo", "cr
 const RICH_CARD_NODE_TYPES = ["note", "plan", "todo", "weather", "map", "link", "code", "table", "timeline", "comparison", "metric", "quote"];
 
 const optionPositions = [
-  { x: 850, y: 112, tilt: -1.5 },
-  { x: 1300, y: 232, tilt: 1.2 },
-  { x: 700, y: 792, tilt: 1.4 },
-  { x: 1135, y: 835, tilt: -0.8 },
-  { x: 1600, y: 612, tilt: 1.8 },
-  { x: 1520, y: 1032, tilt: -1.1 }
+  { x: 900, y: 120, tilt: -0.4 },
+  { x: 1280, y: 120, tilt: 0.35 },
+  { x: 900, y: 420, tilt: 0.25 },
+  { x: 1280, y: 420, tilt: -0.3 },
+  { x: 900, y: 720, tilt: -0.25 },
+  { x: 1280, y: 720, tilt: 0.3 },
+  { x: 900, y: 1020, tilt: 0.2 },
+  { x: 1280, y: 1020, tilt: -0.2 },
+  { x: 900, y: 1320, tilt: -0.15 },
+  { x: 1280, y: 1320, tilt: 0.15 }
 ];
 
 const i18n = {
@@ -512,7 +528,7 @@ const i18n = {
     "research.button": "研究",
     "research.analyze": "分析",
     "research.explore": "探索",
-    "research.exploreTooltip": "调用 thinking 模式，深入分析并搜集相关资料",
+    "research.exploreTooltip": "调用 thinking 模式，生成 6 到 10 张更深入的方向卡并搜集资料",
     "research.exploring": "探索中...",
     "research.exploreComplete": "探索完成",
     "research.fallbackComplete": "探索完成（已自动降级为快速模式）",
@@ -698,7 +714,7 @@ const i18n = {
     "source.defaultTitle": "源卡片",
     "source.uploadPrompt": "上传图片、视频或文档",
     "source.uploadHint": "选择图片、视频、Word、PDF、PPT 或 TXT，生成分支方向",
-    "research.analyzeTooltip": "调用 no-thinking 模式，快速视觉分析",
+    "research.analyzeTooltip": "调用 no-thinking 模式，快速生成 5 到 8 张方向卡",
     "research.cannotResearch": "这张卡片不能研究",
     "chat.conversationMessages": "{count} 条消息",
     "chat.noMessages": "还没有消息。输入方向、约束，或按 / 使用工作台命令。",
@@ -825,9 +841,9 @@ const i18n = {
     "settings.hint.transcriptionModel": "用于 Qwen Realtime input_audio_transcription 的 ASR 模型。",
     "settings.hint.silenceThreshold": "前端静音过滤阈值；环境噪声较大时可略微调高。",
     "settings.hint.sourceCardMode": "list 会把来源合并为列表卡；cards 会逐条生成来源卡；off 不放入画布。",
-    "settings.hint.maxCanvasCards": "深入研究最终最多落到画布上的卡片数量，最多 25 张。",
+    "settings.hint.maxCanvasCards": "深入研究最终最多落到画布上的卡片数量，最多 20 张。",
     "settings.hint.maxReferenceCards": "深入研究保留并展示的精选来源数量。",
-    "settings.hint.liveCanvasCards": "流式研究过程中最多创建的临时画布卡片数量，最多 25 张。",
+    "settings.hint.liveCanvasCards": "流式研究过程中最多创建的临时画布卡片数量，最多 20 张。",
     "settings.hint.outputFormat": "传给 Qwen Deep Research 的 output_format，例如 model_summary_report。",
     "settings.hint.incrementalOutput": "使用 Deep Research 增量流式输出。"
   },
@@ -953,8 +969,8 @@ const i18n = {
     "research.button": "Research",
     "research.analyze": "Analyze",
     "research.explore": "Explore",
-    "research.analyzeTooltip": "Call no-thinking mode for quick visual analysis",
-    "research.exploreTooltip": "Call thinking mode for deep analysis and research",
+    "research.analyzeTooltip": "Call no-thinking mode to create 5-8 direction cards",
+    "research.exploreTooltip": "Call thinking mode to create 6-10 deeper direction cards with references",
     "research.cannotResearch": "This card cannot be researched",
     "research.exploring": "Exploring...",
     "research.exploreComplete": "Explore complete",
@@ -4835,8 +4851,8 @@ async function exploreSource() {
   if (state.sourceType === "url" && !state.sourceUrl) return;
   if (state.sourceType === "video") {
     await submitChatMessage(currentLang === "en"
-      ? "Please deeply explore this uploaded video, summarize important moments, and create 5-8 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards."
-      : "请深入探索这个上传视频，总结重要片段，并创建 5-8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。", { forcedThinkingMode: "thinking" });
+      ? "Please deeply explore this uploaded video, summarize important moments, and create 6-10 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards."
+      : "请深入探索这个上传视频，总结重要片段，并创建 6 到 10 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。", { forcedThinkingMode: "thinking" });
     return;
   }
 
@@ -4902,7 +4918,7 @@ async function analyzeSource(mode = "analyze") {
   if (state.sourceType === "video") {
     await submitChatMessage(currentLang === "en"
       ? "Please analyze this uploaded video. Summarize the key scenes, visible details, temporal structure, and create 5-8 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards."
-      : "请分析这个上传视频，总结关键画面、可见细节、时间结构，并创建 5-8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。", {
+      : "请分析这个上传视频，总结关键画面、可见细节、时间结构，并创建 5 到 8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。", {
         forcedThinkingMode: mode === "explore" ? "thinking" : state.thinkingMode
       });
     return;
@@ -8516,8 +8532,8 @@ async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
   const useExplore = mode === "explore";
   if (sourceCard.sourceType === "video") {
     await submitChatMessage(useExplore
-      ? (currentLang === "en" ? "Please deeply explore this video source card and create 5-8 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请深入探索这张视频源卡片，并创建 5-8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。")
-      : (currentLang === "en" ? "Please analyze this video source card, summarize the key moments, and create 5-8 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请分析这张视频源卡片，总结关键片段，并创建 5-8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。"), {
+      ? (currentLang === "en" ? "Please deeply explore this video source card and create 6-10 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请深入探索这张视频源卡片，并创建 6 到 10 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。")
+      : (currentLang === "en" ? "Please analyze this video source card, summarize the key moments, and create 5-8 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请分析这张视频源卡片，总结关键片段，并创建 5 到 8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。"), {
         forcedThinkingMode: useExplore ? "thinking" : state.thinkingMode
       });
     return;
@@ -9398,7 +9414,8 @@ function applyTaskTypeBadge(element, taskType) {
 function renderOptions(options, taskType = "general") {
   clearOptions();
 
-  options.forEach((option, index) => {
+  const visibleOptions = (Array.isArray(options) ? options : []).slice(0, ANALYSIS_CANVAS_CARD_MAX);
+  visibleOptions.forEach((option, index) => {
     const fragment = optionTemplate.content.cloneNode(true);
     const element = fragment.querySelector(".option-node");
     const position = optionPositions[index % optionPositions.length];
@@ -9450,9 +9467,14 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
   }
   state.links = state.links.filter(l => !(l.from === parentNodeId && l.to.startsWith("option-")));
 
-  options.forEach((option, index) => {
-    const offsetX = 380;
-    const offsetY = 40 + index * 24;
+  const visibleOptions = (Array.isArray(options) ? options : []).slice(0, EXPLORE_CANVAS_CARD_MAX);
+  const optionCount = visibleOptions.length;
+  const columns = optionCount <= ANALYSIS_CANVAS_CARD_MAX ? 2 : 3;
+  visibleOptions.forEach((option, index) => {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const offsetX = 380 + column * 360;
+    const offsetY = 40 + row * 280;
     let newX = Number.isFinite(option.x) ? option.x : (parentNode.x || 0) + offsetX;
     let newY = Number.isFinite(option.y) ? option.y : (parentNode.y || 0) + offsetY;
 
@@ -9521,7 +9543,8 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
 function renderExploreOptions(options, references, taskType = "general") {
   clearOptions();
 
-  options.forEach((option, index) => {
+  const visibleOptions = (Array.isArray(options) ? options : []).slice(0, EXPLORE_CANVAS_CARD_MAX);
+  visibleOptions.forEach((option, index) => {
     if (references.length > 0) {
       option.references = references;
     }
@@ -12011,6 +12034,7 @@ function findNonOverlappingPosition(preferredX, preferredY, size = {}, options =
   const width = Math.max(120, Number(size.width) || 318);
   const height = Math.max(80, Number(size.height) || 220);
   const padding = Number.isFinite(options.padding) ? options.padding : 32;
+  const snapGrid = Number.isFinite(options.snapGrid) ? Math.max(0, options.snapGrid) : 0;
   const minX = Number.isFinite(options.minX) ? options.minX : -1200;
   const maxX = Number.isFinite(options.maxX) ? options.maxX : 5600;
   const minY = Number.isFinite(options.minY) ? options.minY : -1200;
@@ -12034,8 +12058,8 @@ function findNonOverlappingPosition(preferredX, preferredY, size = {}, options =
   }
   const seen = new Set();
   const tryPosition = (x, y) => {
-    const nextX = clamp(x, minX, maxX);
-    const nextY = clamp(y, minY, maxY);
+    const nextX = clamp(snapGrid ? snapRouteValue(x, snapGrid) : x, minX, maxX);
+    const nextY = clamp(snapGrid ? snapRouteValue(y, snapGrid) : y, minY, maxY);
     const key = `${Math.round(nextX)}:${Math.round(nextY)}`;
     if (seen.has(key)) return null;
     seen.add(key);
@@ -12095,6 +12119,7 @@ function resolveNonOverlappingTargetPositions(targetPositions, options = {}) {
       maxX: options.maxX,
       minY: options.minY,
       maxY: options.maxY,
+      snapGrid: options.snapGrid,
       maxRing: options.maxRing
     });
     adjusted.set(id, placement);
@@ -13008,20 +13033,30 @@ function drawLinks() {
     const toGroup = toGroups.get(`${link.to}:${sides.toSide}`);
     const isJunctionLink = link.kind === "junction";
     const isBundled = isJunctionLink || (fromGroup?.length || 0) > 2 || (toGroup?.length || 0) > 2;
-    const path = routeLinkPath(start, end, descriptor, { fromGroup, toGroup });
-    const linkClass = `link link-orthogonal${isBundled ? " link-bundled" : ""}${isJunctionLink ? " link-junction" : ""}`;
-    const shadow = svgElement("path", { d: path, class: `link-shadow${isBundled ? " link-bundled" : ""}${isJunctionLink ? " link-junction" : ""}` });
+    const route = routeLinkPath(start, end, descriptor, { fromGroup, toGroup });
+    const path = typeof route === "string" ? route : route.path;
+    const routeStyle = typeof route === "string" ? "orthogonal" : route.style;
+    const kindClass = linkKindClass(link.kind);
+    const linkClass = `link link-${routeStyle}${kindClass ? ` link-${kindClass}` : ""}${isBundled ? " link-bundled" : ""}${isJunctionLink ? " link-junction" : ""}`;
+    const shadow = svgElement("path", { d: path, class: `link-shadow link-${routeStyle}${kindClass ? ` link-${kindClass}` : ""}${isBundled ? " link-bundled" : ""}${isJunctionLink ? " link-junction" : ""}` });
     const line = svgElement("path", { d: path, class: linkClass });
     const hitTarget = svgElement("path", { d: path, class: "link-hit-target", tabindex: "0" });
+    const hovered = [shadow, line];
     hitTarget.addEventListener("dblclick", (event) => {
       event.preventDefault();
       event.stopPropagation();
       confirmDeleteLink(link);
     });
-    const pinRadius = isJunctionLink ? 4.5 : 6;
+    hitTarget.addEventListener("pointerenter", () => hovered.forEach((element) => element.classList.add("is-hovered")));
+    hitTarget.addEventListener("pointerleave", () => hovered.forEach((element) => element.classList.remove("is-hovered")));
+    hitTarget.addEventListener("focus", () => hovered.forEach((element) => element.classList.add("is-hovered")));
+    hitTarget.addEventListener("blur", () => hovered.forEach((element) => element.classList.remove("is-hovered")));
+    const pinRadius = isJunctionLink ? 3.4 : 2.8;
+    const terminalRadius = isJunctionLink ? 3.8 : 4.4;
     const pinClass = `link-pin${isJunctionLink ? " link-pin-junction" : ""}`;
     const pinA = svgElement("circle", { cx: start.x, cy: start.y, r: pinRadius, class: pinClass });
-    const pinB = svgElement("circle", { cx: end.x, cy: end.y, r: pinRadius, class: pinClass });
+    const pinB = svgElement("circle", { cx: end.x, cy: end.y, r: terminalRadius, class: `link-terminal${isJunctionLink ? " link-pin-junction" : ""}` });
+    hovered.push(pinA, pinB);
 
     fragments.append(shadow, line, hitTarget, pinA, pinB);
   });
@@ -13029,6 +13064,11 @@ function drawLinks() {
   linkLayer.replaceChildren(fragments);
   renderGroupFrames();
   renderMinimap();
+}
+
+function linkKindClass(kind) {
+  const value = String(kind || "link").trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-");
+  return LINK_KIND_CLASS_ALLOWLIST.has(value) ? value : "";
 }
 
 function groupLinkDescriptors(items, keyFn) {
@@ -13224,20 +13264,24 @@ function routeLinkPath(start, end, descriptor, groups = {}) {
   const absDx = Math.abs(dx);
   const absDy = Math.abs(dy);
   const compactPath = compactLinkPath(start, end, descriptor);
-  if (compactPath) return compactPath;
   const startTangent = tangentForSide(start.side);
   const endTangent = tangentForSide(end.side);
   const fromGroupSize = groups.fromGroup?.length || 0;
   const toGroupSize = groups.toGroup?.length || 0;
   const bundled = fromGroupSize > 2 || toGroupSize > 2 || descriptor?.link?.kind === "junction";
+  if (compactPath) return { path: compactPath, style: "smooth" };
+  if (!bundled) {
+    const smoothPath = smoothLinkPath(start, end, descriptor, { fromGroupSize, toGroupSize });
+    if (smoothPath) return { path: smoothPath, style: "smooth" };
+  }
   const firstAxisDistance = start.side === "left" || start.side === "right" ? absDx : absDy;
   const lastAxisDistance = end.side === "left" || end.side === "right" ? absDx : absDy;
-  const firstLeg = clamp(firstAxisDistance * 0.2, bundled ? 68 : 46, bundled ? 128 : 92);
-  const lastLeg = clamp(lastAxisDistance * 0.18, bundled ? 58 : 42, bundled ? 112 : 82);
-  const fromLane = linkLaneOffset(groups.fromGroup, descriptor, bundled ? 18 : 14);
-  const toLane = linkLaneOffset(groups.toGroup, descriptor, bundled ? 18 : 14);
+  const firstLeg = clamp(firstAxisDistance * 0.2, bundled ? 72 : 52, bundled ? 136 : 96);
+  const lastLeg = clamp(lastAxisDistance * 0.18, bundled ? 64 : 46, bundled ? 120 : 86);
+  const fromLane = linkLaneOffset(groups.fromGroup, descriptor, bundled ? 20 : 14);
+  const toLane = linkLaneOffset(groups.toGroup, descriptor, bundled ? 20 : 14);
   const sharedLane = clamp((fromLane + toLane) * 0.5, -86, 86);
-  const lanePadding = bundled ? 72 + Math.abs(sharedLane) : 46 + Math.abs(sharedLane) * 0.42;
+  const lanePadding = bundled ? 84 + Math.abs(sharedLane) : 54 + Math.abs(sharedLane) * 0.42;
   const points = [{ x: start.x, y: start.y }];
   const p1 = { x: start.x + startTangent.x * firstLeg, y: start.y + startTangent.y * firstLeg };
   const p4 = { x: end.x + endTangent.x * lastLeg, y: end.y + endTangent.y * lastLeg };
@@ -13281,7 +13325,47 @@ function routeLinkPath(start, end, descriptor, groups = {}) {
 
   points.push(p4, { x: end.x, y: end.y });
   const snapped = points.map((point, index) => index === 0 || index === points.length - 1 ? point : snapRoutePoint(point));
-  return roundedPolylinePath(simplifyPolyline(snapped), bundled ? 16 : 12);
+  return { path: roundedPolylinePath(simplifyPolyline(snapped), bundled ? 18 : 14), style: "orthogonal" };
+}
+
+function smoothLinkPath(start, end, descriptor, groupMeta = {}) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const absDx = Math.abs(dx);
+  const absDy = Math.abs(dy);
+  const length = Math.hypot(dx, dy);
+  if (length < 4) return "";
+  const startOrientation = linkSideOrientation(start.side);
+  const endOrientation = linkSideOrientation(end.side);
+  const sameOrientation = startOrientation === endOrientation;
+  const fromCrowded = (groupMeta.fromGroupSize || 0) > 1;
+  const toCrowded = (groupMeta.toGroupSize || 0) > 1;
+  const isManualConnection = descriptor?.link?.kind === "connection";
+  const bendBase = sameOrientation
+    ? (startOrientation === "horizontal" ? absDx : absDy)
+    : Math.max(absDx, absDy);
+  let bend = clamp(bendBase * 0.42 + length * 0.08, 64, isManualConnection ? 320 : 260);
+  if (fromCrowded || toCrowded) bend += 18;
+  const startTangent = tangentForSide(start.side);
+  const endTangent = tangentForSide(end.side);
+  let c1 = {
+    x: start.x + startTangent.x * bend,
+    y: start.y + startTangent.y * bend
+  };
+  let c2 = {
+    x: end.x + endTangent.x * bend,
+    y: end.y + endTangent.y * bend
+  };
+
+  if (!sameOrientation) {
+    const cornerBias = clamp(Math.min(absDx, absDy) * 0.18, 10, 58);
+    c1.x += endTangent.x * cornerBias;
+    c1.y += endTangent.y * cornerBias;
+    c2.x += startTangent.x * cornerBias;
+    c2.y += startTangent.y * cornerBias;
+  }
+
+  return `M ${start.x} ${start.y} C ${snapRouteValue(c1.x)} ${snapRouteValue(c1.y)}, ${snapRouteValue(c2.x)} ${snapRouteValue(c2.y)}, ${end.x} ${end.y}`;
 }
 
 function compactLinkPath(start, end, descriptor) {
@@ -13313,9 +13397,13 @@ function linkLaneOffset(group, descriptor, step = 18) {
 
 function snapRoutePoint(point, grid = 8) {
   return {
-    x: Math.round(point.x / grid) * grid,
-    y: Math.round(point.y / grid) * grid
+    x: snapRouteValue(point.x, grid),
+    y: snapRouteValue(point.y, grid)
   };
+}
+
+function snapRouteValue(value, grid = 8) {
+  return Math.round(value / grid) * grid;
 }
 
 function simplifyPolyline(points) {
@@ -15309,11 +15397,12 @@ function arrangeCanvasLayout(options = {}) {
     incoming.get(link.to)?.push(link.from);
   }
 
-  const COLUMN_GAP = 460;
-  const ROW_GAP = 88;
-  const BRANCH_GAP = 160;
-  const START_X = 96;
-  const MIN_Y = 88;
+  const COLUMN_GAP = 188;
+  const TREE_COLUMN_GAP = 520;
+  const ROW_GAP = 112;
+  const BRANCH_GAP = 208;
+  const START_X = 120;
+  const MIN_Y = 96;
   const MAX_X = 5600;
   const MAX_Y = 5600;
   const targetPositions = new Map();
@@ -15390,13 +15479,16 @@ function arrangeCanvasLayout(options = {}) {
       });
       return order;
     };
-    const neighborScore = (id, neighborMap, order) => {
-      const values = (neighborMap.get(id) || []).map((neighborId) => order.get(neighborId)?.index).filter(Number.isFinite);
+    const layerCenterScore = (id, neighborMap, order) => {
+      const values = (neighborMap.get(id) || [])
+        .map((neighborId) => order.get(neighborId))
+        .filter(Boolean)
+        .map((item) => item.index);
       if (!values.length) return Number.POSITIVE_INFINITY;
       return values.reduce((sum, value) => sum + value, 0) / values.length;
     };
     const sortLayerByNeighbors = (ids, neighborMap, order) => ids.slice().sort((a, b) => {
-      const scoreDelta = neighborScore(a, neighborMap, order) - neighborScore(b, neighborMap, order);
+      const scoreDelta = layerCenterScore(a, neighborMap, order) - layerCenterScore(b, neighborMap, order);
       if (Math.abs(scoreDelta) > 0.001) return scoreDelta;
       return compareIds(a, b);
     });
@@ -15411,6 +15503,13 @@ function arrangeCanvasLayout(options = {}) {
         order = rebuildLayerOrder();
       }
     }
+    const layerWidths = orderedLayers.map((ids) => Math.max(318, ...ids.map((id) => nodeSize(id).width)));
+    const layerX = [];
+    let cursorX = START_X;
+    layerWidths.forEach((width, layer) => {
+      layerX[layer] = snapRouteValue(cursorX, LAYOUT_GRID);
+      cursorX += width + COLUMN_GAP;
+    });
     const layerHeights = orderedLayers.map((ids) => ids.reduce((sum, id, index) => sum + nodeSize(id).height + (index ? ROW_GAP : 0), 0));
     const maxLayerHeight = Math.max(...layerHeights, 0);
     orderedLayers.forEach((ids, layer) => {
@@ -15418,8 +15517,8 @@ function arrangeCanvasLayout(options = {}) {
       ids.forEach((id) => {
         const size = nodeSize(id);
         targetPositions.set(id, {
-          x: clamp(START_X + layer * COLUMN_GAP, -600, MAX_X),
-          y: clamp(y, -600, MAX_Y)
+          x: clamp(layerX[layer], -600, MAX_X),
+          y: clamp(snapRouteValue(y, LAYOUT_GRID), -600, MAX_Y)
         });
         placed.add(id);
         y += size.height + ROW_GAP;
@@ -15445,11 +15544,11 @@ function arrangeCanvasLayout(options = {}) {
       if (totalChildrenHeight > 0) totalChildrenHeight -= ROW_GAP;
       subtreeHeight = Math.max(size.height, totalChildrenHeight);
     }
-    const x = START_X + depth * COLUMN_GAP;
+    const x = START_X + depth * TREE_COLUMN_GAP;
     const y = topY + Math.max(0, (subtreeHeight - size.height) / 2);
     targetPositions.set(nodeId, {
-      x: clamp(x, -600, MAX_X),
-      y: clamp(y, -600, MAX_Y)
+      x: clamp(snapRouteValue(x, LAYOUT_GRID), -600, MAX_X),
+      y: clamp(snapRouteValue(y, LAYOUT_GRID), -600, MAX_Y)
     });
     placed.add(nodeId);
     stack.delete(nodeId);
@@ -15504,8 +15603,8 @@ function arrangeCanvasLayout(options = {}) {
     if (Number.isFinite(targetLeft) && targetLeft > connectedRight + 220) x = Math.min(x, targetLeft - 150);
     if (!Number.isFinite(x)) x = connectedLeft + 360;
     targetPositions.set(junctionId, {
-      x: clamp(x, -600, MAX_X),
-      y: clamp(avgY - 20, -600, MAX_Y)
+      x: clamp(snapRouteValue(x, LAYOUT_GRID), -600, MAX_X),
+      y: clamp(snapRouteValue(avgY - 20, LAYOUT_GRID), -600, MAX_Y)
     });
   }
 
@@ -15515,6 +15614,7 @@ function arrangeCanvasLayout(options = {}) {
     maxX: MAX_X,
     minY: -600,
     maxY: MAX_Y,
+    snapGrid: LAYOUT_GRID,
     maxRing: 12
   });
   animateNodesToPositions(adjustedPositions, duration);
@@ -15697,7 +15797,7 @@ function renderDocumentUnderstandingOptions(directions) {
   clearOptions();
   if (!directions?.length) return;
 
-  directions.forEach((dir, index) => {
+  directions.slice(0, ANALYSIS_CANVAS_CARD_MAX).forEach((dir, index) => {
     const position = optionPositions[index % optionPositions.length];
     const id = `option-${dir.id || index}`;
 

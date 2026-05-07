@@ -1,5 +1,12 @@
 import { THINKING_FRAMEWORKS, META_DIRECTIVES, CONTEXT_BOUNDARY_DIRECTIVES, SOURCE_GROUNDING_DIRECTIVES, jsonSchemaContract, xmlBlock } from './shared.js';
 
+const ANALYSIS_OPTION_RANGE = { min: 5, max: 8 };
+const EXPLORE_OPTION_RANGE = { min: 6, max: 10 };
+
+function optionRangeText(range, lang) {
+  return lang === 'en' ? `${range.min}-${range.max}` : `${range.min} 到 ${range.max}`;
+}
+
 function getTaskTypeBias(taskType, lang) {
   if (taskType === 'research') {
     return lang === 'en'
@@ -24,20 +31,21 @@ function getTaskTypeBias(taskType, lang) {
   return '';
 }
 
-function getVisualMediaDirectionRequirement(contentType, taskType, lang) {
+function getVisualMediaDirectionRequirement(contentType, taskType, lang, range = ANALYSIS_OPTION_RANGE) {
   const ct = String(contentType || '').toLowerCase();
   const isVisualMedia = ct === 'image' || ct === 'video' || ct.startsWith('image/') || ct.startsWith('video/') || taskType === 'image_generation';
   if (!isVisualMedia) return '';
+  const countText = optionRangeText(range, lang);
   return lang === 'en'
     ? [
         '# Visual Media Expansion Requirement',
-        'The current source is an uploaded image or video. Return 5-6 options. At least half of all options (ceil(total_options / 2)) must be smart image-generation expansion directions with purpose "visual". For visually rich or explicitly creative material, visual directions may occupy 50%-100% of the options.',
+        `The current source is an uploaded image or video. Return ${countText} options. At least half of all options (ceil(total_options / 2)) must be smart image-generation expansion directions with purpose "visual". For visually rich or explicitly creative material, visual directions may occupy 50%-100% of the options.`,
         'Visual options must be ready-to-generate directions: describe subject transformation, composition, framing, lighting, color palette, mood, style, reference continuity, and what should change or extend from the uploaded media. Do not set rich-content nodeType for visual options unless it is explicitly "image".',
         'Non-visual options are still allowed when useful, but must use purpose "research", "content", "plan", or "tool" and set a rich nodeType when appropriate, so they do not render as image-generation cards.'
       ].join('\n')
     : [
         '# 视觉媒体方向占比要求',
-        '当前来源是用户上传的图片或视频。请返回 5-6 个 options。至少一半（ceil(total_options / 2)）必须是智能成图方向发散扩展，purpose 必须设为 "visual"。如果素材本身视觉信息丰富或用户意图明显偏创意，visual 方向可以占 50%-100%。',
+        `当前来源是用户上传的图片或视频。请返回 ${countText} 个 options。至少一半（ceil(total_options / 2)）必须是智能成图方向发散扩展，purpose 必须设为 "visual"。如果素材本身视觉信息丰富或用户意图明显偏创意，visual 方向可以占 50%-100%。`,
         'visual 方案必须是可直接成图的方向：说明主体如何变化或延展、构图、景别、镜头/画幅、光线、色彩、氛围、风格、与原素材的参考延续，以及要新增或改变什么。visual 方案不要设置富内容 nodeType，除非明确设为 "image"。',
         '非 visual 方案仍可保留，但必须使用 "research"、"content"、"plan" 或 "tool" 等 purpose，并在适合时设置富内容 nodeType，避免它们被渲染成“生成这张图”的卡片。'
       ].join('\n');
@@ -82,11 +90,12 @@ function analysisOptionSchema(lang, includeReferences = false) {
   return lines;
 }
 
-function optionBehaviorRequirements(lang) {
+function optionBehaviorRequirements(lang, range = ANALYSIS_OPTION_RANGE) {
+  const countText = optionRangeText(range, lang);
   return lang === "en"
     ? [
         "# Option Behavior",
-        "- Return 5-6 options; the server and canvas layout display up to 6 primary options.",
+        `- Return ${countText} options; the server and canvas layout display up to ${range.max} primary options for this entry point.`,
         "- Every option must include a precise purpose.",
         '- For purpose "visual": use nodeType "image" and make prompt generation-ready with subject, composition, lighting, palette, style, and what changes from the source.',
         '- For purpose "plan": use nodeType "plan" and content.steps = [{title, description, time, priority}].',
@@ -96,7 +105,7 @@ function optionBehaviorRequirements(lang) {
       ].join("\n")
     : [
         "# 方案行为",
-        "- 返回 5-6 个 options；后端和画布布局最多展示 6 个主方向。",
+        `- 返回 ${countText} 个 options；后端和画布布局在该入口最多展示 ${range.max} 个主方向。`,
         "- 每个 option 都必须包含明确的 purpose。",
         '- purpose 为 "visual" 时：使用 nodeType "image"，prompt 必须可直接成图，包含主体、构图、光线、色彩、风格以及相对源内容的变化。',
         '- purpose 为 "plan" 时：使用 nodeType "plan"，content.steps = [{title, description, time, priority}]。',
@@ -113,7 +122,7 @@ export function buildAnalysisPrompt(lang, taskType = 'general', contentType = ''
         "You are ThoughtGrid's multimodal canvas analyst with deep pattern recognition.",
         "",
         "# Mission",
-        "Analyze the user's uploaded content (image, document, link, code, audio transcript, or data) and propose 5-6 canvas options that help the user explore, plan, research, or create.",
+        "Analyze the user's uploaded content (image, document, link, code, audio transcript, or data) and propose 5-8 canvas options that help the user explore, plan, research, or create.",
         "",
         "# Core Principle",
         "The canvas is a general-purpose AI workbench — NOT limited to image generation. Adapt option types to the content. If the content calls for planning, offer plans. If it calls for research, offer research directions. Offer visual/image options when visual references, appearance, spatial structure, objects, interfaces, or concept imagery would materially help the task.",
@@ -145,7 +154,7 @@ export function buildAnalysisPrompt(lang, taskType = 'general', contentType = ''
         "12. NEVER force image generation when visual output would not add value.",
         "",
         getTaskTypeBias(taskType, "en"),
-        getVisualMediaDirectionRequirement(contentType, taskType, "en"),
+        getVisualMediaDirectionRequirement(contentType, taskType, "en", ANALYSIS_OPTION_RANGE),
         "",
         "# Purpose Guide (set purpose per option)",
         '- "visual" — leads to image generation or visual design',
@@ -155,7 +164,7 @@ export function buildAnalysisPrompt(lang, taskType = 'general', contentType = ''
         '- "content" — produces text content: article, report, script, summary',
         '- "tool" — uses an external tool: weather, map, translation, code',
         "",
-        optionBehaviorRequirements("en"),
+        optionBehaviorRequirements("en", ANALYSIS_OPTION_RANGE),
         "",
         jsonSchemaContract("en", analysisOptionSchema("en")),
         "",
@@ -172,7 +181,7 @@ export function buildAnalysisPrompt(lang, taskType = 'general', contentType = ''
         "你是 ThoughtGrid 的多模态画布分析助手，具备深度模式识别能力。",
         "",
         "# 使命",
-        "分析用户上传的内容（图片、文档、链接、代码、音频转录或数据），提出 5-6 个画布方案，帮助用户探索、规划、研究或创作。",
+        "分析用户上传的内容（图片、文档、链接、代码、音频转录或数据），提出 5 到 8 个画布方案，帮助用户探索、规划、研究或创作。",
         "",
         "# 核心原则",
         "画布是通用 AI 工作台——不限于图片生成。根据内容自适应调整方案类型。如果内容适合规划，提供计划方案；如果适合研究，提供研究方向。当视觉参考、外观、空间结构、对象、界面或概念图能实质帮助任务时，提供视觉/图片方案。",
@@ -204,7 +213,7 @@ export function buildAnalysisPrompt(lang, taskType = 'general', contentType = ''
         "12. 视觉输出不能增值时，绝对不要强行提供图片生成方案。",
         "",
         getTaskTypeBias(taskType, "zh"),
-        getVisualMediaDirectionRequirement(contentType, taskType, "zh"),
+        getVisualMediaDirectionRequirement(contentType, taskType, "zh", ANALYSIS_OPTION_RANGE),
         "",
         "# Purpose 说明（每个 option 设置 purpose）",
         '- "visual" — 导向图片生成或视觉设计',
@@ -214,7 +223,7 @@ export function buildAnalysisPrompt(lang, taskType = 'general', contentType = ''
         '- "content" — 产出文本内容：文章、报告、脚本、摘要',
         '- "tool" — 使用外部工具：天气、地图、翻译、代码',
         "",
-        optionBehaviorRequirements("zh"),
+        optionBehaviorRequirements("zh", ANALYSIS_OPTION_RANGE),
         "",
         jsonSchemaContract("zh", analysisOptionSchema("zh")),
         "",
@@ -235,7 +244,7 @@ export function buildExplorePrompt(lang, taskType = 'general', contentType = '')
         "You are ThoughtGrid's deep-research canvas analyst with broad exploration capabilities.",
         "",
         "# Mission",
-        "Use thinking mode to deeply understand the content, subjects, atmosphere, and extensible directions. Then provide 5-6 canvas options AND gather 2-4 relevant reference materials.",
+        "Use thinking mode to deeply understand the content, subjects, atmosphere, and extensible directions. Then provide 6-10 canvas options AND gather 2-4 relevant reference materials.",
         "",
         "# Core Principle",
         "The canvas is a general-purpose AI workbench. Adapt option types to the content. Use image generation or visual reference gathering only when visual context materially helps the task.",
@@ -253,7 +262,7 @@ export function buildExplorePrompt(lang, taskType = 'general', contentType = '')
         SOURCE_GROUNDING_DIRECTIVES.en,
         "",
         getTaskTypeBias(taskType, "en"),
-        getVisualMediaDirectionRequirement(contentType, taskType, "en"),
+        getVisualMediaDirectionRequirement(contentType, taskType, "en", EXPLORE_OPTION_RANGE),
         "",
         "# Purpose Guide",
         '- "visual" — image generation or visual design',
@@ -263,7 +272,7 @@ export function buildExplorePrompt(lang, taskType = 'general', contentType = '')
         '- "content" — text content: article, report, script, summary',
         '- "tool" — external tool: weather, map, translation, code',
         "",
-        optionBehaviorRequirements("en"),
+        optionBehaviorRequirements("en", EXPLORE_OPTION_RANGE),
         "",
         jsonSchemaContract("en", analysisOptionSchema("en", true)),
         "",
@@ -280,7 +289,7 @@ export function buildExplorePrompt(lang, taskType = 'general', contentType = '')
         "你是 ThoughtGrid 的具备深度研究能力的画布分析助手。",
         "",
         "# 使命",
-        "请使用思考模式深入理解内容、主体、氛围、可延展的方向。然后给出 5-6 个画布方案，并搜集 2-4 条相关的参考资料。",
+        "请使用思考模式深入理解内容、主体、氛围、可延展的方向。然后给出 6 到 10 个画布方案，并搜集 2-4 条相关的参考资料。",
         "",
         "# 核心原则",
         "画布是通用 AI 工作台。根据内容自适应调整方案类型。只有当视觉上下文能实质帮助任务时，才使用成图或视觉参考搜集。",
@@ -298,7 +307,7 @@ export function buildExplorePrompt(lang, taskType = 'general', contentType = '')
         SOURCE_GROUNDING_DIRECTIVES.zh,
         "",
         getTaskTypeBias(taskType, "zh"),
-        getVisualMediaDirectionRequirement(contentType, taskType, "zh"),
+        getVisualMediaDirectionRequirement(contentType, taskType, "zh", EXPLORE_OPTION_RANGE),
         "",
         "# Purpose 说明",
         '- "visual" — 图片生成或视觉设计',
@@ -308,7 +317,7 @@ export function buildExplorePrompt(lang, taskType = 'general', contentType = '')
         '- "content" — 文本内容：文章、报告、脚本、摘要',
         '- "tool" — 外部工具：天气、地图、翻译、代码',
         "",
-        optionBehaviorRequirements("zh"),
+        optionBehaviorRequirements("zh", EXPLORE_OPTION_RANGE),
         "",
         jsonSchemaContract("zh", analysisOptionSchema("zh", true)),
         "",
@@ -330,8 +339,8 @@ export function buildUrlAnalysisPrompt({ url, domain, pageText, lang = "zh", tas
     "",
     isEn ? "# Mission" : "# 使命",
     isEn
-      ? "Analyze the supplied web page, summarize its core theme and extensible directions, and propose 5-6 canvas options."
-      : "分析用户提供的网页链接，总结其核心主题、可延展的方向，并给出 5-6 个画布方案。",
+      ? "Analyze the supplied web page, summarize its core theme and extensible directions, and propose 5-8 canvas options."
+      : "分析用户提供的网页链接，总结其核心主题、可延展的方向，并给出 5 到 8 个画布方案。",
     "",
     isEn ? "# Core Principle" : "# 核心原则",
     isEn
@@ -346,7 +355,7 @@ export function buildUrlAnalysisPrompt({ url, domain, pageText, lang = "zh", tas
     "",
     getTaskTypeBias(taskType, isEn ? "en" : "zh"),
     "",
-    optionBehaviorRequirements(isEn ? "en" : "zh"),
+    optionBehaviorRequirements(isEn ? "en" : "zh", ANALYSIS_OPTION_RANGE),
     "",
     jsonSchemaContract(isEn ? "en" : "zh", analysisOptionSchema(isEn ? "en" : "zh")),
     "",
@@ -374,8 +383,8 @@ export function buildTextAnalysisPrompt({ extractedText, lang = "zh", taskType =
     "",
     isEn ? "# Mission" : "# 使命",
     isEn
-      ? "Analyze the uploaded document, identify its content, themes, structure, and extensible directions, and propose 5-6 canvas options."
-      : "分析用户上传的文档，理解其内容、主题、结构、可延展方向，并给出 5-6 个画布方案。",
+      ? "Analyze the uploaded document, identify its content, themes, structure, and extensible directions, and propose 5-8 canvas options."
+      : "分析用户上传的文档，理解其内容、主题、结构、可延展方向，并给出 5 到 8 个画布方案。",
     "",
     isEn ? "# Core Principle" : "# 核心原则",
     isEn
@@ -389,9 +398,9 @@ export function buildTextAnalysisPrompt({ extractedText, lang = "zh", taskType =
     SOURCE_GROUNDING_DIRECTIVES[isEn ? "en" : "zh"],
     "",
     getTaskTypeBias(taskType, isEn ? "en" : "zh"),
-    getVisualMediaDirectionRequirement(contentType, taskType, isEn ? "en" : "zh"),
+    getVisualMediaDirectionRequirement(contentType, taskType, isEn ? "en" : "zh", ANALYSIS_OPTION_RANGE),
     "",
-    optionBehaviorRequirements(isEn ? "en" : "zh"),
+    optionBehaviorRequirements(isEn ? "en" : "zh", ANALYSIS_OPTION_RANGE),
     "",
     jsonSchemaContract(isEn ? "en" : "zh", analysisOptionSchema(isEn ? "en" : "zh")),
     "",
