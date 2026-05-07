@@ -68,6 +68,36 @@ export const AGENT_SKILLS = [
     outputContract: { zh: "返回视觉目标、构图/风格、参考建议、生成 prompt 和迭代方向。", en: "Return visual goal, composition/style, references, generation prompt, and iteration directions." },
     canvasActions: ["image_search", "generate_image", "generate_video", "create_note", "create_comparison"],
     toolFlags: { webSearch: true }
+  },
+  {
+    id: "implementation",
+    label: { zh: "代码实现", en: "Implementation" },
+    roles: ["engineer", "developer", "debugger", "integrator"],
+    when: { zh: "需要实现功能、排查 bug、设计接口、拆解技术方案、检查代码风险或准备测试。", en: "Needs feature implementation, bug diagnosis, API design, technical decomposition, code risk review, or test planning." },
+    toolStrategy: { zh: "先界定目标和约束，再拆成可验证改动；优先产出代码片段、接口契约、测试清单和回滚风险。", en: "Clarify goals and constraints first, then split into verifiable changes; prefer code snippets, API contracts, test checklists, and rollback risks." },
+    outputContract: { zh: "返回实现方案、关键文件/模块、伪代码或代码、测试方式、风险和未决问题。", en: "Return implementation plan, key files/modules, pseudocode or code, tests, risks, and open questions." },
+    canvasActions: ["create_code", "create_plan", "create_todo", "create_note"],
+    toolFlags: { codeInterpreter: true }
+  },
+  {
+    id: "product",
+    label: { zh: "产品体验", en: "Product UX" },
+    roles: ["product strategist", "ux researcher", "interaction designer"],
+    when: { zh: "需要澄清需求、用户旅程、交互流程、功能优先级、验收标准或产品风险。", en: "Needs requirements, user journeys, interaction flows, feature prioritization, acceptance criteria, or product risk analysis." },
+    toolStrategy: { zh: "围绕用户目标、场景、边界和失败路径组织；把结论沉淀成流程、对比、需求和验收卡。", en: "Organize around user goals, scenarios, boundaries, and failure paths; preserve findings as flow, comparison, requirement, and acceptance cards." },
+    outputContract: { zh: "返回目标用户、核心场景、用户流程、优先级、验收标准、风险和下一步。", en: "Return target users, core scenarios, user flow, priorities, acceptance criteria, risks, and next steps." },
+    canvasActions: ["create_plan", "create_comparison", "create_todo", "create_table", "create_note"],
+    toolFlags: {}
+  },
+  {
+    id: "knowledge",
+    label: { zh: "知识整理", en: "Knowledge Synthesis" },
+    roles: ["knowledge curator", "summarizer", "librarian"],
+    when: { zh: "需要整理长文档、会议记录、资料库、学习材料、术语表、分类体系或知识地图。", en: "Needs long-document synthesis, meeting notes, source libraries, learning material, glossaries, taxonomies, or knowledge maps." },
+    toolStrategy: { zh: "先聚类主题和证据，再抽取定义、引用、时间线、关系和待补资料；避免把推断当事实。", en: "Cluster themes and evidence first, then extract definitions, quotes, timelines, relationships, and missing sources; avoid treating inference as fact." },
+    outputContract: { zh: "返回结构化摘要、主题分类、关键引用、概念关系、未决问题和后续阅读建议。", en: "Return structured summary, taxonomy, key quotes, concept relationships, open questions, and follow-up reading." },
+    canvasActions: ["create_note", "create_table", "create_quote", "create_timeline", "create_comparison"],
+    toolFlags: { webExtractor: true }
   }
 ];
 
@@ -99,6 +129,18 @@ const AGENT_SKILL_ALIASES = new Map([
   ["visual", "visual"],
   ["designer", "visual"],
   ["image", "visual"],
+  ["engineer", "implementation"],
+  ["developer", "implementation"],
+  ["debugger", "implementation"],
+  ["code", "implementation"],
+  ["implementation", "implementation"],
+  ["product", "product"],
+  ["ux", "product"],
+  ["pm", "product"],
+  ["knowledge", "knowledge"],
+  ["summary", "knowledge"],
+  ["summarizer", "knowledge"],
+  ["taxonomy", "knowledge"],
   ["通用", "generalist"],
   ["综合", "generalist"],
   ["研究", "research"],
@@ -118,7 +160,21 @@ const AGENT_SKILL_ALIASES = new Map([
   ["编辑", "writing"],
   ["视觉", "visual"],
   ["设计", "visual"],
-  ["图片", "visual"]
+  ["图片", "visual"],
+  ["代码", "implementation"],
+  ["实现", "implementation"],
+  ["开发", "implementation"],
+  ["调试", "implementation"],
+  ["接口", "implementation"],
+  ["产品", "product"],
+  ["体验", "product"],
+  ["交互", "product"],
+  ["需求", "product"],
+  ["知识", "knowledge"],
+  ["整理", "knowledge"],
+  ["总结", "knowledge"],
+  ["分类", "knowledge"],
+  ["术语", "knowledge"]
 ]);
 
 export function getAgentSkill(skillId) {
@@ -144,6 +200,9 @@ export function inferAgentSkill(role = "", text = "") {
   if (/plan|planner|roadmap|workflow|schedule|milestone|todo|执行|规划|计划|路线图|流程|日程|里程碑|清单/.test(haystack)) return "planning";
   if (/critic|critique|qa|review|risk|test|审查|批判|质检|风险|漏洞|反例|测试/.test(haystack)) return "critique";
   if (/write|writer|editor|copy|draft|article|script|文案|写作|编辑|草稿|文章|脚本|润色/.test(haystack)) return "writing";
+  if (/product|ux|user journey|requirement|acceptance criteria|feature|priority|产品|体验|交互|用户旅程|需求|验收|功能|优先级/.test(haystack)) return "product";
+  if (/code|implement|developer|debug|bug|api|sdk|integration|refactor|代码|实现|开发|调试|缺陷|接口|集成|重构/.test(haystack)) return "implementation";
+  if (/knowledge|summari[sz]e|taxonomy|glossary|organize|meeting notes|知识|总结|摘要|整理|分类|术语|会议纪要|知识图谱/.test(haystack)) return "knowledge";
   if (/visual|image|design|style|storyboard|video|prompt|视觉|图片|图像|设计|风格|分镜|视频/.test(haystack)) return "visual";
   return "generalist";
 }
@@ -160,6 +219,7 @@ export function formatAgentSkillDirectory(lang = "zh") {
   const key = lang === "en" ? "en" : "zh";
   return AGENT_SKILLS.map((skill) => [
     `- ${skill.id} (${skill.label[key]})`,
+    `  Roles: ${skill.roles.join(", ")}`,
     `  When: ${skill.when[key]}`,
     `  Tools: ${skill.toolStrategy[key]}`,
     `  Output: ${skill.outputContract[key]}`,
@@ -172,6 +232,7 @@ export function formatAgentSkillBrief(skillId, lang = "zh") {
   const skill = getAgentSkill(skillId);
   return [
     `Agent skill: ${skill.id} (${skill.label[key]})`,
+    `Typical roles: ${skill.roles.join(", ")}`,
     `When to use: ${skill.when[key]}`,
     `Tool strategy: ${skill.toolStrategy[key]}`,
     `Output contract: ${skill.outputContract[key]}`,

@@ -1,6 +1,6 @@
 import { micromark } from "https://esm.sh/micromark@4";
 import { gfm, gfmHtml } from "https://esm.sh/micromark-extension-gfm@3";
-import { AGENT_SKILLS, agentSkillLabel, formatAgentSkillBrief, normalizeAgentSkill } from "./agentSkills.js";
+import { agentSkillLabel, formatAgentSkillBrief, normalizeAgentSkill } from "./agentSkills.js";
 
 const viewport = document.querySelector("#viewport");
 const board = document.querySelector("#board");
@@ -53,9 +53,6 @@ const chatAgentButton = document.querySelector("#chatAgentButton");
 const agentPanel = document.querySelector("#agentPanel");
 const closeAgentPanel = document.querySelector("#closeAgentPanel");
 const subagentsToggle = document.querySelector("#subagentsToggle");
-const agentSkillSelect = document.querySelector("#agentSkillSelect");
-const agentPrompt = document.querySelector("#agentPrompt");
-const runAgentButton = document.querySelector("#runAgentButton");
 const chatNewButton = document.querySelector("#chatNewButton");
 const chatNewCanvasButton = document.querySelector("#chatNewCanvasButton");
 const chatHistoryButton = document.querySelector("#chatHistoryButton");
@@ -89,7 +86,6 @@ const STORAGE_KEYS = {
   chatSidebarWidth: ["thoughtgrid.chatSidebarWidth", "oryzae.chatSidebarWidth"],
   chatInputHeight: ["thoughtgrid.chatInputHeight", "oryzae.chatInputHeight"],
   subagentsEnabled: ["thoughtgrid-subagents-enabled", "oryzae-subagents-enabled"],
-  preferredAgentSkill: ["thoughtgrid-preferred-agent-skill", "oryzae-preferred-agent-skill"],
   thinkingMode: ["thoughtgrid-thinking-mode", "oryzae-thinking-mode"],
   workbenchTourSeen: ["thoughtgrid.workbenchTourSeen.v5", "oryzae.workbenchTourSeen.v5"]
 };
@@ -186,7 +182,6 @@ const state = {
   selectedNodeIds: new Set(),
   thinkingMode: "no-thinking",
   subagentsEnabled: false,
-  preferredAgentSkill: "",
   view: {
     x: 0,
     y: 0,
@@ -1444,11 +1439,12 @@ function renderAllText() {
   if (agentPanelTitle) agentPanelTitle.textContent = currentLang === "en" ? "Agent" : "Agent";
   const subagentsToggleLabel = document.querySelector(".agent-subagents-toggle span");
   if (subagentsToggleLabel) subagentsToggleLabel.textContent = currentLang === "en" ? "Allow automatic subagents" : "允许模型自动创建 subagents";
-  const agentSkillLabelEl = document.querySelector(".agent-skill-field span");
-  if (agentSkillLabelEl) agentSkillLabelEl.textContent = currentLang === "en" ? "Agent skill" : "Agent 技能";
-  renderAgentSkillSelect();
-  if (agentPrompt) agentPrompt.placeholder = currentLang === "en" ? "Describe the task you want Agent to complete" : "描述希望 Agent 完成的任务";
-  if (runAgentButton) runAgentButton.textContent = currentLang === "en" ? "Run Agent" : "运行 Agent";
+  const agentPanelNote = document.querySelector(".agent-panel-note");
+  if (agentPanelNote) {
+    agentPanelNote.textContent = currentLang === "en"
+      ? "When enabled, the AI may create subagents for complex tasks. Users cannot create agents manually."
+      : "开启后，AI 会在复杂任务中自行判断是否创建 subagents；用户不能手动创建。";
+  }
   const asrBtn = document.querySelector("#chatAsrButton");
   if (asrBtn) {
     asrBtn.title = t("voice.asr");
@@ -1615,7 +1611,6 @@ async function init() {
   await loadLanguage();
   loadThinkingMode();
   loadSubagentsMode();
-  loadPreferredAgentSkill();
   hydrateChatThreads();
   updateChatPrimaryButtonMode();
 
@@ -2711,8 +2706,6 @@ function wireControls() {
   chatAgentButton?.addEventListener("click", toggleAgentPanel);
   closeAgentPanel?.addEventListener("click", () => setAgentPanelOpen(false));
   subagentsToggle?.addEventListener("change", () => setSubagentsMode(Boolean(subagentsToggle.checked)));
-  agentSkillSelect?.addEventListener("change", () => setPreferredAgentSkill(agentSkillSelect.value));
-  runAgentButton?.addEventListener("click", runCustomAgentTask);
   chatSidebarToggle?.addEventListener("click", () => {
     setChatSidebarOpen(true);
     chatInput?.focus();
@@ -3464,8 +3457,8 @@ function getWorkbenchTourSteps() {
         closeChatActionMenu();
         setAgentPanelOpen(true);
       },
-      title: isEn ? "Agent task panel" : "Agent 任务面板",
-      body: isEn ? "Use the Agent panel for longer goals. Describe the task, allow Subagents when useful, and let the AI break work into canvas actions and follow-up steps." : "Agent 面板适合更长目标：描述任务，必要时允许 Subagents 拆解，AI 会把工作拆成画布操作和后续步骤。"
+      title: isEn ? "Automatic subagents" : "自动 Subagents",
+      body: isEn ? "Use this panel only to allow or block AI-created subagents. When enabled, the AI decides whether complex chat tasks need focused workers and creates them itself." : "这个面板只用于允许或关闭 AI 自动创建 subagents。开启后，AI 会自行判断复杂对话任务是否需要聚焦 worker，并由 AI 自己创建。"
     },
     {
       target: "#chatRealtimeButton",
@@ -4300,39 +4293,6 @@ function loadSubagentsMode() {
   setSubagentsMode(getStoredItem(STORAGE_KEYS.subagentsEnabled) === "true", { silent: true });
 }
 
-function renderAgentSkillSelect() {
-  if (!agentSkillSelect) return;
-  const selected = state.preferredAgentSkill || "";
-  agentSkillSelect.innerHTML = "";
-  const autoOption = document.createElement("option");
-  autoOption.value = "";
-  autoOption.textContent = currentLang === "en" ? "Auto skill" : "自动选择";
-  agentSkillSelect.appendChild(autoOption);
-  AGENT_SKILLS.forEach((skill) => {
-    const option = document.createElement("option");
-    option.value = skill.id;
-    option.textContent = `${agentSkillLabel(skill.id, currentLang)} · ${skill.id}`;
-    agentSkillSelect.appendChild(option);
-  });
-  agentSkillSelect.value = selected;
-}
-
-function setPreferredAgentSkill(skillId, { silent = false } = {}) {
-  const normalized = AGENT_SKILLS.some((skill) => skill.id === skillId) ? skillId : "";
-  state.preferredAgentSkill = normalized;
-  if (agentSkillSelect) agentSkillSelect.value = normalized;
-  setStoredItem(STORAGE_KEYS.preferredAgentSkill, normalized);
-  if (!silent) {
-    const label = normalized ? agentSkillLabel(normalized, currentLang) : (currentLang === "en" ? "Auto skill" : "自动选择");
-    showToast(currentLang === "en" ? `Agent skill: ${label}` : `Agent 技能：${label}`);
-  }
-}
-
-function loadPreferredAgentSkill() {
-  renderAgentSkillSelect();
-  setPreferredAgentSkill(getStoredItem(STORAGE_KEYS.preferredAgentSkill) || "", { silent: true });
-}
-
 function toggleSubagentsMode() {
   setSubagentsMode(!state.subagentsEnabled);
   setAgentPanelOpen(true);
@@ -4343,31 +4303,12 @@ function setAgentPanelOpen(open) {
   chatAgentButton?.classList.toggle("active", Boolean(open));
   if (open) {
     if (subagentsToggle) subagentsToggle.checked = state.subagentsEnabled;
-    agentPrompt?.focus();
   }
 }
 
 function toggleAgentPanel() {
   const isHidden = agentPanel?.classList.contains("hidden");
   setAgentPanelOpen(Boolean(isHidden));
-}
-
-async function runCustomAgentTask() {
-  const task = agentPrompt?.value.trim() || chatInput?.value.trim() || "";
-  if (!task) {
-    showToast(currentLang === "en" ? "Describe an agent task first." : "请先描述 Agent 任务。");
-    agentPrompt?.focus();
-    return;
-  }
-  setSubagentsMode(true, { silent: true });
-  if (agentPrompt) agentPrompt.value = "";
-  setAgentPanelOpen(false);
-  await submitChatMessage(task, {
-    agentMode: true,
-    subagentsEnabled: true,
-    preferredAgentSkill: state.preferredAgentSkill || "",
-    forcedThinkingMode: "no-thinking"
-  });
 }
 
 function setDeepThinkModeActive(active) {
@@ -5507,7 +5448,6 @@ async function submitChatMessage(message, options = {}) {
       thinkingMode: effectiveThinkingMode,
       agentMode,
       subagentsEnabled,
-      preferredAgentSkill: agentMode ? String(options.preferredAgentSkill ?? state.preferredAgentSkill ?? "") : "",
       chatAttachments: chatAttachmentsPayload,
       sessionId: currentSessionId || "",
       previousResponseId: ensureActiveChatThread().previousResponseId || ""

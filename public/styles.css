@@ -1993,47 +1993,11 @@ body.chat-sidebar-closed .statusbar > * {
   font-size: 13px;
 }
 
-.agent-skill-field {
-  display: grid;
-  gap: 6px;
+.agent-panel-note {
+  margin: 0;
   color: var(--inkMuted);
   font-size: 12px;
-}
-
-.agent-skill-select {
-  width: 100%;
-  min-height: 34px;
-  border: 1px solid var(--divider);
-  border-radius: 10px;
-  padding: 0 10px;
-  color: var(--ink);
-  background: var(--ice);
-}
-
-.agent-prompt {
-  width: 100%;
-  min-height: 86px;
-  resize: vertical;
-  border: 1px solid var(--divider);
-  border-radius: 12px;
-  padding: 10px 12px;
-  color: var(--ink);
-  background: var(--ice);
-}
-
-.agent-run-button {
-  justify-self: end;
-  min-height: 34px;
-  padding: 0 14px;
-  border: none;
-  border-radius: 999px;
-  color: var(--paper);
-  background: var(--ps-blue);
-  cursor: pointer;
-}
-
-.agent-run-button:hover {
-  background: var(--ps-blue-hover);
+  line-height: 1.55;
 }
 
 .chat-conversation-list {

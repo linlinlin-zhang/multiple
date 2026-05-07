@@ -189,7 +189,7 @@
           <div id="chatConversationPanel" class="chat-conversation-panel hidden" aria-label="历史对话列表">
             <div id="chatConversationList" class="chat-conversation-list"></div>
           </div>
-          <div id="agentPanel" class="agent-panel hidden" aria-label="Agent 任务面板">
+          <div id="agentPanel" class="agent-panel hidden" aria-label="Subagents 控制面板">
             <div class="agent-panel-header">
               <strong>Agent</strong>
               <button id="closeAgentPanel" class="agent-panel-close" type="button" aria-label="关闭 Agent 面板">×</button>
@@ -198,14 +198,7 @@
               <input id="subagentsToggle" type="checkbox" />
               <span>允许模型自动创建 subagents</span>
             </label>
-            <label class="agent-skill-field">
-              <span>Agent skill</span>
-              <select id="agentSkillSelect" class="agent-skill-select">
-                <option value="">自动选择</option>
-              </select>
-            </label>
-            <textarea id="agentPrompt" class="agent-prompt" rows="3" placeholder="描述希望 Agent 完成的任务"></textarea>
-            <button id="runAgentButton" class="agent-run-button" type="button">运行 Agent</button>
+            <p class="agent-panel-note">开启后，AI 会在复杂任务中自行判断是否创建 subagents；用户不能手动创建。</p>
           </div>
           <div class="chat-context-indicator hidden"></div>
           <div class="chat-messages-wrap">

@@ -194,8 +194,8 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
         amount: { type: "number" },
         mode: { type: "string", description: "Optional mode hint, e.g. text-to-image, image-to-image, reverse-image-search, style, edit, reference." },
         scope: { type: "string" },
-        role: { type: "string", description: "For create_agent: the worker role or specialty, such as researcher, critic, planner, data analyst, writer, visual director, or QA." },
-        skill: { type: "string", enum: AGENT_SKILL_IDS, description: "For create_agent: the skill package to run with. Use one of generalist, research, analysis, planning, critique, writing, visual." },
+        role: { type: "string", description: "For create_agent: the worker role or specialty, such as researcher, critic, planner, data analyst, writer, visual director, engineer, product strategist, knowledge curator, or QA." },
+        skill: { type: "string", enum: AGENT_SKILL_IDS, description: "For create_agent: the skill package to run with. Use one listed skill id." },
         deliverable: { type: "string", description: "For create_agent: the concrete output the worker must return." },
         successCriteria: { type: "string", description: "For create_agent: how the controller should judge whether the subagent result is useful." },
         priority: { type: "string", description: "For create_agent: optional priority such as high, medium, or low." },
@@ -1570,8 +1570,7 @@ async function handleChat(body, res) {
   }
 
   const chatOptions = runtimeConfigs.chat.options || {};
-  const preferredAgentSkill = normalizeAgentSkillId(body?.preferredAgentSkill || body?.agentSkill);
-  const activeAgentSkill = normalizeAgentSkill(body?.agentSkill || preferredAgentSkill, "", message);
+  const activeAgentSkill = normalizeAgentSkill("", "", message);
   const activeAgentSkillTools = agentSkillToolFlags(activeAgentSkill);
   const webSearchEnabled = chatOptions.enableWebSearch !== false && (activeAgentSkillTools.webSearch || shouldUseWebSearchReadable(message, canvas, selectedContext));
   const webSearchForced = chatOptions.enableWebSearch !== false && (activeAgentSkillTools.webSearch || shouldForceWebSearchReadable(message));
@@ -1591,7 +1590,6 @@ async function handleChat(body, res) {
     thinkingMode,
     webSearchEnabled,
     agentMode,
-    preferredAgentSkill,
     lang
   });
 
