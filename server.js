@@ -3459,11 +3459,16 @@ function formatVideoBlueprintContext(lang, blueprint) {
   if (!blueprint || typeof blueprint !== "object") return "";
   const cards = Array.isArray(blueprint.cards) ? blueprint.cards : [];
   const relationships = Array.isArray(blueprint.relationships) ? blueprint.relationships : [];
-  if (!cards.length && !relationships.length) return "";
+  const overallDescription = String(blueprint.overallDescription || "").trim();
+  if (!cards.length && !relationships.length && !overallDescription) return "";
   const titleById = new Map(cards.map((card) => [card.id, card.title || card.id]));
   const lines = [
     lang === "en" ? "# Canvas Blueprint Context" : "# 画布蓝图上下文",
-    cards.length ? `${lang === "en" ? "Cards" : "卡片"}: ${cards.map((card) => card.title || card.id).join(lang === "en" ? "; " : "；")}` : "",
+    cards.length ? `${lang === "en" ? "Cards" : "卡片"}: ${cards.map((card) => {
+      const summary = String(card.summary || "").trim();
+      return `${card.title || card.id}${summary ? ` — ${summary.slice(0, 180)}` : ""}`;
+    }).join(lang === "en" ? "; " : "；")}` : "",
+    overallDescription ? `${lang === "en" ? "Overall supplement" : "整体补充"}: ${overallDescription}` : "",
     ...relationships.slice(0, 12).map((relationship) => {
       const from = titleById.get(relationship.from) || relationship.from;
       const to = titleById.get(relationship.to) || relationship.to;
@@ -6157,7 +6162,8 @@ function normalizeBlueprintPayload(blueprint) {
   const cards = Array.isArray(blueprint.cards)
     ? blueprint.cards.slice(0, 8).map((card) => ({
         id: cleanString(card?.id, 80),
-        title: cleanString(card?.title, 120)
+        title: cleanString(card?.title, 120),
+        summary: cleanString(card?.summary, 500)
       })).filter((card) => card.id || card.title)
     : [];
   const relationships = Array.isArray(blueprint.relationships)
@@ -6168,10 +6174,12 @@ function normalizeBlueprintPayload(blueprint) {
         note: cleanString(relationship?.note, 1000)
       })).filter((relationship) => relationship.from && relationship.to)
     : [];
-  if (!cards.length && !relationships.length) return null;
+  const overallDescription = cleanString(blueprint.overallDescription, 2000);
+  if (!cards.length && !relationships.length && !overallDescription) return null;
   return {
     junctionId: cleanString(blueprint.junctionId, 80),
     referenceStrength: Math.round(referenceStrength * 10) / 10,
+    overallDescription,
     cards,
     relationships
   };

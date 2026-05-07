@@ -148,6 +148,9 @@ const referenceModal = document.querySelector("#referenceModal");
 const referenceList = document.querySelector(".reference-list");
 const blueprintModal = document.querySelector("#blueprintModal");
 const blueprintCanvas = document.querySelector(".blueprint-canvas");
+const blueprintCompose = document.querySelector("#blueprintCompose");
+const blueprintPromptInput = document.querySelector("#blueprintPromptInput");
+const blueprintPromptSend = document.querySelector("#blueprintPromptSend");
 
 const state = {
   sourceImage: null,
@@ -4988,6 +4991,7 @@ function ensureBlueprintData(junctionId) {
   blueprint.relationships = Array.isArray(blueprint.relationships) ? blueprint.relationships : [];
   blueprint.referenceStrength = normalizeBlueprintReferenceStrength(blueprint.referenceStrength);
   blueprint.guideInteractions = Math.max(0, Number(blueprint.guideInteractions) || 0);
+  blueprint.overallDescription = String(blueprint.overallDescription || "").trim();
   return blueprint;
 }
 
@@ -4999,6 +5003,8 @@ function normalizeBlueprintReferenceStrength(value) {
 function resolveBlueprintJunctionId(nodeId) {
   if (!nodeId) return null;
   if (state.junctions.has(nodeId)) return nodeId;
+  const parentJunction = state.links.find((link) => link.to === nodeId && state.junctions.has(link.from));
+  if (parentJunction) return parentJunction.from;
   return findJunctionForCard(nodeId);
 }
 
@@ -5017,11 +5023,13 @@ function buildBlueprintContext(junctionId, includeReferenceStrength = true) {
   const normalized = ensureBlueprintData(junctionId);
   const connectedCards = (junction?.connectedCardIds || []).map((cardId) => ({
     id: cardId,
-    title: blueprintRelationshipTitle(cardId)
+    title: blueprintRelationshipTitle(cardId),
+    summary: getNodeSummary(state.nodes.get(cardId))
   }));
   const context = {
     junctionId,
     cards: connectedCards,
+    overallDescription: String(normalized?.overallDescription || "").trim(),
     relationships: (normalized?.relationships || []).map(r => ({
       from: r.from,
       to: r.to,
@@ -5039,7 +5047,10 @@ function formatBlueprintContextText(blueprint) {
   if (!blueprint) return "";
   const strength = blueprint.referenceStrength === undefined ? null : normalizeBlueprintReferenceStrength(blueprint.referenceStrength);
   const cardText = blueprint.cards?.length
-    ? `蓝图卡片: ${blueprint.cards.map((card) => card.title || card.id).join("、")}`
+    ? `蓝图卡片: ${blueprint.cards.map((card) => {
+        const summary = String(card.summary || "").trim();
+        return `${card.title || card.id}${summary ? ` — ${summary.slice(0, 120)}` : ""}`;
+      }).join("、")}`
     : "";
   const relationshipText = blueprint.relationships?.length
     ? `蓝图关系: ${blueprint.relationships.map((r) => {
@@ -5049,10 +5060,14 @@ function formatBlueprintContextText(blueprint) {
         return `${fromTitle} -> ${toTitle} (${blueprintRelationshipLabel(r.type)})${note ? `: ${note}` : ""}`;
       }).join("; ")}`
     : "";
+  const overallText = String(blueprint.overallDescription || "").trim()
+    ? `蓝图整体补充: ${String(blueprint.overallDescription || "").trim()}`
+    : "";
   return [
     strength === null ? "" : `蓝图参照强度: ${strength} / 1。数值越高，成图时越需要严格参考蓝图区域、关系注释与当前对话。`,
     cardText,
-    relationshipText
+    relationshipText,
+    overallText
   ].filter(Boolean).join("\n");
 }
 
@@ -10961,6 +10976,134 @@ function closeReferenceModal() {
   if (referenceList) referenceList.replaceChildren();
 }
 
+function setBlueprintComposeBusy(busy) {
+  if (blueprintPromptInput) blueprintPromptInput.disabled = Boolean(busy);
+  if (blueprintPromptSend) {
+    blueprintPromptSend.disabled = Boolean(busy);
+    blueprintPromptSend.textContent = busy
+      ? (currentLang === "en" ? "Sending..." : "发送中...")
+      : (currentLang === "en" ? "Send" : "发送");
+  }
+}
+
+function syncBlueprintCompose(blueprint) {
+  if (!blueprintPromptInput) return;
+  blueprintPromptInput.placeholder = currentLang === "en"
+    ? "Describe the image to generate, or supplement the overall blueprint relationship..."
+    : "描述想生成的图片，或补充蓝图整体关系...";
+  blueprintPromptInput.value = String(blueprint?.overallDescription || "");
+  if (blueprintPromptSend) {
+    blueprintPromptSend.textContent = currentLang === "en" ? "Send" : "发送";
+    blueprintPromptSend.setAttribute("aria-label", currentLang === "en" ? "Generate from blueprint" : "发送蓝图成图");
+  }
+}
+
+function resolveBlueprintCardThumbnailUrl(nodeId, node) {
+  if (node?.sourceCard) return sourceCardDisplayImageUrl(node.sourceCard);
+  if (nodeId === "source" && state.sourceType === "image") return state.sourceImage || sourcePreview?.src || "";
+  if (node?.generated) {
+    const info = getImageNodeInfo(nodeId);
+    return info?.imageUrl || (node.imageHash ? `/api/assets/${node.imageHash}?kind=generated` : "");
+  }
+  return "";
+}
+
+async function getBlueprintReferenceImageDataUrl(junctionId) {
+  const junction = state.junctions.get(junctionId);
+  for (const cardId of junction?.connectedCardIds || []) {
+    try {
+      const dataUrl = await getImageDataUrlForNode(cardId);
+      if (dataUrl) return dataUrl;
+    } catch {}
+  }
+  return "";
+}
+
+function buildBlueprintGenerationPrompt(junctionId, extraText = "") {
+  const blueprint = buildBlueprintContext(junctionId);
+  const contextText = formatBlueprintContextText(blueprint);
+  const userText = String(extraText || blueprint?.overallDescription || "").trim();
+  const fallback = currentLang === "en"
+    ? "Generate a new image from this blueprint, using the card materials and relationship structure as the core composition guidance."
+    : "请基于这个蓝图生成一张新图，以卡片素材与关系结构作为核心构图参考。";
+  const lead = currentLang === "en"
+    ? "User direction / overall supplement:"
+    : "用户方向 / 整体补充：";
+  return [
+    userText ? `${lead}\n${userText}` : fallback,
+    contextText
+  ].filter(Boolean).join("\n\n").slice(0, 4000);
+}
+
+function createBlueprintGenerationOption(junctionId, prompt) {
+  const junction = state.junctions.get(junctionId);
+  if (!junction || !state.nodes.has(junctionId)) return null;
+  const firstLine = String(prompt || "").split(/\r?\n/).map((line) => line.trim()).find(Boolean) || "";
+  const title = (firstLine && !/^用户方向|^User direction/i.test(firstLine))
+    ? firstLine.slice(0, 48)
+    : (currentLang === "en" ? "Blueprint image" : "蓝图生成图");
+  const nodeId = createOptionNode({
+    id: `blueprint-${Date.now()}-${safeNodeSlug(title)}`,
+    title,
+    description: prompt.slice(0, 260),
+    prompt,
+    tone: currentLang === "en" ? "blueprint" : "蓝图",
+    layoutHint: currentLang === "en" ? "relationship" : "关系"
+  }, junctionId);
+  if (!nodeId) return null;
+  state.links = state.links.filter((link) => !(link.kind === "option" && link.from === junctionId && link.to === nodeId));
+  if (!junction.connectedCardIds.includes(nodeId)) {
+    junction.connectedCardIds.push(nodeId);
+  }
+  if (!state.links.some((link) => link.kind === "junction" && link.from === nodeId && link.to === junctionId)) {
+    state.links.push({ from: nodeId, to: junctionId, kind: "junction" });
+  }
+  const countEl = state.nodes.get(junctionId)?.element?.querySelector(".junction-count");
+  if (countEl) countEl.textContent = String(junction.connectedCardIds.length);
+  const blueprint = ensureBlueprintData(junctionId);
+  const existingCards = Object.values(blueprint.positions || {});
+  blueprint.positions[nodeId] = {
+    x: 24 + (existingCards.length % 3) * 220,
+    y: 24 + Math.floor(existingCards.length / 3) * 180
+  };
+  drawLinks();
+  updateCounts();
+  autoSave();
+  return nodeId;
+}
+
+async function submitBlueprintGeneration(event) {
+  event?.preventDefault();
+  const junctionId = blueprintModal?.dataset.junctionId;
+  const blueprint = ensureBlueprintData(junctionId);
+  if (!junctionId || !blueprint) return;
+  const extraText = blueprintPromptInput?.value.trim() || "";
+  if (blueprint.overallDescription !== extraText) {
+    blueprint.overallDescription = extraText;
+    autoSave();
+  }
+  const prompt = buildBlueprintGenerationPrompt(junctionId, extraText);
+  const nodeId = createBlueprintGenerationOption(junctionId, prompt);
+  if (!nodeId) return;
+  setBlueprintComposeBusy(true);
+  try {
+    const imageDataUrl = await getBlueprintReferenceImageDataUrl(junctionId);
+    const result = await generateImageFromAction({
+      type: "generate_image",
+      nodeId,
+      imageDataUrl
+    });
+    if (result?.success === false) {
+      showToast(result.error || (currentLang === "en" ? "Image generation failed." : "成图失败。"));
+    } else {
+      showToast(currentLang === "en" ? "Blueprint image generated." : "已根据蓝图生成图片。");
+      openBlueprintModal(junctionId);
+    }
+  } finally {
+    setBlueprintComposeBusy(false);
+  }
+}
+
 function openBlueprintModal(junctionId) {
   const junction = state.junctions.get(junctionId);
   if (!junction || junction.connectedCardIds.length === 0) return;
@@ -10979,6 +11122,7 @@ function openBlueprintModal(junctionId) {
   // Render each connected card as a simplified mini-card
   const blueprint = ensureBlueprintData(junctionId);
   renderBlueprintControls(blueprint);
+  syncBlueprintCompose(blueprint);
   const positions = blueprint?.positions || {};
   let index = 0;
   for (const cardId of junction.connectedCardIds) {
@@ -11057,12 +11201,16 @@ function openBlueprintModal(junctionId) {
       card.appendChild(desc);
     }
 
-    // Add thumbnail if node has a generated image
-    if (node.generated && node.imageHash) {
+    const thumbnailUrl = resolveBlueprintCardThumbnailUrl(cardId, node);
+    if (thumbnailUrl) {
       const img = document.createElement("img");
       img.className = "blueprint-card-thumb";
-      img.src = node.imageHash.startsWith("data:") ? node.imageHash : `/api/assets/${node.imageHash}?kind=generated`;
+      img.src = thumbnailUrl;
       img.alt = "";
+      img.loading = "lazy";
+      img.onerror = () => {
+        img.remove();
+      };
       card.appendChild(img);
     }
 
@@ -11707,6 +11855,13 @@ function removeBlueprintRelationship(fromCardId, toCardId, canvas) {
 blueprintModal?.addEventListener("click", (event) => {
   if (event.target.hasAttribute("data-close-blueprint")) {
     closeBlueprintModal();
+  }
+});
+blueprintCompose?.addEventListener("submit", submitBlueprintGeneration);
+blueprintPromptInput?.addEventListener("keydown", (event) => {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    event.preventDefault();
+    submitBlueprintGeneration(event);
   }
 });
 

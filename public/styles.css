@@ -4983,6 +4983,7 @@ html[data-theme="dark"] .ref-type-badge {
   overflow: auto;
   background: var(--ice);
   padding: 24px;
+  min-height: 0;
 }
 
 .blueprint-svg {
@@ -5105,6 +5106,63 @@ html[data-theme="dark"] .ref-type-badge {
   object-fit: cover;
   border-radius: 8px;
   background: var(--ice);
+}
+
+.blueprint-compose {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--divider);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+}
+
+.blueprint-compose textarea {
+  flex: 1;
+  min-height: 42px;
+  max-height: 120px;
+  resize: vertical;
+  border: 1px solid var(--divider);
+  border-radius: 14px;
+  padding: 11px 13px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  outline: none;
+}
+
+.blueprint-compose textarea:focus {
+  border-color: var(--ps-blue);
+  box-shadow: 0 0 0 3px rgba(0, 112, 204, 0.12);
+}
+
+.blueprint-compose button {
+  min-width: 78px;
+  min-height: 42px;
+  border: none;
+  border-radius: 999px;
+  padding: 0 18px;
+  background: var(--ps-blue);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 160ms ease, filter 160ms ease, opacity 160ms ease;
+}
+
+.blueprint-compose button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
+}
+
+.blueprint-compose button:disabled,
+.blueprint-compose textarea:disabled {
+  opacity: 0.6;
+  cursor: wait;
 }
 
 .blueprint-link {
@@ -5232,6 +5290,10 @@ html[data-theme="dark"] .blueprint-card.dragging {
 
 html[data-theme="dark"] .blueprint-strength-panel,
 html[data-theme="dark"] .blueprint-relationship-note {
+  background: rgba(17, 24, 39, 0.9);
+}
+
+html[data-theme="dark"] .blueprint-compose {
   background: rgba(17, 24, 39, 0.9);
 }
 
