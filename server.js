@@ -628,7 +628,10 @@ const server = http.createServer(async (req, res) => {
 
     // Import route
     if (req.method === "POST" && url.pathname === "/api/import") {
-      const body = await readJson(req);
+      const contentType = String(req.headers["content-type"] || "").toLowerCase();
+      const body = /zip|octet-stream/i.test(contentType)
+        ? await readBodyBuffer(req)
+        : await readJson(req);
       return await handleImportSession(body, res, visitor);
     }
 
@@ -6480,6 +6483,24 @@ function readJson(req) {
         reject(new Error("Invalid JSON body."));
       }
     });
+    req.on("error", reject);
+  });
+}
+
+function readBodyBuffer(req) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", (chunk) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error("Request body is too large. Please upload a smaller file."));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
 }

@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+import JSZip from "jszip";
 import { prisma } from "../lib/prisma.js";
 import { storeDataUrl, readFile, parseDataUrl, storeFile } from "../lib/storage.js";
 import { isGenericSessionTitle, resolveSessionTitle } from "../lib/sessionTitle.js";
@@ -57,9 +59,9 @@ function serializeState(state) {
             ? {
                 sourceCard: n.sourceCard,
                 rotation,
-                imageHash: n.sourceCard?.imageHash || n.imageHash || null,
+                imageHash: n.sourceCard?.imageHash || n.imageHash || extractAssetHash(n.sourceCard?.imageUrl) || null,
                 imageUrl: n.sourceCard?.imageUrl || null,
-                sourceVideoHash: n.sourceCard?.sourceVideoHash || n.sourceCard?.videoHash || null,
+                sourceVideoHash: n.sourceCard?.sourceVideoHash || n.sourceCard?.videoHash || extractAssetHash(n.sourceCard?.sourceVideoUrl || n.sourceCard?.videoUrl) || null,
                 sourceVideoUrl: n.sourceCard?.sourceVideoUrl || n.sourceCard?.videoUrl || null,
                 sourceVideoMimeType: n.sourceCard?.sourceVideoMimeType || null,
                 sourceUrl: n.sourceCard?.sourceUrl || null,
@@ -411,6 +413,201 @@ function detectMimeType(buffer) {
   return "application/octet-stream";
 }
 
+function safeArchiveName(value, fallback = "session") {
+  return String(value || fallback)
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 60) || fallback;
+}
+
+function extensionFromMimeType(mimeType) {
+  const map = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "image/svg+xml": "svg",
+    "application/pdf": "pdf",
+    "application/msword": "doc",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "application/vnd.ms-powerpoint": "ppt",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
+    "text/plain": "txt",
+    "text/markdown": "md",
+    "application/json": "json",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov",
+    "video/x-m4v": "m4v",
+    "video/ogg": "ogv"
+  };
+  return map[String(mimeType || "").toLowerCase()] || "";
+}
+
+function extensionFromAsset(asset, mimeType = "") {
+  const nameExt = String(asset?.fileName || asset?.path || "").split(/[?#]/)[0].split(".").pop()?.toLowerCase() || "";
+  if (/^[a-z0-9]{1,8}$/.test(nameExt) && nameExt !== String(asset?.fileName || asset?.path || "").toLowerCase()) return nameExt === "jpeg" ? "jpg" : nameExt;
+  return extensionFromMimeType(mimeType || asset?.mimeType) || "bin";
+}
+
+function normalizeAssetKind(kind) {
+  return kind === "generated" ? "generated" : "upload";
+}
+
+function addUniqueAssetRecord(records, record) {
+  if (!record?.hash || !/^[a-f0-9]{64}$/i.test(record.hash)) return;
+  const kind = normalizeAssetKind(record.kind);
+  const key = `${kind}:${record.hash}`;
+  if (records.some((item) => `${normalizeAssetKind(item.kind)}:${item.hash}` === key)) return;
+  records.push({ ...record, kind });
+}
+
+function assetArchivePath(asset, mimeType = "") {
+  const ext = extensionFromAsset(asset, mimeType);
+  const kind = normalizeAssetKind(asset.kind);
+  const name = safeArchiveName(asset.fileName || asset.hash.slice(0, 12), asset.hash.slice(0, 12));
+  return `assets/${kind}/${asset.hash.slice(0, 2)}/${asset.hash}.${name}.${ext}`;
+}
+
+function collectApiAssetReferences(value, records) {
+  const visit = (item) => {
+    if (!item) return;
+    if (typeof item === "string") {
+      const regex = /\/api\/assets\/([a-f0-9]{64})(?:\?([^"'`\s<>]*))?/gi;
+      let match;
+      while ((match = regex.exec(item))) {
+        const params = new URLSearchParams(match[2] || "");
+        addUniqueAssetRecord(records, {
+          hash: match[1],
+          kind: params.get("kind") === "generated" ? "generated" : "upload",
+          mimeType: "",
+          fileSize: 0,
+          fileName: null
+        });
+      }
+      return;
+    }
+    if (Array.isArray(item)) {
+      item.forEach(visit);
+      return;
+    }
+    if (typeof item === "object") {
+      Object.values(item).forEach(visit);
+    }
+  };
+  visit(value);
+}
+
+function collectNodeAssetReferences(nodes, records) {
+  for (const node of nodes || []) {
+    const data = node?.data || {};
+    const sourceCard = data.sourceCard || {};
+    const add = (hash, kind, fileName = null, mimeType = "") => addUniqueAssetRecord(records, { hash, kind, fileName, mimeType, fileSize: 0 });
+    if (node.type === "generated") {
+      add(data.imageHash, "generated");
+      add(data.videoHash, "generated", null, data.videoMimeType || "");
+    } else {
+      add(data.imageHash || sourceCard.imageHash, "upload", sourceCard.fileName || sourceCard.title || data.fileName || null, sourceCard.mimeType || data.mimeType || "");
+      add(data.sourceDataUrlHash || sourceCard.sourceDataUrlHash, "upload", sourceCard.fileName || sourceCard.title || data.fileName || null, sourceCard.mimeType || data.mimeType || "");
+      add(data.sourceVideoHash || sourceCard.sourceVideoHash || sourceCard.videoHash, "upload", sourceCard.fileName || sourceCard.title || data.fileName || null, sourceCard.sourceVideoMimeType || sourceCard.mimeType || "");
+    }
+  }
+}
+
+function replaceStringsDeep(value, replacements) {
+  if (!replacements?.size) return value;
+  if (typeof value === "string") {
+    let next = value;
+    for (const [from, to] of replacements) next = next.split(from).join(to);
+    return next;
+  }
+  if (Array.isArray(value)) return value.map((item) => replaceStringsDeep(item, replacements));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceStringsDeep(item, replacements)]));
+  }
+  return value;
+}
+
+async function collectMaterialUrlAssets(value, records, visitorId) {
+  const materialIds = new Set();
+  const visit = (item) => {
+    if (typeof item === "string") {
+      const regex = /\/api\/materials\/([^/?#]+)\/file/g;
+      let match;
+      while ((match = regex.exec(item))) {
+        try {
+          materialIds.add(decodeURIComponent(match[1]));
+        } catch {
+          materialIds.add(match[1]);
+        }
+      }
+      return;
+    }
+    if (Array.isArray(item)) return item.forEach(visit);
+    if (item && typeof item === "object") Object.values(item).forEach(visit);
+  };
+  visit(value);
+  if (!materialIds.size) return new Map();
+  const items = await prisma.materialItem.findMany({
+    where: {
+      id: { in: Array.from(materialIds) },
+      visitorId: visitorId || "legacy"
+    }
+  });
+  const replacements = new Map();
+  for (const item of items) {
+    addUniqueAssetRecord(records, {
+      hash: item.hash,
+      kind: "upload",
+      mimeType: item.mimeType,
+      fileSize: item.fileSize,
+      fileName: item.fileName
+    });
+    replacements.set(`/api/materials/${item.id}/file`, `/api/assets/${item.hash}?kind=upload`);
+  }
+  return replacements;
+}
+
+async function collectInlineDataUrlAssets(value, records) {
+  const dataUrls = new Set();
+  const visit = (item) => {
+    if (typeof item === "string") {
+      if (/^data:[a-z0-9+/.-]+(?:;[^,]*)?;base64,/i.test(item)) dataUrls.add(item);
+      return;
+    }
+    if (Array.isArray(item)) return item.forEach(visit);
+    if (item && typeof item === "object") Object.values(item).forEach(visit);
+  };
+  visit(value);
+  const replacements = new Map();
+  for (const dataUrl of dataUrls) {
+    try {
+      const parsed = parseDataUrl(dataUrl);
+      const stored = await storeFile(parsed.buffer, { kind: "upload", ext: parsed.ext || "bin" });
+      addUniqueAssetRecord(records, {
+        hash: stored.hash,
+        kind: "upload",
+        mimeType: parsed.mimeType,
+        fileSize: stored.size,
+        fileName: null
+      });
+    } catch {}
+  }
+  return replacements;
+}
+
+async function readAssetBuffer(asset) {
+  try {
+    return await readFile(asset.hash, { kind: asset.kind });
+  } catch (storageError) {
+    const item = await prisma.materialItem.findFirst({ where: { hash: asset.hash } });
+    if (!item?.filePath) throw storageError;
+    return fs.readFile(item.filePath);
+  }
+}
+
 /**
  * POST /api/sessions
  */
@@ -672,9 +869,13 @@ export async function handleExportSession(sessionId, res, options = {}) {
       return sendJson(res, 404, { error: "Session not found" });
     }
 
+    const zip = new JSZip();
     const exportPayload = {
       version: 1,
+      packageVersion: 2,
+      format: "thoughtgrid-session-package",
       exportedAt: new Date().toISOString(),
+      originalSessionId: session.id,
       session: {
         title: session.title,
         isDemo: session.isDemo,
@@ -705,39 +906,66 @@ export async function handleExportSession(sessionId, res, options = {}) {
       assets: []
     };
 
+    const assetRecords = [];
     for (const asset of session.assets) {
+      addUniqueAssetRecord(assetRecords, {
+        hash: asset.hash,
+        kind: asset.kind,
+        mimeType: asset.mimeType,
+        fileSize: asset.fileSize,
+        fileName: asset.fileName
+      });
+    }
+    collectNodeAssetReferences(exportPayload.session.nodes, assetRecords);
+    const materialReplacements = await collectMaterialUrlAssets(exportPayload.session, assetRecords, options.visitorId);
+    exportPayload.session = replaceStringsDeep(exportPayload.session, materialReplacements);
+    const inlineAssetReplacements = await collectInlineDataUrlAssets(exportPayload.session, assetRecords);
+    exportPayload.session = replaceStringsDeep(exportPayload.session, inlineAssetReplacements);
+    collectApiAssetReferences(exportPayload.session, assetRecords);
+
+    for (const asset of assetRecords) {
       try {
-        const buffer = await readFile(asset.hash, { kind: asset.kind });
+        const buffer = await readAssetBuffer(asset);
         const mimeType = asset.mimeType || detectMimeType(buffer);
+        const archivePath = assetArchivePath(asset, mimeType);
+        zip.file(archivePath, buffer);
         exportPayload.assets.push({
           hash: asset.hash,
-          kind: asset.kind,
+          kind: normalizeAssetKind(asset.kind),
           mimeType,
-          fileSize: asset.fileSize,
+          fileSize: buffer.length,
           fileName: asset.fileName,
-          dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}`
+          path: archivePath,
+          missing: false
         });
       } catch {
         exportPayload.assets.push({
           hash: asset.hash,
-          kind: asset.kind,
+          kind: normalizeAssetKind(asset.kind),
           mimeType: asset.mimeType,
           fileSize: asset.fileSize,
           fileName: asset.fileName,
-          dataUrl: null,
+          path: null,
           missing: true
         });
       }
     }
 
-    const safeTitle = (session.title || "session").replace(/[^a-z0-9_-]+/gi, "_").slice(0, 40) || "session";
-    const encodedTitle = encodeURIComponent(`${session.title || "session"}_${sessionId.slice(0, 8)}.json`);
+    zip.file("session.json", JSON.stringify(exportPayload, null, 2));
+    const archive = await zip.generateAsync({
+      type: "nodebuffer",
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 }
+    });
+
+    const safeTitle = safeArchiveName(session.title || "session");
+    const encodedTitle = encodeURIComponent(`${session.title || "session"}_${sessionId.slice(0, 8)}.zip`);
     res.writeHead(200, {
-      "Content-Type": "application/json; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${safeTitle}_${sessionId.slice(0, 8)}.json"; filename*=UTF-8''${encodedTitle}`,
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${safeTitle}_${sessionId.slice(0, 8)}.zip"; filename*=UTF-8''${encodedTitle}`,
       "Cache-Control": "no-cache"
     });
-    res.end(JSON.stringify(exportPayload, null, 2));
+    res.end(archive);
   } catch (error) {
     console.error("[handleExportSession]", error);
     return sendJson(res, 500, { error: error.message || "Failed to export session" });

@@ -472,9 +472,9 @@ const i18n = {
     "command.save": "保存会话",
     "command.saveDesc": "把当前画布保存到历史记录",
     "command.export": "导出会话",
-    "command.exportDesc": "下载当前会话 JSON",
+    "command.exportDesc": "下载包含 JSON 和素材文件的会话压缩包",
     "command.import": "导入会话",
-    "command.importDesc": "从 JSON 文件恢复会话",
+    "command.importDesc": "从会话压缩包或 JSON 文件恢复会话",
     "command.sessions": "历史会话",
     "command.fit": "重置视图",
     "command.zoomIn": "放大",
@@ -899,9 +899,9 @@ const i18n = {
     "command.save": "Save session",
     "command.saveDesc": "Save this canvas to history",
     "command.export": "Export session",
-    "command.exportDesc": "Download the current session JSON",
+    "command.exportDesc": "Download a session package with JSON and assets",
     "command.import": "Import session",
-    "command.importDesc": "Restore a session from JSON",
+    "command.importDesc": "Restore a session from a package or JSON file",
     "command.sessions": "Sessions",
     "command.sessionsDesc": "Open the in-workbench session list",
     "command.fit": "Reset view",
@@ -1948,7 +1948,7 @@ async function exportCurrentSession() {
     a.href = url;
     const disposition = res.headers.get("Content-Disposition") || "";
     const match = /filename="([^"]+)"/.exec(disposition);
-    a.download = match ? match[1] : `session_${currentSessionId.slice(0, 8)}.json`;
+    a.download = match ? match[1] : `session_${currentSessionId.slice(0, 8)}.zip`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1961,18 +1961,23 @@ async function exportCurrentSession() {
 function importSessionFile() {
   const input = document.createElement("input");
   input.type = "file";
-  input.accept = ".json,application/json";
+  input.accept = ".zip,.json,application/zip,application/x-zip-compressed,application/json";
   input.onchange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const text = await file.text();
-      const payload = JSON.parse(text);
-      const res = await fetch("/api/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
+      const isArchive = /\.zip$/i.test(file.name) || /zip|octet-stream/i.test(file.type || "");
+      const res = isArchive
+        ? await fetch("/api/import", {
+            method: "POST",
+            headers: { "Content-Type": file.type || "application/zip" },
+            body: file
+          })
+        : await fetch("/api/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: await file.text()
+          });
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Import failed");
       window.location.href = `/app.html?session=${data.sessionId}`;
@@ -2367,10 +2372,10 @@ async function importMaterialAsSourceCard(item = {}) {
       x: (anchor.x || 96) + (anchor.width || 318) + 96,
       y: (anchor.y || 88) + 24,
       imageUrl: kind === "image" ? url : "",
-      imageHash: "",
+      imageHash: kind === "image" ? item.hash || "" : "",
       sourceType: kind === "video" ? "video" : (kind === "image" ? "image" : "text"),
       sourceVideoUrl: kind === "video" ? url : "",
-      sourceVideoHash: "",
+      sourceVideoHash: kind === "video" ? item.hash || "" : "",
       sourceVideoMimeType: kind === "video" ? item.mimeType || sourceVideoMimeType(fileName) : ""
     });
     const node = state.nodes.get(nodeId);
@@ -2383,7 +2388,7 @@ async function importMaterialAsSourceCard(item = {}) {
         sourceText: documentText,
         sourceTextMode: "",
         sourceDataUrl: documentDataUrl,
-        sourceDataUrlHash: "",
+        sourceDataUrlHash: item.hash || "",
         mimeType
       };
       renderDocumentPreview(
