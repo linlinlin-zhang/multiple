@@ -50,7 +50,6 @@ const chatUploadAction = document.querySelector("#chatUploadAction");
 const chatMaterialAction = document.querySelector("#chatMaterialAction");
 const chatMinimapAction = document.querySelector("#chatMinimapAction");
 const chatDeepThinkAction = document.querySelector("#chatDeepThinkAction");
-const chatSubagentsAction = document.querySelector("#chatSubagentsAction");
 const chatNewCardAction = document.querySelector("#chatNewCardAction");
 const deepThinkModeChip = document.querySelector("#deepThinkModeChip");
 const deepThinkModeCancel = document.querySelector("#deepThinkModeCancel");
@@ -734,12 +733,31 @@ const i18n = {
     "source.textTab": "文字",
     "source.textPlaceholder": "输入文字内容",
     "source.textCardTitle": "文字卡片",
+    "source.textFormatHeading": "标题",
+    "source.textFormatBold": "加粗",
+    "source.textFormatItalic": "斜体",
+    "source.textFormatList": "列表",
+    "source.textFormatQuote": "引用",
+    "source.textFormatColor": "文字颜色",
+    "source.textColorInk": "黑色",
+    "source.textColorBlue": "蓝色",
+    "source.textColorRed": "红色",
+    "source.textColorGreen": "绿色",
+    "source.textColorOrange": "橙色",
+    "source.textColorPurple": "紫色",
+    "source.textFormatClear": "清除格式",
+    "source.textFormatSample": "文字",
     "source.uploadPrompt": "上传图片、视频或文档",
     "source.uploadHint": "选择图片、视频、Word、PDF、PPT 或 TXT，生成分支方向",
     "research.analyzeTooltip": "调用 no-thinking 模式，快速生成 5 到 8 张方向卡",
     "research.cannotResearch": "这张卡片不能研究",
     "chat.conversationMessages": "{count} 条消息",
     "chat.noMessages": "还没有消息。输入方向、约束，或按 / 使用工作台命令。",
+    "chat.emptyTitle": "可以这样开始",
+    "chat.suggestionAnalyze": "帮我把当前源内容拆成 5 个创作方向",
+    "chat.suggestionPlan": "根据画布内容整理一个执行计划",
+    "chat.suggestionResearch": "围绕这个主题做一次深入研究，并整理参考卡片",
+    "chat.suggestionImagePrompt": "把我的想法改写成适合成图的提示词",
     "chat.selectCardFirst": "请先双击一张卡片进行选择",
     "chat.send": "发送",
     "chat.thinkingDetails": "思考过程",
@@ -999,6 +1017,20 @@ const i18n = {
     "source.textTab": "Text",
     "source.textPlaceholder": "Type text content",
     "source.textCardTitle": "Text card",
+    "source.textFormatHeading": "Heading",
+    "source.textFormatBold": "Bold",
+    "source.textFormatItalic": "Italic",
+    "source.textFormatList": "List",
+    "source.textFormatQuote": "Quote",
+    "source.textFormatColor": "Text color",
+    "source.textColorInk": "Black",
+    "source.textColorBlue": "Blue",
+    "source.textColorRed": "Red",
+    "source.textColorGreen": "Green",
+    "source.textColorOrange": "Orange",
+    "source.textColorPurple": "Purple",
+    "source.textFormatClear": "Clear format",
+    "source.textFormatSample": "text",
     "source.uploadPrompt": "Upload image, video or document",
     "source.uploadHint": "Select image, video, Word, PDF, PPT or TXT to generate branches",
     "source.analyze": "Analyze",
@@ -1031,6 +1063,11 @@ const i18n = {
     "chat.placeholderWithCard": "Chat with '{title}'...",
     "chat.contextIndicator": "Context: {title}",
     "chat.noMessages": "No messages yet. Enter a direction, constraint, or press / for workbench commands.",
+    "chat.emptyTitle": "Try starting with",
+    "chat.suggestionAnalyze": "Break the current source into 5 creative directions",
+    "chat.suggestionPlan": "Turn the canvas into an execution plan",
+    "chat.suggestionResearch": "Research this topic and organize reference cards",
+    "chat.suggestionImagePrompt": "Rewrite my idea as image-generation prompts",
     "chat.roleUser": "You",
     "chat.roleAssistant": "AI",
     "chat.selectCardFirst": "Please double-click a card to select it first",
@@ -1442,6 +1479,10 @@ function renderAllText() {
   document.querySelectorAll(".source-text-input").forEach((input) => {
     input.placeholder = t("source.textPlaceholder");
   });
+  ensureSourceTextToolbar("source", sourceNode);
+  for (const [id, node] of state.nodes.entries()) {
+    if (node.sourceCard) ensureSourceTextToolbar(id, node.element);
+  }
 
   document.querySelectorAll(".research-option").forEach((opt) => {
     const label = opt.querySelector(".option-label");
@@ -1551,8 +1592,8 @@ function renderAllText() {
   const agentPanelNote = document.querySelector(".agent-panel-note");
   if (agentPanelNote) {
     agentPanelNote.textContent = currentLang === "en"
-      ? "When enabled, the AI may create subagents for complex tasks. Users cannot create agents manually."
-      : "开启后，AI 会在复杂任务中自行判断是否创建 subagents；用户不能手动创建。";
+      ? "When enabled, the AI may create subagents for complex tasks."
+      : "开启后，AI 会在复杂任务中自行判断是否创建 subagents。";
   }
   const asrBtn = document.querySelector("#chatAsrButton");
   if (asrBtn) {
@@ -1760,13 +1801,7 @@ function getWorkbenchCommands() {
     { id: "arrange", icon: "A", label: t("command.arrange"), description: t("command.arrangeDesc") },
     { id: "new-card", icon: "N", label: t("command.newCard"), description: t("command.newCardDesc") },
     { id: "search-card", icon: "Q", label: t("command.searchCard"), description: t("command.searchCardDesc") },
-    { id: "import-material", icon: "L", label: t("command.importMaterial"), description: t("command.importMaterialDesc") },
-    {
-      id: "subagents",
-      icon: "A",
-      label: currentLang === "en" ? "Subagents" : "Subagents",
-      description: currentLang === "en" ? "Allow complex tasks to spawn quick agents" : "\u5141\u8bb8\u590d\u6742\u4efb\u52a1\u62c6\u6210\u591a\u4e2a\u5feb\u901f agent"
-    }
+    { id: "import-material", icon: "L", label: t("command.importMaterial"), description: t("command.importMaterialDesc") }
   ];
 }
 
@@ -1969,7 +2004,6 @@ async function executeWorkbenchCommand(commandId) {
     setTimeout(() => openMaterialSearchBar(commandArgument), 0);
     return;
   }
-  if (commandId === "subagents") return toggleSubagentsMode();
 }
 
 function extractCommandArgument(commandId, rawValue) {
@@ -2463,6 +2497,203 @@ function sourceTextCardTitle() {
   return t("source.textCardTitle");
 }
 
+function sourceTextToolbarItems() {
+  return [
+    { format: "heading", label: "H", title: t("source.textFormatHeading") },
+    { format: "bold", label: "B", title: t("source.textFormatBold") },
+    { format: "italic", label: "I", title: t("source.textFormatItalic") },
+    { format: "list", label: "•", title: t("source.textFormatList") },
+    { format: "quote", label: "“", title: t("source.textFormatQuote") },
+    { format: "color", label: "A", title: t("source.textFormatColor") },
+    { format: "clear", label: "×", title: t("source.textFormatClear") }
+  ];
+}
+
+function sourceTextColorOptions() {
+  return [
+    { color: "#1f1f1f", label: t("source.textColorInk") },
+    { color: "#0070cc", label: t("source.textColorBlue") },
+    { color: "#d93025", label: t("source.textColorRed") },
+    { color: "#188038", label: t("source.textColorGreen") },
+    { color: "#f29900", label: t("source.textColorOrange") },
+    { color: "#7b61ff", label: t("source.textColorPurple") }
+  ];
+}
+
+function ensureSourceTextToolbar(nodeId, element) {
+  const panel = element?.querySelector(".source-text-panel");
+  const input = panel?.querySelector(".source-text-input");
+  if (!panel || !input) return;
+  let toolbar = panel.querySelector(".source-text-tools");
+  if (!toolbar) {
+    toolbar = document.createElement("div");
+    toolbar.className = "source-text-tools";
+    panel.appendChild(toolbar);
+  }
+  toolbar.setAttribute("aria-label", t("source.textTab"));
+  const items = sourceTextToolbarItems();
+  for (const item of items) {
+    if (item.format === "color") {
+      let wrapper = toolbar.querySelector(".source-text-color-wrap");
+      if (!wrapper) {
+        wrapper = document.createElement("div");
+        wrapper.className = "source-text-color-wrap";
+        toolbar.appendChild(wrapper);
+      }
+      let button = wrapper.querySelector(".source-text-tool[data-format=\"color\"]");
+      if (!button) {
+        button = document.createElement("button");
+        button.type = "button";
+        button.className = "source-text-tool source-text-color-button";
+        button.dataset.format = item.format;
+        wrapper.appendChild(button);
+      }
+      button.textContent = item.label;
+      button.title = item.title;
+      button.setAttribute("aria-label", item.title);
+      let menu = wrapper.querySelector(".source-text-color-menu");
+      if (!menu) {
+        menu = document.createElement("div");
+        menu.className = "source-text-color-menu";
+        wrapper.appendChild(menu);
+      }
+      menu.replaceChildren();
+      for (const option of sourceTextColorOptions()) {
+        const colorButton = document.createElement("button");
+        colorButton.type = "button";
+        colorButton.className = "source-text-color-option";
+        colorButton.dataset.color = option.color;
+        colorButton.title = option.label;
+        colorButton.setAttribute("aria-label", option.label);
+        colorButton.style.setProperty("--text-color-option", option.color);
+        menu.appendChild(colorButton);
+      }
+      continue;
+    }
+    let button = toolbar.querySelector(`.source-text-tool[data-format="${item.format}"]`);
+    if (!button) {
+      button = document.createElement("button");
+      button.type = "button";
+      button.className = "source-text-tool";
+      button.dataset.format = item.format;
+      toolbar.appendChild(button);
+    }
+    button.textContent = item.label;
+    button.title = item.title;
+    button.setAttribute("aria-label", item.title);
+  }
+  if (toolbar.dataset.sourceTextToolbarWired === "true") return;
+  toolbar.dataset.sourceTextToolbarWired = "true";
+  toolbar.addEventListener("pointerdown", (event) => event.stopPropagation());
+  toolbar.addEventListener("click", (event) => {
+    const colorOption = event.target.closest(".source-text-color-option");
+    if (colorOption && toolbar.contains(colorOption)) {
+      event.preventDefault();
+      event.stopPropagation();
+      applySourceTextFormat(nodeId, "color", colorOption.dataset.color);
+      toolbar.querySelector(".source-text-color-wrap")?.classList.remove("is-open");
+      return;
+    }
+    const button = event.target.closest(".source-text-tool");
+    if (!button || !toolbar.contains(button)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (button.dataset.format === "color") {
+      button.closest(".source-text-color-wrap")?.classList.toggle("is-open");
+      return;
+    }
+    applySourceTextFormat(nodeId, button.dataset.format);
+  });
+}
+
+function selectedSourceTextRange(input) {
+  const value = input.value || "";
+  const start = input.selectionStart ?? 0;
+  const end = input.selectionEnd ?? start;
+  if (start !== end) return { start, end };
+  const lineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+  const nextBreak = value.indexOf("\n", start);
+  return { start: lineStart, end: nextBreak === -1 ? value.length : nextBreak };
+}
+
+function clearSourceTextFormatting(text) {
+  return String(text || "")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/<span\s+style=["']color:\s*#[0-9a-f]{3,6};?["']>(.*?)<\/span>/gi, "$1");
+}
+
+function updateSourceTextValue(input, value, start, end) {
+  input.value = value;
+  input.focus();
+  input.setSelectionRange(start, end);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function applySourceTextLineFormat(input, format) {
+  const value = input.value || "";
+  const range = selectedSourceTextRange(input);
+  const chunk = value.slice(range.start, range.end);
+  const lines = (chunk || t("source.textFormatSample")).split("\n");
+  const replacement = lines.map((line) => {
+    if (format === "heading") return `# ${line.replace(/^\s{0,3}#{1,6}\s+/, "")}`;
+    if (format === "list") return line.trim() ? `- ${line.replace(/^\s*[-*]\s+/, "")}` : "- ";
+    if (format === "quote") return `> ${line.replace(/^\s{0,3}>\s?/, "")}`;
+    return line;
+  }).join("\n");
+  const nextValue = `${value.slice(0, range.start)}${replacement}${value.slice(range.end)}`;
+  updateSourceTextValue(input, nextValue, range.start, range.start + replacement.length);
+}
+
+function applySourceTextInlineFormat(input, before, after = before) {
+  const value = input.value || "";
+  const start = input.selectionStart ?? 0;
+  const end = input.selectionEnd ?? start;
+  const selected = value.slice(start, end) || t("source.textFormatSample");
+  const replacement = `${before}${selected}${after}`;
+  const nextValue = `${value.slice(0, start)}${replacement}${value.slice(end)}`;
+  updateSourceTextValue(input, nextValue, start + before.length, start + before.length + selected.length);
+}
+
+function applySourceTextColorFormat(input, color) {
+  const option = sourceTextColorOptions().find((item) => item.color.toLowerCase() === String(color || "").toLowerCase());
+  if (!option) return;
+  applySourceTextInlineFormat(input, `<span style="color: ${option.color}">`, "</span>");
+}
+
+function applySourceTextFormat(nodeId, format, value = "") {
+  const input = sourceElementForNode(nodeId)?.querySelector(".source-text-input");
+  if (!input) return;
+  if (format === "bold") {
+    applySourceTextInlineFormat(input, "**");
+    return;
+  }
+  if (format === "italic") {
+    applySourceTextInlineFormat(input, "*");
+    return;
+  }
+  if (format === "heading" || format === "list" || format === "quote") {
+    applySourceTextLineFormat(input, format);
+    return;
+  }
+  if (format === "color") {
+    applySourceTextColorFormat(input, value);
+    return;
+  }
+  if (format === "clear") {
+    const value = input.value || "";
+    const range = selectedSourceTextRange(input);
+    const replacement = clearSourceTextFormatting(value.slice(range.start, range.end));
+    const nextValue = `${value.slice(0, range.start)}${replacement}${value.slice(range.end)}`;
+    updateSourceTextValue(input, nextValue, range.start, range.start + replacement.length);
+  }
+}
+
 function sourceElementForNode(nodeId) {
   return nodeId === "source" ? sourceNode : state.nodes.get(nodeId)?.element;
 }
@@ -2489,6 +2720,8 @@ function setSourceCardPanelMode(nodeId, mode = "file") {
   element.querySelector(".upload-target")?.classList.toggle("hidden", activeMode !== "file");
   element.querySelector(".url-input-panel")?.classList.toggle("hidden", activeMode !== "url");
   element.querySelector(".source-text-panel")?.classList.toggle("hidden", activeMode !== "text");
+  element.classList.toggle("is-text-mode", activeMode === "text");
+  ensureSourceTextToolbar(nodeId, element);
 }
 
 function syncSourceTextCardUi(nodeId, { mode = "" } = {}) {
@@ -2500,6 +2733,7 @@ function syncSourceTextCardUi(nodeId, { mode = "" } = {}) {
   if (textInput && document.activeElement !== textInput && textInput.value !== text) {
     textInput.value = text;
   }
+  ensureSourceTextToolbar(nodeId, element);
   const activeMode = locked ? "text" : (mode || element.querySelector(".source-tab.active")?.dataset.tab || "file");
   element.classList.toggle("is-text-card", locked);
   element.querySelectorAll(".source-tab").forEach((tab) => {
@@ -2884,10 +3118,6 @@ function wireControls() {
     closeChatActionMenu();
     setDeepThinkModeActive(true);
     chatInput?.focus();
-  });
-  chatSubagentsAction?.addEventListener("click", () => {
-    closeChatActionMenu();
-    toggleSubagentsMode();
   });
   chatNewCardAction?.addEventListener("click", () => {
     closeChatActionMenu();
@@ -3569,15 +3799,14 @@ function getWorkbenchTourSteps() {
       body: isEn ? "Type / or open this menu to save, import/export sessions, search cards, create cards, fit view, or auto-arrange." : "输入 / 会打开命令区，可保存、导入/导出会话、搜索卡片、新建卡片、适配视图或自动整理。"
     },
     {
-      target: "#chatActionMenu",
+      target: "#chatAttachButton",
       before: () => {
-        closeWorkbenchTourDemoImage();
         setChatSidebarOpen(true);
         closeCommandMenu();
         setChatActionMenuOpen(true);
       },
       title: isEn ? "+ action area" : "+ 功能区",
-      body: isEn ? "Use + to upload images or files, import from the material library, open the minimap, start deep research, start a blank canvas, or enable Subagents." : "点 + 可上传图片或文件、从素材库导入、打开小地图、启动深入研究、新建空白画布，或开启 Subagents 处理复杂任务。"
+      body: isEn ? "Use + to upload images or files, import from the material library, open the minimap, start deep research, or create a blank card." : "点 + 可上传图片或文件、从素材库导入、打开小地图、启动深入研究，或新建空白卡片。"
     },
     {
       target: "#agentPanel",
@@ -9329,16 +9558,55 @@ function updateChatScrollButton() {
   chatScrollBottom.classList.toggle("hidden", !canScroll || isChatNearBottom());
 }
 
+function chatEmptySuggestions() {
+  return [
+    t("chat.suggestionAnalyze"),
+    t("chat.suggestionPlan"),
+    t("chat.suggestionResearch"),
+    t("chat.suggestionImagePrompt")
+  ];
+}
+
+function useChatSuggestion(text) {
+  if (!chatInput) return;
+  chatInput.value = text;
+  chatInput.focus();
+  chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length);
+  syncCommandMenu();
+  updateChatPrimaryButtonMode();
+}
+
+function renderChatEmptyState() {
+  const placeholder = document.createElement("div");
+  placeholder.className = "chat-placeholder";
+
+  const title = document.createElement("strong");
+  title.textContent = t("chat.emptyTitle");
+  const description = document.createElement("p");
+  description.textContent = t("chat.noMessages");
+  const suggestions = document.createElement("div");
+  suggestions.className = "chat-suggestion-list";
+
+  for (const suggestion of chatEmptySuggestions()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "chat-suggestion-button";
+    button.textContent = suggestion;
+    button.addEventListener("click", () => useChatSuggestion(suggestion));
+    suggestions.appendChild(button);
+  }
+
+  placeholder.append(title, description, suggestions);
+  return placeholder;
+}
+
 function renderChatMessages({ scrollToBottom = false } = {}) {
   const shouldStickToBottom = scrollToBottom || isChatNearBottom();
   chatMessages.replaceChildren();
 
   const branchMessages = getBranchMessages();
   if (!branchMessages.length) {
-    const placeholder = document.createElement("div");
-    placeholder.className = "chat-placeholder";
-    placeholder.textContent = t("chat.noMessages");
-    chatMessages.appendChild(placeholder);
+    chatMessages.appendChild(renderChatEmptyState());
     updateChatScrollButton();
     return;
   }
