@@ -25,6 +25,7 @@ function serializeState(state) {
   const nodes = nodeEntries.map((n) => {
     const junctionNode = isJunctionNode(n, junctions, linkedJunctionIds);
     const junction = junctionNode ? normalizeJunctionRecord(n.junction || junctions[n.id] || n) : null;
+    const rotation = Number.isFinite(n.rotation) ? n.rotation : 0;
     return {
       nodeId: n.id,
       type:
@@ -48,12 +49,14 @@ function serializeState(state) {
           ? {
               isJunction: true,
               junction,
+              rotation,
               connectedCardIds: junction.connectedCardIds,
               maxCapacity: junction.maxCapacity
             }
           : n.sourceCard
             ? {
                 sourceCard: n.sourceCard,
+                rotation,
                 imageHash: n.sourceCard?.imageHash || n.imageHash || null,
                 imageUrl: n.sourceCard?.imageUrl || null,
                 sourceVideoHash: n.sourceCard?.sourceVideoHash || n.sourceCard?.videoHash || null,
@@ -70,6 +73,7 @@ function serializeState(state) {
             : n.option
               ? {
                   option: n.option,
+                  rotation,
                   imageHash: n.imageHash || null,
                   imageDataUrl: n.imageDataUrl || null,
                   videoHash: n.videoHash || null,
@@ -86,6 +90,7 @@ function serializeState(state) {
               : n.id === "source"
                 ? {
                     fileName: state.fileName || null,
+                    rotation,
                     imageHash: state.sourceImageHash || extractAssetHash(state.sourceImage) || null,
                     sourceVideoHash: state.sourceVideoHash || extractAssetHash(state.sourceVideo) || null,
                     sourceVideoMimeType: state.sourceVideoMimeType || null,
@@ -96,6 +101,7 @@ function serializeState(state) {
                 : n.id === "analysis"
                   ? {
                       title: state.latestAnalysis?.title,
+                      rotation,
                       summary: state.latestAnalysis?.summary,
                       detectedSubjects: state.latestAnalysis?.detectedSubjects,
                       moodKeywords: state.latestAnalysis?.moodKeywords

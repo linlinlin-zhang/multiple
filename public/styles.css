@@ -474,6 +474,8 @@ body.nav-collapsed .nav-settings {
   z-index: 1;
   user-select: none;
   touch-action: none;
+  transform: rotate(var(--node-rotation, 0deg));
+  transform-origin: center center;
 }
 
 .node.collapsed-hidden,
@@ -483,6 +485,59 @@ body.nav-collapsed .nav-settings {
 
 .node.dragging {
   z-index: 8;
+}
+
+.node.rotating {
+  z-index: 10;
+}
+
+.canvas-history-nav {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+  z-index: 24;
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-08);
+}
+
+.canvas-history-button {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 50%;
+  color: var(--ink);
+  background: transparent;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.canvas-history-button:hover:not(:disabled) {
+  color: var(--ps-blue);
+  background: rgba(0, 112, 204, 0.1);
+  transform: scale(1.06);
+}
+
+.canvas-history-button:disabled {
+  opacity: 0.42;
+  cursor: wait;
+}
+
+.canvas-history-button svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .node.is-selected {
@@ -675,8 +730,8 @@ body.nav-collapsed .nav-settings {
   display: grid;
 }
 
-.standalone-source-node {
-  transform: rotate(-0.6deg);
+.source-node.standalone-source-node {
+  transform: rotate(calc(-0.6deg + var(--node-rotation, 0deg)));
 }
 
 .standalone-source-node .upload-target {
@@ -874,7 +929,7 @@ body.nav-collapsed .nav-settings {
 
 .source-node {
   width: 318px;
-  transform: rotate(-1deg);
+  transform: rotate(calc(-1deg + var(--node-rotation, 0deg)));
 }
 
 .source-tabs {
@@ -1353,7 +1408,7 @@ body.nav-collapsed .nav-settings {
 .option-node {
   min-height: 256px;
   transition: transform 180ms ease, box-shadow 180ms ease;
-  transform: rotate(var(--tilt, 0deg));
+  transform: rotate(calc(var(--tilt, 0deg) + var(--node-rotation, 0deg)));
 }
 
 .option-node:hover {
@@ -1380,6 +1435,107 @@ body.nav-collapsed .nav-settings {
   overflow: hidden;
 }
 .option-rich-content[hidden] {
+  display: none;
+}
+
+.option-action-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.option-action-row .generate-button {
+  flex: 1;
+}
+
+.card-text-button {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid rgba(0, 112, 204, 0.18);
+  border-radius: 50%;
+  color: var(--ps-blue);
+  background: rgba(0, 112, 204, 0.06);
+  cursor: pointer;
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.card-text-button:hover {
+  background: rgba(0, 112, 204, 0.12);
+  transform: scale(1.05);
+}
+
+.card-text-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.card-text-editor {
+  margin: 18px 0 20px;
+  border: 1px solid rgba(0, 112, 204, 0.2);
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.card-text-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid rgba(0, 112, 204, 0.12);
+  background: rgba(0, 112, 204, 0.04);
+}
+
+.card-text-toolbar button {
+  min-width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 999px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+}
+
+.card-text-toolbar button:hover {
+  color: var(--ps-blue);
+  background: #ffffff;
+}
+
+.card-text-input {
+  min-height: 150px;
+  max-height: 360px;
+  padding: 14px 16px;
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.65;
+  overflow: auto;
+  outline: none;
+  user-select: text;
+  touch-action: auto;
+}
+
+.card-text-input:empty::before {
+  content: attr(data-placeholder);
+  color: var(--inkMuted);
+}
+
+.card-text-preview {
+  margin: 14px 0 18px;
+  padding: 14px 16px;
+  border: 1px solid rgba(0, 112, 204, 0.12);
+  border-radius: 16px;
+  background: rgba(0, 112, 204, 0.035);
+}
+
+.card-text-preview:empty {
   display: none;
 }
 .option-plan-steps {

@@ -34,6 +34,8 @@ const chatInput = document.querySelector("#chatInput");
 const chatMessages = document.querySelector("#chatMessages");
 const chatScrollBottom = document.querySelector("#chatScrollBottom");
 const commandMenu = document.querySelector("#commandMenu");
+const canvasPrevButton = document.querySelector("#canvasPrevButton");
+const canvasNextButton = document.querySelector("#canvasNextButton");
 const chatAttachButton = document.querySelector("#chatAttachButton");
 const chatActionMenu = document.querySelector("#chatActionMenu");
 const chatUploadAction = document.querySelector("#chatUploadAction");
@@ -298,6 +300,7 @@ let currentSessionId = null;
 let autoSaveTimer = null;
 let lastSavedStateHash = "";
 let suppressSessionPersistence = false;
+let historyNavBusy = false;
 let currentViewerNodeId = null;
 let currentShareNodeId = null;
 const imageShareLinks = new Map();
@@ -2453,6 +2456,8 @@ function wireControls() {
   });
   chatMessages?.addEventListener("scroll", updateChatScrollButton);
   chatScrollBottom?.addEventListener("click", () => scrollChatToBottom());
+  canvasPrevButton?.addEventListener("click", () => navigateHistoryCanvas(1));
+  canvasNextButton?.addEventListener("click", () => navigateHistoryCanvas(-1));
   navToggle?.addEventListener("click", toggleNav);
   chatNewButton?.addEventListener("click", startNewChat);
   chatNewCanvasButton?.addEventListener("click", createNewCanvas);
@@ -7299,7 +7304,179 @@ function setupOptionCardElement(element, option, taskType = "general") {
   element.querySelector(".option-title").textContent = option.title || t("generated.result");
   element.querySelector(".option-description").textContent = option.description || "";
   renderRichNodeContent(element, option);
+  renderCardTextPreview(element, option);
+  wireCardTextButton(element, option);
   element.dataset.nodeType = option.nodeType || "image";
+}
+
+function wireCardTextButton(element, option) {
+  const button = element.querySelector(".card-text-button");
+  if (!button || button.dataset.cardTextWired === "true") return;
+  button.dataset.cardTextWired = "true";
+  button.title = currentLang === "en" ? "Edit text" : "输入文字";
+  button.setAttribute("aria-label", button.title);
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleCardTextEditor(element, option);
+  });
+}
+
+function renderCardTextPreview(element, option) {
+  if (!element || !option) return;
+  let preview = element.querySelector(".card-text-preview");
+  const text = String(option.richText || option.textContent || "").trim();
+  if (!text) {
+    preview?.remove();
+    return;
+  }
+  if (!preview) {
+    preview = document.createElement("div");
+    preview.className = "card-text-preview markdown-body";
+    const anchor = element.querySelector(".option-rich-content") || element.querySelector(".option-action-row") || element.lastElementChild;
+    if (anchor?.parentElement) anchor.parentElement.insertBefore(preview, anchor.nextSibling);
+    else element.appendChild(preview);
+  }
+  preview.innerHTML = renderRichMarkdownHtml(text);
+}
+
+function toggleCardTextEditor(element, option) {
+  const existing = element.querySelector(".card-text-editor");
+  if (existing) {
+    closeCardTextEditor(element, option, true);
+    return;
+  }
+  openCardTextEditor(element, option);
+}
+
+function openCardTextEditor(element, option) {
+  if (!element || !option || element.querySelector(".card-text-editor")) return;
+  const editor = document.createElement("div");
+  editor.className = "card-text-editor";
+  const toolbar = document.createElement("div");
+  toolbar.className = "card-text-toolbar";
+  const input = document.createElement("div");
+  input.className = "card-text-input markdown-body";
+  input.contentEditable = "true";
+  input.setAttribute("role", "textbox");
+  input.setAttribute("aria-multiline", "true");
+  input.dataset.placeholder = currentLang === "en" ? "Type card text. Use toolbar for simple rich text." : "直接输入卡片文字，可用上方按钮做简单富文本。";
+  input.innerText = String(option.richText || option.textContent || option.description || "").trim();
+  const tools = [
+    ["B", "bold"],
+    ["I", "italic"],
+    ["H", "heading"],
+    ["•", "bullet"],
+    ["1.", "number"],
+    ["🔗", "link"],
+    ["✓", "done"]
+  ];
+  tools.forEach(([label, action]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.textAction = action;
+    button.textContent = label;
+    button.tabIndex = -1;
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      applyCardTextFormat(input, action);
+    });
+    toolbar.appendChild(button);
+  });
+  editor.append(toolbar, input);
+  const actionRow = element.querySelector(".option-action-row");
+  if (actionRow?.parentElement) actionRow.parentElement.insertBefore(editor, actionRow);
+  else element.appendChild(editor);
+  editor.addEventListener("pointerdown", (event) => event.stopPropagation());
+  input.addEventListener("blur", () => {
+    window.setTimeout(() => {
+      if (!editor.contains(document.activeElement)) closeCardTextEditor(element, option, true);
+    }, 0);
+  });
+  input.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      closeCardTextEditor(element, option, true);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeCardTextEditor(element, option, false);
+    }
+  });
+  input.focus();
+}
+
+function closeCardTextEditor(element, option, save) {
+  const editor = element.querySelector(".card-text-editor");
+  const input = editor?.querySelector(".card-text-input");
+  if (save && input) {
+    option.richText = input.innerText.trim();
+    if (!option.richText) delete option.richText;
+    renderCardTextPreview(element, option);
+    autoSave();
+  }
+  editor?.remove();
+}
+
+function createCardTextButton(element, option) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "card-text-button";
+  button.title = currentLang === "en" ? "Edit text" : "输入文字";
+  button.setAttribute("aria-label", button.title);
+  button.innerHTML = `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 6h16"></path>
+      <path d="M12 6v12"></path>
+      <path d="M8 18h8"></path>
+    </svg>
+  `;
+  button.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    toggleCardTextEditor(element, option);
+  });
+  return button;
+}
+
+function applyCardTextFormat(input, action) {
+  input.focus();
+  const selection = window.getSelection();
+  const selected = selection && selection.rangeCount ? selection.toString() : "";
+  const wrappers = {
+    bold: ["**", "**"],
+    italic: ["*", "*"],
+    heading: ["### ", ""],
+    bullet: ["- ", ""],
+    number: ["1. ", ""],
+    done: ["- [ ] ", ""]
+  };
+  if (action === "link") {
+    insertTextAtSelection(input, selected ? `[${selected}](https://)` : "[link](https://)");
+    return;
+  }
+  const [prefix, suffix] = wrappers[action] || ["", ""];
+  insertTextAtSelection(input, selected ? `${prefix}${selected}${suffix}` : prefix);
+}
+
+function insertTextAtSelection(input, text) {
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount || !input.contains(selection.anchorNode)) {
+    input.append(document.createTextNode(text));
+    return;
+  }
+  const range = selection.getRangeAt(0);
+  range.deleteContents();
+  const node = document.createTextNode(text);
+  range.insertNode(node);
+  range.setStartAfter(node);
+  range.setEndAfter(node);
+  selection.removeAllRanges();
+  selection.addRange(range);
 }
 
 function normalizeOptionContent(option) {
@@ -7950,7 +8127,7 @@ function setSourceCardResearchActionsDisabled(element, disabled) {
   });
 }
 
-function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash = "", sourceType = "", sourceVideoUrl = "", sourceVideoHash = "", sourceVideoMimeType = "", fileName = "", avoidOverlap = true }) {
+function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash = "", sourceType = "", sourceVideoUrl = "", sourceVideoHash = "", sourceVideoMimeType = "", fileName = "", rotation = 0, avoidOverlap = true }) {
   const nodeId = id || `source-card-${Date.now().toString(36)}`;
   if (state.nodes.has(nodeId)) return nodeId;
   let newX = Number.isFinite(x) ? x : 520;
@@ -8053,7 +8230,9 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
     y: newY,
     width: 318,
     height: element.offsetHeight || 326,
-    sourceCard
+    rotation,
+    sourceCard,
+    sourceImage: imageUrl,
   });
   makeDraggable(element, nodeId);
   makeStandaloneSourceNameEditable(nodeId, name);
@@ -8433,7 +8612,7 @@ function normalizeJunctionData(value = {}, fallbackCardIds = []) {
   return { connectedCardIds, maxCapacity };
 }
 
-function restoreJunctionNode(id, x, y, width = 40, height = 40, count = 0) {
+function restoreJunctionNode(id, x, y, width = 40, height = 40, count = 0, rotation = 0) {
   if (!id || state.nodes.has(id)) return;
   const element = document.createElement("section");
   element.className = "node junction-node";
@@ -8450,6 +8629,7 @@ function restoreJunctionNode(id, x, y, width = 40, height = 40, count = 0) {
     y: Number.isFinite(y) ? y : 0,
     width: Number.isFinite(width) ? width : 40,
     height: Number.isFinite(height) ? height : 40,
+    rotation,
     isJunction: true
   });
   makeDraggable(element, id);
@@ -8460,6 +8640,15 @@ function restoreJunctionNode(id, x, y, width = 40, height = 40, count = 0) {
 let connectionState = null;
 
 function addEdgeHandles(element, nodeId) {
+  const existingHandles = element.querySelectorAll(".edge-handle");
+  const hasBothHandles = element.querySelector(".edge-handle-right") && element.querySelector(".edge-handle-left");
+  if (hasBothHandles) {
+    existingHandles.forEach((handle) => {
+      handle.dataset.nodeId = nodeId;
+    });
+    return;
+  }
+  existingHandles.forEach((handle) => handle.remove());
   const rightHandle = document.createElement("div");
   rightHandle.className = "edge-handle edge-handle-right";
   rightHandle.dataset.side = "right";
@@ -9597,9 +9786,11 @@ function turnIntoGeneratedVideoNode(element, option, videoUrl, mimeType = "video
   regenerate.className = "secondary-button";
   regenerate.textContent = t("generated.regenerate");
   regenerate.addEventListener("click", () => generateVideoForOption(nodeId, option));
-  actions.append(download, regenerate);
+  actions.append(download, regenerate, createCardTextButton(element, option));
   element.appendChild(actions);
+  renderCardTextPreview(element, option);
   addEdgeHandles(element, nodeId);
+  addResizeHandles(element, nodeId);
 }
 
 function turnIntoGeneratedNode(element, option, imageDataUrl) {
@@ -9651,11 +9842,13 @@ function turnIntoGeneratedNode(element, option, imageDataUrl) {
   regenerate.textContent = t("generated.regenerate");
   regenerate.addEventListener("click", () => generateOption(nodeId, option));
 
-  actions.append(download, regenerate);
+  actions.append(download, regenerate, createCardTextButton(element, option));
   element.appendChild(actions);
+  renderCardTextPreview(element, option);
 
   // Re-add edge handles since innerHTML wipe removed them
   addEdgeHandles(element, nodeId);
+  addResizeHandles(element, nodeId);
 }
 
 // ---- Rich Node Types ----
@@ -10014,12 +10207,14 @@ function turnIntoRichNode(element, option) {
   regen.textContent = t("generated.regenerate");
   regen.addEventListener("click", () => generateOption(nodeId, option));
 
-  actions.append(copyBtn, regen);
+  actions.append(copyBtn, regen, createCardTextButton(element, option));
   content.appendChild(actions);
 
   element.appendChild(content);
+  renderCardTextPreview(element, option);
 
   addEdgeHandles(element, nodeId);
+  addResizeHandles(element, nodeId);
 }
 
 function installSourceImageActions() {
@@ -11876,6 +12071,8 @@ function showConfirmDialog({ title, message, confirmText = t("common.yes"), canc
 
 function registerNode(id, element, data) {
   const nodeRecord = { id, element, ...data };
+  nodeRecord.rotation = normalizeRotation(data.rotation);
+  applyNodeRotation(nodeRecord);
   state.nodes.set(id, nodeRecord);
   if (!data.isJunction && data.width && data.height) {
     applyNodeSize(nodeRecord, data.width, data.height);
@@ -11890,8 +12087,8 @@ function registerNode(id, element, data) {
 
   element.addEventListener("dblclick", (event) => {
     if (event.target.closest(".collapse-dot")) return;
-    if (event.target.closest("button, input, textarea, a")) return;
-    if (event.target.closest(".option-title, .generated-node h3, .analysis-node h2, #sourceName, .standalone-source-name, .node-title-input")) return;
+    if (event.target.closest("button, input, textarea, a, [contenteditable='true']")) return;
+    if (event.target.closest(".option-title, .generated-node h3, .analysis-node h2, #sourceName, .standalone-source-name, .node-title-input, .card-text-editor")) return;
     const node = state.nodes.get(id);
     // Open blueprint modal for junction nodes
     if (node?.isJunction) {
@@ -11920,7 +12117,9 @@ function registerNode(id, element, data) {
 }
 
 function addResizeHandles(element, id) {
-  if (element.dataset.resizeHandles === "true") return;
+  const existingHandles = element.querySelectorAll(".node-resize-handle");
+  if (element.dataset.resizeHandles === "true" && existingHandles.length) return;
+  existingHandles.forEach((handle) => handle.remove());
   element.dataset.resizeHandles = "true";
   const handles = [
     ["n", "top"],
@@ -11949,6 +12148,10 @@ function startNodeResize(event, id, direction) {
   event.stopPropagation();
   const node = state.nodes.get(id);
   if (!node) return;
+  if (direction.length === 2) {
+    startNodeRotate(event, id, direction);
+    return;
+  }
   const element = node.element;
   const startWidth = node.width || element.offsetWidth;
   const startHeight = node.height || element.offsetHeight;
@@ -11974,27 +12177,15 @@ function startNodeResize(event, id, direction) {
     let nextY = start.nodeY;
     let nextWidth = start.width;
     let nextHeight = start.height;
-    const isCorner = direction.length === 2;
-
-    if (isCorner) {
-      const signX = direction.includes("e") ? 1 : -1;
-      const signY = direction.includes("s") ? 1 : -1;
-      const projected = Math.abs(dx) > Math.abs(dy) ? dx * signX : dy * signY;
-      nextWidth = clamp(start.width + projected, minWidth, maxWidth);
-      nextHeight = clamp(nextWidth / start.ratio, minHeight, maxHeight);
-      if (direction.includes("w")) nextX = start.nodeX + (start.width - nextWidth);
-      if (direction.includes("n")) nextY = start.nodeY + (start.height - nextHeight);
-    } else {
-      if (direction.includes("e")) nextWidth = clamp(start.width + dx, minWidth, maxWidth);
-      if (direction.includes("s")) nextHeight = clamp(start.height + dy, minHeight, maxHeight);
-      if (direction.includes("w")) {
-        nextWidth = clamp(start.width - dx, minWidth, maxWidth);
-        nextX = start.nodeX + (start.width - nextWidth);
-      }
-      if (direction.includes("n")) {
-        nextHeight = clamp(start.height - dy, minHeight, maxHeight);
-        nextY = start.nodeY + (start.height - nextHeight);
-      }
+    if (direction.includes("e")) nextWidth = clamp(start.width + dx, minWidth, maxWidth);
+    if (direction.includes("s")) nextHeight = clamp(start.height + dy, minHeight, maxHeight);
+    if (direction.includes("w")) {
+      nextWidth = clamp(start.width - dx, minWidth, maxWidth);
+      nextX = start.nodeX + (start.width - nextWidth);
+    }
+    if (direction.includes("n")) {
+      nextHeight = clamp(start.height - dy, minHeight, maxHeight);
+      nextY = start.nodeY + (start.height - nextHeight);
     }
 
     applyNodeSize(node, nextWidth, nextHeight);
@@ -12016,6 +12207,67 @@ function startNodeResize(event, id, direction) {
   element.setPointerCapture?.(event.pointerId);
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up, { once: true });
+}
+
+function startNodeRotate(event, id) {
+  const node = state.nodes.get(id);
+  if (!node) return;
+  const element = node.element;
+  const rect = element.getBoundingClientRect();
+  const center = {
+    x: rect.left + rect.width / 2,
+    y: rect.top + rect.height / 2
+  };
+  const startAngle = Math.atan2(event.clientY - center.y, event.clientX - center.x) * 180 / Math.PI;
+  const startRotation = normalizeRotation(node.rotation);
+
+  function move(moveEvent) {
+    const currentAngle = Math.atan2(moveEvent.clientY - center.y, moveEvent.clientX - center.x) * 180 / Math.PI;
+    node.rotation = normalizeRotation(startRotation + currentAngle - startAngle);
+    applyNodeRotation(node);
+    drawLinks();
+  }
+
+  function up() {
+    element.classList.remove("rotating");
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    autoSave();
+  }
+
+  element.classList.add("rotating");
+  element.setPointerCapture?.(event.pointerId);
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up, { once: true });
+}
+
+function normalizeRotation(value) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) return 0;
+  return ((raw % 360) + 360) % 360;
+}
+
+function applyNodeRotation(node) {
+  if (!node?.element) return;
+  node.element.style.setProperty("--node-rotation", `${normalizeRotation(node.rotation)}deg`);
+}
+
+function restoreExistingNodeLayout(id, record) {
+  const node = state.nodes.get(id);
+  if (!node || !record) return;
+  if (Number.isFinite(record.x)) {
+    node.x = record.x;
+    node.element.style.left = `${node.x}px`;
+  }
+  if (Number.isFinite(record.y)) {
+    node.y = record.y;
+    node.element.style.top = `${node.y}px`;
+  }
+  if (Number.isFinite(record.width) && Number.isFinite(record.height)) {
+    applyNodeSize(node, record.width, record.height);
+  }
+  node.rotation = normalizeRotation(record.rotation || record.data?.rotation);
+  applyNodeRotation(node);
 }
 
 function applyNodeSize(node, width, height) {
@@ -12443,7 +12695,7 @@ function makeDraggable(element, id) {
   element.addEventListener("pointerdown", (event) => {
     const uploadTarget = event.target.closest(".upload-target");
     if (uploadTarget && !uploadTarget.classList.contains("has-source-image") && !uploadTarget.classList.contains("has-source-file")) return;
-    const interactive = event.target.closest("button, input, textarea, select, a, .option-title, .generated-node h3, .analysis-node h2, #sourceName, .standalone-source-name, .node-title-input, .image-card-action, .edge-handle, .node-resize-handle");
+    const interactive = event.target.closest("button, input, textarea, select, a, [contenteditable='true'], .option-title, .generated-node h3, .analysis-node h2, #sourceName, .standalone-source-name, .node-title-input, .card-text-editor, .image-card-action, .edge-handle, .node-resize-handle");
     if (interactive && event.target.tagName !== "SECTION") return;
     const node = state.nodes.get(id);
     if (!node) return;
@@ -13884,7 +14136,7 @@ function clamp(value, min, max) {
 
 function computeStateHash() {
   return JSON.stringify({
-    nodes: Array.from(state.nodes.entries()).map(([k, v]) => [k, { x: v.x, y: v.y, width: v.width, height: v.height, generated: v.generated, isJunction: v.isJunction, option: v.option, sourceCard: v.sourceCard }]),
+    nodes: Array.from(state.nodes.entries()).map(([k, v]) => [k, { x: v.x, y: v.y, width: v.width, height: v.height, rotation: v.rotation || 0, generated: v.generated, isJunction: v.isJunction, option: v.option, sourceCard: v.sourceCard }]),
     links: state.links,
     junctions: Object.fromEntries(state.junctions),
     collapsed: Array.from(state.collapsed),
@@ -13909,6 +14161,24 @@ function computeStateHash() {
     blueprints: Object.fromEntries(state.blueprints),
     groups: Object.fromEntries(state.groups)
   });
+}
+
+function hasMeaningfulCanvasState() {
+  return Boolean(
+    state.sourceImage ||
+    state.sourceImageHash ||
+    state.sourceText ||
+    state.sourceDataUrl ||
+    state.sourceDataUrlHash ||
+    state.sourceVideo ||
+    state.sourceVideoHash ||
+    state.sourceUrl ||
+    state.fileName ||
+    state.latestAnalysis ||
+    state.chatMessages.length ||
+    state.chatThreads.length ||
+    Array.from(state.nodes.keys()).some((id) => id !== "source" && id !== "analysis")
+  );
 }
 
 async function prepareStateForSave() {
@@ -13951,6 +14221,7 @@ async function prepareStateForSave() {
       y: node.y,
       width: node.width,
       height: node.height,
+      rotation: normalizeRotation(node.rotation),
       generated: node.generated || false,
       isJunction: Boolean(node.isJunction),
       junction: node.isJunction ? normalizeJunctionData(state.junctions.get(id)) : null,
@@ -14274,8 +14545,10 @@ async function loadSession(sessionId) {
     }
 
     const assets = Array.isArray(data.assets) ? data.assets : [];
-    const sourceNodeRecord = Array.isArray(data.nodes) ? data.nodes.find((node) => node.nodeId === "source" || node.type === "source") : null;
+    const persistedNodes = Array.isArray(data.nodes) ? data.nodes : [];
+    const sourceNodeRecord = persistedNodes.find((node) => node.nodeId === "source" || node.type === "source");
     const sourceNodeData = sourceNodeRecord?.data || {};
+    restoreExistingNodeLayout("source", sourceNodeRecord);
     const desiredSourceHash = sessionState?.sourceImageHash || sessionState?.sourceDataUrlHash || sessionState?.sourceVideoHash || sourceNodeData.imageHash || sourceNodeData.sourceVideoHash || null;
     const sourceAsset = (
       desiredSourceHash
@@ -14364,7 +14637,8 @@ async function loadSession(sessionId) {
       updateSourceBadge();
     }
 
-    const analysisNodeData = data.nodes.find(n => n.type === "analysis");
+    const analysisNodeData = persistedNodes.find(n => n.type === "analysis");
+    restoreExistingNodeLayout("analysis", analysisNodeData);
     if (analysisNodeData && analysisNodeData.data?.summary) {
       state.latestAnalysis = {
         title: analysisNodeData.data.title || "",
@@ -14442,22 +14716,22 @@ async function loadSession(sessionId) {
       const junctionId = link.toNodeId || link.to;
       if (junctionId) junctionNodeIds.add(junctionId);
     }
-    for (const n of data.nodes) {
+    for (const n of persistedNodes) {
       if (n.type === "junction" || n.data?.junction || n.data?.isJunction || junctionNodeIds.has(n.nodeId)) {
         junctionNodeIds.add(n.nodeId);
       }
     }
-    for (const n of data.nodes.filter((node) => junctionNodeIds.has(node.nodeId))) {
+    for (const n of persistedNodes.filter((node) => junctionNodeIds.has(node.nodeId))) {
       const fallbackCardIds = rawLinks
         .filter((link) => link.kind === "junction" && (link.toNodeId || link.to) === n.nodeId)
         .map((link) => link.fromNodeId || link.from)
         .filter(Boolean);
       const junction = normalizeJunctionData(n.data?.junction || persistedJunctions[n.nodeId] || n.data, fallbackCardIds);
       state.junctions.set(n.nodeId, junction);
-      restoreJunctionNode(n.nodeId, n.x, n.y, n.width, n.height, junction.connectedCardIds.length);
+      restoreJunctionNode(n.nodeId, n.x, n.y, n.width, n.height, junction.connectedCardIds.length, n.rotation || n.data?.rotation);
     }
 
-    const sourceCardNodes = data.nodes.filter(n => n.type === "source-card" || n.data?.sourceCard);
+    const sourceCardNodes = persistedNodes.filter(n => n.type === "source-card" || n.data?.sourceCard);
     for (const n of sourceCardNodes) {
       const sourceCard = n.data?.sourceCard || {};
       const imageHash = sourceCard.imageHash || n.data?.imageHash || "";
@@ -14477,6 +14751,7 @@ async function loadSession(sessionId) {
         sourceVideoHash: videoHash,
         sourceVideoMimeType: sourceCard.sourceVideoMimeType || sourceCard.mimeType || "",
         fileName: sourceCard.fileName || "",
+        rotation: n.rotation || n.data?.rotation,
         avoidOverlap: false
       });
       const restored = state.nodes.get(n.nodeId);
@@ -14516,7 +14791,7 @@ async function loadSession(sessionId) {
       }
     }
 
-    const optionNodes = data.nodes.filter(n => (n.type === "option" || n.type === "generated") && !junctionNodeIds.has(n.nodeId));
+    const optionNodes = persistedNodes.filter(n => (n.type === "option" || n.type === "generated") && !junctionNodeIds.has(n.nodeId));
     for (const n of optionNodes) {
       const option = n.data?.option || { title: t("generated.result"), description: "", tone: "cinematic", layoutHint: "square" };
       normalizeDeepThinkOption(option);
@@ -14554,6 +14829,7 @@ async function loadSession(sessionId) {
         y: n.y || position.y,
         width: n.width || 318,
         height: n.height || element.offsetHeight,
+        rotation: n.rotation || n.data?.rotation,
         option,
         generated: n.type === "generated"
       });
@@ -14660,7 +14936,7 @@ async function loadSession(sessionId) {
       state.groups = new Map(Object.entries(sessionState.groups));
     }
 
-    for (const n of data.nodes) {
+    for (const n of persistedNodes) {
       if (n.collapsed) state.collapsed.add(n.nodeId);
     }
     if (sessionState?.selectiveHidden || data.selectiveHidden) {
@@ -14742,6 +15018,38 @@ async function renderSessionList() {
     }
   } catch (error) {
     list.innerHTML = "<span class='session-item-meta'>" + t("status.error") + "</span>";
+  }
+}
+
+async function navigateHistoryCanvas(direction) {
+  if (historyNavBusy) return;
+  historyNavBusy = true;
+  canvasPrevButton && (canvasPrevButton.disabled = true);
+  canvasNextButton && (canvasNextButton.disabled = true);
+  try {
+    if (computeStateHash() !== lastSavedStateHash && (currentSessionId || hasMeaningfulCanvasState())) {
+      await saveSession({ isAuto: true });
+    }
+    const data = await getJson("/api/history?limit=100");
+    const sessions = Array.isArray(data.sessions) ? data.sessions.filter((session) => session?.id) : [];
+    if (!sessions.length) {
+      showToast(t("history.empty"));
+      return;
+    }
+    let currentIndex = sessions.findIndex((session) => session.id === currentSessionId);
+    if (currentIndex < 0) currentIndex = direction > 0 ? -1 : 0;
+    const nextIndex = (currentIndex + direction + sessions.length) % sessions.length;
+    const nextSession = sessions[nextIndex];
+    if (!nextSession?.id) return;
+    await loadSession(nextSession.id);
+    showToast(nextSession.title || t("session.unnamed"));
+  } catch (error) {
+    console.warn("[navigateHistoryCanvas]", error);
+    showToast(t("status.error"));
+  } finally {
+    historyNavBusy = false;
+    canvasPrevButton && (canvasPrevButton.disabled = false);
+    canvasNextButton && (canvasNextButton.disabled = false);
   }
 }
 

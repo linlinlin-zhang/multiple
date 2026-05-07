@@ -17,7 +17,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="/styles.css?v=24" />
+    <link rel="stylesheet" href="/styles.css?v=25" />
   </head>
   <body>
     <div class="app-shell">
@@ -111,6 +111,18 @@
           <button id="groupSelectionButton" type="button">分组</button>
           <button id="ungroupSelectionButton" type="button">解除</button>
           <button id="arrangeSelectionButton" type="button">整理</button>
+        </div>
+        <div id="canvasHistoryNav" class="canvas-history-nav" aria-label="历史画布切换">
+          <button id="canvasPrevButton" class="canvas-history-button" type="button" aria-label="上一张画布" title="上一张画布">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 6 9 12l6 6"/>
+            </svg>
+          </button>
+          <button id="canvasNextButton" class="canvas-history-button" type="button" aria-label="下一张画布" title="下一张画布">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m9 6 6 6-6 6"/>
+            </svg>
+          </button>
         </div>
         <aside id="minimap" class="minimap hidden" aria-label="画布缩略地图">
           <button id="minimapCloseButton" class="minimap-close" type="button" aria-label="关闭缩略图">×</button>
@@ -339,7 +351,16 @@
         <h3 class="option-title"></h3>
         <p class="option-description"></p>
         <div class="option-rich-content" hidden></div>
-        <button class="generate-button">生成这张图</button>
+        <div class="option-action-row">
+          <button class="generate-button">生成这张图</button>
+          <button class="card-text-button" type="button" aria-label="输入文字" title="输入文字">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 6h16"/>
+              <path d="M12 6v12"/>
+              <path d="M8 18h8"/>
+            </svg>
+          </button>
+        </div>
       </section>
     </template>
 
@@ -504,6 +525,6 @@
     <div id="selectionToast" class="selection-toast" role="status" aria-live="polite"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
-    <script type="module" src="/app.js?v=22"></script>
+    <script type="module" src="/app.js?v=23"></script>
   </body>
 </html>
