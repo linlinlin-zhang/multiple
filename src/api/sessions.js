@@ -134,6 +134,7 @@ function serializeState(state) {
 function buildPersistedViewState(state) {
   const view = state?.view && typeof state.view === "object" ? state.view : {};
   const snapshot = {
+    sessionTitle: typeof state.sessionTitle === "string" ? state.sessionTitle.trim().slice(0, 80) : "",
     sourceType: state.sourceType || "image",
     sourceImageHash: state.sourceImageHash || extractAssetHash(state.sourceImage) || null,
     sourceText: typeof state.sourceText === "string" ? state.sourceText : null,
@@ -150,6 +151,7 @@ function buildPersistedViewState(state) {
     selectedNodeIds: Array.isArray(state.selectedNodeIds) ? state.selectedNodeIds : [],
     collapsed: Array.isArray(state.collapsed) ? state.collapsed : [],
     selectiveHidden: Array.isArray(state.selectiveHidden) ? state.selectiveHidden : [],
+    contentHidden: Array.isArray(state.contentHidden) ? state.contentHidden : [],
     junctions: state.junctions || {},
     blueprints: state.blueprints || {},
     groups: state.groups || {},
@@ -421,11 +423,14 @@ export async function handleCreateSession(body, res, options = {}) {
 
     const title = typeof body?.title === "string" ? body.title.trim() : "";
     const isDemo = body?.isDemo === true;
+    const isManualTitle = body?.manualTitle === true && Boolean(title);
     const visitorId = options.visitorId || "legacy";
     const viewState = buildPersistedViewState(state);
 
     const { nodes, links, chatMessages } = serializeState(state);
-    const resolvedTitle = resolveSessionTitle({ requestedTitle: title, chatMessages });
+    const resolvedTitle = isManualTitle
+      ? title.slice(0, 160)
+      : resolveSessionTitle({ requestedTitle: title, chatMessages });
     const assetRecords = [];
     await collectSourceAsset(state, assetRecords);
     await collectGeneratedAssets(nodes, assetRecords);
@@ -552,6 +557,7 @@ export async function handleUpdateSession(sessionId, body, res, options = {}) {
     }
 
     const title = typeof body?.title === "string" ? body.title.trim() : undefined;
+    const isManualTitle = body?.manualTitle === true && Boolean(title);
     const visitorId = options.visitorId || "legacy";
     const viewState = buildPersistedViewState(state);
 
@@ -570,8 +576,8 @@ export async function handleUpdateSession(sessionId, body, res, options = {}) {
       }
       const resolvedTitle = title === undefined
         ? undefined
-        : resolveSessionTitle({ requestedTitle: title, chatMessages, fallbackTitle: existing.title || "未命名会话" });
-      const shouldUpdateTitle = resolvedTitle !== undefined && (!isGenericSessionTitle(title) || isGenericSessionTitle(existing.title));
+        : (isManualTitle ? title.slice(0, 160) : resolveSessionTitle({ requestedTitle: title, chatMessages, fallbackTitle: existing.title || "未命名会话" }));
+      const shouldUpdateTitle = resolvedTitle !== undefined && (isManualTitle || !isGenericSessionTitle(title) || isGenericSessionTitle(existing.title));
       await tx.node.deleteMany({ where: { sessionId } });
       await tx.link.deleteMany({ where: { sessionId } });
       await tx.chatMessage.deleteMany({ where: { sessionId } });

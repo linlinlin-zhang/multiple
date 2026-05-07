@@ -36,8 +36,14 @@ const chatMessages = document.querySelector("#chatMessages");
 const renderedChatMessageElements = new WeakMap();
 const chatScrollBottom = document.querySelector("#chatScrollBottom");
 const commandMenu = document.querySelector("#commandMenu");
+const canvasTitleDisplay = document.querySelector("#canvasTitleDisplay");
+const canvasTitleInput = document.querySelector("#canvasTitleInput");
+const canvasNewButton = document.querySelector("#canvasNewButton");
 const canvasPrevButton = document.querySelector("#canvasPrevButton");
 const canvasNextButton = document.querySelector("#canvasNextButton");
+const quickNewCardButton = document.querySelector("#quickNewCardButton");
+const quickArrangeButton = document.querySelector("#quickArrangeButton");
+const quickResetViewButton = document.querySelector("#quickResetViewButton");
 const chatAttachButton = document.querySelector("#chatAttachButton");
 const chatActionMenu = document.querySelector("#chatActionMenu");
 const chatUploadAction = document.querySelector("#chatUploadAction");
@@ -45,7 +51,7 @@ const chatMaterialAction = document.querySelector("#chatMaterialAction");
 const chatMinimapAction = document.querySelector("#chatMinimapAction");
 const chatDeepThinkAction = document.querySelector("#chatDeepThinkAction");
 const chatSubagentsAction = document.querySelector("#chatSubagentsAction");
-const chatNewCanvasAction = document.querySelector("#chatNewCanvasAction");
+const chatNewCardAction = document.querySelector("#chatNewCardAction");
 const deepThinkModeChip = document.querySelector("#deepThinkModeChip");
 const deepThinkModeCancel = document.querySelector("#deepThinkModeCancel");
 const chatSidebarResize = document.querySelector("#chatSidebarResize");
@@ -154,6 +160,7 @@ const blueprintPromptInput = document.querySelector("#blueprintPromptInput");
 const blueprintPromptSend = document.querySelector("#blueprintPromptSend");
 
 const state = {
+  sessionTitle: "",
   sourceImage: null,
   sourceImageHash: null,
   sourceType: "image",         // "image" | "text" | "url" | "video"
@@ -178,6 +185,7 @@ const state = {
   groups: new Map(),      // groupId -> { id, title, nodeIds, color }
   collapsed: new Set(),        // full collapse (double-click)
   selectiveHidden: new Set(),  // selective hide (single-click / auto-collapse)
+  contentHidden: new Set(),
   generatedCount: 0,
   selectedNodeId: null,
   selectedNodeIds: new Set(),
@@ -477,6 +485,15 @@ const i18n = {
     "command.arrangeDesc": "自动整理当前画布节点",
     "command.newCard": "新建卡片",
     "command.newCanvas": "新建画布",
+    "canvas.currentLabel": "当前画布",
+    "canvas.untitled": "未命名会话",
+    "canvas.nameLabel": "画布名字",
+    "canvas.renameHint": "双击修改画布名字",
+    "canvas.switchLabel": "切换画布",
+    "canvas.zoomHint": "按 Ctrl 或 ⌘ + 滚轮可以缩放画布",
+    "canvas.linkHint": "双击连线可以进行删除",
+    "canvas.titleSaved": "画布名字已更新",
+    "canvas.newCardCreated": "已创建新卡片",
     "command.searchCard": "搜索卡片",
     "command.searchCardDesc": "按名称搜索画布上的卡片并定位",
     "command.searchCardEmpty": "未找到匹配的卡片",
@@ -664,6 +681,8 @@ const i18n = {
     "image.error": "图片读取失败",
     "image.chooseFile": "请选择图片文件",
     "node.delete": "删除",
+    "node.hideContent": "隐藏内容",
+    "node.showContent": "显示内容",
     "node.cannotDeleteSource": "该卡片不可删除",
     "node.cannotDeleteWithChildren": "该卡片有子节点，不可删除",
     "badge.image_generation": "成图",
@@ -878,6 +897,15 @@ const i18n = {
     "command.newCardDesc": "Create a blank card on the canvas",
     "command.newCanvas": "New Canvas",
     "command.newCanvasDesc": "Create a new blank canvas",
+    "canvas.currentLabel": "Current canvas",
+    "canvas.untitled": "Untitled canvas",
+    "canvas.nameLabel": "Canvas name",
+    "canvas.renameHint": "Double-click to rename canvas",
+    "canvas.switchLabel": "Switch canvas",
+    "canvas.zoomHint": "Hold Ctrl or ⌘ and scroll to zoom the canvas",
+    "canvas.linkHint": "Double-click a connection to delete it",
+    "canvas.titleSaved": "Canvas name updated",
+    "canvas.newCardCreated": "Created a new card",
     "command.searchCard": "Search card",
     "command.searchCardDesc": "Find and locate a card on the canvas by name",
     "command.searchCardPrompt": "Type keywords to search canvas cards",
@@ -1217,8 +1245,9 @@ const i18n = {
     "material.importedToCard": "Created material source card",
     "material.importFailed": "Material import failed",
     "session.unnamed": "Untitled session",
-    "session.exploration": " Exploration",
     "node.delete": "Delete",
+    "node.hideContent": "Hide content",
+    "node.showContent": "Show content",
     "node.cannotDeleteSource": "This card cannot be deleted",
     "node.cannotDeleteWithChildren": "Cannot delete a card with children",
     "reference.title": "References",
@@ -1277,6 +1306,56 @@ function t(key, vars = {}) {
   return text;
 }
 
+function normalizeCanvasTitle(value) {
+  return String(value || "").trim().slice(0, 80);
+}
+
+function currentCanvasTitle() {
+  return normalizeCanvasTitle(state.sessionTitle) || t("canvas.untitled");
+}
+
+function getAutoCanvasTitle(payloadState) {
+  const aiTitle = state.latestAnalysis?.title?.trim();
+  const hasChatTitleSource = Array.isArray(payloadState.chatMessages) && payloadState.chatMessages.some((message) => message?.role === "user" && String(message?.content || "").trim());
+  return hasChatTitleSource ? t("session.unnamed") : (aiTitle || (state.fileName ? `${state.fileName}${t("session.exploration")}` : t("session.unnamed")));
+}
+
+function syncCanvasTitleDisplay() {
+  if (!canvasTitleDisplay) return;
+  const title = currentCanvasTitle();
+  canvasTitleDisplay.textContent = title;
+  canvasTitleDisplay.title = t("canvas.renameHint");
+  if (canvasTitleInput && canvasTitleInput.classList.contains("hidden")) {
+    canvasTitleInput.value = title;
+  }
+}
+
+function beginCanvasTitleEdit() {
+  if (!canvasTitleDisplay || !canvasTitleInput) return;
+  canvasTitleInput.value = currentCanvasTitle();
+  canvasTitleDisplay.classList.add("hidden");
+  canvasTitleInput.classList.remove("hidden");
+  canvasTitleInput.focus();
+  canvasTitleInput.select();
+}
+
+function finishCanvasTitleEdit({ cancel = false } = {}) {
+  if (!canvasTitleDisplay || !canvasTitleInput) return;
+  const previousStored = normalizeCanvasTitle(state.sessionTitle);
+  const previousVisible = previousStored || t("canvas.untitled");
+  const next = normalizeCanvasTitle(canvasTitleInput.value) || t("canvas.untitled");
+  if (!cancel) {
+    state.sessionTitle = next === previousVisible && !previousStored ? "" : next;
+  }
+  canvasTitleInput.classList.add("hidden");
+  canvasTitleDisplay.classList.remove("hidden");
+  syncCanvasTitleDisplay();
+  if (!cancel && next !== previousVisible) {
+    autoSave();
+    showToast(t("canvas.titleSaved"));
+  }
+}
+
 function setLanguage(lang) {
   if (lang !== "zh" && lang !== "en") return;
   currentLang = lang;
@@ -1320,6 +1399,35 @@ function renderAllText() {
   for (const [key, selector] of Object.entries(navLabels)) {
     const el = document.querySelector(selector);
     if (el) el.textContent = t(key);
+  }
+
+  syncCanvasTitleDisplay();
+  const canvasTitleBar = document.querySelector("#canvasTitleBar");
+  if (canvasTitleBar) canvasTitleBar.setAttribute("aria-label", t("canvas.currentLabel"));
+  const canvasTitleBox = document.querySelector(".canvas-title-box");
+  if (canvasTitleBox) canvasTitleBox.title = t("canvas.renameHint");
+  if (canvasTitleInput) canvasTitleInput.setAttribute("aria-label", t("canvas.nameLabel"));
+  if (canvasNewButton) {
+    canvasNewButton.title = t("command.newCanvas");
+    canvasNewButton.setAttribute("aria-label", t("command.newCanvas"));
+  }
+  const canvasHistoryLabel = document.querySelector(".canvas-history-label");
+  if (canvasHistoryLabel) canvasHistoryLabel.textContent = t("canvas.switchLabel");
+  const canvasZoomHint = document.querySelector(".canvas-zoom-hint");
+  if (canvasZoomHint) canvasZoomHint.textContent = t("canvas.zoomHint");
+  const canvasLinkHint = document.querySelector(".canvas-link-hint");
+  if (canvasLinkHint) canvasLinkHint.textContent = t("canvas.linkHint");
+  if (quickNewCardButton) {
+    quickNewCardButton.title = t("command.newCard");
+    quickNewCardButton.setAttribute("aria-label", t("command.newCard"));
+  }
+  if (quickArrangeButton) {
+    quickArrangeButton.title = t("command.arrange");
+    quickArrangeButton.setAttribute("aria-label", t("command.arrange"));
+  }
+  if (quickResetViewButton) {
+    quickResetViewButton.title = t("command.fit");
+    quickResetViewButton.setAttribute("aria-label", t("command.fit"));
   }
 
   const emptyStateStrong = document.querySelector("#emptyState strong");
@@ -1420,11 +1528,11 @@ function renderAllText() {
     if (title) title.textContent = t("chat.deepThink");
     if (desc) desc.textContent = t("chat.deepThinkDesc");
   }
-  if (chatNewCanvasAction) {
-    const title = chatNewCanvasAction.querySelector(".chat-action-title");
-    const desc = chatNewCanvasAction.querySelector(".chat-action-desc");
-    if (title) title.textContent = t("command.newCanvas");
-    if (desc) desc.textContent = t("command.newCanvasDesc");
+  if (chatNewCardAction) {
+    const title = chatNewCardAction.querySelector(".chat-action-title");
+    const desc = chatNewCardAction.querySelector(".chat-action-desc");
+    if (title) title.textContent = t("command.newCard");
+    if (desc) desc.textContent = t("command.newCardDesc");
   }
   if (deepThinkModeChip) {
     deepThinkModeChip.title = t("chat.deepThinkActive");
@@ -1565,6 +1673,7 @@ function renderAllText() {
   updateStatusText();
   updateCounts();
   updateCollapseControls();
+  for (const [id, node] of state.nodes.entries()) updateContentVisibilityControl(id, node.element);
   updateThinkingToggleUI();
   renderChatContextIndicator();
   renderChatMessages();
@@ -2699,8 +2808,26 @@ function wireControls() {
   });
   chatMessages?.addEventListener("scroll", updateChatScrollButton);
   chatScrollBottom?.addEventListener("click", () => scrollChatToBottom());
+  canvasTitleDisplay?.addEventListener("dblclick", beginCanvasTitleEdit);
+  canvasTitleInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      finishCanvasTitleEdit();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      finishCanvasTitleEdit({ cancel: true });
+    }
+  });
+  canvasTitleInput?.addEventListener("blur", () => finishCanvasTitleEdit());
+  canvasNewButton?.addEventListener("click", createNewCanvas);
   canvasPrevButton?.addEventListener("click", () => navigateHistoryCanvas(1));
   canvasNextButton?.addEventListener("click", () => navigateHistoryCanvas(-1));
+  quickNewCardButton?.addEventListener("click", () => {
+    const nodeId = createNewCardNode();
+    if (nodeId) showToast(t("canvas.newCardCreated"));
+  });
+  quickArrangeButton?.addEventListener("click", () => arrangeCanvasLayout());
+  quickResetViewButton?.addEventListener("click", () => resetView());
   navToggle?.addEventListener("click", toggleNav);
   chatNewButton?.addEventListener("click", startNewChat);
   chatNewCanvasButton?.addEventListener("click", createNewCanvas);
@@ -2762,9 +2889,10 @@ function wireControls() {
     closeChatActionMenu();
     toggleSubagentsMode();
   });
-  chatNewCanvasAction?.addEventListener("click", () => {
+  chatNewCardAction?.addEventListener("click", () => {
     closeChatActionMenu();
-    createNewCanvas();
+    const nodeId = createNewCardNode();
+    if (nodeId) showToast(t("canvas.newCardCreated"));
   });
   deepThinkModeCancel?.addEventListener("click", () => setDeepThinkModeActive(false));
   chatSidebarResize?.addEventListener("pointerdown", startChatSidebarResize);
@@ -4817,6 +4945,7 @@ async function handleFile(event) {
       resetChatThreads();
       renderChatMessages();
       state.collapsed.clear();
+      state.contentHidden.clear();
       analysisNode.classList.add("hidden");
       state.links = [];
       applyCollapseState();
@@ -4864,6 +4993,7 @@ async function handleFile(event) {
       resetChatThreads();
       renderChatMessages();
       state.collapsed.clear();
+      state.contentHidden.clear();
       analysisNode.classList.add("hidden");
       state.links = [];
       applyCollapseState();
@@ -4923,6 +5053,7 @@ async function handleFile(event) {
       resetChatThreads();
       renderChatMessages();
       state.collapsed.clear();
+      state.contentHidden.clear();
       analysisNode.classList.add("hidden");
       state.links = [];
       applyCollapseState();
@@ -8059,6 +8190,8 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
   element.style.top = `${newY}px`;
   element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
   setupOptionCardElement(element, option, taskType);
+  ensureDeleteControl(nodeId, element);
+  ensureContentVisibilityControl(nodeId, element);
 
   const titleEl = element.querySelector(".option-title");
   if (titleEl) makeTitleEditable(id, titleEl);
@@ -9511,6 +9644,7 @@ function renderAnalysis(data) {
 
   state.links = [{ from: "source", to: "analysis", kind: "analysis" }];
   state.selectiveHidden.clear();
+  state.contentHidden.clear();
   applyCollapseState();
 }
 
@@ -9578,6 +9712,7 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
       state.nodes.delete(id);
       state.collapsed.delete(id);
       state.selectiveHidden.delete(id);
+      state.contentHidden.delete(id);
     }
   }
   state.links = state.links.filter(l => !(l.from === parentNodeId && l.to.startsWith("option-")));
@@ -9966,6 +10101,8 @@ function turnIntoGeneratedVideoNode(element, option, videoUrl, mimeType = "video
   element.innerHTML = "";
   ensureCollapseControl(element.dataset.nodeId, element);
   const nodeId = element.dataset.nodeId;
+  ensureDeleteControl(nodeId, element);
+  ensureContentVisibilityControl(nodeId, element);
 
   const videoWrap = document.createElement("div");
   videoWrap.className = "generated-image-wrap generated-video-wrap";
@@ -10015,6 +10152,8 @@ function turnIntoGeneratedNode(element, option, imageDataUrl) {
   element.innerHTML = "";
   ensureCollapseControl(element.dataset.nodeId, element);
   const nodeId = element.dataset.nodeId;
+  ensureDeleteControl(nodeId, element);
+  ensureContentVisibilityControl(nodeId, element);
 
   const imageWrap = document.createElement("div");
   imageWrap.className = "generated-image-wrap";
@@ -10201,6 +10340,8 @@ function turnIntoRichNode(element, option) {
   element.innerHTML = "";
   ensureCollapseControl(element.dataset.nodeId, element);
   const nodeId = element.dataset.nodeId;
+  ensureDeleteControl(nodeId, element);
+  ensureContentVisibilityControl(nodeId, element);
 
   const backButton = document.createElement("button");
   backButton.type = "button";
@@ -10228,6 +10369,10 @@ function turnIntoRichNode(element, option) {
   title.textContent = option.title || t("generated.result");
   content.appendChild(title);
   makeTitleEditable(nodeId, title);
+  const summary = document.createElement("p");
+  summary.className = "rich-summary";
+  summary.textContent = option.description || "";
+  if (summary.textContent) content.appendChild(summary);
 
   // Type-specific body
   const body = document.createElement("div");
@@ -12388,7 +12533,7 @@ function showToast(message) {
   }, 2500);
 }
 
-function showConfirmDialog({ title, message, confirmText = t("common.yes"), cancelText = t("common.no") }) {
+function showConfirmDialog({ title = "", message = "", confirmLabel = t("dialog.confirm"), cancelLabel = t("dialog.cancel") } = {}) {
   return new Promise((resolve) => {
     const modal = document.createElement("div");
     modal.className = "confirm-modal";
@@ -12426,6 +12571,47 @@ function showConfirmDialog({ title, message, confirmText = t("common.yes"), canc
   });
 }
 
+function ensureDeleteControl(id, element) {
+  if (!id || !element || element.querySelector(".node-delete-btn")) return;
+  const deleteBtn = document.createElement("button");
+  deleteBtn.type = "button";
+  deleteBtn.className = "node-delete-btn";
+  deleteBtn.setAttribute("aria-label", t("node.delete"));
+  deleteBtn.innerHTML = "&#x2715;";
+  deleteBtn.addEventListener("click", (event) => {
+    event.stopPropagation();
+    deleteNode(id);
+  });
+  element.appendChild(deleteBtn);
+}
+
+function updateContentVisibilityControl(id, element) {
+  const button = element?.querySelector(".node-content-toggle");
+  if (!button) return;
+  const hidden = state.contentHidden.has(id);
+  button.classList.toggle("is-hidden", hidden);
+  button.setAttribute("aria-label", hidden ? t("node.showContent") : t("node.hideContent"));
+  button.setAttribute("title", hidden ? t("node.showContent") : t("node.hideContent"));
+  button.setAttribute("aria-pressed", hidden ? "true" : "false");
+  button.textContent = hidden ? "▣" : "▤";
+}
+
+function ensureContentVisibilityControl(id, element) {
+  if (!id || !element || element.querySelector(".node-content-toggle")) return;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "node-content-toggle";
+  button.addEventListener("click", (event) => {
+    event.stopPropagation();
+    if (state.contentHidden.has(id)) state.contentHidden.delete(id);
+    else state.contentHidden.add(id);
+    applyCollapseState();
+    autoSave();
+  });
+  element.appendChild(button);
+  updateContentVisibilityControl(id, element);
+}
+
 function registerNode(id, element, data) {
   const nodeRecord = { id, element, ...data };
   nodeRecord.rotation = normalizeRotation(data.rotation);
@@ -12459,16 +12645,8 @@ function registerNode(id, element, data) {
     selectNode(id);
   });
 
-  const deleteBtn = document.createElement("button");
-  deleteBtn.type = "button";
-  deleteBtn.className = "node-delete-btn";
-  deleteBtn.setAttribute("aria-label", t("node.delete"));
-  deleteBtn.innerHTML = "&#x2715;"; // Unicode multiplication X
-  deleteBtn.addEventListener("click", (event) => {
-    event.stopPropagation();
-    deleteNode(id);
-  });
-  element.appendChild(deleteBtn);
+  ensureDeleteControl(id, element);
+  ensureContentVisibilityControl(id, element);
 
   updateCollapseControls();
 }
@@ -12731,8 +12909,11 @@ function applyCollapseState() {
   for (const [id, node] of state.nodes.entries()) {
     const hiddenByAncestor = isHiddenByCollapsedAncestor(id);
     const selectivelyHidden = state.selectiveHidden.has(id);
+    const contentHidden = state.contentHidden.has(id);
     node.element.classList.toggle("collapsed-hidden", hiddenByAncestor);
     node.element.classList.toggle("selective-hidden", selectivelyHidden && !hiddenByAncestor);
+    node.element.classList.toggle("content-hidden", contentHidden);
+    updateContentVisibilityControl(id, node.element);
   }
   updateCollapseControls();
   drawLinks();
@@ -12914,6 +13095,7 @@ function deleteNode(nodeId) {
       deselectNode();
     }
     state.selectedNodeIds.delete(nodeId);
+    state.contentHidden.delete(nodeId);
     state.links = state.links.filter(l => l.from !== nodeId && l.to !== nodeId);
     node.element.classList.add("hidden");
     updateCounts();
@@ -12966,6 +13148,7 @@ function deleteNode(nodeId) {
   state.nodes.delete(nodeId);
   state.collapsed.delete(nodeId);
   state.selectiveHidden.delete(nodeId);
+  state.contentHidden.delete(nodeId);
 
   // Remove links connected to this node
   state.links = state.links.filter(l => l.from !== nodeId && l.to !== nodeId);
@@ -14556,11 +14739,13 @@ function clamp(value, min, max) {
 
 function computeStateHash() {
   return JSON.stringify({
+    sessionTitle: state.sessionTitle || "",
     nodes: Array.from(state.nodes.entries()).map(([k, v]) => [k, { x: v.x, y: v.y, width: v.width, height: v.height, rotation: v.rotation || 0, generated: v.generated, isJunction: v.isJunction, option: v.option, sourceCard: v.sourceCard }]),
     links: state.links,
     junctions: Object.fromEntries(state.junctions),
     collapsed: Array.from(state.collapsed),
     selectiveHidden: Array.from(state.selectiveHidden),
+    contentHidden: Array.from(state.contentHidden),
     chatMessages: state.chatMessages,
     chatThreads: serializeChatThreads(),
     activeChatThreadId: state.activeChatThreadId,
@@ -14604,6 +14789,7 @@ function hasMeaningfulCanvasState() {
 
 async function prepareStateForSave() {
   const payload = {
+    sessionTitle: state.sessionTitle || "",
     sourceImage: state.sourceImage,
     sourceImageHash: state.sourceImageHash,
     sourceType: state.sourceType,
@@ -14623,6 +14809,7 @@ async function prepareStateForSave() {
     links: state.links,
     collapsed: Array.from(state.collapsed),
     selectiveHidden: Array.from(state.selectiveHidden),
+    contentHidden: Array.from(state.contentHidden),
     generatedCount: state.generatedCount,
     selectedNodeId: state.selectedNodeId,
     selectedNodeIds: Array.from(state.selectedNodeIds),
@@ -14869,11 +15056,11 @@ async function saveSession({ isAuto = false } = {}) {
     }
 
     const payloadState = await prepareStateForSave();
-    const aiTitle = state.latestAnalysis?.title?.trim();
-    const hasChatTitleSource = Array.isArray(payloadState.chatMessages) && payloadState.chatMessages.some((message) => message?.role === "user" && String(message?.content || "").trim());
+    const manualTitle = normalizeCanvasTitle(state.sessionTitle);
     const body = {
       state: payloadState,
-      title: hasChatTitleSource ? t("session.unnamed") : (aiTitle || (state.fileName ? `${state.fileName}${t("session.exploration")}` : t("session.unnamed"))),
+      title: manualTitle || getAutoCanvasTitle(payloadState),
+      manualTitle: Boolean(manualTitle),
       isDemo: currentHealthMode === "demo"
     };
 
@@ -14922,6 +15109,8 @@ async function loadSession(sessionId) {
   try {
     const data = await getJson(`/api/sessions/${sessionId}`);
     const sessionState = data.state || data.viewState?.stateSnapshot || data.viewState?.state || {};
+    state.sessionTitle = normalizeCanvasTitle(sessionState.sessionTitle || data.title || "");
+    syncCanvasTitleDisplay();
 
     clearOptions();
     for (const [id, node] of Array.from(state.nodes.entries())) {
@@ -14930,12 +15119,14 @@ async function loadSession(sessionId) {
         state.nodes.delete(id);
         state.collapsed.delete(id);
         state.selectiveHidden.delete(id);
+        state.contentHidden.delete(id);
       }
     }
     resetChatThreads();
     state.links = [];
     state.collapsed.clear();
     state.selectiveHidden.clear();
+    state.contentHidden.clear();
     state.generatedCount = 0;
     state.sourceImage = null;
     state.sourceImageHash = null;
@@ -15394,6 +15585,9 @@ async function loadSession(sessionId) {
     }
     if (sessionState?.selectiveHidden || data.selectiveHidden) {
       for (const id of (sessionState.selectiveHidden || data.selectiveHidden || [])) state.selectiveHidden.add(id);
+    }
+    if (sessionState?.contentHidden || data.contentHidden) {
+      for (const id of (sessionState.contentHidden || data.contentHidden || [])) state.contentHidden.add(id);
     }
 
     hydrateChatThreads({
@@ -15938,6 +16132,7 @@ function renderFileUnderstanding(understanding) {
 
   state.links = [{ from: "source", to: "analysis", kind: "analysis" }];
   state.selectiveHidden.clear();
+  state.contentHidden.clear();
   applyCollapseState();
 }
 

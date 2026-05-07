@@ -110,6 +110,13 @@
           </section>
         </div>
         <div id="marqueeSelection" class="marquee-selection hidden" aria-hidden="true"></div>
+        <div id="canvasTitleBar" class="canvas-title-bar" aria-label="当前画布">
+          <div class="canvas-title-box" title="双击修改画布名字">
+            <span id="canvasTitleDisplay" class="canvas-title-display">未命名会话</span>
+            <input id="canvasTitleInput" class="canvas-title-input hidden" type="text" maxlength="80" autocomplete="off" aria-label="画布名字" />
+          </div>
+          <button id="canvasNewButton" class="canvas-title-new-button" type="button" aria-label="新建画布" title="新建画布">+</button>
+        </div>
         <div id="selectionToolbar" class="selection-toolbar hidden" aria-label="画布选择工具">
           <span id="selectionCount">0</span>
           <button id="groupSelectionButton" type="button">分组</button>
@@ -117,16 +124,45 @@
           <button id="arrangeSelectionButton" type="button">整理</button>
         </div>
         <div id="canvasHistoryNav" class="canvas-history-nav" aria-label="历史画布切换">
-          <button id="canvasPrevButton" class="canvas-history-button" type="button" aria-label="上一张画布" title="上一张画布">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M15 6 9 12l6 6"/>
-            </svg>
-          </button>
-          <button id="canvasNextButton" class="canvas-history-button" type="button" aria-label="下一张画布" title="下一张画布">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="m9 6 6 6-6 6"/>
-            </svg>
-          </button>
+          <div class="canvas-history-label">切换画布</div>
+          <div class="canvas-history-buttons">
+            <button id="canvasPrevButton" class="canvas-history-button" type="button" aria-label="上一张画布" title="上一张画布">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15 6 9 12l6 6"/>
+              </svg>
+            </button>
+            <button id="canvasNextButton" class="canvas-history-button" type="button" aria-label="下一张画布" title="下一张画布">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m9 6 6 6-6 6"/>
+              </svg>
+            </button>
+          </div>
+          <div class="canvas-quick-actions" aria-label="常用画布操作">
+            <button id="quickNewCardButton" class="canvas-quick-button" type="button" aria-label="新建卡片" title="新建卡片">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="5" y="5" width="14" height="14" rx="3"/>
+                <path d="M12 8v8M8 12h8"/>
+              </svg>
+            </button>
+            <button id="quickArrangeButton" class="canvas-quick-button" type="button" aria-label="一键整理" title="一键整理">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="4" y="5" width="6" height="6" rx="2"/>
+                <rect x="14" y="5" width="6" height="6" rx="2"/>
+                <rect x="9" y="14" width="6" height="6" rx="2"/>
+              </svg>
+            </button>
+            <button id="quickResetViewButton" class="canvas-quick-button" type="button" aria-label="重置视图" title="重置视图">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 4H4v4"/>
+                <path d="M16 4h4v4"/>
+                <path d="M20 16v4h-4"/>
+                <path d="M4 16v4h4"/>
+                <path d="M9 9h6v6H9z"/>
+              </svg>
+            </button>
+          </div>
+          <div class="canvas-zoom-hint">按 Ctrl 或 ⌘ + 滚轮可以缩放画布</div>
+          <div class="canvas-link-hint">双击连线可以进行删除</div>
         </div>
         <aside id="minimap" class="minimap hidden" aria-label="画布缩略地图">
           <button id="minimapCloseButton" class="minimap-close" type="button" aria-label="关闭缩略图">×</button>
@@ -263,11 +299,11 @@
                           <span class="chat-action-desc">允许复杂任务拆成多个快速 agent</span>
                         </span>
                       </button>
-                      <button id="chatNewCanvasAction" class="chat-action-item" type="button" role="menuitem">
-                        <span class="chat-action-icon">C</span>
+                      <button id="chatNewCardAction" class="chat-action-item" type="button" role="menuitem">
+                        <span class="chat-action-icon">N</span>
                         <span class="chat-action-copy">
-                          <span class="chat-action-title">新建画布</span>
-                          <span class="chat-action-desc">创建新的空白画布</span>
+                          <span class="chat-action-title">新建卡片</span>
+                          <span class="chat-action-desc">在画布上创建空白卡片</span>
                         </span>
                       </button>
                     </div>
