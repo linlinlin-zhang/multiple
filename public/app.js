@@ -33,6 +33,7 @@ const optionTemplate = document.querySelector("#optionTemplate");
 const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
 const chatMessages = document.querySelector("#chatMessages");
+const renderedChatMessageElements = new WeakMap();
 const chatScrollBottom = document.querySelector("#chatScrollBottom");
 const commandMenu = document.querySelector("#commandMenu");
 const canvasPrevButton = document.querySelector("#canvasPrevButton");
@@ -2561,6 +2562,7 @@ function wireControls() {
     researchButton?.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (researchButton.classList.contains("is-busy")) return;
       openResearchMenu();
     });
     document.addEventListener("click", (event) => {
@@ -2574,6 +2576,7 @@ function wireControls() {
   const runResearchOption = (option) => {
     const now = Date.now();
     if (now - lastResearchOptionRun < 250) return;
+    if (researchButton?.classList.contains("is-busy")) return;
     lastResearchOptionRun = now;
     const mode = option.dataset.mode;
     if (mode === "analyze") {
@@ -4962,9 +4965,20 @@ function canResearchNode(nodeId) {
 
 function setResearchButtonBusy(isBusy, label = t("research.button")) {
   if (!researchButton) return;
-  researchButton.disabled = Boolean(isBusy);
-  researchButton.classList.toggle("is-busy", Boolean(isBusy));
-  researchButton.textContent = isBusy ? label : t("research.button");
+  const busy = Boolean(isBusy);
+  if (busy) {
+    researchButton.dataset.disabledBeforeBusy = researchButton.disabled ? "true" : "false";
+    researchButton.disabled = false;
+    researchButton.setAttribute("aria-disabled", "true");
+  } else {
+    if ("disabledBeforeBusy" in researchButton.dataset) {
+      researchButton.disabled = researchButton.dataset.disabledBeforeBusy === "true";
+    }
+    delete researchButton.dataset.disabledBeforeBusy;
+    researchButton.removeAttribute("aria-disabled");
+  }
+  researchButton.classList.toggle("is-busy", busy);
+  researchButton.textContent = busy ? label : t("research.button");
 }
 
 function handleAnalyze(mode = "analyze") {
@@ -8201,8 +8215,14 @@ function createSourceCardResearchMenu(nodeId, button, disabled = false) {
   exploreButton.type = "button";
   exploreButton.textContent = t("research.explore");
   exploreButton.disabled = Boolean(disabled);
-  button.addEventListener("click", () => analyzeStandaloneSourceCard(nodeId, { mode: "analyze" }));
-  exploreButton.addEventListener("click", () => analyzeStandaloneSourceCard(nodeId, { mode: "explore" }));
+  button.addEventListener("click", () => {
+    if (button.getAttribute("aria-disabled") === "true") return;
+    analyzeStandaloneSourceCard(nodeId, { mode: "analyze" });
+  });
+  exploreButton.addEventListener("click", () => {
+    if (exploreButton.getAttribute("aria-disabled") === "true") return;
+    analyzeStandaloneSourceCard(nodeId, { mode: "explore" });
+  });
   wrapper.append(button, exploreButton);
   return wrapper;
 }
@@ -8210,6 +8230,27 @@ function createSourceCardResearchMenu(nodeId, button, disabled = false) {
 function setSourceCardResearchActionsDisabled(element, disabled) {
   element?.querySelectorAll(".source-card-research-actions .research-button").forEach((button) => {
     button.disabled = Boolean(disabled);
+    button.removeAttribute("aria-disabled");
+    button.classList.remove("is-busy");
+    delete button.dataset.disabledBeforeBusy;
+  });
+}
+
+function setSourceCardResearchActionsBusy(element, activeButton = null, isBusy = false) {
+  element?.querySelectorAll(".source-card-research-actions .research-button").forEach((button) => {
+    const busy = Boolean(isBusy);
+    if (busy) {
+      button.dataset.disabledBeforeBusy = button.disabled ? "true" : "false";
+      button.disabled = false;
+      button.setAttribute("aria-disabled", "true");
+    } else {
+      if ("disabledBeforeBusy" in button.dataset) {
+        button.disabled = button.dataset.disabledBeforeBusy === "true";
+      }
+      delete button.dataset.disabledBeforeBusy;
+      button.removeAttribute("aria-disabled");
+    }
+    button.classList.toggle("is-busy", busy && button === activeButton);
   });
 }
 
@@ -8543,8 +8584,7 @@ async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
   }
   setStatus(useExplore ? t("research.exploring") : t("status.busy"), "busy");
   const activeButton = node.element.querySelector(useExplore ? ".source-card-explore-button" : ".source-card-analyze-button");
-  setSourceCardResearchActionsDisabled(node.element, true);
-  activeButton?.classList.add("is-busy");
+  setSourceCardResearchActionsBusy(node.element, activeButton, true);
   try {
     let data;
     if (sourceCard.sourceType === "text") {
@@ -8603,8 +8643,7 @@ async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
   } catch (error) {
     setStatus(error.message || t("status.error"), "error");
   } finally {
-    setSourceCardResearchActionsDisabled(node.element, false);
-    activeButton?.classList.remove("is-busy");
+    setSourceCardResearchActionsBusy(node.element, activeButton, false);
   }
 }
 
@@ -9061,8 +9100,71 @@ function updateChatMessage(message, updates = {}) {
     message.responseId = typeof updates.responseId === "string" ? updates.responseId : "";
   }
   if ("pending" in updates) message.pending = Boolean(updates.pending);
+  if (updateRenderedChatMessage(message, updates)) {
+    scrollChatToBottom();
+    return;
+  }
   renderChatMessages({ scrollToBottom: true });
   renderChatConversationList();
+}
+
+function ensureRenderedThinkingPre(rendered) {
+  if (!rendered?.thinkingDetails) return null;
+  if (!rendered.thinkingPanel) {
+    rendered.thinkingPanel = document.createElement("div");
+    rendered.thinkingPanel.className = "chat-thinking-panel";
+  }
+  if (!rendered.thinkingPanel.isConnected) {
+    rendered.thinkingDetails.appendChild(rendered.thinkingPanel);
+  }
+  if (!rendered.thinkingPre) {
+    rendered.thinkingPre = document.createElement("pre");
+    rendered.thinkingPanel.replaceChildren(rendered.thinkingPre);
+  }
+  return rendered.thinkingPre;
+}
+
+function updateRenderedChatMessage(message, updates = {}) {
+  const rendered = renderedChatMessageElements.get(message);
+  if (!rendered || !message.pending) return false;
+  if (!rendered.line?.isConnected) return false;
+  if (
+    ("pending" in updates && !message.pending) ||
+    "attachments" in updates ||
+    "actions" in updates ||
+    "actionResults" in updates ||
+    "artifacts" in updates ||
+    "materials" in updates ||
+    "cards" in updates ||
+    "references" in updates ||
+    "responseId" in updates
+  ) {
+    return false;
+  }
+  rendered.line?.classList.toggle("pending", true);
+  if ("thinkingContent" in updates || "reasoningContent" in updates || "reasoning" in updates || "thinkingTrace" in updates || "trace" in updates || "thinkingRequested" in updates) {
+    if (!rendered.thinkingDetails) return false;
+    rendered.thinkingDetails.classList.toggle("is-running", true);
+    rendered.thinkingDetails.classList.toggle("is-complete", false);
+    if (message.thinkingContent) {
+      const pre = ensureRenderedThinkingPre(rendered);
+      if (!pre) return false;
+      pre.textContent = message.thinkingContent;
+    }
+  }
+  if ("content" in updates) {
+    if (!rendered.text) return false;
+    if (message.role === "assistant") {
+      rendered.text.innerHTML = renderMarkdownToHtml(applyCitationLinks(message.content, message.references));
+      addCopyButtons(rendered.text);
+    } else {
+      rendered.text.textContent = message.content;
+    }
+    rendered.cursor = document.createElement("span");
+    rendered.cursor.className = "streaming-cursor";
+    rendered.text.appendChild(rendered.cursor);
+  }
+  return true;
 }
 
 function getBranchMessages() {
@@ -9112,6 +9214,7 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
     const line = document.createElement("div");
     line.className = `chat-line ${message.role}`;
     line.classList.toggle("pending", Boolean(message.pending));
+    const rendered = { line };
 
     if (message.role === "assistant" && (message.pending || message.thinkingRequested || message.thinkingContent || message.thinkingTrace?.length)) {
       const details = document.createElement("details");
@@ -9136,13 +9239,17 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       summary.append(icon, labelNode, chevron);
       const panel = document.createElement("div");
       panel.className = "chat-thinking-panel";
+      rendered.thinkingDetails = details;
+      rendered.thinkingPanel = panel;
       if (message.thinkingContent) {
         const pre = document.createElement("pre");
         pre.textContent = message.thinkingContent;
+        rendered.thinkingPre = pre;
         panel.appendChild(pre);
       } else if (!message.pending && message.thinkingTrace?.length) {
         const pre = document.createElement("pre");
         pre.textContent = message.thinkingTrace.join("\n");
+        rendered.thinkingPre = pre;
         panel.appendChild(pre);
       } else if (!message.pending) {
         panel.textContent = t("chat.thinkingUnavailable");
@@ -9157,6 +9264,7 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
     if (message.content) {
       const text = document.createElement("div");
       text.className = "chat-text markdown-body";
+      rendered.text = text;
       if (message.role === "assistant") {
         text.innerHTML = renderMarkdownToHtml(applyCitationLinks(message.content, message.references));
         addCopyButtons(text);
@@ -9166,14 +9274,17 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       if (message.pending) {
         const cursor = document.createElement("span");
         cursor.className = "streaming-cursor";
+        rendered.cursor = cursor;
         text.appendChild(cursor);
       }
       line.appendChild(text);
     } else if (message.pending) {
       const text = document.createElement("div");
       text.className = "chat-text markdown-body";
+      rendered.text = text;
       const cursor = document.createElement("span");
       cursor.className = "streaming-cursor";
+      rendered.cursor = cursor;
       text.appendChild(cursor);
       line.appendChild(text);
     }
@@ -9217,6 +9328,7 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       line.appendChild(actions);
     }
     chatMessages.appendChild(line);
+    renderedChatMessageElements.set(message, rendered);
   }
   if (shouldStickToBottom) {
     scrollChatToBottom();
@@ -15678,10 +15790,12 @@ function animateNodesToPositions(targetPositions, duration = 400) {
       const { node, startX, startY, targetX, targetY } = item;
       const currentX = startX + (targetX - startX) * eased;
       const currentY = startY + (targetY - startY) * eased;
-      node.x = currentX;
-      node.y = currentY;
-      node.element.style.left = `${currentX}px`;
-      node.element.style.top = `${currentY}px`;
+      const displayX = progress < 1 ? Math.round(currentX) : targetX;
+      const displayY = progress < 1 ? Math.round(currentY) : targetY;
+      node.x = displayX;
+      node.y = displayY;
+      node.element.style.left = `${displayX}px`;
+      node.element.style.top = `${displayY}px`;
     }
 
     drawLinks();

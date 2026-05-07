@@ -3319,16 +3319,17 @@ html[data-theme="dark"] .chat-review-button {
   background: var(--ps-blue);
   border: none;
   cursor: pointer;
+  opacity: 1;
 }
 
-.research-button:hover:not(:disabled) {
+.research-button:hover:not(:disabled):not([aria-disabled="true"]) {
   background: var(--ps-cyan);
   color: var(--paper);
   transform: scale(1.12);
   box-shadow: var(--ring);
 }
 
-.research-button:active:not(:disabled) {
+.research-button:active:not(:disabled):not([aria-disabled="true"]) {
   opacity: 0.6;
 }
 
@@ -3338,11 +3339,17 @@ html[data-theme="dark"] .chat-review-button {
   cursor: not-allowed;
 }
 
+.research-button[aria-disabled="true"] {
+  cursor: wait;
+}
+
 .research-button.is-busy {
   gap: 8px;
   color: var(--paper);
   background: var(--ps-blue);
-  opacity: 0.9;
+  opacity: 1;
+  cursor: wait;
+  transform: none;
 }
 
 .research-button.is-busy::before {
