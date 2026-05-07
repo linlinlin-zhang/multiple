@@ -5,7 +5,8 @@ function formatBlueprintGenerationContext(lang, blueprint) {
   const strength = Number.isFinite(Number(blueprint.referenceStrength)) ? Number(blueprint.referenceStrength) : 0.7;
   const cards = Array.isArray(blueprint.cards) ? blueprint.cards : [];
   const relationships = Array.isArray(blueprint.relationships) ? blueprint.relationships : [];
-  if (!cards.length && !relationships.length) return "";
+  const overallDescription = String(blueprint.overallDescription || "").trim();
+  if (!cards.length && !relationships.length && !overallDescription) return "";
   const titleById = new Map(cards.map((card) => [card.id, card.title || card.id]));
   const relationLabel = (type) => {
     if (lang === "en") return type === "upstream" ? "upstream dependency" : type === "downstream" ? "downstream influence" : "parallel relationship";
@@ -15,7 +16,11 @@ function formatBlueprintGenerationContext(lang, blueprint) {
     ? [
         "# Blueprint Context",
         `Reference strength: ${strength} / 1. Use this value as how strictly the image should follow the blueprint relationships and current chat context.`,
-        cards.length ? `Cards: ${cards.map((card) => card.title || card.id).join("; ")}` : "",
+        cards.length ? `Cards: ${cards.map((card) => {
+          const summary = String(card.summary || "").trim();
+          return `${card.title || card.id}${summary ? ` — ${summary.slice(0, 180)}` : ""}`;
+        }).join("; ")}` : "",
+        overallDescription ? `Overall supplement: ${overallDescription}` : "",
         ...relationships.map((relationship) => {
           const from = titleById.get(relationship.from) || relationship.from;
           const to = titleById.get(relationship.to) || relationship.to;
@@ -26,7 +31,11 @@ function formatBlueprintGenerationContext(lang, blueprint) {
     : [
         "# 蓝图上下文",
         `参照强度：${strength} / 1。请将该数值理解为成图时对蓝图关系和当前对话上下文的严格参考程度。`,
-        cards.length ? `卡片：${cards.map((card) => card.title || card.id).join("；")}` : "",
+        cards.length ? `卡片：${cards.map((card) => {
+          const summary = String(card.summary || "").trim();
+          return `${card.title || card.id}${summary ? ` —— ${summary.slice(0, 180)}` : ""}`;
+        }).join("；")}` : "",
+        overallDescription ? `整体补充：${overallDescription}` : "",
         ...relationships.map((relationship) => {
           const from = titleById.get(relationship.from) || relationship.from;
           const to = titleById.get(relationship.to) || relationship.to;
