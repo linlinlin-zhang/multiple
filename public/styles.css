@@ -10,7 +10,10 @@
   --body: #6b6b6b;
   --muted: #cccccc;
   --line: #0070cc;
-  --line-shadow: rgba(0, 0, 0, 0.12);
+  --line-soft: rgba(0, 112, 204, 0.32);
+  --line-muted: rgba(32, 41, 57, 0.22);
+  --line-backdrop: rgba(245, 247, 250, 0.92);
+  --line-shadow: rgba(0, 0, 0, 0.08);
   --danger: #d53b00;
   --nav-width: 248px;
   --chat-sidebar-width: clamp(340px, 28vw, 430px);
@@ -37,7 +40,10 @@ html[data-theme="dark"] {
   --body: #a0a0a0;
   --muted: #555555;
   --line: #4aa8ff;
-  --line-shadow: rgba(255, 255, 255, 0.08);
+  --line-soft: rgba(74, 168, 255, 0.38);
+  --line-muted: rgba(220, 235, 255, 0.2);
+  --line-backdrop: rgba(26, 26, 26, 0.88);
+  --line-shadow: rgba(0, 0, 0, 0.3);
   --danger: #ff6b47;
   --shadow-06: 0 5px 9px rgba(0, 0, 0, 0.35);
   --shadow-08: 0 8px 16px rgba(0, 0, 0, 0.45);
@@ -378,23 +384,24 @@ body.nav-collapsed .nav-settings {
 .link {
   fill: none;
   stroke: var(--line);
-  stroke-width: 2.2;
+  stroke-width: 1.85;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.74;
+  opacity: 0.7;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 1px 1px rgba(0, 112, 204, 0.1));
+  transition: opacity 160ms ease, stroke-width 160ms ease, filter 160ms ease;
 }
 
 .link-shadow {
   fill: none;
-  stroke: var(--line-shadow);
-  stroke-width: 5.5;
+  stroke: var(--line-backdrop);
+  stroke-width: 8;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.34;
+  opacity: 0.84;
   vector-effect: non-scaling-stroke;
-  transform: translate(1px, 3px);
+  filter: drop-shadow(0 6px 10px var(--line-shadow));
+  transition: opacity 160ms ease, stroke-width 160ms ease;
 }
 
 .link-hit-target {
@@ -409,33 +416,83 @@ body.nav-collapsed .nav-settings {
 }
 
 .link-pin {
-  fill: var(--paper);
-  stroke: var(--ps-blue);
-  stroke-width: 2;
-  opacity: 0.94;
+  fill: var(--line-backdrop);
+  stroke: var(--line-soft);
+  stroke-width: 1.5;
+  opacity: 0.82;
   vector-effect: non-scaling-stroke;
-  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.14));
+  transition: opacity 160ms ease, r 160ms ease, stroke-width 160ms ease;
+}
+
+.link-terminal {
+  fill: var(--line);
+  stroke: var(--line-backdrop);
+  stroke-width: 2.4;
+  opacity: 0.86;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 1px 3px rgba(0, 112, 204, 0.18));
+  transition: opacity 160ms ease, r 160ms ease;
 }
 
 .link-bundled {
-  stroke-width: 2.8;
-  opacity: 0.82;
+  stroke-width: 2.25;
+  opacity: 0.78;
 }
 
 .link-junction {
-  opacity: 0.66;
+  stroke: var(--line-muted);
+  opacity: 0.72;
 }
 
 .link-shadow.link-junction {
-  opacity: 0.22;
+  opacity: 0.62;
 }
 
 .link-pin-junction {
-  opacity: 0.62;
+  stroke: var(--line-muted);
+  opacity: 0.66;
 }
 
 .link-orthogonal {
   stroke-dasharray: none;
+}
+
+.link-smooth {
+  stroke-width: 1.75;
+}
+
+.link-analysis {
+  stroke: var(--ps-blue);
+}
+
+.link-option,
+.link-deep-think {
+  stroke: var(--line);
+}
+
+.link-connection {
+  stroke: var(--ps-cyan);
+}
+
+.link-image-search,
+.link-generated {
+  stroke: var(--ps-cyan);
+}
+
+.link.is-hovered {
+  opacity: 1;
+  stroke-width: 2.6;
+  filter: drop-shadow(0 2px 7px rgba(0, 112, 204, 0.2));
+}
+
+.link-shadow.is-hovered {
+  opacity: 0.96;
+  stroke-width: 10;
+}
+
+.link-pin.is-hovered,
+.link-terminal.is-hovered {
+  opacity: 1;
 }
 
 .group-layer {
