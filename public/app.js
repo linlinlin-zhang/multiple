@@ -754,10 +754,11 @@ const i18n = {
     "chat.conversationMessages": "{count} 条消息",
     "chat.noMessages": "还没有消息。输入方向、约束，或按 / 使用工作台命令。",
     "chat.emptyTitle": "可以这样开始",
-    "chat.suggestionAnalyze": "帮我把当前源内容拆成 5 个创作方向",
-    "chat.suggestionPlan": "根据画布内容整理一个执行计划",
-    "chat.suggestionResearch": "围绕这个主题做一次深入研究，并整理参考卡片",
-    "chat.suggestionImagePrompt": "把我的想法改写成适合成图的提示词",
+    "chat.suggestionVisualConcepts": "基于当前素材生成 5 个不同风格的视觉概念方向",
+    "chat.suggestionFrameBreakdown": "拆解当前画面的主体、氛围、色彩和镜头感",
+    "chat.suggestionVisualSeries": "帮我把这个想法扩展成一组系列化视觉方案",
+    "chat.suggestionMergeCards": "找出哪些卡片可以合并成一个更强的创意方向",
+    "chat.suggestionExploreRoutes": "基于当前画布提出 3 条不同的探索路线",
     "chat.selectCardFirst": "请先双击一张卡片进行选择",
     "chat.send": "发送",
     "chat.thinkingDetails": "思考过程",
@@ -1064,10 +1065,11 @@ const i18n = {
     "chat.contextIndicator": "Context: {title}",
     "chat.noMessages": "No messages yet. Enter a direction, constraint, or press / for workbench commands.",
     "chat.emptyTitle": "Try starting with",
-    "chat.suggestionAnalyze": "Break the current source into 5 creative directions",
-    "chat.suggestionPlan": "Turn the canvas into an execution plan",
-    "chat.suggestionResearch": "Research this topic and organize reference cards",
-    "chat.suggestionImagePrompt": "Rewrite my idea as image-generation prompts",
+    "chat.suggestionVisualConcepts": "Generate 5 visual concept directions in different styles from the current material",
+    "chat.suggestionFrameBreakdown": "Break down the current image by subject, mood, color, and camera feel",
+    "chat.suggestionVisualSeries": "Expand this idea into a series of visual concepts",
+    "chat.suggestionMergeCards": "Find which cards can merge into a stronger creative direction",
+    "chat.suggestionExploreRoutes": "Suggest 3 different exploration routes from the current canvas",
     "chat.roleUser": "You",
     "chat.roleAssistant": "AI",
     "chat.selectCardFirst": "Please double-click a card to select it first",
@@ -9560,10 +9562,11 @@ function updateChatScrollButton() {
 
 function chatEmptySuggestions() {
   return [
-    t("chat.suggestionAnalyze"),
-    t("chat.suggestionPlan"),
-    t("chat.suggestionResearch"),
-    t("chat.suggestionImagePrompt")
+    t("chat.suggestionVisualConcepts"),
+    t("chat.suggestionFrameBreakdown"),
+    t("chat.suggestionVisualSeries"),
+    t("chat.suggestionMergeCards"),
+    t("chat.suggestionExploreRoutes")
   ];
 }
 
@@ -9574,6 +9577,7 @@ function useChatSuggestion(text) {
   chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length);
   syncCommandMenu();
   updateChatPrimaryButtonMode();
+  chatForm?.requestSubmit();
 }
 
 function renderChatEmptyState() {
