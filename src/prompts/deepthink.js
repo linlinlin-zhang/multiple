@@ -1,4 +1,4 @@
-import { THINKING_FRAMEWORKS, META_DIRECTIVES, CONTEXT_BOUNDARY_DIRECTIVES, SOURCE_GROUNDING_DIRECTIVES, jsonSchemaContract, xmlBlock } from './shared.js';
+import { THINKING_FRAMEWORKS, META_DIRECTIVES, CONTEXT_BOUNDARY_DIRECTIVES, SOURCE_GROUNDING_DIRECTIVES, TOOL_ROUTING_DIRECTIVES, CANVAS_ARTIFACT_DIRECTIVES, jsonSchemaContract, xmlBlock } from './shared.js';
 
 export function buildDeepThinkSystemPrompt(lang) {
   const schema = [
@@ -36,6 +36,12 @@ export function buildDeepThinkSystemPrompt(lang) {
       "",
       "# Source Grounding",
       SOURCE_GROUNDING_DIRECTIVES.en,
+      "",
+      "# Tool Routing",
+      TOOL_ROUTING_DIRECTIVES.en,
+      "",
+      "# Canvas Artifact Contract",
+      CANVAS_ARTIFACT_DIRECTIVES.en,
       "",
       "# Externalization Rule",
       "Do not expose private chain-of-thought in reply. Instead, create a curated set of visible workspace traces: the final report, key synthesis notes/plans/todos, and meaningful web/image/file references.",
@@ -77,6 +83,12 @@ export function buildDeepThinkSystemPrompt(lang) {
     "",
     "# 来源依据",
     SOURCE_GROUNDING_DIRECTIVES.zh,
+    "",
+    "# 工具路由",
+    TOOL_ROUTING_DIRECTIVES.zh,
+    "",
+    "# 画布产物契约",
+    CANVAS_ARTIFACT_DIRECTIVES.zh,
     "",
     "# 外化规则",
     "不要在 reply 中暴露私有思维链。你需要把思考外化为精选的高价值工作区痕迹：最终报告、关键综合笔记/计划/待办，以及有意义的网页/图片/文件参考。",

@@ -1,4 +1,4 @@
-import { CANVAS_ACTION_TYPES_TEXT, CONTEXT_BOUNDARY_DIRECTIVES, META_DIRECTIVES, SOURCE_GROUNDING_DIRECTIVES, promptSection, xmlBlock } from './shared.js';
+import { CANVAS_ACTION_TYPES_TEXT, CANVAS_ARTIFACT_DIRECTIVES, CONTEXT_BOUNDARY_DIRECTIVES, META_DIRECTIVES, SOURCE_GROUNDING_DIRECTIVES, TOOL_ROUTING_DIRECTIVES, promptSection, xmlBlock } from './shared.js';
 import { formatAgentSkillBrief, formatAgentSkillDirectory } from '../../public/agentSkills.js';
 
 export function buildChatSystemContext(lang, analysis, messages) {
@@ -29,6 +29,12 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "# Skill and tool routing",
         "Treat agent skills as execution lenses, not user-facing labels. Use the active skill and skill directory to choose tools, canvas actions, card structure, and quality checks. Mention an internal skill name only when it helps the user understand the workflow.",
         "Use tools only when they materially improve the answer or artifact. Tool calls should have concrete, bounded inputs and their results should be synthesized into user-facing conclusions.",
+        "",
+        "# Tool decision policy",
+        TOOL_ROUTING_DIRECTIVES.en,
+        "",
+        "# Canvas artifact contract",
+        CANVAS_ARTIFACT_DIRECTIVES.en,
         "",
         "# Instruction hierarchy and context boundaries",
         META_DIRECTIVES.en,
@@ -119,6 +125,12 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "# Skill 与工具路由",
         "把 agent skill 当作执行视角,而不是面向用户的标签。根据当前 skill 和技能目录选择工具、画布动作、卡片结构与质量检查。除非对用户理解流程有帮助,不要暴露内部 skill 名称。",
         "只有当工具能实质提升答案或产物时才调用。工具输入要具体、有边界,工具结果要综合成面向用户的结论,不要把原始工具输出直接丢给用户。",
+        "",
+        "# 工具决策策略",
+        TOOL_ROUTING_DIRECTIVES.zh,
+        "",
+        "# 画布产物契约",
+        CANVAS_ARTIFACT_DIRECTIVES.zh,
         "",
         "# 指令层级与上下文边界",
         META_DIRECTIVES.zh,

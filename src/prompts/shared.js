@@ -82,6 +82,44 @@ export const SOURCE_GROUNDING_DIRECTIVES = {
   ].join("\n")
 };
 
+export const TOOL_ROUTING_DIRECTIVES = {
+  en: [
+    "Use tools as execution boundaries, not as decoration. Call a tool only when it will add information, create a reusable artifact, manipulate the workspace, generate/search media, or perform an action the chat answer alone cannot perform.",
+    "Choose direct answer mode for greetings, simple explanations, brainstorming that the user wants only in text, and low-risk edits that do not need a persistent canvas artifact.",
+    "Choose tool mode when the user explicitly asks to create/save/generate/search/open/arrange something, when current or official information is needed and search is available, or when a structured canvas artifact will help the user continue working.",
+    "Keep each tool call concrete and bounded: fill the action type, target, query/prompt/url, and structured content that the app needs to execute without guessing.",
+    "After tool results or citations are available, synthesize them into conclusions for the user. Do not expose raw tool dumps, internal schemas, or hidden routing logic.",
+    "Never claim that a search, generation, upload, deletion, export, or subagent task is complete unless the matching tool/action was actually called or a tool result confirms it.",
+    "For irreversible, destructive, privacy-sensitive, costly, or external write actions, require explicit user intent and a clear target."
+  ].join("\n"),
+  zh: [
+    "把工具当作执行边界，而不是装饰。只有当工具能补充信息、创建可复用产物、操作工作区、生成/搜索媒体，或完成聊天正文无法完成的动作时才调用。",
+    "寒暄、简单解释、用户只想要文本的头脑风暴、以及不需要持久画布产物的低风险修改，优先直接回答。",
+    "当用户明确要求创建/保存/生成/搜索/打开/整理某物，或需要实时/官方信息且可搜索，或结构化画布产物能帮助用户继续工作时，进入工具模式。",
+    "每个工具调用都要具体、有边界：补齐动作类型、目标、query/prompt/url，以及应用执行所需的结构化 content，不要让前端猜。",
+    "拿到工具结果或引用后，要综合成面向用户的结论。不要把原始工具输出、内部 schema 或隐藏路由逻辑直接暴露给用户。",
+    "除非确实调用了对应工具/动作，或工具结果已经确认，否则不要声称搜索、生成、上传、删除、导出或子 Agent 任务已经完成。",
+    "涉及不可逆、破坏性、隐私敏感、会产生成本或外部写入的动作时，必须有用户明确意图和清晰目标。"
+  ].join("\n")
+};
+
+export const CANVAS_ARTIFACT_DIRECTIVES = {
+  en: [
+    "A canvas artifact must be useful before the user clicks it: include a clear title, concise description, correct type, and enough structured content to render as a real card.",
+    "Prefer specific rich card types over generic cards. Plans need steps; todos need items; notes need text/sections; tables need columns and rows; timelines need items; comparisons need criteria/items; metrics need values; quotes need source context when available.",
+    "For web/reference cards, use concrete verified URLs when available. If only a query is known, create/search for references rather than inventing a source URL.",
+    "For media actions, separate reference search from generation: image_search/reverse_image_search finds existing visual evidence; generate_image/generate_video creates new speculative or design media.",
+    "Split large work into an overview card plus supporting cards. Avoid one oversized card and avoid many low-value duplicates."
+  ].join("\n"),
+  zh: [
+    "画布产物在用户点开前就应该有用：包含清晰标题、简短说明、正确类型，以及能真正渲染成卡片的结构化 content。",
+    "优先使用具体富卡片类型，不要滥用通用卡。plan 要有 steps；todo 要有 items；note 要有 text/sections；table 要有 columns 和 rows；timeline 要有 items；comparison 要有 criteria/items；metric 要有数值；quote 在可用时要带来源上下文。",
+    "网页/参考卡要使用已经核实的具体 URL。只有 query 而没有来源时，应创建/触发参考搜索，不要编造来源链接。",
+    "媒体动作要区分参考搜索和生成：image_search/reverse_image_search 用于找已有视觉证据；generate_image/generate_video 用于创建新的推演、设计或概念媒体。",
+    "大型任务拆成总览卡 + 支撑卡。避免一张超长卡，也避免大量低价值重复卡。"
+  ].join("\n")
+};
+
 export function promptSection(title, content) {
   const body = Array.isArray(content) ? content.filter(Boolean).join("\n") : String(content ?? "");
   return [`# ${title}`, body].filter((part) => String(part || "").trim()).join("\n");

@@ -158,7 +158,7 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
   type: "function",
   function: {
     name: "canvas_action",
-    description: "Execute exactly one ThoughtGrid canvas action: create a reusable card, generate/search media, analyze/research source material, manipulate view/selection/layout, export/save workspace state, or create a bounded subagent task. Use this to augment the chat answer, not replace it. You may invoke this tool MULTIPLE times in a single turn when multiple reusable artifacts are genuinely useful.",
+    description: "Execute exactly one ThoughtGrid canvas action: create a reusable card, generate/search media, analyze/research source material, manipulate view/selection/layout, export/save workspace state, or create a bounded subagent task. Use this only when the user asked for an action or when a reusable canvas artifact materially improves the task. Fill complete structured arguments so the app can execute without guessing. You may invoke this tool MULTIPLE times in a single turn when multiple high-value artifacts are genuinely useful.",
     parameters: {
       type: "object",
       properties: {
@@ -190,7 +190,8 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
         content: {
           type: "object",
           description: [
-            "Structured payload that fills the rich node. REQUIRED for create_plan/create_todo/create_note/create_weather/create_map/create_link/create_code/create_table/create_timeline/create_comparison/create_metric/create_quote — without it the card renders empty. The chat answer must still summarize the useful result. Shape per type:",
+            "Structured payload that fills the rich node. REQUIRED for create_plan/create_todo/create_note/create_weather/create_map/create_link/create_web_card/create_code/create_table/create_timeline/create_comparison/create_metric/create_quote - without it the card renders empty. The chat answer must still summarize the useful result. Shape per type:",
+            "Prefer concrete data over placeholders; if you only know a query, use query/search actions rather than inventing URLs.",
             "- create_plan: { summary?: string, assumptions?: string[], steps: [{ title: string, description: string, time?: string, priority?: string, tips?: string[] }, ...], tips?: string[], budget?: string } — use this as a compact overview plan. Each description should cover sequence/order, rationale, resources/cost/time constraints, dependencies, risks, and cautions where relevant, but do not make one oversized plan card. For complex learning/exam/research/project tasks, create multiple artifacts: overview plan + resources/logistics note + todo checklist + web/reference cards when useful",
             "- create_todo: { items: [{ text: string, done: boolean, priority?: string, rationale?: string }, ...] }",
             "- create_note: { text: string, sections?: [{ title: string, body: string }] } — the full note body in markdown",
@@ -262,14 +263,23 @@ function extractToolCallActions(response) {
   const toolCalls = response?.choices?.[0]?.message?.tool_calls || [];
   return toolCalls
     .filter((tc) => tc.type === "function" && tc.function?.name === "canvas_action")
-    .map((tc) => {
-      try {
-        return JSON.parse(tc.function.arguments || "{}");
-      } catch {
-        return null;
-      }
-    })
+    .map((tc) => parseToolArguments(tc.function.arguments))
     .filter(Boolean);
+}
+
+function parseToolArguments(value) {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  const text = String(value || "").trim();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    try {
+      return parseJsonFromText(text);
+    } catch {
+      return null;
+    }
+  }
 }
 
 const ACTION_REPLY_TEMPLATES = {
@@ -324,6 +334,12 @@ const ACTION_REPLY_TEMPLATES = {
 };
 
 const REUSABLE_CARD_ACTION_TYPES = ["create_plan", "create_todo", "create_note", "create_code", "create_web_card", "create_link", "create_table", "create_timeline", "create_comparison", "create_metric", "create_quote"];
+const STRUCTURED_CONTENT_ACTION_TYPES = new Set([
+  "create_plan", "create_todo", "create_note", "create_weather", "create_map",
+  "create_link", "create_web_card", "create_code", "create_table",
+  "create_timeline", "create_comparison", "create_metric", "create_quote"
+]);
+const WEB_REFERENCE_ACTION_TYPES = new Set(["create_link", "create_web_card"]);
 
 function synthesizeReplyFromActions(actions, lang, references = []) {
   if (!Array.isArray(actions) || actions.length === 0) return "";
@@ -2255,21 +2271,185 @@ function canvasActionLimitForThinkingMode(thinkingMode = "no-thinking") {
   return thinkingMode === "thinking" ? MAX_THINKING_CANVAS_ACTIONS_PER_TURN : MAX_QUICK_CANVAS_ACTIONS_PER_TURN;
 }
 
+function repairCanvasActions(actions, message, reply = "", lang = "zh") {
+  if (!Array.isArray(actions) || !actions.length) return actions;
+  return actions
+    .map((action) => repairCanvasAction(action, message, reply, lang))
+    .filter(Boolean);
+}
+
+function repairCanvasAction(action, message, reply = "", lang = "zh") {
+  if (!action || typeof action !== "object" || !action.type) return null;
+  const text = [action.description, action.prompt, reply, message]
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .join("\n\n");
+
+  if (action.type === "delete_node" && !action.nodeId && !action.nodeName && !action.target) {
+    return null;
+  }
+
+  if (["image_search", "text_image_search", "reverse_image_search"].includes(action.type) && !action.query) {
+    return {
+      ...action,
+      query: deriveSearchQueryClean(message) || stringOr(action.prompt || action.description || action.title, message).slice(0, 240)
+    };
+  }
+
+  if (["generate_image", "generate_video"].includes(action.type) && !action.prompt) {
+    return {
+      ...action,
+      prompt: stringOr(action.description || action.title, message).slice(0, 1600)
+    };
+  }
+
+  if (WEB_REFERENCE_ACTION_TYPES.has(action.type)) {
+    return repairWebReferenceAction(action, message, text, lang);
+  }
+
+  if (!STRUCTURED_CONTENT_ACTION_TYPES.has(action.type)) return action;
+
+  const content = normalizeStructuredContentForAction(action.type, action.content, text, action, lang);
+  if (hasUsableStructuredContent(action.type, content)) {
+    return { ...action, content };
+  }
+
+  const fallbackContent = buildFallbackActionContent(action.type, action.title || deriveSearchQueryClean(message), text || message);
+  return fallbackContent ? { ...action, content: fallbackContent } : action;
+}
+
+function repairWebReferenceAction(action, message, text, lang) {
+  const url = stringOr(action.url || action.content?.url, extractFirstUrl(text || message));
+  if (url) {
+    return enrichWebCardAction({
+      ...action,
+      url,
+      content: {
+        ...(action.content && typeof action.content === "object" ? action.content : {}),
+        url
+      }
+    }, message);
+  }
+
+  const query = stringOr(action.query, deriveSearchQueryClean(text || message)).slice(0, 240);
+  if (action.type === "create_web_card" && query) {
+    return {
+      type: "web_search",
+      title: action.title || (lang === "en" ? "Web search" : "网页搜索"),
+      description: action.description || (lang === "en" ? "Search intent card for finding concrete references." : "用于查找具体参考来源的搜索意图卡。"),
+      query
+    };
+  }
+
+  const noteText = text || action.description || action.title || query;
+  return {
+    type: "create_note",
+    title: action.title || (lang === "en" ? "Reference note" : "参考笔记"),
+    description: lang === "en" ? "Converted from a reference action without a concrete URL." : "由缺少具体 URL 的参考动作转换而来。",
+    content: buildFallbackActionContent("create_note", action.title || query, noteText)
+  };
+}
+
+function normalizeStructuredContentForAction(type, content, fallbackText, action = {}, lang = "zh") {
+  const base = content && typeof content === "object" && !Array.isArray(content) ? { ...content } : {};
+  if (type === "create_plan" && !Array.isArray(base.steps) && Array.isArray(base.items)) {
+    base.steps = base.items.map((item, index) => ({
+      title: stringOr(item?.title || item?.text, `${index + 1}`),
+      description: stringOr(item?.description || item?.body || item?.text || item, fallbackText)
+    }));
+  }
+  if (type === "create_todo" && !Array.isArray(base.items) && Array.isArray(base.steps)) {
+    base.items = base.steps.map((step) => ({
+      text: stringOr(step?.title || step?.text, ""),
+      done: Boolean(step?.done),
+      priority: stringOr(step?.priority, ""),
+      rationale: stringOr(step?.description || step?.time, "")
+    }));
+  }
+  if (type === "create_note") {
+    base.text = stringOr(base.text || base.markdown || base.body || base.description, fallbackText);
+  }
+  if (type === "create_code") {
+    base.language = stringOr(base.language, "text");
+    base.code = stringOr(base.code || base.text, fallbackText);
+  }
+  if (type === "create_weather") {
+    base.location = stringOr(base.location || action.query || action.title, deriveSearchQueryClean(fallbackText));
+    base.forecast = stringOr(base.forecast || base.description || base.summary, fallbackText);
+    base.temp = stringOr(base.temp || base.temperature, "");
+  }
+  if (type === "create_map") {
+    base.address = stringOr(base.address || base.location || action.query || action.title, deriveSearchQueryClean(fallbackText));
+  }
+  if (type === "create_table" && !Array.isArray(base.rows) && Array.isArray(base.items)) {
+    const columns = Array.isArray(base.columns) && base.columns.length ? base.columns : (lang === "en" ? ["Item", "Details"] : ["项目", "细节"]);
+    base.columns = columns;
+    base.rows = base.items.map((item) => ({
+      [columns[0]]: stringOr(item?.title || item?.label || item, ""),
+      [columns[1]]: stringOr(item?.description || item?.value || item?.summary || "", "")
+    }));
+  }
+  if (type === "create_timeline" && !Array.isArray(base.items) && Array.isArray(base.steps)) {
+    base.items = base.steps.map((step, index) => ({
+      phase: stringOr(step?.time || step?.phase, `${index + 1}`),
+      title: stringOr(step?.title || step?.text, `${index + 1}`),
+      description: stringOr(step?.description || step?.body || step?.text, "")
+    }));
+  }
+  if (type === "create_comparison" && !Array.isArray(base.items) && Array.isArray(base.options)) {
+    base.items = base.options.map((option) => ({
+      title: stringOr(option?.title || option?.name || option, ""),
+      summary: stringOr(option?.summary || option?.description || option, "")
+    }));
+  }
+  if (type === "create_metric" && !Array.isArray(base.metrics) && Array.isArray(base.items)) {
+    base.metrics = base.items.map((item) => ({
+      label: stringOr(item?.label || item?.title || item, ""),
+      value: stringOr(item?.value || item?.summary || item?.description || "", "")
+    }));
+  }
+  if (type === "create_quote" && !Array.isArray(base.quotes) && Array.isArray(base.items)) {
+    base.quotes = base.items.map((item) => ({
+      text: stringOr(item?.text || item?.quote || item?.description || item, ""),
+      source: stringOr(item?.source || item?.title || "", "")
+    }));
+  }
+  return base;
+}
+
+function hasUsableStructuredContent(type, content) {
+  if (!content || typeof content !== "object" || Array.isArray(content)) return false;
+  if (type === "create_plan") return Array.isArray(content.steps) && content.steps.some((step) => step?.title || step?.description || step?.text);
+  if (type === "create_todo") return Array.isArray(content.items) && content.items.some((item) => item?.text || item?.title);
+  if (type === "create_note") return Boolean(stringOr(content.text || content.markdown || content.body, "")) || (Array.isArray(content.sections) && content.sections.length > 0);
+  if (type === "create_weather") return Boolean(content.location || content.forecast || content.temp);
+  if (type === "create_map") return Boolean(content.address || content.location || content.lat || content.lng);
+  if (type === "create_link" || type === "create_web_card") return Boolean(content.url);
+  if (type === "create_code") return Boolean(content.code);
+  if (type === "create_table") return Array.isArray(content.columns) && content.columns.length > 0 && Array.isArray(content.rows) && content.rows.length > 0;
+  if (type === "create_timeline") return Array.isArray(content.items) && content.items.length > 0;
+  if (type === "create_comparison") return Array.isArray(content.items) && content.items.length > 0;
+  if (type === "create_metric") return Array.isArray(content.metrics) && content.metrics.length > 0;
+  if (type === "create_quote") return Array.isArray(content.quotes) && content.quotes.length > 0;
+  return Object.keys(content).length > 0;
+}
+
 function enrichCanvasActions(actions, message, reply = "", lang = "zh", thinkingMode = "no-thinking") {
   if (!Array.isArray(actions) || !actions.length) return actions;
-  let expanded = [...actions];
-  const planAction = actions.find((action) => action?.type === "create_plan" && Array.isArray(action?.content?.steps));
+  let expanded = repairCanvasActions([...actions], message, reply, lang);
+  const planAction = expanded.find((action) => action?.type === "create_plan" && Array.isArray(action?.content?.steps));
   if (planAction) {
     const splitPlan = shouldSplitPlanAction(planAction);
     const examOrLearning = isExamOrLearningRequest(message);
     const planningRequest = isPlanningRequest(message);
     if (splitPlan || examOrLearning || planningRequest) {
-      const hasNote = actions.some((action) => action?.type === "create_note");
-      const hasTodo = actions.some((action) => action?.type === "create_todo");
-      const hasTimeline = actions.some((action) => action?.type === "create_timeline");
-      const hasTable = actions.some((action) => action?.type === "create_table");
+      const sourceActions = expanded;
+      const hasNote = sourceActions.some((action) => action?.type === "create_note");
+      const hasTodo = sourceActions.some((action) => action?.type === "create_todo");
+      const hasTimeline = sourceActions.some((action) => action?.type === "create_timeline");
+      const hasTable = sourceActions.some((action) => action?.type === "create_table");
       expanded = [];
-      for (const action of actions) {
+      for (const action of sourceActions) {
         if (action !== planAction) {
           expanded.push(action);
           continue;
@@ -3953,6 +4133,30 @@ function buildFallbackActionContent(actionType, title, text) {
     return { items: items.length ? items : [{ text: body.slice(0, 300), done: false }] };
   }
   if (actionType === "create_note") return { text: body.slice(0, 4000) };
+  if (actionType === "create_weather") {
+    return {
+      location: title || body.slice(0, 80),
+      temp: "",
+      forecast: body.slice(0, 700)
+    };
+  }
+  if (actionType === "create_map") {
+    return {
+      address: title || body.slice(0, 180)
+    };
+  }
+  if (actionType === "create_link" || actionType === "create_web_card") {
+    const url = extractFirstUrl(body);
+    if (!url) return undefined;
+    const source = webSourceName(url);
+    return {
+      title: readableWebTitle(url, title),
+      url,
+      description: body.slice(0, 420),
+      source,
+      faviconUrl: webFaviconUrl(url)
+    };
+  }
   if (actionType === "create_code") {
     const code = body.match(/```[a-z0-9_-]*\n([\s\S]*?)```/i)?.[1] || body;
     return { language: "text", code: code.slice(0, 6000), explanation: body.slice(0, 1200) };
@@ -4338,6 +4542,21 @@ function normalizedActionBoolean(value) {
   return undefined;
 }
 
+function normalizedActionContent(value) {
+  if (!value) return undefined;
+  if (value && typeof value === "object" && !Array.isArray(value)) return value;
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  if (!text) return undefined;
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+  } catch {
+    // A plain string is a valid note-like payload and can be repaired later.
+  }
+  return { text };
+}
+
 function normalizeVoiceActions(value) {
   const raw = Array.isArray(value) ? value : (value ? [value] : []);
   return raw
@@ -4373,7 +4592,7 @@ function normalizeVoiceActions(value) {
         priority: normalizedActionString(action.priority, 40),
         dependencies: normalizedActionStringArray(action.dependencies, 6, 140),
         nodeType: normalizedActionString(action.nodeType, 40) || undefined,
-        content: action.content || undefined,
+        content: normalizedActionContent(action.content),
         batchIndex: normalizedActionNumber(action.batchIndex),
         batchSize: normalizedActionNumber(action.batchSize),
         x: normalizedActionNumber(action.x),
