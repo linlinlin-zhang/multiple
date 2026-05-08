@@ -72,7 +72,9 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "# Image/video intent routing",
         "If the user asks to find/search/look up visual references, use image_search for text queries or reverse_image_search when an image is attached/selected. Image search means internet search, not local library lookup.",
         "If the user asks to create/draw/generate/render/make an image, use generate_image. Text-only generation is valid: provide a strong prompt and do not require a reference image. If an image is attached/selected and the user asks for a transformation, variation, edit, or image-to-image result, still use generate_image and let the app pass the reference image.",
+        "For explicit image generation requests, generate_image is mandatory. Do not substitute create_comparison, create_metric, create_plan, or create_note for the image itself. If the user says to generate several/current/all directions, call generate_image once per direction, targeting the existing direction node when its id is available.",
         "If the user asks to generate/create/make a video, animation, clip, motion shot, or image-to-video result, use generate_video. Provide a motion-aware prompt that describes subject, action, camera movement, duration feel, and style.",
+        "For explicit video generation requests, generate_video is mandatory. Do not replace it with planning or comparison cards unless the user separately asks for planning/supporting analysis.",
         "Use image capabilities generally across domains when they materially improve the workspace: public image search for real-world visual evidence, examples, references, objects, places, interfaces, products, or styles; image generation for speculative, conceptual, design, narrative, or prototype visuals. Do not bind this behavior to a few example scenarios.",
         "Do not claim an image search, image generation, or video generation has completed unless you actually call the corresponding canvas_action.",
         "",
@@ -148,7 +150,9 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "# 图片/视频意图路由",
         "用户要求查找/搜索/找参考图/搜图时，文字查询用 image_search，带附件或选中图片时用 reverse_image_search。图片搜索表示联网公网搜索，不是本地素材库检索。",
         "用户要求创作/画/生成/渲染/出图/成图时，用 generate_image。纯文字成图是有效能力：提供高质量 prompt，不要要求必须有参考图。有附件或选中图且用户要变体、改图、以图成图时，也用 generate_image，由应用传入参考图。",
+        "遇到明确成图请求时，generate_image 是强制动作。不要用 create_comparison、create_metric、create_plan 或 create_note 替代真正成图。用户说“这几个/这些/全部/每个方向分别成图”时，要对每个方向分别调用一次 generate_image；如果画布状态里有方向节点 id，就直接指向该节点。",
         "用户要求生成/创作/制作视频、动画、短片、动态镜头或图生视频时，用 generate_video。prompt 要包含主体、动作、镜头运动、时长感和风格。",
+        "遇到明确视频生成请求时，generate_video 是强制动作。除非用户另外要求规划/分析，否则不要用计划卡或对比卡替代视频生成。",
         "图片能力是通用能力：真实世界视觉证据、案例、参考、对象、地点、界面、产品、风格等适合公网图片搜索；抽象、创意、推演、设计、叙事或原型可生成概念图。不要把这种行为绑定到少数示例场景。",
         "没有实际调用对应 canvas_action 时，不要声称图片搜索、成图或视频生成已经完成。",
         "",
@@ -262,10 +266,14 @@ function summarizeCanvasForPrompt(canvas, lang) {
     nodes: sampled.map((node) => ({
       id: node?.id,
       type: node?.type || node?.nodeType || node?.sourceType,
+      nodeType: node?.nodeType || node?.optionNodeType || undefined,
+      purpose: node?.purpose || undefined,
       title: node?.title || node?.name || node?.label,
       fileName: node?.fileName || undefined,
       summary: String(node?.summary || node?.description || node?.prompt || "").slice(0, 900),
       url: node?.url || node?.sourceUrl,
+      generated: Boolean(node?.generated),
+      selected: Boolean(node?.selected || node?.isSelected || selectedIds.has(node?.id)),
       hasDocument: node?.hasDocument || undefined,
       hasDocumentData: node?.hasDocumentData || undefined
     }))
@@ -320,6 +328,17 @@ function buildTaskGuidance(message, lang) {
     guidance.push(lang === "en"
       ? "For research: synthesize multiple findings, distinguish facts from interpretation, cite sources when references exist, and include limitations or follow-up queries."
       : "研究类回答:综合多个发现,区分事实和解读,有 references 时使用引用,并补充局限性或后续检索方向。");
+  }
+  if (/(成图|出图|生成.*(?:图|图片|图像|视觉|概念图)|画.*(?:图|图片|画面)|绘制|渲染|generate.*(?:image|picture|visual)|draw.*(?:image|picture)|render.*(?:image|picture|visual))/i.test(text)
+      && !/(参考图|搜图|搜索|检索|image search|visual reference)/i.test(text)) {
+    guidance.push(lang === "en"
+      ? "For direct image generation: call generate_image as the primary action. If the user refers to several/current/all direction cards, call generate_image once per relevant visual direction card instead of creating analysis/comparison substitutes."
+      : "直接成图类任务:必须把 generate_image 作为主动作。用户提到“这几个/当前/全部方向卡”时,对相关视觉方向卡逐个调用 generate_image,不要用分析卡、对比卡或指标卡替代。");
+  }
+  if (/(生成|制作|创作).{0,12}(视频|动画|短片|动态镜头)|generate.*(?:video|animation|clip)|make.*(?:video|animation|clip)/i.test(text)) {
+    guidance.push(lang === "en"
+      ? "For direct video generation: call generate_video as the primary action and keep supporting cards secondary."
+      : "直接视频生成类任务:必须把 generate_video 作为主动作,其他支撑卡只能作为次要补充。");
   }
   if (/(写作|文案|文章|报告|提纲|润色|创意|故事|脚本|writing|copy|article|report|outline|draft|revise|creative|story|script)/i.test(text)) {
     guidance.push(lang === "en"

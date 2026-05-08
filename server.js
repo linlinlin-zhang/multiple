@@ -21,6 +21,7 @@ import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildT
 import { AGENT_SKILL_IDS, agentSkillToolFlags, normalizeAgentSkill, normalizeAgentSkillId } from "./public/agentSkills.js";
 import { ingestText, ingestSnippet, retrieveContext, formatContextForPrompt, isEmbeddingConfigured, CONTEXT_KINDS } from "./src/lib/rag/index.js";
 import { classifyContent, getFallbackTaskType, resolveTaskType, routeContent } from "./src/lib/taskRouter.js";
+import { ensureMediaGenerationActions } from "./src/lib/chatActionGuard.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1375,6 +1376,16 @@ async function handleRealtimeVoice(body, res) {
   const transcript = stringOr(result?.transcript, "");
   const reply = stringOr(result?.reply, "");
   let actions = Array.isArray(result?.actions) ? result.actions : [];
+  actions = ensureMediaGenerationActions({
+    message: transcript,
+    actions,
+    reply,
+    selectedContext: body?.selectedContext || null,
+    canvas: body?.canvas && typeof body.canvas === "object" ? body.canvas : {},
+    analysis: normalizeChatAnalysis(body?.analysis),
+    lang,
+    maxActions: MAX_QUICK_CANVAS_ACTIONS_PER_TURN
+  });
   actions = ensureChatFallbackActionsClean(transcript, actions, reply);
   actions = enrichCanvasActions(actions, transcript, reply, lang, "no-thinking");
 
@@ -1628,6 +1639,9 @@ async function handleChat(body, res) {
         thinkingMode,
         agentMode,
         lang,
+        selectedContext,
+        canvas,
+        analysis,
         sessionId,
         ingestMessage: ingestUserMessage,
         retrievedCount: retrieved.length,
@@ -1646,6 +1660,9 @@ async function handleChat(body, res) {
       thinkingMode,
       agentMode,
       lang,
+      selectedContext,
+      canvas,
+      analysis,
       webSearchEnabled: webSearchEnabled || webSearchForced
     });
     delete finalPayload.responseId;
@@ -1680,6 +1697,9 @@ async function handleChat(body, res) {
       thinkingMode,
       agentMode,
       lang,
+      selectedContext,
+      canvas,
+      analysis,
       sessionId,
       ingestMessage: ingestUserMessage,
       retrievedCount: retrieved.length,
@@ -1698,6 +1718,16 @@ async function handleChat(body, res) {
   const references = extractResponseReferences(response);
   const reply = normalizeCitationMarkers(collectChatContent(response).trim(), references);
   let actions = normalizeVoiceActions(extractToolCallActions(response));
+  actions = ensureMediaGenerationActions({
+    message,
+    actions,
+    reply,
+    selectedContext,
+    canvas,
+    analysis,
+    lang,
+    maxActions: canvasActionLimitForThinkingMode(thinkingMode)
+  });
   actions = ensureChatFallbackActionsClean(message, actions, reply);
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled || webSearchForced);
   actions = enrichCanvasActions(actions, message, reply, lang, thinkingMode);
@@ -1877,10 +1907,20 @@ async function ingestChatDocumentAttachments(sessionId, attachments) {
   }
 }
 
-function buildChatResultFromResponse({ response, message, thinkingMode, agentMode, lang, streamedReasoning = "", webSearchEnabled = false }) {
+function buildChatResultFromResponse({ response, message, thinkingMode, agentMode, lang, streamedReasoning = "", webSearchEnabled = false, selectedContext = null, canvas = {}, analysis = {} }) {
   const references = extractResponseReferences(response);
   const reply = normalizeCitationMarkers(collectChatContent(response).trim(), references);
   let actions = normalizeVoiceActions(extractToolCallActions(response));
+  actions = ensureMediaGenerationActions({
+    message,
+    actions,
+    reply,
+    selectedContext,
+    canvas,
+    analysis,
+    lang,
+    maxActions: canvasActionLimitForThinkingMode(thinkingMode)
+  });
   actions = ensureChatFallbackActionsClean(message, actions, reply);
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled);
   actions = enrichCanvasActions(actions, message, reply, lang, thinkingMode);
@@ -2652,7 +2692,7 @@ function dedupeCanvasActions(actions) {
   return result;
 }
 
-async function handleChatStream({ payload, message, thinkingMode, agentMode, lang, sessionId = "", ingestMessage = "", retrievedCount = 0, webSearchEnabled = false, transport = "responses", resetPreviousResponseId = false }, res) {
+async function handleChatStream({ payload, message, thinkingMode, agentMode, lang, selectedContext = null, canvas = {}, analysis = {}, sessionId = "", ingestMessage = "", retrievedCount = 0, webSearchEnabled = false, transport = "responses", resetPreviousResponseId = false }, res) {
   res.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache, no-transform",
@@ -2676,6 +2716,9 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
       agentMode,
       lang,
       streamedReasoning: response?.choices?.[0]?.message?.reasoning_content || "",
+      selectedContext,
+      canvas,
+      analysis,
       webSearchEnabled
     });
     if (retrievedCount) finalPayload.retrievedContext = retrievedCount;

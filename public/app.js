@@ -6619,6 +6619,8 @@ function buildVoiceCanvasContext() {
     id: node.id,
     title: getNodeTitle(node),
     type: getNodeType(node),
+    nodeType: node.option?.nodeType || "",
+    purpose: node.option?.purpose || "",
     summary: getNodeSummary(node).slice(0, 600),
     prompt: String(node.option?.prompt || node.sourceCard?.sourceText || "").slice(0, 900),
     fileName: node.sourceCard?.fileName || "",
@@ -6654,7 +6656,16 @@ function buildVoiceCanvasContext() {
 }
 
 function isCardCreationActionType(type) {
-  return new Set([...RICH_CARD_ACTION_TYPES, "create_direction", "create_web_card", "web_search", "generate_image", "image_search", "reverse_image_search", "text_image_search"]).has(String(type || ""));
+  return new Set([...RICH_CARD_ACTION_TYPES, "create_direction", "create_web_card", "web_search", "generate_image", "generate_video", "image_search", "reverse_image_search", "text_image_search"]).has(String(type || ""));
+}
+
+function actionCreatesNewCanvasCard(action) {
+  const type = typeof action === "string" ? action : action?.type || action?.name;
+  if (!isCardCreationActionType(type)) return false;
+  if ((String(type) === "generate_image" || String(type) === "generate_video") && (action?.nodeId || action?.nodeName || action?.target)) {
+    return false;
+  }
+  return true;
 }
 
 function actionTopicTitle(action = {}, context = {}) {
@@ -6666,10 +6677,7 @@ function actionTopicTitle(action = {}, context = {}) {
 }
 
 function ensureChatTopicNode(actions = [], context = {}) {
-  const creationCount = actions.filter((action) => {
-    const type = typeof action === "string" ? action : action?.type || action?.name;
-    return isCardCreationActionType(type);
-  }).length;
+  const creationCount = actions.filter((action) => actionCreatesNewCanvasCard(action)).length;
   if (!creationCount) return null;
 
   const thread = ensureActiveChatThread();
@@ -7311,13 +7319,44 @@ async function generateImageFromAction(action) {
   const explicitTargetId = resolveDirectNodeId(action?.nodeId) || resolveNodeIdByText(action?.nodeName) || resolveNodeIdByText(action?.target);
   const parentNodeId = resolveParentNodeId(action, null);
   const hasPromptText = Boolean(action?.prompt || action?.title || action?.query);
+  let referenceNodeId = "";
+  let actionReference = typeof action.imageDataUrl === "string" ? action.imageDataUrl : "";
   let nodeId = explicitTargetId || resolveActionNodeId(action, state.selectedNodeId);
+  let target = nodeId ? state.nodes.get(nodeId) : null;
+
+  if (target?.generated && hasPromptText) {
+    referenceNodeId = nodeId;
+    try {
+      actionReference = actionReference || await getImageDataUrlForNode(referenceNodeId);
+    } catch {
+      actionReference = actionReference || "";
+    }
+    nodeId = createDirectionFromAction({
+      ...action,
+      nodeId: undefined,
+      nodeName: undefined,
+      target: undefined,
+      parentNodeId: referenceNodeId,
+      mode: action.mode || "image-to-image"
+    });
+    target = nodeId ? state.nodes.get(nodeId) : null;
+  }
+
   if (!explicitTargetId && parentNodeId && parentNodeId !== state.selectedNodeId && hasPromptText) {
     nodeId = createDirectionFromAction({ ...action, parentNodeId });
+    target = nodeId ? state.nodes.get(nodeId) : null;
   }
-  const target = nodeId ? state.nodes.get(nodeId) : null;
   if ((!target || target.id === "source" || target.id === "analysis") && (action.prompt || action.title || action.query)) {
+    referenceNodeId = target?.id || "";
     nodeId = createDirectionFromAction({ ...action, parentNodeId: target?.id || state.selectedNodeId || "analysis" });
+    target = nodeId ? state.nodes.get(nodeId) : null;
+    if (!actionReference && referenceNodeId) {
+      try {
+        actionReference = await getImageDataUrlForNode(referenceNodeId);
+      } catch {
+        actionReference = "";
+      }
+    }
   }
 
   const node = nodeId ? state.nodes.get(nodeId) : null;
@@ -7332,7 +7371,6 @@ async function generateImageFromAction(action) {
   }
   revealNode(nodeId);
   forceSelectNode(nodeId);
-  const actionReference = typeof action.imageDataUrl === "string" ? action.imageDataUrl : "";
   const result = actionReference
     ? await generateOptionWithReference(nodeId, node.option, actionReference)
     : await generateOption(nodeId, node.option);
@@ -7344,8 +7382,8 @@ async function generateVideoFromAction(action) {
   const explicitTargetId = resolveDirectNodeId(action?.nodeId) || resolveNodeIdByText(action?.nodeName) || resolveNodeIdByText(action?.target);
   const parentNodeId = resolveParentNodeId(action, null);
   const hasPromptText = Boolean(action?.prompt || action?.title || action?.query);
-  const selectedReferenceNodeId = state.selectedNodeId;
-  const referenceImageUrl = action?.referenceImageUrl || action?.imageUrl || publicImageUrlForNode(selectedReferenceNodeId) || publicImageUrlForNode(parentNodeId);
+  const selectedReferenceNodeId = explicitTargetId || state.selectedNodeId;
+  let referenceImageUrl = action?.referenceImageUrl || action?.imageUrl || publicImageUrlForNode(selectedReferenceNodeId) || publicImageUrlForNode(parentNodeId);
   let referenceImageDataUrl = typeof action?.imageDataUrl === "string" ? action.imageDataUrl : "";
   if (!referenceImageDataUrl && selectedReferenceNodeId) {
     try {
@@ -7355,12 +7393,34 @@ async function generateVideoFromAction(action) {
     }
   }
   let nodeId = explicitTargetId || resolveActionNodeId(action, state.selectedNodeId);
+  let target = nodeId ? state.nodes.get(nodeId) : null;
+  if (target?.generated && hasPromptText) {
+    referenceImageUrl = referenceImageUrl || publicImageUrlForNode(nodeId);
+    if (!referenceImageDataUrl) {
+      try {
+        referenceImageDataUrl = await getImageDataUrlForNode(nodeId);
+      } catch {
+        referenceImageDataUrl = "";
+      }
+    }
+    nodeId = createDirectionFromAction({
+      ...action,
+      nodeId: undefined,
+      nodeName: undefined,
+      target: undefined,
+      parentNodeId: target.id,
+      mode: action.mode || "video",
+      layoutHint: action.layoutHint || "video"
+    });
+    target = nodeId ? state.nodes.get(nodeId) : null;
+  }
   if (!explicitTargetId && parentNodeId && parentNodeId !== state.selectedNodeId && hasPromptText) {
     nodeId = createDirectionFromAction({ ...action, parentNodeId, mode: action.mode || "video", layoutHint: action.layoutHint || "video" });
+    target = nodeId ? state.nodes.get(nodeId) : null;
   }
-  const target = nodeId ? state.nodes.get(nodeId) : null;
   if ((!target || target.id === "source" || target.id === "analysis") && (action.prompt || action.title || action.query)) {
     nodeId = createDirectionFromAction({ ...action, parentNodeId: target?.id || state.selectedNodeId || "analysis", mode: action.mode || "video", layoutHint: action.layoutHint || "video" });
+    target = nodeId ? state.nodes.get(nodeId) : null;
   }
 
   const node = nodeId ? state.nodes.get(nodeId) : null;
