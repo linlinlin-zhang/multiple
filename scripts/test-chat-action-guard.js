@@ -148,4 +148,50 @@ const visualCanvas = {
   assert.match(actions[0].prompt, /完整、可独立展示的图片/);
 }
 
+{
+  const actions = ensureMediaGenerationActions({
+    message: "帮我生成五张场景不一样风格不一样的主角战斗图片",
+    actions: [{ type: "generate_image", title: "Epic cyberpunk battle scene", prompt: "Epic cyberpunk battle scene, protagonist wielding a glowing blade" }],
+    selectedContext: {
+      id: "source",
+      type: "source",
+      title: "主角参考图",
+      summary: "岩石地形上的主角，阴暗神秘场景"
+    },
+    canvas: {
+      selectedNodeId: "source",
+      selectedNodeIds: ["source"],
+      visibleNodes: [
+        {
+          id: "source",
+          type: "source",
+          title: "主角参考图",
+          summary: "岩石地形上的主角，阴暗神秘场景"
+        }
+      ]
+    },
+    lang: "zh",
+    maxActions: 8
+  });
+  assert.equal(actions.length, 5);
+  assert.equal(actions.every((action) => action.type === "generate_image"), true);
+  assert.equal(actions[0].parentNodeId, "source");
+  assert.equal(new Set(actions.map((action) => action.prompt)).size, 5);
+  assert.match(actions[1].prompt, /第 2 张结果|场景、风格、色彩/);
+  assert.match(actions[4].prompt, /外星地表|太空遗迹|科幻尺度/);
+  assert.match(actions[4].prompt, /完整、可独立展示的图片/);
+}
+
+{
+  const actions = ensureMediaGenerationActions({
+    message: "按刚才说的都生成图片",
+    reply: "我会同时生成这5张图片，并在画布上创建相应节点。",
+    actions: [{ type: "generate_image", title: "第一张", prompt: "第一张图片" }],
+    lang: "zh",
+    maxActions: 8
+  });
+  assert.equal(actions.length, 5);
+  assert.equal(actions.every((action) => action.type === "generate_image"), true);
+}
+
 console.log("[test] chat action guard: PASS");

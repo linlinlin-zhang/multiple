@@ -7426,7 +7426,19 @@ async function generateImageFromAction(action) {
     target = nodeId ? state.nodes.get(nodeId) : null;
   }
 
-  if (!explicitTargetId && parentNodeId && parentNodeId !== state.selectedNodeId && hasPromptText) {
+  const shouldCreateChildFromParent = !explicitTargetId
+    && parentNodeId
+    && hasPromptText
+    && (parentNodeId !== state.selectedNodeId || Number(action?.batchSize) > 1);
+  if (shouldCreateChildFromParent) {
+    referenceNodeId = parentNodeId;
+    if (!actionReference && referenceNodeId) {
+      try {
+        actionReference = await getImageDataUrlForNode(referenceNodeId);
+      } catch {
+        actionReference = "";
+      }
+    }
     nodeId = createDirectionFromAction({ ...action, parentNodeId });
     target = nodeId ? state.nodes.get(nodeId) : null;
   }
