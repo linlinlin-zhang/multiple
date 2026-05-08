@@ -6742,13 +6742,21 @@ async function applyVoiceActions(value, context = {}) {
       normalized.imageDataUrl = context.imageDataUrl;
     }
     if (String(type) === "create_agent") {
-      pendingAgents.push(executeCanvasAction(normalized).then((result) => {
-        results.push({ ...normalized, result });
-      }));
+      pendingAgents.push(executeCanvasAction(normalized)
+        .then((result) => {
+          results.push({ ...normalized, result });
+        })
+        .catch((error) => {
+          results.push({ ...normalized, result: { success: false, error: error.message || String(error) } });
+        }));
       continue;
     }
-    const result = await executeCanvasAction(normalized);
-    results.push({ ...normalized, result });
+    try {
+      const result = await executeCanvasAction(normalized);
+      results.push({ ...normalized, result });
+    } catch (error) {
+      results.push({ ...normalized, result: { success: false, error: error.message || String(error) } });
+    }
   }
   if (pendingAgents.length) await Promise.all(pendingAgents);
   if (creationCount > 0) scheduleGeneratedArrange({ delay: 180, duration: 500 });
@@ -8426,8 +8434,8 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
   element.style.top = `${newY}px`;
   element.style.setProperty("--tilt", `${(Math.random() - 0.5) * 2}deg`);
   setupOptionCardElement(element, option, taskType);
-  ensureDeleteControl(nodeId, element);
-  ensureContentVisibilityControl(nodeId, element);
+  ensureDeleteControl(id, element);
+  ensureContentVisibilityControl(id, element);
 
   const titleEl = element.querySelector(".option-title");
   if (titleEl) makeTitleEditable(id, titleEl);
@@ -12822,8 +12830,8 @@ function showConfirmDialog({ title = "", message = "", confirmLabel = t("dialog.
         <h3>${escapeHtml(title)}</h3>
         <p>${escapeHtml(message)}</p>
         <div class="confirm-modal-actions">
-          <button class="confirm-modal-cancel" type="button">${escapeHtml(cancelText)}</button>
-          <button class="confirm-modal-confirm" type="button">${escapeHtml(confirmText)}</button>
+          <button class="confirm-modal-cancel" type="button">${escapeHtml(cancelLabel)}</button>
+          <button class="confirm-modal-confirm" type="button">${escapeHtml(confirmLabel)}</button>
         </div>
       </div>
     `;
@@ -14700,7 +14708,11 @@ async function postStreamingChat(url, payload, pendingMessage) {
     } else if (eventName === "research") {
       const delta = data.delta || data.text || "";
       if (delta) thinkingContent += delta;
-      handleLiveResearchCanvasEvent(data, pendingMessage);
+      try {
+        handleLiveResearchCanvasEvent(data, pendingMessage);
+      } catch (error) {
+        console.warn("[postStreamingChat] live research canvas event failed:", error);
+      }
       if (pendingMessage) {
         updateChatMessage(pendingMessage, {
           thinkingContent,
