@@ -6834,6 +6834,42 @@ function normalizeCanvasActionExecutionResult(action, result) {
   };
 }
 
+function actionResultNodeIds(entry = {}) {
+  const result = entry?.result ?? entry;
+  const ids = [];
+  const pushId = (value) => {
+    const id = String(value || "").trim();
+    if (id && state.nodes.has(id) && !ids.includes(id)) ids.push(id);
+  };
+  if (typeof result === "string") {
+    pushId(result);
+  } else if (result && typeof result === "object") {
+    pushId(result.nodeId);
+    if (Array.isArray(result.nodeIds)) result.nodeIds.forEach(pushId);
+  }
+  if (entry && typeof entry === "object") pushId(entry.nodeId);
+  return ids;
+}
+
+function expandActionBatchNodes(nodeIds = []) {
+  let changed = false;
+  for (const id of nodeIds) {
+    if (state.selectiveHidden.delete(id)) changed = true;
+  }
+  if (changed) applyCollapseState();
+}
+
+function autoCollapseActionBatch(nodeIds = [], parentNodeId = "") {
+  const ids = Array.from(new Set(nodeIds)).filter((id) => id && id !== parentNodeId && state.nodes.has(id));
+  if (ids.length < 2) return;
+  for (const id of ids) {
+    state.selectiveHidden.add(id);
+  }
+  const shouldSelectParent = state.selectedNodeId && ids.includes(state.selectedNodeId) && parentNodeId && state.nodes.has(parentNodeId);
+  applyCollapseState();
+  if (shouldSelectParent) forceSelectNode(parentNodeId);
+}
+
 function actionTopicTitle(action = {}, context = {}) {
   const explicit = String(action.topicTitle || context.topicTitle || "").trim();
   if (explicit) return explicit.slice(0, 48);
@@ -6902,6 +6938,15 @@ async function applyVoiceActions(value, context = {}) {
   const notifyProgress = typeof context.onProgress === "function" ? context.onProgress : null;
   const totalActions = actions.length;
   let completedActions = 0;
+  const batchNodeIds = new Set();
+  let batchHadFailure = false;
+  const recordActionResult = (entry) => {
+    const result = entry?.result;
+    if (result && typeof result === "object" && result.success === false) batchHadFailure = true;
+    const ids = actionResultNodeIds(entry);
+    ids.forEach((id) => batchNodeIds.add(id));
+    expandActionBatchNodes(ids);
+  };
   for (const action of actions) {
     const type = typeof action === "string" ? action : action?.type || action?.name;
     if (!type) continue;
@@ -6925,13 +6970,17 @@ async function applyVoiceActions(value, context = {}) {
       pendingAgents.push(executeCanvasAction(normalized)
         .then((rawResult) => {
           const result = normalizeCanvasActionExecutionResult(normalized, rawResult);
-          results.push({ ...normalized, result });
+          const entry = { ...normalized, result };
+          results.push(entry);
+          recordActionResult(entry);
           completedActions += 1;
           notifyProgress?.({ done: completedActions, total: totalActions, action: normalized, result, results: [...results] });
         })
         .catch((error) => {
           const result = { success: false, error: error.message || String(error) };
-          results.push({ ...normalized, result });
+          const entry = { ...normalized, result };
+          results.push(entry);
+          recordActionResult(entry);
           completedActions += 1;
           notifyProgress?.({ done: completedActions, total: totalActions, action: normalized, result, results: [...results] });
         }));
@@ -6939,17 +6988,22 @@ async function applyVoiceActions(value, context = {}) {
     }
     try {
       const result = normalizeCanvasActionExecutionResult(normalized, await executeCanvasAction(normalized));
-      results.push({ ...normalized, result });
+      const entry = { ...normalized, result };
+      results.push(entry);
+      recordActionResult(entry);
       completedActions += 1;
       notifyProgress?.({ done: completedActions, total: totalActions, action: normalized, result, results: [...results] });
     } catch (error) {
       const result = { success: false, error: error.message || String(error) };
-      results.push({ ...normalized, result });
+      const entry = { ...normalized, result };
+      results.push(entry);
+      recordActionResult(entry);
       completedActions += 1;
       notifyProgress?.({ done: completedActions, total: totalActions, action: normalized, result, results: [...results] });
     }
   }
   if (pendingAgents.length) await Promise.all(pendingAgents);
+  if (creationCount > 1 && !batchHadFailure) autoCollapseActionBatch(Array.from(batchNodeIds), batchParentId);
   if (creationCount > 0) scheduleGeneratedArrange({ delay: 180, duration: 500 });
   autoSave();
   return results;
@@ -7550,7 +7604,7 @@ async function searchImagesFromAction(action = {}) {
   updateCounts();
   autoSave();
   setStatus(currentLang === "en" ? "Ready" : "就绪", "ready");
-  return createdIds[0] || null;
+  return { type: String(action?.type || "image_search"), success: true, nodeId: createdIds[0] || "", nodeIds: createdIds };
 }
 
 async function generateImageFromAction(action) {
@@ -7635,9 +7689,10 @@ async function generateImageFromAction(action) {
   }
   revealNode(nodeId);
   forceSelectNode(nodeId);
+  const generationOptions = { suppressSiblingAutoCollapse: Number(action?.batchSize) > 1 };
   const result = actionReference
-    ? await generateOptionWithReference(nodeId, node.option, actionReference)
-    : await generateOption(nodeId, node.option);
+    ? await generateOptionWithReference(nodeId, node.option, actionReference, generationOptions)
+    : await generateOption(nodeId, node.option, generationOptions);
   if (result?.success !== false) focusNodeInViewport(nodeId, "center");
   return result;
 }
@@ -10487,14 +10542,14 @@ function renderExploreOptions(options, references, taskType = "general") {
   scheduleGeneratedArrange({ delay: 120, duration: 520 });
 }
 
-async function generateOption(id, option) {
+async function generateOption(id, option, editOptions = {}) {
   let referenceImageDataUrl = "";
   try {
     referenceImageDataUrl = await getSourceImageDataUrl();
   } catch {
     referenceImageDataUrl = "";
   }
-  return await generateOptionWithReference(id, option, referenceImageDataUrl);
+  return await generateOptionWithReference(id, option, referenceImageDataUrl, editOptions);
 }
 
 async function generateOptionWithReference(id, option, referenceImageDataUrl, editOptions = {}) {
@@ -10614,7 +10669,7 @@ async function generateOptionWithReference(id, option, referenceImageDataUrl, ed
 
     // Auto-collapse unselected siblings
     const parentLink = state.links.find(l => l.to === id);
-    if (parentLink) {
+    if (parentLink && !editOptions.suppressSiblingAutoCollapse) {
       const siblings = getChildren(parentLink.from);
       let hiddenAny = false;
       for (const sid of siblings) {
@@ -13608,6 +13663,16 @@ function toggleCollapse(id) {
 function toggleSelectiveCollapse(id) {
   const descendants = getDescendants(id);
   if (!descendants.size) return;
+
+  const hiddenDescendants = [...descendants].filter(did => state.selectiveHidden.has(did));
+  if (hiddenDescendants.length) {
+    for (const did of hiddenDescendants) {
+      state.selectiveHidden.delete(did);
+    }
+    applyCollapseState();
+    autoSave();
+    return;
+  }
 
   const unGeneratedDescendants = [...descendants].filter(did => {
     const n = state.nodes.get(did);

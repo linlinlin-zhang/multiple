@@ -639,6 +639,11 @@ body.nav-collapsed .canvas-title-bar {
   box-shadow: none;
   pointer-events: none;
   --canvas-tools-width: 136px;
+  transition: right 180ms ease;
+}
+
+body.chat-sidebar-closed .canvas-history-nav {
+  right: 84px;
 }
 
 .canvas-history-label,
