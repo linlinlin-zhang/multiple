@@ -5838,8 +5838,15 @@ async function submitChatMessage(message, options = {}) {
           extraImageDataUrls: options.imageDataUrls || [],
           max: options.maxImageDataUrls || 6
         });
-    const imageDataUrls = mergeDataUrlList(sourceImageDataUrl, options.imageDataUrls || [], canvasImageDataUrls).slice(0, options.maxImageDataUrls || 6);
-    const sourceVideoDataUrl = options.videoDataUrl || attachmentVideoDataUrl || await getSourceVideoDataUrl(selectedNodeId) || (options.includeCanvasVideos === false ? "" : await buildCanvasVideoDataUrlPayload({ preferredNodeIds: [selectedNodeId, ...(options.preferredMediaNodeIds || [])].filter(Boolean) }));
+    let imageDataUrls = mergeDataUrlList(sourceImageDataUrl, options.imageDataUrls || [], canvasImageDataUrls).slice(0, options.maxImageDataUrls || 6);
+    let sourceVideoDataUrl = options.videoDataUrl || attachmentVideoDataUrl || await getSourceVideoDataUrl(selectedNodeId) || (options.includeCanvasVideos === false ? "" : await buildCanvasVideoDataUrlPayload({ preferredNodeIds: [selectedNodeId, ...(options.preferredMediaNodeIds || [])].filter(Boolean) }));
+    const preparedMedia = await prepareChatMediaForModel({
+      imageDataUrls,
+      videoDataUrl: sourceVideoDataUrl,
+      maxImages: options.maxImageDataUrls || 6
+    });
+    imageDataUrls = preparedMedia.imageDataUrls;
+    sourceVideoDataUrl = preparedMedia.videoDataUrl;
     const selectedContext = options.selectedContext || buildSelectedNodeContext(selectedNodeId);
 
     let systemContext = t("chat.systemContext");
@@ -5859,6 +5866,9 @@ async function submitChatMessage(message, options = {}) {
     }
     if (options.extraSystemContext) {
       systemContext += "\n\n" + String(options.extraSystemContext).slice(0, 12000);
+    }
+    if (preparedMedia.notes.length) {
+      systemContext += "\n\n" + preparedMedia.notes.join("\n");
     }
 
     const chatPayload = {
@@ -14636,6 +14646,187 @@ function mergeDataUrlList(...groups) {
     }
   }
   return merged;
+}
+
+const CHAT_MODEL_IMAGE_TARGET_BYTES = 520 * 1024;
+const CHAT_MODEL_IMAGE_TOTAL_BYTES = 3.4 * 1024 * 1024;
+const CHAT_MODEL_DIRECT_VIDEO_MAX_BYTES = 1.8 * 1024 * 1024;
+
+function utf8ByteLength(value) {
+  return new TextEncoder().encode(String(value || "")).length;
+}
+
+async function prepareChatMediaForModel({ imageDataUrls = [], videoDataUrl = "", maxImages = 6 } = {}) {
+  const notes = [];
+  const videoBytes = utf8ByteLength(videoDataUrl);
+  let modelVideoDataUrl = videoDataUrl;
+  let videoFrames = [];
+
+  if (videoDataUrl && videoBytes > CHAT_MODEL_DIRECT_VIDEO_MAX_BYTES) {
+    try {
+      videoFrames = await extractVideoFrameDataUrls(videoDataUrl, { maxFrames: 4 });
+    } catch {
+      videoFrames = [];
+    }
+    modelVideoDataUrl = "";
+    notes.push(currentLang === "en"
+      ? `Large video was not sent as raw video (${formatBytes(videoBytes)}). The model receives ${videoFrames.length} compressed key frame(s) plus canvas metadata instead.`
+      : `大视频没有以原始视频发送（${formatBytes(videoBytes)}）。本轮会改用 ${videoFrames.length} 张压缩关键帧和画布元数据给模型理解。`);
+  }
+
+  const compressed = [];
+  for (const dataUrl of mergeDataUrlList(videoFrames, imageDataUrls)) {
+    if (compressed.length >= Math.max(1, Math.min(maxImages, 8))) break;
+    const before = utf8ByteLength(dataUrl);
+    const compact = await compressImageDataUrlForModel(dataUrl, {
+      targetBytes: CHAT_MODEL_IMAGE_TARGET_BYTES,
+      maxLongEdge: 1280
+    });
+    const after = utf8ByteLength(compact);
+    if (after < before * 0.82) {
+      notes.push(currentLang === "en"
+        ? `Compressed an image from ${formatBytes(before)} to ${formatBytes(after)} before model input.`
+        : `已将一张图片从 ${formatBytes(before)} 压缩到 ${formatBytes(after)} 后再发送给模型。`);
+    }
+    compressed.push(compact);
+  }
+
+  const selectedImages = [];
+  let total = 0;
+  for (const dataUrl of compressed) {
+    const size = utf8ByteLength(dataUrl);
+    if (selectedImages.length > 0 && total + size > CHAT_MODEL_IMAGE_TOTAL_BYTES) continue;
+    selectedImages.push(dataUrl);
+    total += size;
+  }
+
+  if (compressed.length > selectedImages.length) {
+    notes.push(currentLang === "en"
+      ? `${compressed.length - selectedImages.length} image(s) were kept on canvas but omitted from this model turn to stay under the request-size limit.`
+      : `${compressed.length - selectedImages.length} 张图片保留在画布中，但本轮没有直接发给模型，以避免超过请求体大小限制。`);
+  }
+
+  return {
+    imageDataUrls: selectedImages,
+    videoDataUrl: modelVideoDataUrl,
+    notes
+  };
+}
+
+async function compressImageDataUrlForModel(dataUrl, { targetBytes = CHAT_MODEL_IMAGE_TARGET_BYTES, maxLongEdge = 1280 } = {}) {
+  if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) return dataUrl || "";
+  if (/^data:image\/svg\+xml/i.test(dataUrl)) return dataUrl;
+  if (utf8ByteLength(dataUrl) <= targetBytes) return dataUrl;
+
+  const image = await loadImageElement(dataUrl);
+  const originalLongEdge = Math.max(image.naturalWidth || image.width || 0, image.naturalHeight || image.height || 0);
+  if (!originalLongEdge) return dataUrl;
+
+  let best = dataUrl;
+  const edges = [maxLongEdge, 1120, 960, 768, 640, 512].filter((edge, index, list) => edge > 0 && list.indexOf(edge) === index);
+  const qualities = [0.78, 0.68, 0.58, 0.48];
+  for (const edge of edges) {
+    const scale = Math.min(1, edge / originalLongEdge);
+    const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
+    const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
+    for (const quality of qualities) {
+      const candidate = imageElementToJpegDataUrl(image, width, height, quality);
+      if (utf8ByteLength(candidate) < utf8ByteLength(best)) best = candidate;
+      if (utf8ByteLength(candidate) <= targetBytes) return candidate;
+    }
+  }
+  return best;
+}
+
+function loadImageElement(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Failed to load image for compression"));
+    image.src = src;
+  });
+}
+
+function imageElementToJpegDataUrl(image, width, height, quality = 0.68) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(image, 0, 0, width, height);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
+async function extractVideoFrameDataUrls(videoDataUrl, { maxFrames = 4 } = {}) {
+  if (!videoDataUrl || !videoDataUrl.startsWith("data:video/")) return [];
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+  video.src = videoDataUrl;
+  await waitForMediaEvent(video, "loadedmetadata", 12000);
+  const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 1;
+  const count = Math.max(1, Math.min(maxFrames, 6));
+  const times = Array.from({ length: count }, (_, index) => {
+    if (count === 1) return Math.max(0, Math.min(duration * 0.5, 0.1));
+    const raw = duration * (index / (count - 1));
+    const upper = Math.max(0, duration - 0.05);
+    return Math.max(0, Math.min(upper, Math.max(0.05, raw)));
+  });
+  const frames = [];
+  for (const time of times) {
+    try {
+      video.currentTime = time;
+      await waitForMediaEvent(video, "seeked", 8000);
+      const frame = videoElementToJpegDataUrl(video, { maxLongEdge: 960, quality: 0.66 });
+      if (frame) frames.push(frame);
+    } catch {}
+  }
+  video.removeAttribute("src");
+  video.load();
+  return frames;
+}
+
+function waitForMediaEvent(element, eventName, timeoutMs = 10000) {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => cleanup(new Error(`${eventName} timeout`)), timeoutMs);
+    function cleanup(error) {
+      window.clearTimeout(timer);
+      element.removeEventListener(eventName, onEvent);
+      element.removeEventListener("error", onError);
+      error ? reject(error) : resolve();
+    }
+    function onEvent() {
+      cleanup();
+    }
+    function onError() {
+      cleanup(new Error(`Media ${eventName} failed`));
+    }
+    element.addEventListener(eventName, onEvent, { once: true });
+    element.addEventListener("error", onError, { once: true });
+  });
+}
+
+function videoElementToJpegDataUrl(video, { maxLongEdge = 960, quality = 0.66 } = {}) {
+  const width = video.videoWidth || 0;
+  const height = video.videoHeight || 0;
+  if (!width || !height) return "";
+  const longEdge = Math.max(width, height);
+  const scale = Math.min(1, maxLongEdge / longEdge);
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(width * scale));
+  canvas.height = Math.max(1, Math.round(height * scale));
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL("image/jpeg", quality);
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+  return `${value} B`;
 }
 
 function canvasImageNodeIds(preferredNodeIds = []) {

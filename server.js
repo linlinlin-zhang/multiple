@@ -49,6 +49,8 @@ const EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.EXPLORE_FALLBACK_TIMEOUT_
 const CHAT_ATTACHMENT_MAX_CHARS = 32000;
 const CHAT_ATTACHMENT_MAX_COUNT = 8;
 const CHAT_IMAGE_INPUT_MAX_COUNT = 8;
+const CHAT_MODEL_REQUEST_BODY_LIMIT_BYTES = Number(process.env.CHAT_MODEL_REQUEST_BODY_LIMIT_BYTES || 6 * 1024 * 1024);
+const CHAT_MODEL_REQUEST_BODY_TARGET_BYTES = Number(process.env.CHAT_MODEL_REQUEST_BODY_TARGET_BYTES || Math.floor(CHAT_MODEL_REQUEST_BODY_LIMIT_BYTES * 0.9));
 const IMAGE_SEARCH_MODEL = process.env.IMAGE_SEARCH_MODEL || "qwen3.5-plus";
 const ANALYSIS_CANVAS_CARD_MIN = 5;
 const ANALYSIS_CANVAS_CARD_MAX = 8;
@@ -1690,6 +1692,11 @@ async function handleChat(body, res) {
       webSearchEnabled: webSearchEnabled || webSearchForced,
       agentMode
     });
+    const videoBudget = fitChatPayloadToModelBudget(videoChatPayload, runtimeConfigs.chat, {
+      stream: body?.stream === true,
+      transport: "chat-completions",
+      lang
+    });
 
     if (body?.stream === true) {
       return await handleChatStream({
@@ -1706,7 +1713,8 @@ async function handleChat(body, res) {
         retrievedCount: retrieved.length,
         webSearchEnabled: webSearchEnabled || webSearchForced,
         transport: "chat-completions",
-        resetPreviousResponseId: true
+        resetPreviousResponseId: true,
+        contextBudget: videoBudget
       }, res);
     }
 
@@ -1728,6 +1736,7 @@ async function handleChat(body, res) {
     delete finalPayload.previousResponseId;
     finalPayload.resetPreviousResponseId = true;
     if (retrieved.length) finalPayload.retrievedContext = retrieved.length;
+    if (videoBudget?.reduced) finalPayload.contextBudget = videoBudget;
     ingestChatTurn(sessionId, ingestUserMessage, finalPayload.reply || "").catch((e) =>
       console.warn("[handleChat] chat turn ingest failed:", e.message)
     );
@@ -1748,6 +1757,11 @@ async function handleChat(body, res) {
     webSearchEnabled: webSearchEnabled || webSearchForced,
     agentMode
   });
+  const contextBudget = fitChatPayloadToModelBudget(chatPayload, runtimeConfigs.chat, {
+    stream: body?.stream === true,
+    transport: "responses",
+    lang
+  });
 
   if (body?.stream === true) {
     return await handleChatStream({
@@ -1762,7 +1776,8 @@ async function handleChat(body, res) {
       sessionId,
       ingestMessage: ingestUserMessage,
       retrievedCount: retrieved.length,
-      webSearchEnabled: webSearchEnabled || webSearchForced
+      webSearchEnabled: webSearchEnabled || webSearchForced,
+      contextBudget
     }, res);
   }
 
@@ -1818,6 +1833,7 @@ async function handleChat(body, res) {
     responseId: response.id || undefined,
     previousResponseId: response.id || undefined,
     references,
+    contextBudget: contextBudget?.reduced ? contextBudget : undefined,
     retrievedContext: retrieved.length ? retrieved.length : undefined
   });
 }
@@ -2013,6 +2029,204 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
     previousResponseId: response?.id || undefined,
     references
   };
+}
+
+function fitChatPayloadToModelBudget(payload, config, { stream = false, transport = "responses", lang = "zh" } = {}) {
+  const target = Math.max(1024 * 1024, Math.min(CHAT_MODEL_REQUEST_BODY_TARGET_BYTES, CHAT_MODEL_REQUEST_BODY_LIMIT_BYTES - 64 * 1024));
+  const budget = {
+    beforeBytes: estimateModelRequestBytes(payload, config, { stream, transport }),
+    afterBytes: 0,
+    targetBytes: target,
+    limitBytes: CHAT_MODEL_REQUEST_BODY_LIMIT_BYTES,
+    droppedImages: 0,
+    droppedVideo: false,
+    compactedText: false,
+    reduced: false
+  };
+  if (budget.beforeBytes <= target) {
+    budget.afterBytes = budget.beforeBytes;
+    return budget;
+  }
+
+  const notice = lang === "en"
+    ? "\n\n[Context budget note: some large media or long context was compacted before sending to the model. Use visible canvas metadata and ask for a focused re-analysis if exact pixels/video details are needed.]"
+    : "\n\n【上下文预算提示：部分大媒体或长上下文在发送给模型前已压缩/降级。若需要精确像素或视频细节，请让用户聚焦某张图/某段视频重新分析。】";
+
+  if (estimateModelRequestBytes(payload, config, { stream, transport }) > target && largestVideoPartBytes(payload) > target * 0.45 && removeVideoPart(payload)) {
+    budget.droppedVideo = true;
+    budget.reduced = true;
+    appendPromptNotice(payload, notice);
+  }
+
+  while (estimateModelRequestBytes(payload, config, { stream, transport }) > target && removeLastImagePart(payload)) {
+    budget.droppedImages += 1;
+    budget.reduced = true;
+  }
+
+  if (estimateModelRequestBytes(payload, config, { stream, transport }) > target && removeVideoPart(payload)) {
+    budget.droppedVideo = true;
+    budget.reduced = true;
+    appendPromptNotice(payload, notice);
+  }
+
+  const textLimits = [48000, 32000, 24000, 16000, 10000, 7000, 5000, 3500];
+  for (const limit of textLimits) {
+    if (estimateModelRequestBytes(payload, config, { stream, transport }) <= target) break;
+    if (compactLargestTextPart(payload, limit, notice)) {
+      budget.compactedText = true;
+      budget.reduced = true;
+    } else {
+      break;
+    }
+  }
+
+  while (estimateModelRequestBytes(payload, config, { stream, transport }) > target && removeLastImagePart(payload)) {
+    budget.droppedImages += 1;
+    budget.reduced = true;
+  }
+
+  budget.afterBytes = estimateModelRequestBytes(payload, config, { stream, transport });
+  return budget;
+}
+
+function estimateModelRequestBytes(payload, config, { stream = false, transport = "responses" } = {}) {
+  const requestPayload = {
+    model: config.model,
+    ...payload
+  };
+  if (stream) {
+    requestPayload.stream = true;
+    if (transport === "chat-completions") {
+      requestPayload.stream_options = {
+        ...(payload.stream_options || {}),
+        include_usage: false
+      };
+    }
+  }
+  if (requestPayload.temperature === undefined && typeof config?.temperature === "number") {
+    requestPayload.temperature = config.temperature;
+  }
+  const options = config?.options || {};
+  if (requestPayload.top_p === undefined && typeof options.top_p === "number") {
+    requestPayload.top_p = options.top_p;
+  }
+  if (requestPayload.max_tokens === undefined && Number.isInteger(options.max_tokens)) {
+    requestPayload.max_tokens = options.max_tokens;
+  }
+  return Buffer.byteLength(JSON.stringify(requestPayload), "utf8");
+}
+
+function removeLastImagePart(payload) {
+  const containers = getModelContentContainers(payload);
+  for (let i = containers.length - 1; i >= 0; i -= 1) {
+    const content = containers[i];
+    for (let j = content.length - 1; j >= 0; j -= 1) {
+      if (isImageContentPart(content[j])) {
+        content.splice(j, 1);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function removeVideoPart(payload) {
+  const containers = getModelContentContainers(payload);
+  for (const content of containers) {
+    const index = content.findIndex((part) => isVideoContentPart(part));
+    if (index >= 0) {
+      content.splice(index, 1);
+      return true;
+    }
+  }
+  return false;
+}
+
+function largestVideoPartBytes(payload) {
+  let max = 0;
+  for (const content of getModelContentContainers(payload)) {
+    for (const part of content) {
+      if (!isVideoContentPart(part)) continue;
+      max = Math.max(max, Buffer.byteLength(JSON.stringify(part), "utf8"));
+    }
+  }
+  return max;
+}
+
+function compactLargestTextPart(payload, maxChars, notice = "") {
+  let best = null;
+  for (const content of getModelContentContainers(payload)) {
+    for (const part of content) {
+      const text = getContentPartText(part);
+      if (text.length > maxChars && (!best || text.length > best.text.length)) {
+        best = { part, text };
+      }
+    }
+  }
+  if (!best) return false;
+  setContentPartText(best.part, compactTextPreserveEnds(best.text, maxChars, notice));
+  return true;
+}
+
+function appendPromptNotice(payload, notice) {
+  const containers = getModelContentContainers(payload);
+  for (let i = containers.length - 1; i >= 0; i -= 1) {
+    for (const part of containers[i]) {
+      const text = getContentPartText(part);
+      if (text) {
+        setContentPartText(part, `${text}${notice}`);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function getModelContentContainers(payload) {
+  const containers = [];
+  const inputContent = payload?.input?.[0]?.content;
+  if (Array.isArray(inputContent)) containers.push(inputContent);
+  const messages = Array.isArray(payload?.messages) ? payload.messages : [];
+  for (const message of messages) {
+    if (Array.isArray(message?.content)) containers.push(message.content);
+  }
+  return containers;
+}
+
+function isImageContentPart(part) {
+  if (!part || typeof part !== "object") return false;
+  return part.type === "input_image" || part.type === "image_url" || Boolean(part.image_url && !part.video_url);
+}
+
+function isVideoContentPart(part) {
+  if (!part || typeof part !== "object") return false;
+  return part.type === "video_url" || Boolean(part.video_url);
+}
+
+function getContentPartText(part) {
+  if (!part || typeof part !== "object") return "";
+  if (typeof part.text === "string") return part.text;
+  if (typeof part.content === "string") return part.content;
+  return "";
+}
+
+function setContentPartText(part, text) {
+  if (!part || typeof part !== "object") return;
+  if (typeof part.text === "string" || part.type === "input_text" || part.type === "text") {
+    part.text = text;
+  } else {
+    part.content = text;
+  }
+}
+
+function compactTextPreserveEnds(text, maxChars, notice = "") {
+  const value = String(text || "");
+  if (value.length <= maxChars) return value;
+  const marker = notice || "\n\n[Context compacted.]\n\n";
+  const remaining = Math.max(1000, maxChars - marker.length);
+  const head = Math.ceil(remaining * 0.68);
+  const tail = Math.max(500, remaining - head);
+  return `${value.slice(0, head)}${marker}\n\n${value.slice(-tail)}`;
 }
 
 function buildChatResponsesPayload({ instructions, content, message, previousResponseId, webSearchEnabled, thinkingMode, agentMode = false, wrappedCanvasTool = false, agentSkill = "" }) {
@@ -2932,7 +3146,7 @@ function dedupeCanvasActions(actions) {
   return result;
 }
 
-async function handleChatStream({ payload, message, thinkingMode, agentMode, lang, selectedContext = null, canvas = {}, analysis = {}, sessionId = "", ingestMessage = "", retrievedCount = 0, webSearchEnabled = false, transport = "responses", resetPreviousResponseId = false }, res) {
+async function handleChatStream({ payload, message, thinkingMode, agentMode, lang, selectedContext = null, canvas = {}, analysis = {}, sessionId = "", ingestMessage = "", retrievedCount = 0, webSearchEnabled = false, transport = "responses", resetPreviousResponseId = false, contextBudget = null }, res) {
   res.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
     "Cache-Control": "no-cache, no-transform",
@@ -2962,6 +3176,7 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
       webSearchEnabled
     });
     if (retrievedCount) finalPayload.retrievedContext = retrievedCount;
+    if (contextBudget?.reduced) finalPayload.contextBudget = contextBudget;
     if (resetPreviousResponseId) {
       delete finalPayload.responseId;
       delete finalPayload.previousResponseId;
