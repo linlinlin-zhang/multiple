@@ -158,18 +158,35 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
   type: "function",
   function: {
     name: "canvas_action",
-    description: "Execute a canvas action such as creating a reusable card, zooming, searching, or manipulating the view. Use this to augment the chat answer, not replace it. You may invoke this tool MULTIPLE times in a single turn when multiple reusable artifacts are genuinely useful.",
+    description: "Execute exactly one ThoughtGrid canvas action: create a reusable card, generate/search media, analyze/research source material, manipulate view/selection/layout, export/save workspace state, or create a bounded subagent task. Use this to augment the chat answer, not replace it. You may invoke this tool MULTIPLE times in a single turn when multiple reusable artifacts are genuinely useful.",
     parameters: {
       type: "object",
       properties: {
-        type: { type: "string", enum: CANVAS_ACTION_TYPES, description: "The action type to execute" },
+        type: {
+          type: "string",
+          enum: CANVAS_ACTION_TYPES,
+          description: [
+            "The action type to execute. Available action types:",
+            CANVAS_ACTION_TYPES_TEXT,
+            "Routing guide:",
+            "- Navigation/layout: zoom_in, zoom_out, set_zoom, reset_view, pan_view, focus_node, select_node, move_node, arrange_canvas/auto_layout/tidy_canvas, group_selection, ungroup_selection, deselect.",
+            "- Reusable content cards: create_direction for visual/concept directions; create_note/create_plan/create_todo/create_weather/create_map/create_link/create_code/create_table/create_timeline/create_comparison/create_metric/create_quote for structured artifacts; create_web_card for a concrete web/reference card; create_card/new_card only when no specific type fits.",
+            "- Media: image_search/text_image_search for public visual reference search from text; reverse_image_search for search from selected/attached image; generate_image for actual image creation/edit/variation; generate_video for actual video/animation creation.",
+            "- Source/research: analyze_source for local source analysis; explore_source/research_source/research_node for deeper research; open_references only when a node has references.",
+            "- Workspace/UI: search_card, export_report, save_session, new_chat, open_chat/open_chat_history/close_chat, open_history/open_settings/open_upload, set_thinking_mode, set_deep_think_mode.",
+            "- Risky: delete_node only when the user explicitly asks to delete/remove a node. create_agent only when agent_controller_mode=true or the user explicitly asks for autonomous/subagent work.",
+            "Do not use canvas_action web_search as the built-in internet search tool; it only creates/saves a web-search/reference-intent canvas card. For current information, use the model's built-in web_search when available, then call create_web_card/create_quote/create_note to preserve useful results."
+          ].join("\n")
+        },
         title: { type: "string", description: "Title for the new card or action" },
         description: { type: "string", description: "Description or body text" },
         prompt: { type: "string", description: "Prompt for image/video generation or detailed instruction. Required for generate_image/generate_video unless title/description already form a complete visual prompt." },
         query: { type: "string", description: "Search query. For image_search this is the internet image search query; for reverse_image_search it can refine the visual search." },
         url: { type: "string", description: "URL for link or web card" },
         imageDataUrl: { type: "string", description: "Optional data URL for image-to-image generation or reverse image search. Usually omitted because the app passes attached/selected images automatically." },
-        nodeType: { type: "string", enum: ["note", "plan", "todo", "weather", "map", "link", "code", "table", "timeline", "comparison", "metric", "quote"], description: "Rich node type" },
+        imageUrl: { type: "string", description: "Optional public image URL for video first-frame or reference use." },
+        referenceImageUrl: { type: "string", description: "Optional public reference image URL, especially for generate_video first-frame/reference use." },
+        nodeType: { type: "string", enum: ["image", "note", "plan", "todo", "weather", "map", "link", "code", "table", "timeline", "comparison", "metric", "quote"], description: "Node type hint. create_direction defaults to image; rich card actions usually map to their matching type." },
         content: {
           type: "object",
           description: [
@@ -191,13 +208,24 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
         position: { type: "string", description: "Position hint: left, right, above, below, center, etc." },
         nodeId: { type: "string", description: "Exact node ID from canvas state" },
         nodeName: { type: "string", description: "Node name when exact ID is uncertain" },
-        anchorNodeId: { type: "string" },
+        parentNodeId: { type: "string", description: "Exact parent node ID for newly created cards or generated media. Use this to attach output under a specific existing node." },
+        parentNodeName: { type: "string", description: "Parent node name/title when exact parentNodeId is uncertain." },
+        anchorNodeId: { type: "string", description: "Exact anchor node ID for relative movement/placement." },
+        anchorNodeName: { type: "string", description: "Anchor node name/title when exact anchorNodeId is uncertain." },
+        target: { type: "string", description: "Target node name or target mode when nodeId is not known. Prefer nodeId when available." },
+        direction: { type: "string", description: "Direction for pan_view/move_node/focus_node such as left, right, above, below, upper-left, lower-right." },
         x: { type: "number" },
         y: { type: "number" },
+        dx: { type: "number", description: "Horizontal pan delta for pan_view." },
+        dy: { type: "number", description: "Vertical pan delta for pan_view." },
         scale: { type: "number" },
         amount: { type: "number" },
         mode: { type: "string", description: "Optional mode hint, e.g. text-to-image, image-to-image, reverse-image-search, style, edit, reference." },
-        scope: { type: "string" },
+        scope: { type: "string", description: "Optional scope hint, e.g. selection for arranging selected nodes only, all for the whole canvas." },
+        layoutHint: { type: "string", description: "Optional layout/style hint for new direction/media cards." },
+        avoidOverlap: { type: "boolean", description: "For move_node, ask the app to avoid overlapping other cards when placing the node." },
+        batchIndex: { type: "number", description: "Optional zero-based index within a multi-action batch. Usually omit because the app can assign it." },
+        batchSize: { type: "number", description: "Optional total size of a multi-action batch. Usually omit because the app can assign it." },
         role: { type: "string", description: "For create_agent: the worker role or specialty, such as researcher, critic, planner, data analyst, writer, visual director, engineer, product strategist, knowledge curator, or QA." },
         skill: { type: "string", enum: AGENT_SKILL_IDS, description: "For create_agent: the skill package to run with. Use one listed skill id." },
         deliverable: { type: "string", description: "For create_agent: the concrete output the worker must return." },
@@ -4303,6 +4331,13 @@ function normalizedActionNumber(value) {
   return Number.isFinite(number) ? number : undefined;
 }
 
+function normalizedActionBoolean(value) {
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return undefined;
+}
+
 function normalizeVoiceActions(value) {
   const raw = Array.isArray(value) ? value : (value ? [value] : []);
   return raw
@@ -4323,10 +4358,14 @@ function normalizeVoiceActions(value) {
         prompt: normalizedActionString(action.prompt, 1600),
         query: normalizedActionString(action.query, 360),
         url: normalizedActionString(action.url, 512),
+        imageDataUrl: normalizedActionString(action.imageDataUrl, 200000),
+        imageUrl: normalizedActionString(action.imageUrl, 1024),
+        referenceImageUrl: normalizedActionString(action.referenceImageUrl, 1024),
         position: normalizedActionString(action.position, 60),
         direction: normalizedActionString(action.direction, 60),
         mode: normalizedActionString(action.mode, 80),
         scope: normalizedActionString(action.scope, 80),
+        layoutHint: normalizedActionString(action.layoutHint, 80),
         role: normalizedActionString(action.role, 80),
         skill: normalizeAgentSkillId(action.skill || action.agentSkill),
         deliverable: normalizedActionString(action.deliverable, 360),
@@ -4342,7 +4381,8 @@ function normalizeVoiceActions(value) {
         dx: normalizedActionNumber(action.dx),
         dy: normalizedActionNumber(action.dy),
         scale: normalizedActionNumber(action.scale),
-        amount: normalizedActionNumber(action.amount)
+        amount: normalizedActionNumber(action.amount),
+        avoidOverlap: normalizedActionBoolean(action.avoidOverlap)
       };
       Object.keys(normalized).forEach((key) => {
         if (normalized[key] === undefined) delete normalized[key];

@@ -818,7 +818,7 @@ const i18n = {
     "session.exploration": "的探索",
     "reference.title": "参考资料",
     "history.empty": "暂无历史会话",
-    "chat.systemContext": "你是 ThoughtGrid 画布式 AI 工作台内的助手。画布支持规划、研究、写作、分析、设计和图像生成。适合时使用 canvas_action 工具创建结构化节点（plan / todo / note / weather / map / link / code / web_card / image 等）。每次调用工具时，也要给用户正常文字回复。",
+    "chat.systemContext": "你是 ThoughtGrid 画布式 AI 工作台内的助手。适合时使用 canvas_action 增强回答：结构化卡片（plan/todo/note/table/timeline/comparison/metric/quote/code/link/web_card）、视觉工具（image_search/reverse_image_search/generate_image/generate_video）、研究/来源工具（analyze_source/explore_source/research_source/research_node/open_references）、视图与工作区控制（focus_node/search_card/arrange_canvas/save_session 等）。明确成图/视频请求必须调用 generate_image/generate_video；每次工具调用也要给用户正常文字回复。",
     "chat.actionFeedback.create_direction": "已创建方向卡片",
     "chat.actionFeedback.create_card": "已创建卡片",
     "chat.actionFeedback.new_card": "已创建卡片",
@@ -1224,7 +1224,7 @@ const i18n = {
     "health.demo": "demo",
     "health.api": "api",
     "health.mixed": "mixed",
-    "chat.systemContext": "You are the assistant inside ThoughtGrid, a canvas-based AI workbench. The canvas supports planning, research, writing, analysis, design, and image generation. Use the canvas_action tool to create structured nodes (plan / todo / note / weather / map / link / code / web_card / image / etc.) when appropriate. Whenever you call a tool, also write a normal message reply to the user.",
+    "chat.systemContext": "You are the assistant inside ThoughtGrid, a canvas-based AI workbench. Use canvas_action when it materially improves the answer: structured cards (plan/todo/note/table/timeline/comparison/metric/quote/code/link/web_card), visual tools (image_search/reverse_image_search/generate_image/generate_video), source/research tools (analyze_source/explore_source/research_source/research_node/open_references), and view/workspace controls (focus_node/search_card/arrange_canvas/save_session, etc.). Explicit image/video generation requests must call generate_image/generate_video. Whenever you call a tool, also write a normal message reply to the user.",
     "chat.systemRole": "You are ThoughtGrid's canvas assistant.",
     "chat.selectedCardContext": "The user is currently chatting about the following card on the canvas:\nType: {type}\nTitle: {title}\nSummary: {summary}",
     "chat.selectedCardPrompt": "Prompt: {prompt}",
@@ -6936,7 +6936,7 @@ async function executeCanvasAction(action) {
   if (type === "select_node") return focusNodeByAction(action);
   if (type === "move_node") return moveNodeByAction(action);
   if (type === "create_direction") return createDirectionFromAction(action);
-  if (type === "create_card" || type === "new_card") return createNewCardNode(action.title || action.prompt || action.query || "");
+  if (type === "create_card" || type === "new_card") return createNewCardNodeFromAction(action);
   if (type === "create_web_card") return createDirectionFromAction({ ...action, mode: action.mode || "web" });
   if (type === "web_search") return createDirectionFromAction({ ...action, type: "create_web_card", mode: "web" });
   // Rich node types
@@ -8724,6 +8724,34 @@ function createNewCardNode(seedText = "") {
   });
   autoSave();
   focusNodeById(nodeId, "center");
+  return nodeId;
+}
+
+function createNewCardNodeFromAction(action = {}) {
+  const content = action.content && typeof action.content === "object" ? action.content : {};
+  const title = String(action.title || content.title || action.prompt || action.query || action.description || "").trim();
+  const body = String(
+    content.text ||
+    content.body ||
+    content.summary ||
+    content.description ||
+    action.description ||
+    action.prompt ||
+    action.query ||
+    ""
+  ).trim();
+  const nodeId = createNewCardNode(title || body);
+  if (nodeId && body) {
+    setStandaloneSourceTextCard(nodeId, [title && title !== body ? `# ${title}` : "", body].filter(Boolean).join("\n\n"), { save: false });
+    const node = state.nodes.get(nodeId);
+    if (node?.sourceCard && title) {
+      node.sourceCard.title = title;
+      node.sourceCard.fileName = title;
+      const label = node.element?.querySelector(".standalone-source-name");
+      if (label) label.textContent = trimMiddle(title, 28);
+    }
+    autoSave();
+  }
   return nodeId;
 }
 
