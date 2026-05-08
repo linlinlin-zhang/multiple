@@ -4278,7 +4278,7 @@ function normalizeChatActionResults(value) {
       const result = entry.result;
       const nodeId = (typeof result === "string" ? result : result?.nodeId) || entry.nodeId || "";
       const hasExplicitSuccess = result && typeof result === "object" && "success" in result;
-      const success = hasExplicitSuccess ? Boolean(result.success) : result !== null;
+      const success = hasExplicitSuccess ? Boolean(result.success) : result !== null && result !== undefined;
       return {
         type: String(entry.type),
         title: String(result?.title || entry.title || entry.nodeName || "").slice(0, 80),
@@ -6717,6 +6717,26 @@ function actionCreatesNewCanvasCard(action) {
   return true;
 }
 
+function actionRequiresConcreteResult(action) {
+  const type = typeof action === "string" ? action : action?.type || action?.name;
+  if (!type) return false;
+  if (actionCreatesNewCanvasCard(action)) return true;
+  return ["create_agent", "generate_image", "generate_video", "image_search", "reverse_image_search", "text_image_search"].includes(String(type));
+}
+
+function normalizeCanvasActionExecutionResult(action, result) {
+  if (result !== null && result !== undefined) return result;
+  const type = String(action?.type || action?.name || "");
+  if (!actionRequiresConcreteResult(action)) return { type, success: true };
+  return {
+    type,
+    success: false,
+    error: currentLang === "en"
+      ? "The app did not create a canvas result for this action."
+      : "应用没有为这个动作创建画布结果。"
+  };
+}
+
 function actionTopicTitle(action = {}, context = {}) {
   const explicit = String(action.topicTitle || context.topicTitle || "").trim();
   if (explicit) return explicit.slice(0, 48);
@@ -6804,7 +6824,8 @@ async function applyVoiceActions(value, context = {}) {
     }
     if (String(type) === "create_agent") {
       pendingAgents.push(executeCanvasAction(normalized)
-        .then((result) => {
+        .then((rawResult) => {
+          const result = normalizeCanvasActionExecutionResult(normalized, rawResult);
           results.push({ ...normalized, result });
           completedActions += 1;
           notifyProgress?.({ done: completedActions, total: totalActions, action: normalized, result, results: [...results] });
@@ -6818,7 +6839,7 @@ async function applyVoiceActions(value, context = {}) {
       continue;
     }
     try {
-      const result = await executeCanvasAction(normalized);
+      const result = normalizeCanvasActionExecutionResult(normalized, await executeCanvasAction(normalized));
       results.push({ ...normalized, result });
       completedActions += 1;
       notifyProgress?.({ done: completedActions, total: totalActions, action: normalized, result, results: [...results] });

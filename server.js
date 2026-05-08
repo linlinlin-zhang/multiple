@@ -22,6 +22,7 @@ import { AGENT_SKILL_IDS, agentSkillToolFlags, normalizeAgentSkill, normalizeAge
 import { ingestText, ingestSnippet, retrieveContext, formatContextForPrompt, isEmbeddingConfigured, CONTEXT_KINDS } from "./src/lib/rag/index.js";
 import { classifyContent, getFallbackTaskType, resolveTaskType, routeContent } from "./src/lib/taskRouter.js";
 import { ensureMediaGenerationActions } from "./src/lib/chatActionGuard.js";
+import { ensureCommittedCanvasActions } from "./src/lib/canvasActionReliability.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -461,8 +462,10 @@ function isSubstantiveActionReply(reply, lang) {
   if (text.length >= 220) return true;
   if (/^#{1,3}\s|\n[-*]\s|\n\d+[.)]\s/.test(text)) return true;
   if (lang === "en") {
+    if (/^(sure|okay|ok|let me|i('|’)ll|i will|i can|i('|’)m going to).{0,180}(create|generate|add|make|render|put|split).{0,120}(card|node|canvas|direction|option|image|video|artifact)/is.test(text)) return false;
     return !/^created\s+(a|an|the)?.{0,80}(card|node)/i.test(text);
   }
+  if (/^(好的|好|可以|没问题|我来|我会|接下来|马上|我可以|我将).{0,180}(创建|新建|生成|添加|放到|整理|拆成|产出|成图|出图).{0,120}(卡片|节点|画布|方向|方案|图片|视频|产物)/is.test(text)) return false;
   return !/^(已为你创建|已创建|已经创建|已添加).{0,80}(卡片|节点|plan|todo|note|code|web)/i.test(text);
 }
 
@@ -1386,6 +1389,14 @@ async function handleRealtimeVoice(body, res) {
     lang,
     maxActions: MAX_QUICK_CANVAS_ACTIONS_PER_TURN
   });
+  actions = ensureCommittedCanvasActions({
+    message: transcript,
+    actions,
+    reply,
+    analysis: normalizeChatAnalysis(body?.analysis),
+    lang,
+    maxActions: MAX_QUICK_CANVAS_ACTIONS_PER_TURN
+  });
   actions = ensureChatFallbackActionsClean(transcript, actions, reply);
   actions = enrichCanvasActions(actions, transcript, reply, lang, "no-thinking");
 
@@ -1728,6 +1739,14 @@ async function handleChat(body, res) {
     lang,
     maxActions: canvasActionLimitForThinkingMode(thinkingMode)
   });
+  actions = ensureCommittedCanvasActions({
+    message,
+    actions,
+    reply,
+    analysis,
+    lang,
+    maxActions: canvasActionLimitForThinkingMode(thinkingMode)
+  });
   actions = ensureChatFallbackActionsClean(message, actions, reply);
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled || webSearchForced);
   actions = enrichCanvasActions(actions, message, reply, lang, thinkingMode);
@@ -1917,6 +1936,14 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
     reply,
     selectedContext,
     canvas,
+    analysis,
+    lang,
+    maxActions: canvasActionLimitForThinkingMode(thinkingMode)
+  });
+  actions = ensureCommittedCanvasActions({
+    message,
+    actions,
+    reply,
     analysis,
     lang,
     maxActions: canvasActionLimitForThinkingMode(thinkingMode)
@@ -3790,6 +3817,7 @@ function deriveSearchQuery(message) {
 }
 
 const FALLBACK_KEYWORDS = {
+  create_direction: /方向|方案|概念方向|视觉概念|风格方向|direction|option|concept/i,
   create_plan: /计划|日程|行程|规划|itinerary|schedule|plan/i,
   create_todo: /任务|待办|清单|checklist|todo|task list/i,
   create_note: /笔记|记录|备忘|note|jot down/i,
@@ -3814,7 +3842,7 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
 
   const requestText = String(message || "").normalize("NFKC");
   const combinedText = requestText + " " + String(reply || "").normalize("NFKC");
-  const wantsArtifact = /(画布|卡片|节点|创建|新建|生成.*(卡片|节点)|保存成|放到画布|整理到画布|canvas|card|node|create|add|save.*card)/i.test(requestText);
+  const wantsArtifact = /(画布|卡片|节点|创建|新建|生成.*(卡片|节点|方向|方案)|保存成|放到画布|整理到画布|canvas|card|node|create|add|save.*card|generate.*(?:direction|option|concept))/i.test(requestText);
   const matchedTypes = [];
 
   for (const [actionType, regex] of Object.entries(FALLBACK_KEYWORDS)) {
@@ -3844,6 +3872,7 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
 
 function fallbackActionTypesForRequest(text, matchedTypes = []) {
   const primary = matchedTypes.find((type) => !isViewOnlyFallbackAction(type));
+  if (isDirectionRequest(text)) return uniqueActionTypes([primary || "create_direction"]);
   if (isPlanningRequest(text)) return uniqueActionTypes([primary || "create_plan", "create_timeline", "create_todo", "create_table"]);
   if (isComparisonRequest(text)) return uniqueActionTypes([primary || "create_comparison", "create_metric", "create_todo"]);
   if (isResearchRequest(text)) return uniqueActionTypes([primary || "create_note", "create_quote", "create_table"]);
@@ -3862,6 +3891,11 @@ function extractFirstUrl(text) {
 
 function isViewOnlyFallbackAction(actionType) {
   return ["zoom_in", "zoom_out", "reset_view"].includes(actionType);
+}
+
+function isDirectionRequest(text) {
+  return /(方向|方案|概念方向|视觉概念|direction|option|concept)/i.test(String(text || ""))
+    && /(生成|创建|新建|做|产出|发散|展开|generate|create|make|produce|brainstorm)/i.test(String(text || ""));
 }
 
 function buildFallbackActionContent(actionType, title, text) {

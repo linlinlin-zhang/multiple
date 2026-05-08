@@ -2056,25 +2056,32 @@ body.nav-collapsed .canvas-title-bar {
 
 .node.content-hidden {
   height: auto !important;
+  min-height: 0 !important;
   overflow: visible;
 }
 
+.node.content-hidden .source-tabs,
 .node.content-hidden .upload-target,
 .node.content-hidden .url-input-panel,
+.node.content-hidden .source-text-panel,
+.node.content-hidden .source-text-tools,
 .node.content-hidden .research-dropdown-wrapper,
+.node.content-hidden .option-description,
 .node.content-hidden .option-rich-content,
 .node.content-hidden .option-action-row,
 .node.content-hidden .generated-image-wrap,
+.node.content-hidden .generated-description,
 .node.content-hidden .generated-actions,
 .node.content-hidden .rich-back-button,
 .node.content-hidden .rich-body,
 .node.content-hidden .rich-actions,
+.node.content-hidden #analysisSummary,
 .node.content-hidden #keywordList {
   display: none !important;
 }
 
 .source-node.content-hidden {
-  min-height: 76px;
+  min-height: 76px !important;
   padding: 16px 18px;
   background: var(--paper);
   border: 1px solid var(--divider);

@@ -282,7 +282,7 @@ function buildFallbackMediaPrompt(message, candidate, lang, mediaType) {
 }
 
 function appendMediaOutputDirective(prompt, lang, mediaType) {
-  if (/对比决策卡|comparison card|decision card/i.test(prompt)) return prompt;
+  if (/完整、可独立展示的图片|complete standalone image|真正的动态视觉画面|actual moving visual footage|对比决策卡|comparison card|decision card/i.test(prompt)) return prompt;
   if (mediaType === "video") {
     return lang === "en"
       ? `${prompt}\n\nCreate actual moving visual footage, not a storyboard card, comparison sheet, UI mockup, caption slide, or text-heavy explainer.`
