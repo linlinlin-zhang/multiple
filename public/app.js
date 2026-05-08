@@ -14651,6 +14651,7 @@ function mergeDataUrlList(...groups) {
 const CHAT_MODEL_IMAGE_TARGET_BYTES = 520 * 1024;
 const CHAT_MODEL_IMAGE_TOTAL_BYTES = 3.4 * 1024 * 1024;
 const CHAT_MODEL_DIRECT_VIDEO_MAX_BYTES = 1.8 * 1024 * 1024;
+const chatMediaCompressionCache = new Map();
 
 function utf8ByteLength(value) {
   return new TextEncoder().encode(String(value || "")).length;
@@ -14717,6 +14718,8 @@ async function compressImageDataUrlForModel(dataUrl, { targetBytes = CHAT_MODEL_
   if (typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) return dataUrl || "";
   if (/^data:image\/svg\+xml/i.test(dataUrl)) return dataUrl;
   if (utf8ByteLength(dataUrl) <= targetBytes) return dataUrl;
+  const cacheKey = `${dataUrl.length}:${dataUrl.slice(0, 96)}:${targetBytes}:${maxLongEdge}`;
+  if (chatMediaCompressionCache.has(cacheKey)) return chatMediaCompressionCache.get(cacheKey);
 
   const image = await loadImageElement(dataUrl);
   const originalLongEdge = Math.max(image.naturalWidth || image.width || 0, image.naturalHeight || image.height || 0);
@@ -14732,10 +14735,22 @@ async function compressImageDataUrlForModel(dataUrl, { targetBytes = CHAT_MODEL_
     for (const quality of qualities) {
       const candidate = imageElementToJpegDataUrl(image, width, height, quality);
       if (utf8ByteLength(candidate) < utf8ByteLength(best)) best = candidate;
-      if (utf8ByteLength(candidate) <= targetBytes) return candidate;
+      if (utf8ByteLength(candidate) <= targetBytes) {
+        rememberCompressedChatMedia(cacheKey, candidate);
+        return candidate;
+      }
     }
   }
+  rememberCompressedChatMedia(cacheKey, best);
   return best;
+}
+
+function rememberCompressedChatMedia(key, value) {
+  chatMediaCompressionCache.set(key, value);
+  if (chatMediaCompressionCache.size > 24) {
+    const oldest = chatMediaCompressionCache.keys().next().value;
+    chatMediaCompressionCache.delete(oldest);
+  }
 }
 
 function loadImageElement(src) {

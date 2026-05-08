@@ -1718,9 +1718,24 @@ async function handleChat(body, res) {
       }, res);
     }
 
-    const response = await chatCompletions(runtimeConfigs.chat, videoChatPayload, {
-      timeoutMs: CHAT_COMPLETION_TIMEOUT_MS
-    });
+    let response;
+    let effectiveVideoBudget = videoBudget;
+    try {
+      response = await chatCompletions(runtimeConfigs.chat, videoChatPayload, {
+        timeoutMs: CHAT_COMPLETION_TIMEOUT_MS
+      });
+    } catch (error) {
+      if (!isRequestBodyTooLargeError(error)) throw error;
+      effectiveVideoBudget = emergencyFitChatPayloadToModelBudget(videoChatPayload, runtimeConfigs.chat, {
+        stream: false,
+        transport: "chat-completions",
+        lang,
+        previousBudget: videoBudget
+      });
+      response = await chatCompletions(runtimeConfigs.chat, videoChatPayload, {
+        timeoutMs: CHAT_COMPLETION_TIMEOUT_MS
+      });
+    }
     const finalPayload = buildChatResultFromResponse({
       response,
       message,
@@ -1736,7 +1751,7 @@ async function handleChat(body, res) {
     delete finalPayload.previousResponseId;
     finalPayload.resetPreviousResponseId = true;
     if (retrieved.length) finalPayload.retrievedContext = retrieved.length;
-    if (videoBudget?.reduced) finalPayload.contextBudget = videoBudget;
+    if (effectiveVideoBudget?.reduced) finalPayload.contextBudget = effectiveVideoBudget;
     ingestChatTurn(sessionId, ingestUserMessage, finalPayload.reply || "").catch((e) =>
       console.warn("[handleChat] chat turn ingest failed:", e.message)
     );
@@ -1781,13 +1796,28 @@ async function handleChat(body, res) {
     }, res);
   }
 
-  const response = responsesToChatCompletion(
-    await qwenResponsesRequest(runtimeConfigs.chat, applyRequestOptions({
+  let rawChatResponse;
+  let effectiveContextBudget = contextBudget;
+  try {
+    rawChatResponse = await qwenResponsesRequest(runtimeConfigs.chat, applyRequestOptions({
       model: runtimeConfigs.chat.model,
       ...chatPayload
-    }, runtimeConfigs.chat)),
-    runtimeConfigs.chat
-  );
+    }, runtimeConfigs.chat));
+  } catch (error) {
+    if (!isRequestBodyTooLargeError(error)) throw error;
+    effectiveContextBudget = emergencyFitChatPayloadToModelBudget(chatPayload, runtimeConfigs.chat, {
+      stream: false,
+      transport: "responses",
+      lang,
+      previousBudget: contextBudget
+    });
+    rawChatResponse = await qwenResponsesRequest(runtimeConfigs.chat, applyRequestOptions({
+      model: runtimeConfigs.chat.model,
+      ...chatPayload
+    }, runtimeConfigs.chat));
+  }
+
+  const response = responsesToChatCompletion(rawChatResponse, runtimeConfigs.chat);
 
   const references = extractResponseReferences(response);
   const reply = normalizeCitationMarkers(collectChatContent(response).trim(), references);
@@ -1833,7 +1863,7 @@ async function handleChat(body, res) {
     responseId: response.id || undefined,
     previousResponseId: response.id || undefined,
     references,
-    contextBudget: contextBudget?.reduced ? contextBudget : undefined,
+    contextBudget: effectiveContextBudget?.reduced ? effectiveContextBudget : undefined,
     retrievedContext: retrieved.length ? retrieved.length : undefined
   });
 }
@@ -2087,6 +2117,41 @@ function fitChatPayloadToModelBudget(payload, config, { stream = false, transpor
 
   budget.afterBytes = estimateModelRequestBytes(payload, config, { stream, transport });
   return budget;
+}
+
+function emergencyFitChatPayloadToModelBudget(payload, config, { stream = false, transport = "responses", lang = "zh", previousBudget = null } = {}) {
+  const target = Math.max(512 * 1024, Math.min(Math.floor(CHAT_MODEL_REQUEST_BODY_LIMIT_BYTES * 0.55), CHAT_MODEL_REQUEST_BODY_TARGET_BYTES));
+  const budget = {
+    beforeBytes: previousBudget?.beforeBytes || estimateModelRequestBytes(payload, config, { stream, transport }),
+    afterBytes: 0,
+    targetBytes: target,
+    limitBytes: CHAT_MODEL_REQUEST_BODY_LIMIT_BYTES,
+    droppedImages: previousBudget?.droppedImages || 0,
+    droppedVideo: Boolean(previousBudget?.droppedVideo),
+    compactedText: Boolean(previousBudget?.compactedText),
+    emergencyRetry: true,
+    reduced: true
+  };
+  const notice = lang === "en"
+    ? "\n\n[Emergency context budget note: the provider rejected the first request as too large. All raw media was removed from the retry and long context was compressed. Rely on canvas metadata and ask for focused media re-analysis when exact visual details matter.]"
+    : "\n\n【紧急上下文预算提示：供应商拒绝了首次请求，原因是请求体过大。重试时已移除原始媒体并压缩长上下文；需要精确视觉细节时，请让用户聚焦具体图片/视频重新分析。】";
+
+  while (removeLastImagePart(payload)) budget.droppedImages += 1;
+  while (removeVideoPart(payload)) budget.droppedVideo = true;
+  appendPromptNotice(payload, notice);
+
+  const textLimits = [24000, 16000, 10000, 7000, 5000, 3500, 2400, 1600];
+  for (const limit of textLimits) {
+    if (estimateModelRequestBytes(payload, config, { stream, transport }) <= target) break;
+    if (compactLargestTextPart(payload, limit, notice)) budget.compactedText = true;
+  }
+
+  budget.afterBytes = estimateModelRequestBytes(payload, config, { stream, transport });
+  return budget;
+}
+
+function isRequestBodyTooLargeError(error) {
+  return /TooLarge|Exceeded limit|max bytes|request body|413|BadRequst\.TooLarge/i.test(String(error?.message || error || ""));
 }
 
 function estimateModelRequestBytes(payload, config, { stream = false, transport = "responses" } = {}) {
@@ -3154,15 +3219,35 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
     "X-Accel-Buffering": "no"
   });
   res.write("\n");
+  let effectiveContextBudget = contextBudget;
   try {
-    const response = await (transport === "chat-completions" ? streamChatCompletions : streamQwenResponses)(runtimeConfigs.chat, payload, {
-      onReasoning(delta) {
-        if (thinkingMode === "thinking") writeSse(res, "thinking", { delta });
-      },
-      onText(delta) {
-        writeSse(res, "reply", { delta });
-      }
-    });
+    let response;
+    try {
+      response = await (transport === "chat-completions" ? streamChatCompletions : streamQwenResponses)(runtimeConfigs.chat, payload, {
+        onReasoning(delta) {
+          if (thinkingMode === "thinking") writeSse(res, "thinking", { delta });
+        },
+        onText(delta) {
+          writeSse(res, "reply", { delta });
+        }
+      });
+    } catch (error) {
+      if (!isRequestBodyTooLargeError(error)) throw error;
+      effectiveContextBudget = emergencyFitChatPayloadToModelBudget(payload, runtimeConfigs.chat, {
+        stream: true,
+        transport,
+        lang,
+        previousBudget: contextBudget
+      });
+      response = await (transport === "chat-completions" ? streamChatCompletions : streamQwenResponses)(runtimeConfigs.chat, payload, {
+        onReasoning(delta) {
+          if (thinkingMode === "thinking") writeSse(res, "thinking", { delta });
+        },
+        onText(delta) {
+          writeSse(res, "reply", { delta });
+        }
+      });
+    }
     const finalPayload = buildChatResultFromResponse({
       response,
       message,
@@ -3176,7 +3261,7 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
       webSearchEnabled
     });
     if (retrievedCount) finalPayload.retrievedContext = retrievedCount;
-    if (contextBudget?.reduced) finalPayload.contextBudget = contextBudget;
+    if (effectiveContextBudget?.reduced) finalPayload.contextBudget = effectiveContextBudget;
     if (resetPreviousResponseId) {
       delete finalPayload.responseId;
       delete finalPayload.previousResponseId;
