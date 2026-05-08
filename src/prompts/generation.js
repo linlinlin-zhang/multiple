@@ -96,6 +96,7 @@ export function buildGeneratePrompt(lang, option) {
         "- Clear composition.",
         "- Resolve the direction into concrete subject, setting, composition, lighting, palette, camera/framing, material texture, and mood.",
         "- Keep any text in the image absent unless the user explicitly requested readable text.",
+        "- Do not reinterpret the request as a comparison card, decision card, infographic, UI screenshot, caption slide, or text-heavy layout unless the user explicitly requested that format.",
         "- No watermarks, UI screenshot borders, or explanatory text."
       ].join("\n")
     : [
@@ -129,6 +130,7 @@ export function buildGeneratePrompt(lang, option) {
         "- 构图清晰。",
         "- 将方向落实为具体主体、环境、构图、光线、色彩、镜头/景别、材质和氛围。",
         "- 除非用户明确要求可读文字，否则画面中不要出现文字。",
+        "- 除非用户明确要求这种格式，不要把成图请求转成对比决策卡、信息图、UI 截图、字幕页或大量文字排版。",
         "- 不要添加水印、UI 截图边框或说明文字。"
       ].join("\n");
 }

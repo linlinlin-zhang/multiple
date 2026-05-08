@@ -109,6 +109,43 @@ const visualCanvas = {
   assert.equal(actions[0].type, "generate_image");
   assert.equal(actions[0].nodeId, "generated-1");
   assert.match(actions[0].prompt, /暗黑风变体/);
+  assert.match(actions[0].prompt, /不要做成对比决策卡/);
+}
+
+{
+  const actions = ensureMediaGenerationActions({
+    message: "帮我把当前方向直接成图",
+    actions: [],
+    selectedContext: {
+      id: "option-plan",
+      type: "option",
+      nodeType: "plan",
+      purpose: "plan",
+      title: "从概念到成图流程",
+      summary: "计划卡，不应该被当成成图方向",
+      prompt: "收集风格参考图，撰写 prompt，评估方案"
+    },
+    canvas: {
+      selectedNodeId: "option-plan",
+      selectedNodeIds: ["option-plan"],
+      visibleNodes: [
+        {
+          id: "option-plan",
+          type: "option",
+          nodeType: "plan",
+          purpose: "plan",
+          title: "从概念到成图流程",
+          summary: "计划卡，不应该被当成成图方向",
+          prompt: "收集风格参考图，撰写 prompt，评估方案"
+        }
+      ]
+    },
+    lang: "zh"
+  });
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].type, "generate_image");
+  assert.equal(actions[0].nodeId, undefined);
+  assert.match(actions[0].prompt, /完整、可独立展示的图片/);
 }
 
 console.log("[test] chat action guard: PASS");

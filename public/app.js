@@ -4281,12 +4281,42 @@ function normalizeChatActionResults(value) {
       const success = hasExplicitSuccess ? Boolean(result.success) : result !== null;
       return {
         type: String(entry.type),
-        title: String(entry.title || entry.nodeName || result?.title || "").slice(0, 80),
+        title: String(result?.title || entry.title || entry.nodeName || "").slice(0, 80),
         nodeId: String(nodeId).slice(0, 96),
         success,
         error: String(result?.error || entry.error || "").slice(0, 240)
       };
     });
+}
+
+function actionDisplayTitle(action = {}) {
+  const type = String(action.type || action.name || "");
+  const title = String(action.title || action.nodeName || action.target || action.query || "").trim();
+  if (title) return title.slice(0, 80);
+  const labelKey = `chat.actionFeedback.${type}`;
+  const label = t(labelKey);
+  return label === labelKey ? (type || (currentLang === "en" ? "canvas action" : "画布动作")) : label;
+}
+
+function formatActionProgressNote({ done = 0, total = 0, action = null } = {}) {
+  if (!total) return "";
+  const visibleStep = Math.min(total, Math.max(1, Number(done) || 1));
+  const title = actionDisplayTitle(action || {});
+  return currentLang === "en"
+    ? `\n\n> Running canvas actions ${visibleStep}/${total}: ${title}`
+    : `\n\n> 正在执行画布动作 ${visibleStep}/${total}：${title}`;
+}
+
+function formatActionCompletionNote(actionResults = []) {
+  const results = normalizeChatActionResults(actionResults);
+  const mediaResults = results.filter((item) => ["generate_image", "generate_video", "image_search", "reverse_image_search", "text_image_search"].includes(item.type));
+  if (!mediaResults.length) return "";
+  const successCount = mediaResults.filter((item) => item.success !== false).length;
+  const total = mediaResults.length;
+  if (!successCount) return "";
+  return currentLang === "en"
+    ? `\n\n> Completed ${successCount}/${total} visual action${total > 1 ? "s" : ""}. Use the feedback card${total > 1 ? "s" : ""} below to jump to the canvas result.`
+    : `\n\n> 已完成 ${successCount}/${total} 个视觉动作，可点击下方反馈卡跳转到画布结果。`;
 }
 
 function formatActionFailureNote(actionResults = []) {
@@ -5681,6 +5711,8 @@ function buildSelectedNodeContext(nodeId = state.selectedNodeId) {
   const context = {
     id: nodeId,
     type,
+    nodeType: node.option?.nodeType || "",
+    purpose: node.option?.purpose || "",
     title,
     summary,
     prompt,
@@ -5851,12 +5883,29 @@ async function submitChatMessage(message, options = {}) {
     }
     const returnedActions = data?.actions || data?.action;
     let actionResults = [];
+    const baseReply = data.reply || t("chat.systemContext");
     if (returnedActions) {
-      actionResults = await applyVoiceActions(returnedActions, { imageDataUrl: attachmentImageDataUrl, videoDataUrl: sourceVideoDataUrl, message: text });
+      const actionList = Array.isArray(returnedActions) ? returnedActions : [returnedActions];
+      updateChatMessage(pendingAssistant, {
+        content: `${baseReply}${formatActionProgressNote({ done: 0, total: actionList.length, action: actionList[0] })}`,
+        pending: true
+      });
+      actionResults = await applyVoiceActions(returnedActions, {
+        imageDataUrl: attachmentImageDataUrl,
+        videoDataUrl: sourceVideoDataUrl,
+        message: text,
+        onProgress(progress) {
+          updateChatMessage(pendingAssistant, {
+            content: `${baseReply}${formatActionProgressNote(progress)}`,
+            pending: true
+          });
+        }
+      });
     }
     assistantMeta.actionResults = actionResults;
     const failureNote = formatActionFailureNote(actionResults);
-    const replyContent = `${data.reply || t("chat.systemContext")}${failureNote}`;
+    const completionNote = formatActionCompletionNote(actionResults);
+    const replyContent = `${baseReply}${completionNote}${failureNote}`;
     updateChatMessage(pendingAssistant, {
       content: replyContent,
       ...assistantMeta
@@ -6719,7 +6768,7 @@ async function applyVoiceActions(value, context = {}) {
   const actions = Array.isArray(value) ? value : (value ? [value] : []);
   const results = [];
   const pendingAgents = [];
-  const creationTypes = new Set([...RICH_CARD_ACTION_TYPES, "create_direction", "create_web_card", "web_search", "create_agent"]);
+  const creationTypes = new Set([...RICH_CARD_ACTION_TYPES, "create_direction", "create_web_card", "web_search", "image_search", "reverse_image_search", "text_image_search", "generate_image", "generate_video", "create_agent"]);
   const activeThread = ensureActiveChatThread();
   const hadTopicNode = Boolean(activeThread.topicNodeId && state.nodes.has(activeThread.topicNodeId));
   const topicNodeId = ensureChatTopicNode(actions, context);
@@ -6729,9 +6778,12 @@ async function applyVoiceActions(value, context = {}) {
   const batchParentId = selectedParentId || topicNodeId || state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
   const creationCount = actions.filter((action) => {
     const type = typeof action === "string" ? action : action?.type || action?.name;
-    return creationTypes.has(String(type || ""));
+    return actionCreatesNewCanvasCard(action) || String(type || "") === "create_agent";
   }).length;
   let creationIndex = 0;
+  const notifyProgress = typeof context.onProgress === "function" ? context.onProgress : null;
+  const totalActions = actions.length;
+  let completedActions = 0;
   for (const action of actions) {
     const type = typeof action === "string" ? action : action?.type || action?.name;
     if (!type) continue;
@@ -6739,7 +6791,8 @@ async function applyVoiceActions(value, context = {}) {
     if (isCardCreationActionType(type) && !normalized.parentNodeId && !normalized.parentNodeName) {
       normalized.parentNodeId = batchParentId;
     }
-    if (creationTypes.has(String(type)) && creationCount > 1) {
+    const createsCard = actionCreatesNewCanvasCard(normalized) || String(type) === "create_agent";
+    if (creationTypes.has(String(type)) && createsCard && creationCount > 1) {
       normalized.parentNodeId = normalized.parentNodeId || batchParentId;
       normalized.batchIndex = Number.isFinite(normalized.batchIndex) ? normalized.batchIndex : creationIndex;
       normalized.batchSize = Number.isFinite(normalized.batchSize) ? normalized.batchSize : creationCount;
@@ -6753,17 +6806,27 @@ async function applyVoiceActions(value, context = {}) {
       pendingAgents.push(executeCanvasAction(normalized)
         .then((result) => {
           results.push({ ...normalized, result });
+          completedActions += 1;
+          notifyProgress?.({ done: completedActions, total: totalActions, action: normalized, result, results: [...results] });
         })
         .catch((error) => {
-          results.push({ ...normalized, result: { success: false, error: error.message || String(error) } });
+          const result = { success: false, error: error.message || String(error) };
+          results.push({ ...normalized, result });
+          completedActions += 1;
+          notifyProgress?.({ done: completedActions, total: totalActions, action: normalized, result, results: [...results] });
         }));
       continue;
     }
     try {
       const result = await executeCanvasAction(normalized);
       results.push({ ...normalized, result });
+      completedActions += 1;
+      notifyProgress?.({ done: completedActions, total: totalActions, action: normalized, result, results: [...results] });
     } catch (error) {
-      results.push({ ...normalized, result: { success: false, error: error.message || String(error) } });
+      const result = { success: false, error: error.message || String(error) };
+      results.push({ ...normalized, result });
+      completedActions += 1;
+      notifyProgress?.({ done: completedActions, total: totalActions, action: normalized, result, results: [...results] });
     }
   }
   if (pendingAgents.length) await Promise.all(pendingAgents);

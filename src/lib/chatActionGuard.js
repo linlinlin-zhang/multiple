@@ -109,7 +109,7 @@ export function buildMediaGenerationFallbackActions({
       nodeId: candidate.nodeId || undefined,
       title: candidate.title || fallbackMediaTitle(text, lang, mediaType, index),
       description: candidate.description || candidate.summary || "",
-      prompt: candidate.prompt || buildFallbackMediaPrompt(text, candidate, lang, mediaType),
+      prompt: appendMediaOutputDirective(candidate.prompt || buildFallbackMediaPrompt(text, candidate, lang, mediaType), lang, mediaType),
       mode: candidate.mode || (mediaType === "video" ? "text-to-video" : "text-to-image")
     }));
   }
@@ -270,7 +270,7 @@ function buildFallbackMediaPrompt(message, candidate, lang, mediaType) {
     .map((item) => String(item || "").trim())
     .filter(Boolean)
     .join("\n\n");
-  if (base) return base.slice(0, 1600);
+  if (base) return appendMediaOutputDirective(base, lang, mediaType).slice(0, 1600);
   if (mediaType === "video") {
     return lang === "en"
       ? "Generate a coherent short video from the current canvas context."
@@ -279,6 +279,18 @@ function buildFallbackMediaPrompt(message, candidate, lang, mediaType) {
   return lang === "en"
     ? "Generate a complete image from the current canvas context."
     : "请基于当前画布上下文生成一张完整图片。";
+}
+
+function appendMediaOutputDirective(prompt, lang, mediaType) {
+  if (/对比决策卡|comparison card|decision card/i.test(prompt)) return prompt;
+  if (mediaType === "video") {
+    return lang === "en"
+      ? `${prompt}\n\nCreate actual moving visual footage, not a storyboard card, comparison sheet, UI mockup, caption slide, or text-heavy explainer.`
+      : `${prompt}\n\n请生成真正的动态视觉画面，不要做成分镜说明卡、对比表、UI 卡片、字幕页或文字解说页。`;
+  }
+  return lang === "en"
+    ? `${prompt}\n\nCreate a complete standalone image. Do not turn this into a comparison card, decision card, infographic, UI screenshot, caption slide, or text-heavy layout unless explicitly requested.`
+    : `${prompt}\n\n请生成一张完整、可独立展示的图片。除非用户明确要求，不要做成对比决策卡、信息图、UI 截图、字幕页或大量文字排版。`;
 }
 
 function deriveShortTitle(message) {
