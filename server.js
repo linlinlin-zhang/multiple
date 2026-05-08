@@ -47,6 +47,8 @@ const DEEP_RESEARCH_TIMEOUT_MS = Number(process.env.DEEP_RESEARCH_TIMEOUT_MS || 
 const EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.EXPLORE_THINKING_TIMEOUT_MS || 240000);
 const EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.EXPLORE_FALLBACK_TIMEOUT_MS || 150000);
 const CHAT_ATTACHMENT_MAX_CHARS = 32000;
+const CHAT_ATTACHMENT_MAX_COUNT = 8;
+const CHAT_IMAGE_INPUT_MAX_COUNT = 8;
 const IMAGE_SEARCH_MODEL = process.env.IMAGE_SEARCH_MODEL || "qwen3.5-plus";
 const ANALYSIS_CANVAS_CARD_MIN = 5;
 const ANALYSIS_CANVAS_CARD_MAX = 8;
@@ -1534,6 +1536,7 @@ async function handleImageSearch(body, res) {
 async function handleChat(body, res) {
   const message = typeof body?.message === "string" ? body.message.trim().slice(0, 32000) : "";
   const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
+  const imageDataUrls = normalizeImageDataUrls(body?.imageDataUrls || body?.images || body?.imagesDataUrls, imageDataUrl);
   const videoDataUrl = normalizeVideoDataUrl(body?.videoDataUrl);
   const analysis = normalizeChatAnalysis(body?.analysis);
   const messages = normalizeChatMessages(body?.messages);
@@ -1622,8 +1625,8 @@ async function handleChat(body, res) {
   const content = [
     { type: "input_text", text: userPrompt }
   ];
-  if (imageDataUrl) {
-    content.push({ type: "input_image", image_url: imageDataUrl });
+  for (const imageUrl of imageDataUrls) {
+    content.push({ type: "input_image", image_url: imageUrl });
   }
 
   if (hasVideoInput) {
@@ -1631,6 +1634,7 @@ async function handleChat(body, res) {
       instructions: context,
       userPrompt,
       imageDataUrl,
+      imageDataUrls,
       videoDataUrl,
       message,
       webSearchEnabled: webSearchEnabled || webSearchForced,
@@ -1777,7 +1781,7 @@ async function handleChat(body, res) {
 async function normalizeChatDocumentAttachments(value, lang = "zh") {
   const raw = Array.isArray(value) ? value : (value ? [value] : []);
   const results = [];
-  for (const item of raw.slice(0, 3)) {
+  for (const item of raw.slice(0, CHAT_ATTACHMENT_MAX_COUNT)) {
     if (!item || typeof item !== "object") continue;
     const kind = String(item.type || item.kind || "").toLowerCase();
     if (kind.includes("image")) continue;
@@ -1990,12 +1994,13 @@ function buildChatResponsesPayload({ instructions, content, message, previousRes
   return payload;
 }
 
-function buildVideoChatCompletionsPayload({ instructions, userPrompt, imageDataUrl, videoDataUrl, message, webSearchEnabled, thinkingMode, agentMode = false, agentSkill = "" }) {
+function buildVideoChatCompletionsPayload({ instructions, userPrompt, imageDataUrl, imageDataUrls = [], videoDataUrl, message, webSearchEnabled, thinkingMode, agentMode = false, agentSkill = "" }) {
   const content = [
     { type: "video_url", video_url: { url: videoDataUrl }, fps: 2 }
   ];
-  if (imageDataUrl) {
-    content.push({ type: "image_url", image_url: { url: imageDataUrl } });
+  const images = normalizeImageDataUrls(imageDataUrls, imageDataUrl);
+  for (const imageUrl of images) {
+    content.push({ type: "image_url", image_url: { url: imageUrl } });
   }
   content.push({ type: "text", text: userPrompt });
 
@@ -6654,6 +6659,22 @@ function normalizeDataUrl(value) {
     return null;
   }
   return value;
+}
+
+function normalizeImageDataUrls(value, first = "") {
+  const raw = Array.isArray(value) ? value : (value ? [value] : []);
+  const urls = [];
+  const seen = new Set();
+  for (const item of [first, ...raw]) {
+    const dataUrl = normalizeDataUrl(item);
+    if (!dataUrl) continue;
+    const key = dataUrl.slice(0, 160);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    urls.push(dataUrl);
+    if (urls.length >= CHAT_IMAGE_INPUT_MAX_COUNT) break;
+  }
+  return urls;
 }
 
 function normalizeVideoDataUrl(value) {

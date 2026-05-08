@@ -275,12 +275,20 @@ function summarizeCanvasForPrompt(canvas, lang) {
       title: node?.title || node?.name || node?.label,
       fileName: node?.fileName || undefined,
       summary: String(node?.summary || node?.description || node?.prompt || "").slice(0, 900),
+      contentText: node?.contentText ? String(node.contentText).slice(0, 900) : undefined,
       url: node?.url || node?.sourceUrl,
+      hasImage: node?.hasImage || undefined,
+      imageHash: node?.imageHash || undefined,
+      hasVideo: node?.hasVideo || undefined,
+      videoHash: node?.videoHash || undefined,
       generated: Boolean(node?.generated),
       selected: Boolean(node?.selected || node?.isSelected || selectedIds.has(node?.id)),
       hasDocument: node?.hasDocument || undefined,
-      hasDocumentData: node?.hasDocumentData || undefined
-    }))
+      hasDocumentData: node?.hasDocumentData || undefined,
+      blueprintId: node?.blueprintId || undefined
+    })),
+    mediaNodes: Array.isArray(canvas?.mediaNodes) ? canvas.mediaNodes.slice(0, 16) : undefined,
+    blueprints: Array.isArray(canvas?.blueprints) ? canvas.blueprints.slice(0, 6) : undefined
   }, null, 2).slice(0, 16000);
 }
 

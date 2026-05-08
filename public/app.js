@@ -2109,7 +2109,7 @@ function renderCardSearchBarResults() {
   const query = cardSearchInput.value.trim().toLowerCase();
   const allCards = getAllCanvasCards();
   const cards = query
-    ? allCards.filter((card) => card.title.toLowerCase().includes(query))
+    ? allCards.filter((card) => `${card.title}\n${card.summary || ""}\n${card.id}`.toLowerCase().includes(query))
     : allCards;
 
   cardSearchResults.innerHTML = "";
@@ -2425,9 +2425,10 @@ function getAllCanvasCards() {
   const cards = [];
   for (const [id, node] of state.nodes.entries()) {
     if (id === "source" || id === "analysis") continue;
-    const title = node.option?.title || node.sourceCard?.title || node.sourceCard?.fileName || "";
-    if (title) {
-      cards.push({ id, title, node });
+    const title = getNodeTitle(node) || node.option?.title || node.sourceCard?.title || node.sourceCard?.fileName || id;
+    const summary = getNodeSummary(node) || node.option?.prompt || actionContentText({ content: node.option?.content || {} });
+    if (title || summary) {
+      cards.push({ id, title: title || id, summary, node });
     }
   }
   return cards;
@@ -2437,7 +2438,7 @@ function getFilteredCards() {
   const query = getCardSearchQuery();
   const allCards = getAllCanvasCards();
   if (!query) return allCards;
-  return allCards.filter((card) => card.title.toLowerCase().includes(query));
+  return allCards.filter((card) => `${card.title}\n${card.summary || ""}\n${card.id}`.toLowerCase().includes(query));
 }
 
 function renderCardSearchResults() {
@@ -2490,7 +2491,7 @@ function renderCardSearchResults() {
 function locateCard(nodeId, title = "") {
   closeCardSearchUI();
   closeCommandMenu();
-  focusNodeInViewport(nodeId, "upper-left");
+  focusNodeById(nodeId, "upper-left");
   showToast(t("command.searchCardFound", { title }));
 }
 
@@ -5784,12 +5785,14 @@ async function submitChatMessage(message, options = {}) {
   const inferredAgentMode = subagentsEnabled && shouldUseClientAgentMode(text);
   const agentMode = Boolean(options.agentMode || inferredAgentMode);
   const effectiveThinkingMode = options.forcedThinkingMode || (agentMode ? "no-thinking" : state.thinkingMode);
+  const selectedNodeId = options.selectedNodeId || state.selectedNodeId;
   const chatAttachment = pendingChatAttachment;
   const attachmentImageDataUrl = chatAttachment?.kind === "image" ? chatAttachment.dataUrl : "";
   const attachmentVideoDataUrl = chatAttachment?.kind === "video" ? chatAttachment.dataUrl : "";
   const chatAttachmentsPayload = mergeChatAttachmentPayloads(
     buildChatAttachmentPayload(chatAttachment),
-    await buildSelectedSourceDocumentAttachmentPayload()
+    options.chatAttachments || [],
+    options.includeCanvasDocuments === false ? [] : await buildCanvasDocumentAttachmentPayload({ selectedNodeId })
   );
 
   chatInput.value = "";
@@ -5827,9 +5830,17 @@ async function submitChatMessage(message, options = {}) {
   updateChatPrimaryButtonMode();
 
   try {
-    const sourceImageDataUrl = attachmentImageDataUrl || (attachmentVideoDataUrl ? "" : await getSourceImageDataUrl());
-    const sourceVideoDataUrl = attachmentVideoDataUrl || await getSourceVideoDataUrl();
-    const selectedContext = buildSelectedNodeContext();
+    const sourceImageDataUrl = options.imageDataUrl || attachmentImageDataUrl || (attachmentVideoDataUrl ? "" : await getSourceImageDataUrl(selectedNodeId));
+    const canvasImageDataUrls = options.includeCanvasImages === false
+      ? []
+      : await buildCanvasImageDataUrlPayload({
+          preferredNodeIds: [selectedNodeId, ...(options.preferredMediaNodeIds || [])].filter(Boolean),
+          extraImageDataUrls: options.imageDataUrls || [],
+          max: options.maxImageDataUrls || 6
+        });
+    const imageDataUrls = mergeDataUrlList(sourceImageDataUrl, options.imageDataUrls || [], canvasImageDataUrls).slice(0, options.maxImageDataUrls || 6);
+    const sourceVideoDataUrl = options.videoDataUrl || attachmentVideoDataUrl || await getSourceVideoDataUrl(selectedNodeId) || (options.includeCanvasVideos === false ? "" : await buildCanvasVideoDataUrlPayload({ preferredNodeIds: [selectedNodeId, ...(options.preferredMediaNodeIds || [])].filter(Boolean) }));
+    const selectedContext = options.selectedContext || buildSelectedNodeContext(selectedNodeId);
 
     let systemContext = t("chat.systemContext");
     if (selectedContext) {
@@ -5846,18 +5857,22 @@ async function submitChatMessage(message, options = {}) {
         if (blueprintContextText) systemContext += "\n\n" + blueprintContextText;
       }
     }
+    if (options.extraSystemContext) {
+      systemContext += "\n\n" + String(options.extraSystemContext).slice(0, 12000);
+    }
 
     const chatPayload = {
       message: text,
-      imageDataUrl: sourceImageDataUrl,
+      imageDataUrl: imageDataUrls[0] || "",
+      imageDataUrls,
       videoDataUrl: sourceVideoDataUrl,
       analysis: state.latestAnalysis,
       messages: getChatHistoryPayload(),
       systemContext,
       selectedContext,
-      canvas: buildVoiceCanvasContext(),
+      canvas: options.canvasContext || buildVoiceCanvasContext(),
       language: currentLang,
-      selectedNodeId: state.selectedNodeId,
+      selectedNodeId,
       thinkingMode: effectiveThinkingMode,
       agentMode,
       subagentsEnabled,
@@ -5881,7 +5896,10 @@ async function submitChatMessage(message, options = {}) {
     } else if (data.responseId || data.previousResponseId) {
       ensureActiveChatThread().previousResponseId = data.responseId || data.previousResponseId;
     }
-    const returnedActions = data?.actions || data?.action;
+    const returnedActions = typeof options.transformActions === "function"
+      ? options.transformActions(data?.actions || data?.action, data)
+      : (data?.actions || data?.action);
+    assistantMeta.actions = returnedActions;
     let actionResults = [];
     const baseReply = data.reply || t("chat.systemContext");
     if (returnedActions) {
@@ -5891,9 +5909,10 @@ async function submitChatMessage(message, options = {}) {
         pending: true
       });
       actionResults = await applyVoiceActions(returnedActions, {
-        imageDataUrl: attachmentImageDataUrl,
+        imageDataUrl: attachmentImageDataUrl || imageDataUrls[0] || "",
         videoDataUrl: sourceVideoDataUrl,
         message: text,
+        ...(options.actionContext || {}),
         onProgress(progress) {
           updateChatMessage(pendingAssistant, {
             content: `${baseReply}${formatActionProgressNote(progress)}`,
@@ -6664,24 +6683,60 @@ async function handleRealtimeVoiceChunk(pcmBase64, sessionId, { requestId = 0, f
 }
 
 function buildVoiceCanvasContext() {
-  const visibleNodes = Array.from(state.nodes.values()).filter(isNodeVisible).map((node) => ({
+  const allNodes = Array.from(state.nodes.values()).map((node) => {
+    const sourceCard = node.sourceCard || {};
+    const option = node.option || {};
+    const contentText = option.nodeType && option.nodeType !== "image"
+      ? actionContentText({ content: option.content || {} })
+      : "";
+    const imageInfo = getImageNodeInfo(node.id);
+    const videoUrl = node.videoUrl || (node.videoHash ? `/api/assets/${node.videoHash}?kind=generated` : "") || sourceCardDisplayVideoUrl(sourceCard);
+    return {
     id: node.id,
     title: getNodeTitle(node),
     type: getNodeType(node),
-    nodeType: node.option?.nodeType || "",
-    purpose: node.option?.purpose || "",
+      nodeType: option.nodeType || "",
+      purpose: option.purpose || "",
     summary: getNodeSummary(node).slice(0, 600),
-    prompt: String(node.option?.prompt || node.sourceCard?.sourceText || "").slice(0, 900),
-    fileName: node.sourceCard?.fileName || "",
-    hasDocument: node.sourceCard?.sourceType === "text",
-    hasDocumentData: node.sourceCard?.sourceType === "text" && Boolean(node.sourceCard?.sourceText || node.sourceCard?.sourceDataUrl || node.sourceCard?.sourceDataUrlHash),
+      prompt: String(option.prompt || sourceCard.sourceText || contentText || "").slice(0, 1200),
+      contentText: String(contentText || sourceCard.sourceText || "").slice(0, 1600),
+      fileName: sourceCard.fileName || "",
+      sourceType: sourceCard.sourceType || "",
+      sourceUrl: sourceCard.sourceUrl || sourceCard.sourceUrlInput || sourceCard.url || option.content?.url || "",
+      hasImage: Boolean(imageInfo?.imageUrl),
+      imageHash: imageInfo?.imageHash || "",
+      hasVideo: Boolean(videoUrl),
+      videoHash: node.videoHash || sourceCard.sourceVideoHash || sourceCard.videoHash || "",
+      hasDocument: sourceCard.sourceType === "text",
+      hasDocumentData: sourceCard.sourceType === "text" && Boolean(sourceCard.sourceText || sourceCard.sourceDataUrl || sourceCard.sourceDataUrlHash),
     x: Math.round(node.x || 0),
     y: Math.round(node.y || 0),
     width: Math.round(node.width || node.element?.offsetWidth || 0),
     height: Math.round(node.height || node.element?.offsetHeight || 0),
     generated: Boolean(node.generated),
-    hasReferences: Boolean(node.option?.references?.length)
-  })).slice(0, 40);
+      visible: isNodeVisible(node),
+      hasReferences: Boolean(option.references?.length),
+      blueprintId: resolveBlueprintJunctionId(node.id) || ""
+    };
+  }).slice(0, 80);
+  const visibleNodes = allNodes.filter((node) => node.visible);
+  const mediaNodes = allNodes
+    .filter((node) => node.hasImage || node.hasVideo || node.hasDocumentData || node.sourceUrl)
+    .map((node) => ({
+      id: node.id,
+      title: node.title,
+      type: node.type,
+      sourceType: node.sourceType,
+      fileName: node.fileName,
+      sourceUrl: node.sourceUrl,
+      hasImage: node.hasImage,
+      imageHash: node.imageHash,
+      hasVideo: node.hasVideo,
+      videoHash: node.videoHash,
+      hasDocumentData: node.hasDocumentData,
+      generated: node.generated
+    }));
+  const blueprints = Array.from(state.junctions.keys()).map((junctionId) => buildBlueprintContext(junctionId)).filter(Boolean);
   return {
     selectedNodeId: state.selectedNodeId,
     selectedNodeIds: Array.from(state.selectedNodeIds),
@@ -6699,7 +6754,10 @@ function buildVoiceCanvasContext() {
       hasVideo: Boolean(state.sourceVideo || state.sourceVideoHash),
       url: state.sourceUrl || ""
     },
+    mediaNodes,
+    blueprints,
     capabilities: CANVAS_TOOL_TYPES,
+    nodes: allNodes,
     visibleNodes
   };
 }
@@ -6791,11 +6849,12 @@ async function applyVoiceActions(value, context = {}) {
   const creationTypes = new Set([...RICH_CARD_ACTION_TYPES, "create_direction", "create_web_card", "web_search", "image_search", "reverse_image_search", "text_image_search", "generate_image", "generate_video", "create_agent"]);
   const activeThread = ensureActiveChatThread();
   const hadTopicNode = Boolean(activeThread.topicNodeId && state.nodes.has(activeThread.topicNodeId));
-  const topicNodeId = ensureChatTopicNode(actions, context);
+  const topicNodeId = context.disableTopicNode ? null : ensureChatTopicNode(actions, context);
   const selectedParentId = hadTopicNode && topicNodeId && state.selectedNodeId && state.nodes.has(state.selectedNodeId) && state.selectedNodeId !== topicNodeId && state.selectedNodeId !== "source" && state.selectedNodeId !== "analysis"
     ? state.selectedNodeId
     : "";
-  const batchParentId = selectedParentId || topicNodeId || state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
+  const contextParentId = context.defaultParentNodeId && state.nodes.has(context.defaultParentNodeId) ? context.defaultParentNodeId : "";
+  const batchParentId = contextParentId || selectedParentId || topicNodeId || state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
   const creationCount = actions.filter((action) => {
     const type = typeof action === "string" ? action : action?.type || action?.name;
     return actionCreatesNewCanvasCard(action) || String(type || "") === "create_agent";
@@ -11782,6 +11841,44 @@ async function getBlueprintReferenceImageDataUrl(junctionId) {
   return "";
 }
 
+async function getBlueprintReferenceImageDataUrls(junctionId, max = 6) {
+  const junction = state.junctions.get(junctionId);
+  const images = [];
+  for (const cardId of junction?.connectedCardIds || []) {
+    if (images.length >= max) break;
+    try {
+      const dataUrl = await getImageDataUrlForNodePreferLocal(cardId);
+      if (dataUrl) images.push(dataUrl);
+    } catch {}
+  }
+  return mergeDataUrlList(images).slice(0, max);
+}
+
+async function buildBlueprintDocumentAttachmentPayload(junctionId) {
+  const junction = state.junctions.get(junctionId);
+  if (!junction) return [];
+  const attachments = [];
+  for (const cardId of junction.connectedCardIds || []) {
+    if (attachments.length >= 8) break;
+    const attachment = cardId === "source"
+      ? await documentAttachmentFromPrimarySource()
+      : await documentAttachmentFromSourceCard(state.nodes.get(cardId)?.sourceCard);
+    if (attachment?.text || attachment?.dataUrl) {
+      attachments.push({
+        type: "file",
+        name: attachment.fileName,
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+        size: attachment.size || 0,
+        text: attachment.text || "",
+        dataUrl: attachment.dataUrl || "",
+        source: "blueprint"
+      });
+    }
+  }
+  return attachments;
+}
+
 function buildBlueprintGenerationPrompt(junctionId, extraText = "") {
   const blueprint = buildBlueprintContext(junctionId);
   const contextText = formatBlueprintContextText(blueprint);
@@ -11835,6 +11932,45 @@ function createBlueprintGenerationOption(junctionId, prompt) {
   return nodeId;
 }
 
+function buildBlueprintChatGenerationMessage(junctionId, extraText = "") {
+  const blueprint = buildBlueprintContext(junctionId);
+  const contextText = formatBlueprintContextText(blueprint);
+  const userText = String(extraText || blueprint?.overallDescription || "").trim();
+  const title = currentLang === "en" ? "Generate an image from this blueprint" : "基于当前蓝图成图";
+  const direction = currentLang === "en"
+    ? [
+        "Please analyze this multi-card blueprint first, explain the visual synthesis briefly in chat, then call canvas_action type=generate_image to actually generate the image.",
+        "Use the supplied blueprint relationships, card summaries, document context, and attached reference images as first-class context.",
+        `Target parent node id: ${junctionId}. Do not replace image generation with a note card.`
+      ].join("\n")
+    : [
+        "请先分析这个多节点聚合蓝图，在对话区简要说明你的视觉综合思路，然后必须调用 canvas_action type=generate_image 真正执行成图。",
+        "请把提供的蓝图关系、卡片摘要、文档上下文和参考图片都作为一等上下文使用。",
+        `目标父节点 ID：${junctionId}。不要用笔记卡片替代真正成图。`
+      ].join("\n");
+  return [
+    `# ${title}`,
+    userText ? (currentLang === "en" ? `User direction: ${userText}` : `用户补充方向：${userText}`) : "",
+    direction,
+    contextText
+  ].filter(Boolean).join("\n\n");
+}
+
+function ensureBlueprintGenerateImageAction(actions, junctionId, prompt, imageDataUrls = []) {
+  const list = Array.isArray(actions) ? [...actions] : (actions ? [actions] : []);
+  if (list.some((action) => String(action?.type || action?.name || "") === "generate_image")) return Array.isArray(actions) ? list : list[0];
+  list.push({
+    type: "generate_image",
+    parentNodeId: junctionId,
+    title: currentLang === "en" ? "Blueprint image" : "蓝图生成图",
+    description: currentLang === "en" ? "Generated from the current multi-card blueprint." : "基于当前多节点聚合蓝图生成。",
+    prompt,
+    mode: currentLang === "en" ? "blueprint" : "蓝图",
+    imageDataUrl: imageDataUrls[0] || ""
+  });
+  return list;
+}
+
 async function submitBlueprintGeneration(event) {
   event?.preventDefault();
   const junctionId = blueprintModal?.dataset.junctionId;
@@ -11846,22 +11982,34 @@ async function submitBlueprintGeneration(event) {
     autoSave();
   }
   const prompt = buildBlueprintGenerationPrompt(junctionId, extraText);
-  const nodeId = createBlueprintGenerationOption(junctionId, prompt);
-  if (!nodeId) return;
   setBlueprintComposeBusy(true);
   try {
-    const imageDataUrl = await getBlueprintReferenceImageDataUrl(junctionId);
-    const result = await generateImageFromAction({
-      type: "generate_image",
-      nodeId,
-      imageDataUrl
+    const imageDataUrls = await getBlueprintReferenceImageDataUrls(junctionId, 6);
+    const blueprintAttachments = await buildBlueprintDocumentAttachmentPayload(junctionId);
+    const chatMessage = buildBlueprintChatGenerationMessage(junctionId, extraText);
+    await submitChatMessage(chatMessage, {
+      selectedNodeId: junctionId,
+      forcedThinkingMode: "thinking",
+      imageDataUrls,
+      preferredMediaNodeIds: state.junctions.get(junctionId)?.connectedCardIds || [],
+      chatAttachments: blueprintAttachments,
+      extraSystemContext: [
+        currentLang === "en"
+          ? "Blueprint generation mode: the user clicked Send in the blueprint modal. The assistant must analyze the blueprint in chat and call generate_image for a real image result."
+          : "蓝图成图模式：用户在蓝图弹窗点击了发送成图。助手必须在对话区分析蓝图，并调用 generate_image 得到真实图片结果。",
+        formatBlueprintContextText(buildBlueprintContext(junctionId))
+      ].filter(Boolean).join("\n\n"),
+      actionContext: {
+        defaultParentNodeId: junctionId,
+        disableTopicNode: true,
+        imageDataUrl: imageDataUrls[0] || ""
+      },
+      transformActions(actions) {
+        return ensureBlueprintGenerateImageAction(actions, junctionId, prompt, imageDataUrls);
+      }
     });
-    if (result?.success === false) {
-      showToast(result.error || (currentLang === "en" ? "Image generation failed." : "成图失败。"));
-    } else {
-      showToast(currentLang === "en" ? "Blueprint image generated." : "已根据蓝图生成图片。");
-      openBlueprintModal(junctionId);
-    }
+    showToast(currentLang === "en" ? "Blueprint generation has been sent to chat." : "已在对话区执行蓝图成图。");
+    openBlueprintModal(junctionId);
   } finally {
     setBlueprintComposeBusy(false);
   }
@@ -13391,8 +13539,6 @@ function getChildren(id) {
 
 function canDeleteNode(nodeId) {
   if (nodeId === "analysis") return false;
-  const children = getChildren(nodeId);
-  if (children.length > 0) return false;
   return true;
 }
 
@@ -14404,18 +14550,27 @@ function mergeChatAttachmentPayloads(...groups) {
       if (seen.has(key)) continue;
       seen.add(key);
       merged.push(item);
-      if (merged.length >= 3) return merged;
+      if (merged.length >= 8) return merged;
     }
   }
   return merged;
 }
 
-async function buildSelectedSourceDocumentAttachmentPayload() {
+async function buildCanvasDocumentAttachmentPayload(options = {}) {
   const payloads = [];
+  const selectedNodeId = options.selectedNodeId || state.selectedNodeId;
   const selectedIds = new Set(Array.from(state.selectedNodeIds || []));
-  if (state.selectedNodeId) selectedIds.add(state.selectedNodeId);
-  for (const nodeId of selectedIds) {
-    if (payloads.length >= 2) break;
+  if (selectedNodeId) selectedIds.add(selectedNodeId);
+  const orderedIds = [
+    ...selectedIds,
+    "source",
+    ...Array.from(state.nodes.keys()).filter((id) => id !== "source" && !selectedIds.has(id))
+  ];
+  const seen = new Set();
+  for (const nodeId of orderedIds) {
+    if (payloads.length >= (options.max || 8)) break;
+    if (!nodeId || seen.has(nodeId)) continue;
+    seen.add(nodeId);
     const attachment = nodeId === "source"
       ? await documentAttachmentFromPrimarySource()
       : await documentAttachmentFromSourceCard(state.nodes.get(nodeId)?.sourceCard);
@@ -14433,6 +14588,104 @@ async function buildSelectedSourceDocumentAttachmentPayload() {
     }
   }
   return payloads;
+}
+
+async function buildSelectedSourceDocumentAttachmentPayload() {
+  return buildCanvasDocumentAttachmentPayload({ max: 2 });
+}
+
+function mergeDataUrlList(...groups) {
+  const merged = [];
+  const seen = new Set();
+  for (const group of groups) {
+    const items = Array.isArray(group) ? group : [group];
+    for (const item of items) {
+      const value = typeof item === "string" ? item.trim() : "";
+      if (!value || seen.has(value.slice(0, 160))) continue;
+      seen.add(value.slice(0, 160));
+      merged.push(value);
+      if (merged.length >= 8) return merged;
+    }
+  }
+  return merged;
+}
+
+function canvasImageNodeIds(preferredNodeIds = []) {
+  const ids = [];
+  const add = (id) => {
+    if (id && state.nodes.has(id) && !ids.includes(id)) ids.push(id);
+  };
+  preferredNodeIds.forEach(add);
+  if (state.sourceType === "image" && (state.sourceImage || state.sourceImageHash)) add("source");
+  for (const [id, node] of state.nodes) {
+    if (node?.sourceCard && (node.sourceCard.imageHash || node.sourceCard.imageUrl || node.sourceCard.remoteImageUrl)) add(id);
+    if (node?.generated && (node.imageHash || node.element?.querySelector(".generated-image")?.src)) add(id);
+  }
+  return ids;
+}
+
+async function getImageDataUrlForNodePreferLocal(nodeId) {
+  if (!nodeId) return "";
+  const node = state.nodes.get(nodeId);
+  if (nodeId === "source") {
+    if (state.sourceImageHash) return safeAssetUrlToDataUrl(`/api/assets/${state.sourceImageHash}?kind=upload`);
+    if (state.sourceImage?.startsWith("data:")) return state.sourceImage;
+    return state.sourceImage ? safeImageUrlToDataUrl(state.sourceImage) : "";
+  }
+  if (node?.sourceCard) {
+    const localUrl = sourceCardLocalImageUrl(node.sourceCard.imageHash);
+    const imageUrl = localUrl || node.sourceCard.imageUrl || node.sourceCard.remoteImageUrl || "";
+    return imageUrl ? safeImageUrlToDataUrl(imageUrl) : "";
+  }
+  if (node?.generated) {
+    const imageUrl = node.imageHash ? `/api/assets/${node.imageHash}?kind=generated` : node.element?.querySelector(".generated-image")?.src || "";
+    return imageUrl ? safeImageUrlToDataUrl(imageUrl) : "";
+  }
+  return "";
+}
+
+async function buildCanvasImageDataUrlPayload(options = {}) {
+  const results = [];
+  for (const nodeId of canvasImageNodeIds(options.preferredNodeIds || [])) {
+    if (results.length >= (options.max || 6)) break;
+    try {
+      const dataUrl = await getImageDataUrlForNodePreferLocal(nodeId);
+      if (dataUrl) results.push(dataUrl);
+    } catch {}
+  }
+  return mergeDataUrlList(options.extraImageDataUrls || [], results).slice(0, options.max || 6);
+}
+
+async function getVideoDataUrlForNode(nodeId) {
+  if (!nodeId) return "";
+  const node = state.nodes.get(nodeId);
+  if (nodeId === "source") {
+    if (state.sourceType !== "video") return "";
+    if (state.sourceVideo?.startsWith("data:")) return state.sourceVideo;
+    if (state.sourceVideoHash) return safeAssetUrlToDataUrl(`/api/assets/${state.sourceVideoHash}?kind=upload`);
+    return state.sourceVideo ? safeAssetUrlToDataUrl(state.sourceVideo) : "";
+  }
+  if (node?.sourceCard) {
+    const videoUrl = sourceCardDisplayVideoUrl(node.sourceCard);
+    return videoUrl ? safeAssetUrlToDataUrl(videoUrl) : "";
+  }
+  if (node?.generated) {
+    const videoUrl = node.videoUrl || (node.videoHash ? `/api/assets/${node.videoHash}?kind=generated` : "") || node.element?.querySelector("video")?.src || "";
+    return videoUrl ? safeAssetUrlToDataUrl(videoUrl) : "";
+  }
+  return "";
+}
+
+async function buildCanvasVideoDataUrlPayload(options = {}) {
+  const preferred = options.preferredNodeIds || [];
+  const ids = [...preferred, "source", ...Array.from(state.nodes.keys())];
+  for (const nodeId of ids) {
+    try {
+      const dataUrl = await getVideoDataUrlForNode(nodeId);
+      if (dataUrl) return dataUrl;
+    } catch {}
+  }
+  return "";
 }
 
 async function documentAttachmentFromPrimarySource() {
@@ -15292,14 +15545,14 @@ async function prepareStateForSave() {
   return payload;
 }
 
-async function getSourceImageDataUrl() {
-  const selected = state.selectedNodeId ? state.nodes.get(state.selectedNodeId) : null;
+async function getSourceImageDataUrl(nodeId = state.selectedNodeId) {
+  const selected = nodeId ? state.nodes.get(nodeId) : null;
   if (selected?.sourceCard) {
     const imageUrl = sourceCardReferenceImageUrl(selected.sourceCard);
     return imageUrl ? safeImageUrlToDataUrl(imageUrl) : "";
   }
-  if (selected && state.selectedNodeId !== "source") {
-    const info = getImageNodeInfo(state.selectedNodeId);
+  if (selected && nodeId !== "source") {
+    const info = getImageNodeInfo(nodeId);
     if (info?.imageUrl) return safeImageUrlToDataUrl(info.imageUrl);
   }
   if (state.sourceImage && state.sourceImage.startsWith("data:")) return state.sourceImage;
@@ -15309,13 +15562,13 @@ async function getSourceImageDataUrl() {
   return state.sourceImage;
 }
 
-async function getSourceVideoDataUrl() {
-  const selected = state.selectedNodeId ? state.nodes.get(state.selectedNodeId) : null;
+async function getSourceVideoDataUrl(nodeId = state.selectedNodeId) {
+  const selected = nodeId ? state.nodes.get(nodeId) : null;
   if (selected?.sourceCard) {
     const videoUrl = sourceCardDisplayVideoUrl(selected.sourceCard);
     return videoUrl ? safeAssetUrlToDataUrl(videoUrl) : "";
   }
-  if (selected && state.selectedNodeId !== "source") {
+  if (selected && nodeId !== "source") {
     const videoUrl = selected.videoUrl || (selected.videoHash ? `/api/assets/${selected.videoHash}?kind=generated` : "") || selected.element?.querySelector("video")?.src || "";
     if (videoUrl) return safeAssetUrlToDataUrl(videoUrl);
   }
@@ -15347,7 +15600,7 @@ async function safeAssetUrlToDataUrl(url) {
 }
 
 async function getImageDataUrlForNode(nodeId) {
-  if (nodeId === "source") return getSourceImageDataUrl();
+  if (nodeId === "source") return getSourceImageDataUrl("source");
   const info = getImageNodeInfo(nodeId);
   if (!info?.imageUrl) return "";
   return imageUrlToDataUrl(info.imageUrl);

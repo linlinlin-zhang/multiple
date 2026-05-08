@@ -2080,6 +2080,17 @@ body.nav-collapsed .canvas-title-bar {
   display: none !important;
 }
 
+.node.content-hidden .generated-image-wrap,
+.node.content-hidden .upload-target.has-source-image,
+.node.content-hidden .upload-target.has-video-preview {
+  display: block !important;
+}
+
+.source-node.content-hidden .upload-target.has-source-image,
+.source-node.content-hidden .upload-target.has-video-preview {
+  margin-top: 10px;
+}
+
 .source-node.content-hidden {
   min-height: 76px !important;
   padding: 16px 18px;
