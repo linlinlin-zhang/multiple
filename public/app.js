@@ -5909,16 +5909,16 @@ async function submitChatMessage(message, options = {}) {
     const returnedActions = typeof options.transformActions === "function"
       ? options.transformActions(data?.actions || data?.action, data)
       : (data?.actions || data?.action);
-    assistantMeta.actions = returnedActions;
+    const actionList = dedupeCanvasActions(Array.isArray(returnedActions) ? returnedActions : (returnedActions ? [returnedActions] : []));
+    assistantMeta.actions = actionList;
     let actionResults = [];
     const baseReply = data.reply || t("chat.systemContext");
-    if (returnedActions) {
-      const actionList = Array.isArray(returnedActions) ? returnedActions : [returnedActions];
+    if (actionList.length) {
       updateChatMessage(pendingAssistant, {
         content: `${baseReply}${formatActionProgressNote({ done: 0, total: actionList.length, action: actionList[0] })}`,
         pending: true
       });
-      actionResults = await applyVoiceActions(returnedActions, {
+      actionResults = await applyVoiceActions(actionList, {
         imageDataUrl: attachmentImageDataUrl || imageDataUrls[0] || "",
         videoDataUrl: sourceVideoDataUrl,
         message: text,
@@ -6785,6 +6785,35 @@ function actionCreatesNewCanvasCard(action) {
   return true;
 }
 
+function normalizedActionDedupeText(value) {
+  return String(value || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function canvasActionDedupeKey(action) {
+  const type = typeof action === "string" ? action : action?.type || action?.name;
+  const actionType = String(type || "").trim();
+  const dedupeTypes = new Set([...RICH_CARD_ACTION_TYPES, "create_direction", "create_web_card", "web_search", "image_search", "reverse_image_search", "text_image_search", "generate_image", "generate_video", "create_agent"]);
+  if (!actionType || !dedupeTypes.has(actionType)) return "";
+  if (!action || typeof action !== "object") return actionType;
+  const title = normalizedActionDedupeText(action.title);
+  const body = normalizedActionDedupeText(action.prompt || action.query || action.description || actionContentText(action));
+  const target = normalizedActionDedupeText(action.nodeId || action.nodeName || action.target);
+  const parent = normalizedActionDedupeText(action.parentNodeId || action.parentNodeName);
+  if (!title && !body && !target && !parent) return "";
+  return [actionType, title, body, target, parent].join("|");
+}
+
+function dedupeCanvasActions(actions) {
+  const seen = new Set();
+  return (Array.isArray(actions) ? actions : []).filter((action) => {
+    const key = canvasActionDedupeKey(action);
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function actionRequiresConcreteResult(action) {
   const type = typeof action === "string" ? action : action?.type || action?.name;
   if (!type) return false;
@@ -6853,7 +6882,7 @@ function ensureChatTopicNode(actions = [], context = {}) {
 }
 
 async function applyVoiceActions(value, context = {}) {
-  const actions = Array.isArray(value) ? value : (value ? [value] : []);
+  const actions = dedupeCanvasActions(Array.isArray(value) ? value : (value ? [value] : []));
   const results = [];
   const pendingAgents = [];
   const creationTypes = new Set([...RICH_CARD_ACTION_TYPES, "create_direction", "create_web_card", "web_search", "image_search", "reverse_image_search", "text_image_search", "generate_image", "generate_video", "create_agent"]);
@@ -6891,6 +6920,7 @@ async function applyVoiceActions(value, context = {}) {
     if ((String(type) === "image_search" || String(type) === "reverse_image_search" || String(type) === "text_image_search" || String(type) === "generate_image" || String(type) === "generate_video") && context.imageDataUrl && !normalized.imageDataUrl) {
       normalized.imageDataUrl = context.imageDataUrl;
     }
+    notifyProgress?.({ done: Math.min(totalActions, completedActions + 1), total: totalActions, action: normalized, running: true, results: [...results] });
     if (String(type) === "create_agent") {
       pendingAgents.push(executeCanvasAction(normalized)
         .then((rawResult) => {
@@ -7092,6 +7122,48 @@ function resolveParentNodeId(action, fallbackId = null) {
   return parent || fallbackId;
 }
 
+function generationActionMatchText(action = {}) {
+  return normalizedActionDedupeText(action.prompt || action.query || action.description || action.title || actionContentText(action));
+}
+
+function optionGenerationMatchText(option = {}) {
+  return normalizedActionDedupeText(option.prompt || option.description || option.title || actionContentText(option));
+}
+
+function isGenerationOptionNode(node) {
+  if (!node?.option || node.generated) return false;
+  const nodeType = String(node.option.nodeType || "image").toLowerCase();
+  return !nodeType || nodeType === "image";
+}
+
+function scoreGenerationTargetMatch(action = {}, node) {
+  if (!isGenerationOptionNode(node)) return 0;
+  const title = normalizedActionDedupeText(action.title);
+  const body = generationActionMatchText(action);
+  const optionTitle = normalizedActionDedupeText(node.option.title);
+  const optionBody = optionGenerationMatchText(node.option);
+  let score = 0;
+  if (title && optionTitle === title) score += 60;
+  if (body && optionBody === body) score += 80;
+  if (title && optionBody.includes(title)) score += 20;
+  if (body && body.length > 12 && (optionBody.includes(body) || body.includes(optionBody))) score += 40;
+  return score;
+}
+
+function findReusableGenerationTarget(action = {}, parentNodeId = "") {
+  const candidates = parentNodeId ? getChildren(parentNodeId).map((id) => state.nodes.get(id)).filter(Boolean) : [];
+  let best = null;
+  let bestScore = 0;
+  for (const node of candidates) {
+    const score = scoreGenerationTargetMatch(action, node);
+    if (score > bestScore) {
+      best = node;
+      bestScore = score;
+    }
+  }
+  return bestScore >= 55 ? best.id : "";
+}
+
 function resolveAnchorNodeId(action, movingNodeId = null) {
   const anchor = resolveDirectNodeId(action?.anchorNodeId) ||
     resolveNodeIdByText(action?.anchorNodeName) ||
@@ -7281,7 +7353,10 @@ function createDirectionFromAction(action) {
 
   const text = String(action.prompt || action.query || action.description || action.title || actionContentText(action) || "").trim();
   if (!text) return null;
+  const actionType = String(action.type || "");
   const isWebCard = action.type === "create_web_card" || Boolean(action.url);
+  const isImageGeneration = actionType === "generate_image";
+  const isVideoGeneration = actionType === "generate_video";
   const references = isWebCard && action.url
     ? [{
         title: String(action.title || action.url).slice(0, 80),
@@ -7324,14 +7399,24 @@ function createDirectionFromAction(action) {
     ? readableLinkTitle(normalizedContent?.title, normalizedContent?.url || action.url || text, action.title)
     : String(action.title || text);
   const batchSlug = Number.isFinite(action.batchIndex) ? `${action.batchIndex}-` : "";
+  const defaultLayoutHint = isWebCard
+    ? "reference"
+    : isVideoGeneration
+      ? "video"
+      : isImageGeneration
+        ? (action.imageDataUrl ? "image-to-image" : "text-to-image")
+        : "image-generation";
+  const explicitLayoutHint = String(action.layoutHint || "").trim();
+  const layoutHint = explicitLayoutHint && explicitLayoutHint.toLowerCase() !== "voice" ? explicitLayoutHint : defaultLayoutHint;
+  const tone = String(action.mode || action.tone || (isWebCard ? "web" : isVideoGeneration ? "video" : isImageGeneration ? (currentLang === "en" ? "image" : "成图") : (currentLang === "en" ? "direction" : "方向")));
 
   const nodeId = createOptionNode({
     id: `voice-${Date.now()}-${batchSlug}${safeNodeSlug(displayTitle || text)}`,
     title: displayTitle.slice(0, 48),
     description: String(action.description || text),
     prompt: text,
-    tone: String(action.mode || (isWebCard ? "web" : "voice")),
-    layoutHint: isWebCard ? "reference" : "voice",
+    tone,
+    layoutHint,
     references,
     nodeType,
     content: normalizedContent,
@@ -7498,23 +7583,37 @@ async function generateImageFromAction(action) {
   const shouldCreateChildFromParent = !explicitTargetId
     && parentNodeId
     && hasPromptText
+    && !isGenerationOptionNode(target)
     && (parentNodeId !== state.selectedNodeId || Number(action?.batchSize) > 1);
   if (shouldCreateChildFromParent) {
-    referenceNodeId = parentNodeId;
-    if (!actionReference && referenceNodeId) {
-      try {
-        actionReference = await getImageDataUrlForNode(referenceNodeId);
-      } catch {
-        actionReference = "";
+    const reusableNodeId = findReusableGenerationTarget(action, parentNodeId);
+    if (reusableNodeId) {
+      nodeId = reusableNodeId;
+      target = state.nodes.get(nodeId);
+    } else {
+      referenceNodeId = parentNodeId;
+      if (!actionReference && referenceNodeId) {
+        try {
+          actionReference = await getImageDataUrlForNode(referenceNodeId);
+        } catch {
+          actionReference = "";
+        }
       }
+      nodeId = createDirectionFromAction({ ...action, parentNodeId });
+      target = nodeId ? state.nodes.get(nodeId) : null;
     }
-    nodeId = createDirectionFromAction({ ...action, parentNodeId });
-    target = nodeId ? state.nodes.get(nodeId) : null;
   }
   if ((!target || target.id === "source" || target.id === "analysis") && (action.prompt || action.title || action.query)) {
-    referenceNodeId = target?.id || "";
-    nodeId = createDirectionFromAction({ ...action, parentNodeId: target?.id || state.selectedNodeId || "analysis" });
-    target = nodeId ? state.nodes.get(nodeId) : null;
+    const fallbackParentId = target?.id || parentNodeId || state.selectedNodeId || "analysis";
+    const reusableNodeId = findReusableGenerationTarget(action, fallbackParentId);
+    if (reusableNodeId) {
+      nodeId = reusableNodeId;
+      target = state.nodes.get(nodeId);
+    } else {
+      referenceNodeId = target?.id || "";
+      nodeId = createDirectionFromAction({ ...action, parentNodeId: fallbackParentId });
+      target = nodeId ? state.nodes.get(nodeId) : null;
+    }
     if (!actionReference && referenceNodeId) {
       try {
         actionReference = await getImageDataUrlForNode(referenceNodeId);
@@ -8260,13 +8359,19 @@ function tableCellValue(row, column, index) {
 
 function nodeTypeLabel(nodeType) {
   const type = String(nodeType || "image").toLowerCase();
-  const key = type === "image" ? "badge.general" : `badge.${type}`;
+  const key = type === "image" ? "badge.image_generation" : `badge.${type}`;
   const label = t(key);
   return label === key ? type : label;
 }
 
 function nodeLayoutLabel(option, nodeType) {
   const type = String(nodeType || "").toLowerCase();
+  if (type === "image") {
+    const layout = String(option?.layoutHint || option?.mode || option?.tone || "").toLowerCase();
+    if (layout.includes("image-to-image") || layout.includes("reference")) return currentLang === "en" ? "image-to-image" : "图生图";
+    if (layout.includes("text-to-image")) return currentLang === "en" ? "text-to-image" : "文生图";
+    return currentLang === "en" ? "image prompt" : "成图提示";
+  }
   if (type === "plan") return currentLang === "en" ? "overview" : "\u603b\u89c8";
   if (type === "todo") return currentLang === "en" ? "checklist" : "清单";
   if (type === "note") return currentLang === "en" ? "note" : "\u7b14\u8bb0";
@@ -8287,6 +8392,7 @@ function optionEyebrow(option, nodeType) {
 function taskTypeForOption(option, fallback = "general") {
   const type = String(option?.nodeType || "").toLowerCase();
   if (RICH_CARD_NODE_TYPES.includes(type)) return type;
+  if (type === "image") return "image_generation";
   return fallback || "general";
 }
 
