@@ -1823,7 +1823,8 @@ async function handleChat(body, res) {
   const response = responsesToChatCompletion(rawChatResponse, runtimeConfigs.chat);
 
   const references = extractResponseReferences(response);
-  const reply = normalizeCitationMarkers(collectChatContent(response).trim(), references);
+  const thinkingContent = thinkingMode === "thinking" ? collectReasoningContent(response) : "";
+  const reply = normalizeCitationMarkers(stripReasoningEchoFromResponseText(collectChatContent(response), thinkingContent).trim(), references);
   const actionPipeline = runCanvasActionPipeline({
     rawActions: extractToolCallActions(response),
     message,
@@ -1840,7 +1841,6 @@ async function handleChat(body, res) {
     dependencies: canvasActionPipelineDependencies()
   });
   const actions = actionPipeline.actions;
-  const thinkingContent = thinkingMode === "thinking" ? collectReasoningContent(response) : "";
   const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
 
   // Fire-and-forget: persist this turn into the session context pool.
@@ -2067,7 +2067,8 @@ async function ingestChatDocumentAttachments(sessionId, attachments) {
 
 function buildChatResultFromResponse({ response, message, thinkingMode, agentMode, lang, streamedReasoning = "", webSearchEnabled = false, selectedContext = null, canvas = {}, analysis = {} }) {
   const references = extractResponseReferences(response);
-  const reply = normalizeCitationMarkers(collectChatContent(response).trim(), references);
+  const thinkingContent = thinkingMode === "thinking" ? (streamedReasoning || collectReasoningContent(response)) : "";
+  const reply = normalizeCitationMarkers(stripReasoningEchoFromResponseText(collectChatContent(response), thinkingContent).trim(), references);
   const actionPipeline = runCanvasActionPipeline({
     rawActions: extractToolCallActions(response),
     message,
@@ -2091,7 +2092,7 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
     reply: finalReply,
     actions,
     artifacts: buildChatArtifacts(response, actions, agentMode),
-    thinkingContent: thinkingMode === "thinking" ? (streamedReasoning || collectReasoningContent(response)) : "",
+    thinkingContent,
     thinkingTrace: [],
     responseId: response?.id || undefined,
     previousResponseId: response?.id || undefined,
@@ -5876,8 +5877,8 @@ async function collectStreamingResponsesPayload(response, options = {}) {
 
 function responsesToChatCompletion(response, config, collected = {}) {
   const raw = response?.response || response || {};
-  const content = collected.content || extractResponsesText(raw);
   const reasoning = collected.reasoning || extractResponsesReasoning(raw);
+  const content = stripReasoningEchoFromResponseText(collected.content || extractResponsesText(raw), reasoning);
   const toolCalls = mergeResponsesToolCalls(collected.toolCalls || [], extractResponsesToolCallsAsChat(raw));
   const message = {
     role: "assistant",
@@ -5978,16 +5979,80 @@ function qwenResponsesBaseUrl(config) {
 }
 
 function extractResponsesText(value) {
+  const raw = value?.response || value || {};
+  const direct = [
+    raw.output_text,
+    raw.text,
+    raw.message?.content,
+    raw.choices?.[0]?.message?.content
+  ].map(textFromMixedContent).filter(Boolean);
+  if (direct.length) return dedupeTextParts(direct);
+
+  const output = Array.isArray(raw.output) ? raw.output : [];
   const texts = [];
-  walkJson(value, (item) => {
-    if (!item || typeof item !== "object") return;
-    if (item.type === "output_text" && typeof item.text === "string") texts.push(item.text);
-    if ((item.type === "text" || item.type === "message") && typeof item.text === "string") texts.push(item.text);
-    if (typeof item.output_text === "string") texts.push(item.output_text);
-    if (typeof item.content === "string" && /message|output_text|text/i.test(String(item.type || ""))) texts.push(item.content);
-    if (typeof item.text === "string" && /search|image|图片|来源|http/i.test(item.text)) texts.push(item.text);
-  });
-  return [...new Set(texts.map((text) => text.trim()).filter(Boolean))].join("\n").trim();
+  for (const item of output) {
+    const itemType = String(item?.type || "");
+    if (/reasoning|thinking/i.test(itemType)) continue;
+    if (itemType === "message" || item.role === "assistant") {
+      texts.push(textFromResponseContentParts(item.content));
+    }
+    if (itemType === "output_text") {
+      texts.push(textFromMixedContent(item.text || item.content));
+    }
+  }
+  return dedupeTextParts(texts);
+}
+
+function textFromResponseContentParts(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return textFromMixedContent(content);
+  return content
+    .filter((part) => {
+      const type = String(part?.type || "");
+      return !/reasoning|thinking/i.test(type);
+    })
+    .map((part) => {
+      const type = String(part?.type || "");
+      if (type === "output_text" || type === "text" || !type) {
+        return textFromMixedContent(part?.text || part?.content || part);
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function dedupeTextParts(parts = []) {
+  const seen = new Set();
+  const result = [];
+  for (const part of parts) {
+    const text = String(part || "").trim();
+    if (!text) continue;
+    const key = normalizeTextFingerprint(text);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(text);
+  }
+  return result.join("\n").trim();
+}
+
+function normalizeTextFingerprint(value) {
+  return String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim();
+}
+
+function stripReasoningEchoFromResponseText(text, reasoning) {
+  const reply = String(text || "").trim();
+  const thought = String(reasoning || "").trim();
+  if (!reply || !thought) return reply;
+  const withoutThinkTags = reply.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  if (withoutThinkTags && withoutThinkTags !== reply) return withoutThinkTags;
+  const replyKey = normalizeTextFingerprint(reply);
+  const thoughtKey = normalizeTextFingerprint(thought);
+  if (replyKey && replyKey === thoughtKey) return "";
+  if (reply.startsWith(thought)) {
+    return reply.slice(thought.length).trim();
+  }
+  return reply;
 }
 
 function extractReferencesFromObject(value) {
@@ -6239,7 +6304,7 @@ async function collectStreamingChatText(response) {
       if (!data || data === "[DONE]") continue;
       try {
         const chunk = JSON.parse(data);
-        text += extractStreamingTextDelta(chunk);
+        if (!extractStreamingReasoningDelta(chunk)) text += extractStreamingTextDelta(chunk);
       } catch {
         // Ignore keepalive or non-JSON stream fragments.
       }
@@ -6252,7 +6317,8 @@ async function collectStreamingChatText(response) {
     const data = buffer.trim().slice(5).trim();
     if (data && data !== "[DONE]") {
       try {
-        text += extractStreamingTextDelta(JSON.parse(data));
+        const chunk = JSON.parse(data);
+        if (!extractStreamingReasoningDelta(chunk)) text += extractStreamingTextDelta(chunk);
       } catch {
         // Ignore trailing non-JSON stream fragments.
       }
@@ -6279,8 +6345,8 @@ async function collectStreamingChatPayload(response, options = {}) {
       const chunk = JSON.parse(data);
       options.onActivity?.();
       if (chunk?.model) model = chunk.model;
-      const textDelta = extractStreamingTextDelta(chunk);
       const reasoningDelta = extractStreamingReasoningDelta(chunk);
+      const textDelta = reasoningDelta ? "" : extractStreamingTextDelta(chunk);
       const toolDeltas = chunk?.choices?.[0]?.delta?.tool_calls || [];
       for (const td of toolDeltas) {
         const idx = td.index ?? 0;
