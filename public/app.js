@@ -6959,15 +6959,32 @@ function actionRequiresConcreteResult(action) {
 }
 
 function normalizeCanvasActionExecutionResult(action, result) {
-  if (result !== null && result !== undefined) return result;
   const type = String(action?.type || action?.name || "");
-  if (!actionRequiresConcreteResult(action)) return { type, success: true };
+  const normalized = result !== null && result !== undefined
+    ? result
+    : (!actionRequiresConcreteResult(action) ? { type, success: true } : {
+      type,
+      success: false,
+      error: currentLang === "en"
+        ? "The app did not create a canvas result for this action."
+        : "应用没有为这个动作创建画布结果。"
+    });
+  return verifyCanvasActionExecutionResult(action, normalized);
+}
+
+function verifyCanvasActionExecutionResult(action, result) {
+  const type = String(action?.type || action?.name || "");
+  if (!actionRequiresConcreteResult(action)) return result;
+  if (result && typeof result === "object" && result.success === false) return result;
+  const ids = actionResultNodeIds({ ...action, result });
+  if (ids.length) return result;
   return {
+    ...(result && typeof result === "object" ? result : { value: result }),
     type,
     success: false,
     error: currentLang === "en"
-      ? "The app did not create a canvas result for this action."
-      : "应用没有为这个动作创建画布结果。"
+      ? "The action finished without a verifiable canvas result."
+      : "该动作执行结束，但没有可验证的画布结果。"
   };
 }
 

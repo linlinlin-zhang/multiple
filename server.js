@@ -23,6 +23,13 @@ import { ingestText, ingestSnippet, retrieveContext, formatContextForPrompt, isE
 import { classifyContent, getFallbackTaskType, resolveTaskType, routeContent } from "./src/lib/taskRouter.js";
 import { ensureMediaGenerationActions } from "./src/lib/chatActionGuard.js";
 import { ensureCommittedCanvasActions } from "./src/lib/canvasActionReliability.js";
+import {
+  CANVAS_ACTION_REGISTRY,
+  buildCanvasActionPolicy,
+  classifyCanvasActionIntent,
+  filterCanvasActionsByPolicy,
+  summarizeCanvasActionPolicy
+} from "./src/lib/canvasActionPolicy.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -245,7 +252,6 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
   }
 };
 
-const CANVAS_TOOLS = [CANVAS_ACTION_TOOL_SCHEMA];
 const RESPONSES_CANVAS_TOOL_SCHEMA = {
   type: "function",
   name: CANVAS_ACTION_TOOL_SCHEMA.function.name,
@@ -342,29 +348,6 @@ const STRUCTURED_CONTENT_ACTION_TYPES = new Set([
   "create_timeline", "create_comparison", "create_metric", "create_quote"
 ]);
 const WEB_REFERENCE_ACTION_TYPES = new Set(["create_link", "create_web_card"]);
-const CARD_CREATION_ACTION_TYPES = new Set([
-  ...REUSABLE_CARD_ACTION_TYPES,
-  "create_weather", "create_map", "create_card", "new_card", "create_direction",
-  "create_web_card", "web_search", "image_search", "reverse_image_search",
-  "text_image_search", "generate_image", "generate_video", "create_agent"
-]);
-const SOURCE_RESEARCH_ACTION_TYPES = new Set(["analyze_source", "explore_source", "research_source", "research_node", "open_references"]);
-const WORKSPACE_ACTION_TYPES = new Set([
-  "pan_view", "focus_node", "select_node", "move_node", "arrange_canvas",
-  "auto_layout", "tidy_canvas", "group_selection", "ungroup_selection",
-  "search_card", "export_report", "deselect", "select_source", "select_analysis",
-  "save_session", "new_chat", "open_chat_history", "close_chat", "open_chat",
-  "open_history", "open_settings", "open_upload", "delete_node",
-  "set_thinking_mode", "set_deep_think_mode", "zoom_in", "zoom_out",
-  "set_zoom", "reset_view"
-]);
-const AUTO_CARD_ACTION_TYPES = new Set([
-  "create_plan", "create_todo", "create_note", "create_weather",
-  "create_map", "create_link", "create_web_card", "create_code", "create_table",
-  "create_timeline", "create_comparison", "create_metric", "create_quote",
-  "create_card", "new_card"
-]);
-const VISUAL_EVALUATION_AUTO_CARD_TYPES = new Set(["create_comparison", "create_metric", "create_note"]);
 
 function synthesizeReplyFromActions(actions, lang, references = []) {
   if (!Array.isArray(actions) || actions.length === 0) return "";
@@ -1450,12 +1433,15 @@ async function handleRealtimeVoice(body, res) {
   const transcript = stringOr(result?.transcript, "");
   const reply = stringOr(result?.reply, "");
   let actions = Array.isArray(result?.actions) ? result.actions : [];
-  actions = filterCanvasActionsForUserIntent(normalizeVoiceActions(actions), transcript, {
+  const actionPolicyTraces = [];
+  const actionPolicyContext = {
     selectedContext: body?.selectedContext || null,
     canvas: body?.canvas && typeof body.canvas === "object" ? body.canvas : {},
     analysis: normalizeChatAnalysis(body?.analysis),
-    thinkingMode: "no-thinking"
-  });
+    thinkingMode: "no-thinking",
+    policyTraces: actionPolicyTraces
+  };
+  actions = filterCanvasActionsForUserIntent(normalizeVoiceActions(actions), transcript, actionPolicyContext);
   actions = ensureMediaGenerationActions({
     message: transcript,
     actions,
@@ -1476,25 +1462,16 @@ async function handleRealtimeVoice(body, res) {
   });
   actions = ensureChatFallbackActionsClean(transcript, actions, reply);
   actions = enrichCanvasActions(actions, transcript, reply, lang, "no-thinking");
-  actions = filterCanvasActionsForUserIntent(actions, transcript, {
-    selectedContext: body?.selectedContext || null,
-    canvas: body?.canvas && typeof body.canvas === "object" ? body.canvas : {},
-    analysis: normalizeChatAnalysis(body?.analysis),
-    thinkingMode: "no-thinking"
-  });
+  actions = filterCanvasActionsForUserIntent(actions, transcript, actionPolicyContext);
   actions = ensureAutomaticSmartCardActions(actions, transcript, reply, lang, "no-thinking");
-  actions = filterCanvasActionsForUserIntent(actions, transcript, {
-    selectedContext: body?.selectedContext || null,
-    canvas: body?.canvas && typeof body.canvas === "object" ? body.canvas : {},
-    analysis: normalizeChatAnalysis(body?.analysis),
-    thinkingMode: "no-thinking"
-  });
+  actions = filterCanvasActionsForUserIntent(actions, transcript, actionPolicyContext);
 
   return sendJson(res, 200, {
     provider: "api",
     model: runtimeConfigs.realtime.model,
     ...result,
-    actions
+    actions,
+    actionPolicy: compactActionPolicyTrace(actionPolicyTraces)
   });
 }
 
@@ -1864,7 +1841,9 @@ async function handleChat(body, res) {
   const references = extractResponseReferences(response);
   const reply = normalizeCitationMarkers(collectChatContent(response).trim(), references);
   let actions = normalizeVoiceActions(extractToolCallActions(response));
-  actions = filterCanvasActionsForUserIntent(actions, message, { agentMode, selectedContext, canvas, analysis, thinkingMode });
+  const actionPolicyTraces = [];
+  const actionPolicyContext = { agentMode, selectedContext, canvas, analysis, thinkingMode, policyTraces: actionPolicyTraces };
+  actions = filterCanvasActionsForUserIntent(actions, message, actionPolicyContext);
   actions = ensureMediaGenerationActions({
     message,
     actions,
@@ -1887,9 +1866,9 @@ async function handleChat(body, res) {
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled || webSearchForced);
   actions = enrichCanvasActions(actions, message, reply, lang, thinkingMode);
   actions = agentMode ? finalizeAgentControllerActions(actions, message, lang) : actions.filter((action) => action.type !== "create_agent");
-  actions = filterCanvasActionsForUserIntent(actions, message, { agentMode, selectedContext, canvas, analysis, thinkingMode });
+  actions = filterCanvasActionsForUserIntent(actions, message, actionPolicyContext);
   actions = ensureAutomaticSmartCardActions(actions, message, reply, lang, thinkingMode);
-  actions = filterCanvasActionsForUserIntent(actions, message, { agentMode, selectedContext, canvas, analysis, thinkingMode });
+  actions = filterCanvasActionsForUserIntent(actions, message, actionPolicyContext);
   const thinkingContent = thinkingMode === "thinking" ? collectReasoningContent(response) : "";
   const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
 
@@ -1909,6 +1888,7 @@ async function handleChat(body, res) {
     responseId: response.id || undefined,
     previousResponseId: response.id || undefined,
     references,
+    actionPolicy: compactActionPolicyTrace(actionPolicyTraces),
     contextBudget: effectiveContextBudget?.reduced ? effectiveContextBudget : undefined,
     retrievedContext: retrieved.length ? retrieved.length : undefined
   });
@@ -2070,7 +2050,9 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
   const references = extractResponseReferences(response);
   const reply = normalizeCitationMarkers(collectChatContent(response).trim(), references);
   let actions = normalizeVoiceActions(extractToolCallActions(response));
-  actions = filterCanvasActionsForUserIntent(actions, message, { agentMode, selectedContext, canvas, analysis, thinkingMode });
+  const actionPolicyTraces = [];
+  const actionPolicyContext = { agentMode, selectedContext, canvas, analysis, thinkingMode, policyTraces: actionPolicyTraces };
+  actions = filterCanvasActionsForUserIntent(actions, message, actionPolicyContext);
   actions = ensureMediaGenerationActions({
     message,
     actions,
@@ -2093,9 +2075,9 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
   actions = mergeReferenceActions(actions, response, message, webSearchEnabled);
   actions = enrichCanvasActions(actions, message, reply, lang, thinkingMode);
   actions = agentMode ? finalizeAgentControllerActions(actions, message, lang) : actions.filter((action) => action.type !== "create_agent");
-  actions = filterCanvasActionsForUserIntent(actions, message, { agentMode, selectedContext, canvas, analysis, thinkingMode });
+  actions = filterCanvasActionsForUserIntent(actions, message, actionPolicyContext);
   actions = ensureAutomaticSmartCardActions(actions, message, reply, lang, thinkingMode);
-  actions = filterCanvasActionsForUserIntent(actions, message, { agentMode, selectedContext, canvas, analysis, thinkingMode });
+  actions = filterCanvasActionsForUserIntent(actions, message, actionPolicyContext);
   const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
   return {
     provider: "api",
@@ -2107,7 +2089,8 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
     thinkingTrace: [],
     responseId: response?.id || undefined,
     previousResponseId: response?.id || undefined,
-    references
+    references,
+    actionPolicy: compactActionPolicyTrace(actionPolicyTraces)
   };
 }
 
@@ -2345,7 +2328,7 @@ function compactTextPreserveEnds(text, maxChars, notice = "") {
 }
 
 function buildChatResponsesPayload({ instructions, content, message, previousResponseId, webSearchEnabled, thinkingMode, agentMode = false, wrappedCanvasTool = false, agentSkill = "" }) {
-  const tools = buildResponsesTools(message, webSearchEnabled, { wrappedCanvasTool, agentMode, agentSkill });
+  const tools = buildResponsesTools(message, webSearchEnabled, { wrappedCanvasTool, agentMode, agentSkill, thinkingMode });
   const payload = {
     instructions,
     input: [
@@ -2385,8 +2368,9 @@ function buildVideoChatCompletionsPayload({ instructions, userPrompt, imageDataU
   };
   const chatOptions = runtimeConfigs.chat.options || {};
   const skillTools = agentSkillToolFlags(agentSkill);
-  if (chatOptions.enableCanvasTools !== false && shouldOfferCanvasTool(message, { agentMode, agentSkill })) {
-    payload.tools = CANVAS_TOOLS;
+  const canvasPolicy = buildCanvasActionPolicy(message, { agentMode, agentSkill, thinkingMode });
+  if (chatOptions.enableCanvasTools !== false && canvasPolicy.allowCanvasTool) {
+    payload.tools = [buildChatCompletionsCanvasToolSchema(canvasPolicy)];
     payload.tool_choice = "auto";
   }
   applyReasoningMode(payload, runtimeConfigs.chat, thinkingMode);
@@ -2406,19 +2390,64 @@ function buildResponsesTools(message, webSearchEnabled = false, options = {}) {
   if ((webSearchEnabled || skillTools.webSearch) && chatOptions.enableWebSearch !== false) tools.push({ type: "web_search" });
   if (chatOptions.enableWebExtractor !== false && (skillTools.webExtractor || shouldUseWebExtractor(message))) tools.push({ type: "web_extractor" });
   if (chatOptions.enableCodeInterpreter !== false && (skillTools.codeInterpreter || shouldUseCodeInterpreter(message))) tools.push({ type: "code_interpreter" });
-  if (chatOptions.enableCanvasTools !== false && shouldOfferCanvasTool(message, options)) {
-    tools.push(options.wrappedCanvasTool ? RESPONSES_CANVAS_TOOL_SCHEMA_WRAPPED : RESPONSES_CANVAS_TOOL_SCHEMA);
+  const canvasPolicy = buildCanvasActionPolicy(message, options);
+  if (chatOptions.enableCanvasTools !== false && canvasPolicy.allowCanvasTool) {
+    tools.push(buildResponsesCanvasToolSchema(canvasPolicy, { wrapped: options.wrappedCanvasTool }));
   }
   return tools;
 }
 
-function normalizeIntentText(message) {
-  return String(message || "").normalize("NFKC").trim();
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
-function wantsExplicitCanvasArtifact(message) {
-  const text = normalizeIntentText(message);
-  return /(画布|卡片|节点|创建|新建|新增|加一张|建一张|生成.{0,8}(卡片|节点)|保存成.{0,8}(卡片|节点)|放到画布|整理到画布|做成.{0,8}(卡片|表格|清单|时间线)|canvas|card|node|create|add\s+(?:a\s+)?card|save\s+(?:it\s+)?as\s+(?:a\s+)?card|put\s+(?:it\s+)?on\s+(?:the\s+)?canvas)/i.test(text);
+function actionPolicyTypeDescription(policy) {
+  const allowed = policy.allowedActionTypes.join(", ");
+  const groups = Array.from(new Set(policy.allowedActionTypes.map((type) => CANVAS_ACTION_REGISTRY[type]?.group).filter(Boolean))).join(", ");
+  return [
+    CANVAS_ACTION_TOOL_SCHEMA.function.parameters.properties.type.description,
+    "",
+    "Dynamic action policy for this turn:",
+    `- taskType=${policy.intent.taskType}`,
+    `- automaticCardMode=${policy.intent.automaticCardMode ? "true" : "false"}`,
+    `- maxActions=${policy.maxActions}`,
+    `- allowedGroups=${groups || "none"}`,
+    `- allowedActionTypes=${allowed || "none"}`,
+    "Do not call an action type outside this per-turn allowedActionTypes list."
+  ].join("\n");
+}
+
+function applyCanvasActionPolicyToSchema(schema, policy, { wrapped = false } = {}) {
+  const parameters = wrapped ? schema.function?.parameters : schema.function?.parameters || schema.parameters;
+  const typeProperty = parameters?.properties?.type;
+  if (typeProperty) {
+    typeProperty.enum = policy.allowedActionTypes;
+    typeProperty.description = actionPolicyTypeDescription(policy);
+  }
+  const target = wrapped ? schema.function : schema.function || schema;
+  if (target?.description) {
+    target.description = [
+      target.description,
+      "",
+      `This turn is governed by a canvas action policy. Allowed action count: ${policy.maxActions}.`,
+      `Allowed action types: ${policy.allowedActionTypes.join(", ") || "none"}.`
+    ].join("\n");
+  }
+  return schema;
+}
+
+function buildResponsesCanvasToolSchema(policy, { wrapped = false } = {}) {
+  const schema = cloneJson(wrapped ? RESPONSES_CANVAS_TOOL_SCHEMA_WRAPPED : RESPONSES_CANVAS_TOOL_SCHEMA);
+  return applyCanvasActionPolicyToSchema(schema, policy, { wrapped });
+}
+
+function buildChatCompletionsCanvasToolSchema(policy) {
+  const schema = cloneJson(CANVAS_ACTION_TOOL_SCHEMA);
+  return applyCanvasActionPolicyToSchema(schema, policy, { wrapped: true });
+}
+
+function normalizeIntentText(message) {
+  return String(message || "").normalize("NFKC").trim();
 }
 
 function wantsStructuredCanvasDeliverable(message) {
@@ -2426,96 +2455,8 @@ function wantsStructuredCanvasDeliverable(message) {
   return /(做|制定|生成|创建|整理|输出|列|写一份|给我一份|帮我做|make|create|build|generate|draft|produce|turn\s+.*\s+into).{0,18}(计划|规划|清单|待办|表格|时间线|路线图|报告|提纲|矩阵|对比表|checklist|todo|table|timeline|roadmap|report|outline|matrix|comparison)/i.test(text);
 }
 
-function wantsWorkspaceAction(message) {
-  const text = normalizeIntentText(message);
-  return /(放大|缩小|重置视图|聚焦|定位|移动|整理|排列|删除|移除|打开历史|打开设置|保存会话|新建对话|导出|zoom|focus|pan|move|arrange|layout|delete|remove|open history|open settings|save session|new chat|export)/i.test(text)
-    && /(画布|卡片|节点|视图|会话|历史|设置|canvas|card|node|view|session|history|settings)/i.test(text);
-}
-
-function wantsExplicitSourceResearch(message) {
-  const text = normalizeIntentText(message);
-  return /(研究|深入研究|探索|分析).{0,16}(这张|这个|当前|选中|源|素材|来源|卡片|节点|source|card|node)|(?:analy[sz]e|explore|research).{0,16}(?:selected|current|source|card|node)|打开.{0,8}(引用|参考资料|references)|open\s+references/i.test(text);
-}
-
-function wantsExplicitMediaGeneration(message) {
-  const text = normalizeIntentText(message);
-  return /(成图|出图|生成.{0,10}(图|图片|图像|视觉|海报|插画)|画.{0,8}(图|图片|画面)|绘制|渲染|改图|变体|生成.{0,10}(视频|动画|短片|动态镜头)|制作.{0,10}(视频|动画|短片)|generate.{0,16}(image|picture|visual|video|animation|clip)|draw.{0,12}(image|picture)|render.{0,12}(image|picture|visual)|make.{0,12}(video|animation|clip))/i.test(text);
-}
-
-function wantsExplicitMediaSearch(message) {
-  const text = normalizeIntentText(message);
-  return /(搜图|找图|参考图|视觉参考|相似图片|以图搜图|图片搜索|找.{0,8}(图片|照片|图像|案例)|image search|visual reference|find.{0,10}(images|photos|pictures)|reverse image search)/i.test(text);
-}
-
-function isVisualEvaluationRequest(message) {
-  const text = normalizeIntentText(message);
-  const visual = /(照片|图片|图像|画面|摄影|拍得|构图|曝光|色彩|光线|清晰|焦点|镜头|取景|photo|picture|image|shot|photograph|composition|exposure|lighting|color|focus|framing)/i.test(text);
-  const judge = /(哪张|哪个|哪一张|更好|最好|比较好|拍得好|好看|评价|点评|分析一下|对比|比较|选择|推荐|优劣|best|better|which|compare|evaluate|critique|recommend|pick|choose)/i.test(text);
-  return visual && judge;
-}
-
-function isDirectAnalysisRequest(message) {
-  const text = normalizeIntentText(message);
-  return /(分析|对比|比较|评估|评价|点评|判断|选择|推荐|优缺点|analysis|compare|comparison|evaluate|critique|judge|recommend|choose|pick)/i.test(text);
-}
-
-function wantsNoCanvas(message) {
-  const text = normalizeIntentText(message);
-  return /(不要.*(画布|卡片|节点)|不需要.*(画布|卡片|节点)|只要文字|纯文字|直接回答|别建卡|别创建|no\s+canvas|no\s+cards?|text\s+only|answer\s+only)/i.test(text);
-}
-
-function isTrivialChatRequest(message) {
-  const text = normalizeIntentText(message);
-  if (!text) return true;
-  return text.length <= 18 && /^(你好|您好|嗨|hello|hi|hey|谢谢|多谢|ok|好的|收到|在吗|help|帮助)[。！!?.\s]*$/i.test(text);
-}
-
-function isAutoCanvasCandidate(message) {
-  const text = normalizeIntentText(message);
-  if (!text || wantsNoCanvas(text) || isTrivialChatRequest(text)) return false;
-  if (isVisualEvaluationRequest(text) || isDirectAnalysisRequest(text)) return true;
-  return text.length >= 28 && /(帮我|请|分析|总结|整理|解释|写|列|给我|如何|怎么|为什么|建议|方案|思路|review|analy[sz]e|summari[sz]e|explain|compare|suggest|recommend|draft|write|plan)/i.test(text);
-}
-
 function classifyChatIntent(message, options = {}) {
-  const agentMode = Boolean(options.agentMode);
-  const explicitCanvas = wantsExplicitCanvasArtifact(message);
-  const structuredDeliverable = wantsStructuredCanvasDeliverable(message);
-  const workspaceAction = wantsWorkspaceAction(message);
-  const sourceResearch = wantsExplicitSourceResearch(message);
-  const mediaGeneration = wantsExplicitMediaGeneration(message);
-  const mediaSearch = wantsExplicitMediaSearch(message);
-  const visualEvaluation = isVisualEvaluationRequest(message);
-  const directAnalysis = isDirectAnalysisRequest(message);
-  const noCanvas = wantsNoCanvas(message);
-  const autoCanvasCandidate = isAutoCanvasCandidate(message);
-  const explicitToolIntent = explicitCanvas || structuredDeliverable || workspaceAction || sourceResearch || mediaGeneration || mediaSearch || agentMode;
-  const automaticCardMode = !noCanvas && !explicitToolIntent && autoCanvasCandidate;
-  return {
-    agentMode,
-    explicitCanvas,
-    structuredDeliverable,
-    workspaceAction,
-    sourceResearch,
-    mediaGeneration,
-    mediaSearch,
-    visualEvaluation,
-    directAnalysis,
-    noCanvas,
-    autoCanvasCandidate,
-    automaticCardMode,
-    explicitToolIntent,
-    allowCanvasTool: !noCanvas && (explicitToolIntent || autoCanvasCandidate),
-    allowCardCreation: !noCanvas && (explicitCanvas || structuredDeliverable || mediaGeneration || mediaSearch || agentMode || autoCanvasCandidate),
-    allowSourceResearch: sourceResearch,
-    allowWorkspaceAction: workspaceAction || agentMode,
-    directAnswerOnly: false
-  };
-}
-
-function shouldOfferCanvasTool(message, options = {}) {
-  if (shouldSkipCanvasToolForCodeOnlyRequest(message)) return false;
-  return classifyChatIntent(message, options).allowCanvasTool;
+  return classifyCanvasActionIntent(message, options);
 }
 
 function shouldUseWebExtractor(message) {
@@ -3396,40 +3337,38 @@ function actionContentForDedupe(action) {
 function filterCanvasActionsForUserIntent(actions, message, context = {}) {
   const usable = Array.isArray(actions) ? actions : [];
   if (!usable.length) return usable;
-  const intent = classifyChatIntent(message, {
+  const policy = buildCanvasActionPolicy(message, {
     agentMode: context.agentMode,
     agentSkill: context.agentSkill,
+    thinkingMode: context.thinkingMode,
     selectedContext: context.selectedContext,
     canvas: context.canvas
   });
-  if (!intent.allowCanvasTool) {
-    return [];
+  const result = filterCanvasActionsByPolicy(usable, policy);
+  if (Array.isArray(context.policyTraces)) {
+    context.policyTraces.push(summarizeCanvasActionPolicy(policy, {
+      proposed: usable,
+      final: result.actions,
+      rejected: result.rejected
+    }));
   }
-  const filtered = [];
-  for (const action of usable) {
-    const type = String(action?.type || "").trim();
-    if (!type) continue;
-    if (type === "create_agent" && !intent.agentMode) continue;
-    if (SOURCE_RESEARCH_ACTION_TYPES.has(type) && !intent.allowSourceResearch) continue;
-    if (WORKSPACE_ACTION_TYPES.has(type) && !intent.allowWorkspaceAction) continue;
-    const generalResearch = isResearchRequest(message);
-    if (type === "web_search" && !intent.explicitCanvas && !intent.structuredDeliverable && !generalResearch) continue;
-    if ((type === "create_web_card" || type === "create_link" || type === "create_quote") && !intent.explicitCanvas && !intent.structuredDeliverable && !intent.sourceResearch && !generalResearch) continue;
-    if (["image_search", "reverse_image_search", "text_image_search"].includes(type) && !intent.mediaSearch && !intent.explicitCanvas && !intent.structuredDeliverable) continue;
-    if (type === "generate_image" && !intent.mediaGeneration && !intent.explicitCanvas && !intent.structuredDeliverable) continue;
-    if (type === "generate_video" && !intent.mediaGeneration && !intent.explicitCanvas && !intent.structuredDeliverable) continue;
-    if (CARD_CREATION_ACTION_TYPES.has(type) && !intent.allowCardCreation) continue;
-    if (intent.automaticCardMode) {
-      const allowedAutoTypes = intent.visualEvaluation ? VISUAL_EVALUATION_AUTO_CARD_TYPES : AUTO_CARD_ACTION_TYPES;
-      if (!allowedAutoTypes.has(type)) continue;
-      if ((type === "create_link" || type === "create_web_card") && !(action.url || action.content?.url)) continue;
-    }
-    filtered.push(action);
-  }
-  const deduped = dedupeCanvasActions(filtered);
-  if (!intent.automaticCardMode) return deduped;
-  const maxAutoCards = automaticCardLimitForIntent(intent, context.thinkingMode);
-  return deduped.slice(0, maxAutoCards);
+  return result.actions;
+}
+
+function compactActionPolicyTrace(traces = []) {
+  const list = Array.isArray(traces) ? traces.filter(Boolean) : [];
+  if (!list.length) return undefined;
+  const final = list[list.length - 1];
+  return {
+    taskType: final.taskType,
+    confidence: final.confidence,
+    automaticCardMode: final.automaticCardMode,
+    maxActions: final.maxActions,
+    allowedActionTypes: final.allowedActionTypes,
+    proposedActionTypes: Array.from(new Set(list.flatMap((item) => item.proposedActionTypes || []))),
+    finalActionTypes: final.finalActionTypes || [],
+    rejected: list.flatMap((item) => item.rejected || []).slice(0, 12)
+  };
 }
 
 function automaticCardLimitForIntent(intent, thinkingMode = "no-thinking") {
