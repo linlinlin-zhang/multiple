@@ -2709,6 +2709,46 @@ body.chat-sidebar-closed .statusbar > * {
   white-space: pre-wrap;
 }
 
+.chat-policy-trace {
+  width: min(100%, 640px);
+  margin-top: 8px;
+  color: var(--inkMuted);
+}
+
+.chat-policy-trace summary {
+  list-style: none;
+}
+
+.chat-policy-trace summary::-webkit-details-marker {
+  display: none;
+}
+
+.chat-policy-trace-summary {
+  cursor: pointer;
+  min-height: 26px;
+  padding: 4px 10px;
+  border: 1px dashed rgba(0, 112, 204, 0.28);
+  border-radius: 8px;
+  background: rgba(0, 112, 204, 0.05);
+  color: var(--ps-blue);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.chat-policy-trace pre {
+  max-height: min(300px, 38vh);
+  overflow: auto;
+  margin: 8px 0 0;
+  padding: 12px;
+  border: 1px solid rgba(0, 112, 204, 0.18);
+  border-radius: 10px;
+  background: rgba(248, 249, 251, 0.92);
+  color: var(--inkMuted);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
 .chat-action-summary {
   margin-top: 4px;
   color: var(--ps-blue);
@@ -3222,7 +3262,9 @@ html[data-theme="dark"] .chat-conversation-panel {
 html[data-theme="dark"] .chat-context-indicator,
 html[data-theme="dark"] .chat-line.user,
 html[data-theme="dark"] .chat-thinking-bar,
-html[data-theme="dark"] .chat-thinking-panel {
+html[data-theme="dark"] .chat-thinking-panel,
+html[data-theme="dark"] .chat-policy-trace-summary,
+html[data-theme="dark"] .chat-policy-trace pre {
   background: var(--itemBg);
   border-color: var(--border);
 }

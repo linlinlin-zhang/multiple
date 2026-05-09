@@ -23,6 +23,7 @@ import { ingestText, ingestSnippet, retrieveContext, formatContextForPrompt, isE
 import { classifyContent, getFallbackTaskType, resolveTaskType, routeContent } from "./src/lib/taskRouter.js";
 import { ensureMediaGenerationActions } from "./src/lib/chatActionGuard.js";
 import { ensureCommittedCanvasActions } from "./src/lib/canvasActionReliability.js";
+import { finalizeCanvasActions as runCanvasActionPipeline } from "./src/lib/canvasActionPipeline.js";
 import {
   CANVAS_ACTION_REGISTRY,
   buildCanvasActionPolicy,
@@ -1432,46 +1433,26 @@ async function handleRealtimeVoice(body, res) {
   });
   const transcript = stringOr(result?.transcript, "");
   const reply = stringOr(result?.reply, "");
-  let actions = Array.isArray(result?.actions) ? result.actions : [];
-  const actionPolicyTraces = [];
-  const actionPolicyContext = {
-    selectedContext: body?.selectedContext || null,
-    canvas: body?.canvas && typeof body.canvas === "object" ? body.canvas : {},
-    analysis: normalizeChatAnalysis(body?.analysis),
+  const voiceActionPipeline = runCanvasActionPipeline({
+    rawActions: Array.isArray(result?.actions) ? result.actions : [],
+    message: transcript,
+    reply,
+    lang,
     thinkingMode: "no-thinking",
-    policyTraces: actionPolicyTraces
-  };
-  actions = filterCanvasActionsForUserIntent(normalizeVoiceActions(actions), transcript, actionPolicyContext);
-  actions = ensureMediaGenerationActions({
-    message: transcript,
-    actions,
-    reply,
     selectedContext: body?.selectedContext || null,
     canvas: body?.canvas && typeof body.canvas === "object" ? body.canvas : {},
     analysis: normalizeChatAnalysis(body?.analysis),
-    lang,
-    maxActions: MAX_QUICK_CANVAS_ACTIONS_PER_TURN
+    maxActions: MAX_QUICK_CANVAS_ACTIONS_PER_TURN,
+    dependencies: canvasActionPipelineDependencies()
   });
-  actions = ensureCommittedCanvasActions({
-    message: transcript,
-    actions,
-    reply,
-    analysis: normalizeChatAnalysis(body?.analysis),
-    lang,
-    maxActions: MAX_QUICK_CANVAS_ACTIONS_PER_TURN
-  });
-  actions = ensureChatFallbackActionsClean(transcript, actions, reply);
-  actions = enrichCanvasActions(actions, transcript, reply, lang, "no-thinking");
-  actions = filterCanvasActionsForUserIntent(actions, transcript, actionPolicyContext);
-  actions = ensureAutomaticSmartCardActions(actions, transcript, reply, lang, "no-thinking");
-  actions = filterCanvasActionsForUserIntent(actions, transcript, actionPolicyContext);
+  const actions = voiceActionPipeline.actions;
 
   return sendJson(res, 200, {
     provider: "api",
     model: runtimeConfigs.realtime.model,
     ...result,
     actions,
-    actionPolicy: compactActionPolicyTrace(actionPolicyTraces)
+    actionPolicy: voiceActionPipeline.actionPolicy
   });
 }
 
@@ -1840,35 +1821,22 @@ async function handleChat(body, res) {
 
   const references = extractResponseReferences(response);
   const reply = normalizeCitationMarkers(collectChatContent(response).trim(), references);
-  let actions = normalizeVoiceActions(extractToolCallActions(response));
-  const actionPolicyTraces = [];
-  const actionPolicyContext = { agentMode, selectedContext, canvas, analysis, thinkingMode, policyTraces: actionPolicyTraces };
-  actions = filterCanvasActionsForUserIntent(actions, message, actionPolicyContext);
-  actions = ensureMediaGenerationActions({
+  const actionPipeline = runCanvasActionPipeline({
+    rawActions: extractToolCallActions(response),
     message,
-    actions,
     reply,
+    response,
+    lang,
+    thinkingMode,
+    agentMode,
     selectedContext,
     canvas,
     analysis,
-    lang,
-    maxActions: canvasActionLimitForThinkingMode(thinkingMode)
+    webSearchEnabled: webSearchEnabled || webSearchForced,
+    maxActions: canvasActionLimitForThinkingMode(thinkingMode),
+    dependencies: canvasActionPipelineDependencies()
   });
-  actions = ensureCommittedCanvasActions({
-    message,
-    actions,
-    reply,
-    analysis,
-    lang,
-    maxActions: canvasActionLimitForThinkingMode(thinkingMode)
-  });
-  actions = ensureChatFallbackActionsClean(message, actions, reply);
-  actions = mergeReferenceActions(actions, response, message, webSearchEnabled || webSearchForced);
-  actions = enrichCanvasActions(actions, message, reply, lang, thinkingMode);
-  actions = agentMode ? finalizeAgentControllerActions(actions, message, lang) : actions.filter((action) => action.type !== "create_agent");
-  actions = filterCanvasActionsForUserIntent(actions, message, actionPolicyContext);
-  actions = ensureAutomaticSmartCardActions(actions, message, reply, lang, thinkingMode);
-  actions = filterCanvasActionsForUserIntent(actions, message, actionPolicyContext);
+  const actions = actionPipeline.actions;
   const thinkingContent = thinkingMode === "thinking" ? collectReasoningContent(response) : "";
   const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
 
@@ -1888,7 +1856,7 @@ async function handleChat(body, res) {
     responseId: response.id || undefined,
     previousResponseId: response.id || undefined,
     references,
-    actionPolicy: compactActionPolicyTrace(actionPolicyTraces),
+    actionPolicy: actionPipeline.actionPolicy,
     contextBudget: effectiveContextBudget?.reduced ? effectiveContextBudget : undefined,
     retrievedContext: retrieved.length ? retrieved.length : undefined
   });
@@ -2049,35 +2017,22 @@ async function ingestChatDocumentAttachments(sessionId, attachments) {
 function buildChatResultFromResponse({ response, message, thinkingMode, agentMode, lang, streamedReasoning = "", webSearchEnabled = false, selectedContext = null, canvas = {}, analysis = {} }) {
   const references = extractResponseReferences(response);
   const reply = normalizeCitationMarkers(collectChatContent(response).trim(), references);
-  let actions = normalizeVoiceActions(extractToolCallActions(response));
-  const actionPolicyTraces = [];
-  const actionPolicyContext = { agentMode, selectedContext, canvas, analysis, thinkingMode, policyTraces: actionPolicyTraces };
-  actions = filterCanvasActionsForUserIntent(actions, message, actionPolicyContext);
-  actions = ensureMediaGenerationActions({
+  const actionPipeline = runCanvasActionPipeline({
+    rawActions: extractToolCallActions(response),
     message,
-    actions,
     reply,
+    response,
+    lang,
+    thinkingMode,
+    agentMode,
     selectedContext,
     canvas,
     analysis,
-    lang,
-    maxActions: canvasActionLimitForThinkingMode(thinkingMode)
+    webSearchEnabled,
+    maxActions: canvasActionLimitForThinkingMode(thinkingMode),
+    dependencies: canvasActionPipelineDependencies()
   });
-  actions = ensureCommittedCanvasActions({
-    message,
-    actions,
-    reply,
-    analysis,
-    lang,
-    maxActions: canvasActionLimitForThinkingMode(thinkingMode)
-  });
-  actions = ensureChatFallbackActionsClean(message, actions, reply);
-  actions = mergeReferenceActions(actions, response, message, webSearchEnabled);
-  actions = enrichCanvasActions(actions, message, reply, lang, thinkingMode);
-  actions = agentMode ? finalizeAgentControllerActions(actions, message, lang) : actions.filter((action) => action.type !== "create_agent");
-  actions = filterCanvasActionsForUserIntent(actions, message, actionPolicyContext);
-  actions = ensureAutomaticSmartCardActions(actions, message, reply, lang, thinkingMode);
-  actions = filterCanvasActionsForUserIntent(actions, message, actionPolicyContext);
+  const actions = actionPipeline.actions;
   const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
   return {
     provider: "api",
@@ -2090,7 +2045,7 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
     responseId: response?.id || undefined,
     previousResponseId: response?.id || undefined,
     references,
-    actionPolicy: compactActionPolicyTrace(actionPolicyTraces)
+    actionPolicy: actionPipeline.actionPolicy
   };
 }
 
@@ -3339,6 +3294,23 @@ function actionContentForDedupe(action) {
   } catch {
     return "";
   }
+}
+
+function canvasActionPipelineDependencies() {
+  return {
+    normalizeActions: normalizeVoiceActions,
+    applyPolicy: ({ actions, message, context }) => filterCanvasActionsForUserIntent(actions, message, context),
+    ensureMediaGenerationActions,
+    ensureCommittedCanvasActions,
+    cleanupFallbackActions: ({ message, actions, reply }) => ensureChatFallbackActionsClean(message, actions, reply),
+    mergeReferenceActions: ({ actions, response, message, webSearchEnabled }) => mergeReferenceActions(actions, response, message, webSearchEnabled),
+    enrichActions: ({ actions, message, reply, lang, thinkingMode }) => enrichCanvasActions(actions, message, reply, lang, thinkingMode),
+    finalizeAgentActions: ({ actions, message, lang, agentMode }) => (
+      agentMode ? finalizeAgentControllerActions(actions, message, lang) : actions.filter((action) => action.type !== "create_agent")
+    ),
+    ensureAutomaticSmartCardActions: ({ actions, message, reply, lang, thinkingMode }) => ensureAutomaticSmartCardActions(actions, message, reply, lang, thinkingMode),
+    compactActionPolicyTrace
+  };
 }
 
 function filterCanvasActionsForUserIntent(actions, message, context = {}) {

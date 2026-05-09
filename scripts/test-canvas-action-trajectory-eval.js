@@ -105,6 +105,66 @@ function rejectedReasons(trace, type) {
 
 {
   const { result, trace } = evaluateTrajectory(
+    "analysis-first request rejects immediate generation",
+    "先分析一下这张图能不能改成商业海报，不要直接出图",
+    [
+      { type: "generate_image", prompt: "商业海报改图" },
+      { type: "create_note", title: "改图可行性分析", content: { text: "先分析，不执行成图。" } }
+    ],
+    { thinkingMode: "thinking" }
+  );
+  assert.deepEqual(result.actions.map((action) => action.type), ["create_note"]);
+  assert.equal(rejectedReasons(trace, "generate_image").includes("not_allowed_for_intent"), true);
+  assert.equal(trace.taskType, "analysis");
+}
+
+{
+  const { result, trace } = evaluateTrajectory(
+    "explicit four-image generation allows distinct outputs",
+    "请生成4张不同风格的海报图片",
+    [
+      { type: "generate_image", prompt: "未来主义海报，蓝色光线" },
+      { type: "generate_image", prompt: "极简主义海报，黑白构成" },
+      { type: "generate_image", prompt: "手绘插画海报，温暖色彩" },
+      { type: "generate_image", prompt: "复古拼贴海报，高对比" }
+    ],
+    { thinkingMode: "thinking" }
+  );
+  assert.equal(trace.taskType, "media_generation");
+  assert.deepEqual(result.actions.map((action) => action.type), ["generate_image", "generate_image", "generate_image", "generate_image"]);
+}
+
+{
+  const { result, trace } = evaluateTrajectory(
+    "existing references do not imply web search",
+    "请整理已有参考资料，做成摘要卡片",
+    [
+      { type: "web_search", query: "相关资料" },
+      { type: "create_note", title: "已有参考摘要", content: { text: "只整理已有资料。" } }
+    ],
+    { thinkingMode: "thinking" }
+  );
+  assert.deepEqual(result.actions.map((action) => action.type), ["create_note"]);
+  assert.equal(rejectedReasons(trace, "web_search").includes("not_allowed_for_intent"), true);
+}
+
+{
+  const { result, trace } = evaluateTrajectory(
+    "explicit latest research allows web search",
+    "帮我找最新资料和官方来源，整理成参考卡",
+    [
+      { type: "web_search", query: "最新 官方 来源" },
+      { type: "create_web_card", title: "官方来源", url: "https://example.com/official" },
+      { type: "create_note", title: "资料摘要", content: { text: "汇总最新资料。" } }
+    ],
+    { thinkingMode: "thinking" }
+  );
+  assert.equal(trace.taskType, "web_research");
+  assert.deepEqual(result.actions.map((action) => action.type), ["web_search", "create_web_card", "create_note"]);
+}
+
+{
+  const { result, trace } = evaluateTrajectory(
     "no-canvas request rejects proposed canvas action",
     "只要文字回答，不要创建卡片",
     [{ type: "create_note", title: "不该出现" }],

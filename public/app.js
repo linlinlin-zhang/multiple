@@ -184,6 +184,7 @@ const state = {
   groups: new Map(),      // groupId -> { id, title, nodeIds, color }
   collapsed: new Set(),        // full collapse (double-click)
   selectiveHidden: new Set(),  // selective hide (single-click / auto-collapse)
+  autoHiddenReasons: new Map(), // nodeId -> system reason for selective auto-hide
   contentHidden: new Set(),
   generatedCount: 0,
   selectedNodeId: null,
@@ -4161,6 +4162,7 @@ function normalizeChatThreadMessage(message) {
     thinkingContent: normalizeChatThinkingContent(message?.thinkingContent || message?.reasoningContent || message?.reasoning),
     thinkingRequested: Boolean(message?.thinkingRequested || message?.thinkingContent || message?.reasoningContent),
     actions: normalizeChatMessageActions(message?.actions),
+    actionPolicy: normalizeChatActionPolicy(message?.actionPolicy),
     artifacts: normalizeChatArtifacts(message?.artifacts || message?.materials || message?.cards),
     references: normalizeChatReferences(message?.references),
     responseId: typeof message?.responseId === "string" ? message.responseId : "",
@@ -4215,6 +4217,15 @@ function normalizeChatMessageActions(value) {
     .filter((action) => action && typeof action === "object" && action.type)
     .slice(0, MAX_DEEP_RESEARCH_CANVAS_CARDS)
     .map((action) => ({ ...action, type: String(action.type) }));
+}
+
+function normalizeChatActionPolicy(value) {
+  if (!value || typeof value !== "object") return null;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return null;
+  }
 }
 
 const ACTION_FEEDBACK_ICONS = {
@@ -4474,6 +4485,7 @@ function serializeChatThreads() {
       thinkingContent: normalizeChatThinkingContent(message.thinkingContent),
       thinkingRequested: Boolean(message.thinkingRequested),
       actions: normalizeChatMessageActions(message.actions),
+      actionPolicy: normalizeChatActionPolicy(message.actionPolicy),
       artifacts: normalizeChatArtifacts(message.artifacts),
       references: normalizeChatReferences(message.references),
       responseId: message.responseId || "",
@@ -7009,20 +7021,38 @@ function actionResultNodeIds(entry = {}) {
 function expandActionBatchNodes(nodeIds = []) {
   let changed = false;
   for (const id of nodeIds) {
-    if (state.selectiveHidden.delete(id)) changed = true;
+    if (state.selectiveHidden.delete(id)) {
+      state.autoHiddenReasons.delete(id);
+      changed = true;
+    }
   }
   if (changed) applyCollapseState();
 }
 
-function autoCollapseActionBatch(nodeIds = [], parentNodeId = "") {
+function autoCollapseActionBatch(nodeIds = [], parentNodeId = "", options = {}) {
   const ids = Array.from(new Set(nodeIds)).filter((id) => id && id !== parentNodeId && state.nodes.has(id));
   if (ids.length < 2) return;
+  const reason = options.reason || "batch-complete";
   for (const id of ids) {
     state.selectiveHidden.add(id);
+    state.autoHiddenReasons.set(id, reason);
   }
   const shouldSelectParent = state.selectedNodeId && ids.includes(state.selectedNodeId) && parentNodeId && state.nodes.has(parentNodeId);
   applyCollapseState();
   if (shouldSelectParent) forceSelectNode(parentNodeId);
+  if (options.save) autoSave();
+}
+
+function scheduleAutoCollapseActionBatch(nodeIds = [], parentNodeId = "", options = {}) {
+  const ids = Array.from(new Set(nodeIds)).filter(Boolean);
+  if (ids.length < 2) return;
+  const delay = Number.isFinite(options.delay) ? Math.max(0, options.delay) : 720;
+  window.setTimeout(() => {
+    autoCollapseActionBatch(ids, parentNodeId, {
+      reason: options.reason || "batch-complete-after-layout",
+      save: options.save !== false
+    });
+  }, delay);
 }
 
 function actionTopicTitle(action = {}, context = {}) {
@@ -7158,8 +7188,10 @@ async function applyVoiceActions(value, context = {}) {
     }
   }
   if (pendingAgents.length) await Promise.all(pendingAgents);
-  if (creationCount > 1 && !batchHadFailure) autoCollapseActionBatch(Array.from(batchNodeIds), batchParentId);
   if (creationCount > 0) scheduleGeneratedArrange({ delay: 180, duration: 500 });
+  if (creationCount > 1 && !batchHadFailure) {
+    scheduleAutoCollapseActionBatch(Array.from(batchNodeIds), batchParentId, { delay: 820 });
+  }
   autoSave();
   return results;
 }
@@ -7397,12 +7429,14 @@ function focusNodeByAction(action) {
 function revealNode(nodeId) {
   if (!nodeId) return;
   state.selectiveHidden.delete(nodeId);
+  state.autoHiddenReasons.delete(nodeId);
   let current = nodeId;
   for (let depth = 0; depth < 20; depth += 1) {
     const parentLink = state.links.find((link) => link.to === current);
     if (!parentLink) break;
     state.collapsed.delete(parentLink.from);
     state.selectiveHidden.delete(parentLink.from);
+    state.autoHiddenReasons.delete(parentLink.from);
     current = parentLink.from;
   }
   applyCollapseState();
@@ -8963,6 +8997,7 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
     state.nodes.delete(id);
     state.collapsed.delete(id);
     state.selectiveHidden.delete(id);
+    state.autoHiddenReasons.delete(id);
     state.links = state.links.filter(l => l.from !== id && l.to !== id);
   }
 
@@ -10050,6 +10085,7 @@ function appendChatMessage(role, content, metadata = {}) {
     thinkingContent: normalizeChatThinkingContent(metadata.thinkingContent || metadata.reasoningContent || metadata.reasoning),
     thinkingRequested: Boolean(metadata.thinkingRequested || metadata.pending),
     actions: normalizeChatMessageActions(metadata.actions),
+    actionPolicy: normalizeChatActionPolicy(metadata.actionPolicy),
     actionResults: normalizeChatActionResults(metadata.actionResults),
     artifacts: normalizeChatArtifacts(metadata.artifacts || metadata.materials || metadata.cards),
     references: normalizeChatReferences(metadata.references),
@@ -10077,6 +10113,9 @@ function updateChatMessage(message, updates = {}) {
   if ("attachments" in updates) message.attachments = normalizeChatAttachments(updates.attachments);
   if ("actions" in updates) {
     message.actions = normalizeChatMessageActions(updates.actions);
+  }
+  if ("actionPolicy" in updates) {
+    message.actionPolicy = normalizeChatActionPolicy(updates.actionPolicy);
   }
   if ("actionResults" in updates) {
     message.actionResults = normalizeChatActionResults(updates.actionResults);
@@ -10231,6 +10270,59 @@ function renderChatEmptyState() {
   return placeholder;
 }
 
+function formatChatActionPolicyTrace(policy = {}) {
+  const lines = [];
+  if (policy.taskType || policy.automaticCardMode !== undefined || policy.maxActions !== undefined) {
+    lines.push(`intent=${policy.taskType || "unknown"} automatic=${Boolean(policy.automaticCardMode)} maxActions=${policy.maxActions ?? ""}`.trim());
+  }
+  if (Array.isArray(policy.finalActionTypes) && policy.finalActionTypes.length) {
+    lines.push(`final=${policy.finalActionTypes.join(", ")}`);
+  }
+  if (Array.isArray(policy.rejected) && policy.rejected.length) {
+    lines.push("rejected:");
+    policy.rejected.slice(0, 12).forEach((item) => {
+      lines.push(`- ${item.type || "unknown"}: ${item.reason || ""}${item.group ? ` (${item.group})` : ""}`);
+    });
+  }
+  if (Array.isArray(policy.stages) && policy.stages.length) {
+    lines.push("stages:");
+    policy.stages.slice(0, 14).forEach((stage) => {
+      const actionTypes = Array.isArray(stage.actionTypes) && stage.actionTypes.length ? ` [${stage.actionTypes.join(", ")}]` : "";
+      lines.push(`- ${stage.name}: ${stage.inputCount ?? 0} -> ${stage.outputCount ?? 0}${actionTypes}`);
+      if (Array.isArray(stage.rejected) && stage.rejected.length) {
+        stage.rejected.slice(0, 4).forEach((item) => {
+          lines.push(`  reject ${item.type || "unknown"}: ${item.reason || ""}`);
+        });
+      }
+    });
+  }
+  if (Array.isArray(policy.events) && policy.events.length) {
+    lines.push("events:");
+    policy.events.slice(-8).forEach((event) => {
+      lines.push(`- ${event.event || "event"}${event.type ? ` ${event.type}` : ""}${event.reason ? `: ${event.reason}` : ""}`);
+    });
+  }
+  return lines.join("\n").trim();
+}
+
+function renderChatActionPolicyTrace(policy = {}) {
+  const text = formatChatActionPolicyTrace(policy);
+  if (!text) return null;
+  const details = document.createElement("details");
+  details.className = "chat-policy-trace";
+  const summary = document.createElement("summary");
+  summary.className = "chat-policy-trace-summary";
+  const rejectedCount = Array.isArray(policy.rejected) ? policy.rejected.length : 0;
+  const stageCount = Array.isArray(policy.stages) ? policy.stages.length : 0;
+  summary.textContent = currentLang === "en"
+    ? `Action trace · ${policy.taskType || "unknown"} · ${stageCount} stages · ${rejectedCount} rejected`
+    : `动作轨迹 · ${policy.taskType || "unknown"} · ${stageCount} 阶段 · ${rejectedCount} 拒绝`;
+  const pre = document.createElement("pre");
+  pre.textContent = text;
+  details.append(summary, pre);
+  return details;
+}
+
 function renderChatMessages({ scrollToBottom = false } = {}) {
   const shouldStickToBottom = scrollToBottom || isChatNearBottom();
   chatMessages.replaceChildren();
@@ -10358,6 +10450,10 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       actions.className = "chat-action-summary";
       actions.textContent = t("chat.actionsApplied", { count: message.actions.length });
       line.appendChild(actions);
+    }
+    if (message.role === "assistant" && message.actionPolicy) {
+      const trace = renderChatActionPolicyTrace(message.actionPolicy);
+      if (trace) line.appendChild(trace);
     }
     chatMessages.appendChild(line);
     renderedChatMessageElements.set(message, rendered);
@@ -10543,6 +10639,7 @@ function renderAnalysis(data) {
 
   state.links = [{ from: "source", to: "analysis", kind: "analysis" }];
   state.selectiveHidden.clear();
+  state.autoHiddenReasons.clear();
   state.contentHidden.clear();
   applyCollapseState();
 }
@@ -10611,6 +10708,7 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
       state.nodes.delete(id);
       state.collapsed.delete(id);
       state.selectiveHidden.delete(id);
+      state.autoHiddenReasons.delete(id);
       state.contentHidden.delete(id);
     }
   }
@@ -10636,6 +10734,7 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
       state.nodes.delete(id);
       state.collapsed.delete(id);
       state.selectiveHidden.delete(id);
+      state.autoHiddenReasons.delete(id);
       state.links = state.links.filter(l => l.from !== id && l.to !== id);
     }
 
@@ -10877,6 +10976,7 @@ async function generateOptionWithReference(id, option, referenceImageDataUrl, ed
         const n = state.nodes.get(sid);
         if (n && !n.generated) {
           state.selectiveHidden.add(sid);
+          state.autoHiddenReasons.set(sid, "sibling-unselected");
           hiddenAny = true;
         }
       }
@@ -13184,6 +13284,7 @@ function clearOptions() {
       state.nodes.delete(id);
       state.collapsed.delete(id);
       state.selectiveHidden.delete(id);
+      state.autoHiddenReasons.delete(id);
     }
   }
   state.links = state.links.filter((link) => !link.to.startsWith("option-") && !link.from.startsWith("option-"));
@@ -13865,9 +13966,21 @@ function toggleSelectiveCollapse(id) {
   if (!descendants.size) return;
 
   const hiddenDescendants = [...descendants].filter(did => state.selectiveHidden.has(did));
+  const autoHiddenDescendants = hiddenDescendants.filter(did => state.autoHiddenReasons.has(did));
+  if (autoHiddenDescendants.length) {
+    for (const did of autoHiddenDescendants) {
+      state.selectiveHidden.delete(did);
+      state.autoHiddenReasons.delete(did);
+    }
+    applyCollapseState();
+    autoSave();
+    return;
+  }
+
   if (hiddenDescendants.length) {
     for (const did of hiddenDescendants) {
       state.selectiveHidden.delete(did);
+      state.autoHiddenReasons.delete(did);
     }
     applyCollapseState();
     autoSave();
@@ -13886,10 +13999,12 @@ function toggleSelectiveCollapse(id) {
   if (anyVisible) {
     for (const did of unGeneratedDescendants) {
       state.selectiveHidden.add(did);
+      state.autoHiddenReasons.delete(did);
     }
   } else {
     for (const did of unGeneratedDescendants) {
       state.selectiveHidden.delete(did);
+      state.autoHiddenReasons.delete(did);
     }
   }
   applyCollapseState();
@@ -13899,6 +14014,7 @@ function toggleSelectiveCollapse(id) {
 function expandAllCollapsed() {
   state.collapsed.clear();
   state.selectiveHidden.clear();
+  state.autoHiddenReasons.clear();
   applyCollapseState();
   autoSave();
 }
@@ -14144,6 +14260,7 @@ function deleteNode(nodeId) {
   state.nodes.delete(nodeId);
   state.collapsed.delete(nodeId);
   state.selectiveHidden.delete(nodeId);
+  state.autoHiddenReasons.delete(nodeId);
   state.contentHidden.delete(nodeId);
 
   // Remove links connected to this node
@@ -16048,6 +16165,7 @@ function computeStateHash() {
     junctions: Object.fromEntries(state.junctions),
     collapsed: Array.from(state.collapsed),
     selectiveHidden: Array.from(state.selectiveHidden),
+    autoHiddenReasons: Object.fromEntries(state.autoHiddenReasons),
     contentHidden: Array.from(state.contentHidden),
     chatMessages: state.chatMessages,
     chatThreads: serializeChatThreads(),
@@ -16112,6 +16230,7 @@ async function prepareStateForSave() {
     links: state.links,
     collapsed: Array.from(state.collapsed),
     selectiveHidden: Array.from(state.selectiveHidden),
+    autoHiddenReasons: Object.fromEntries(state.autoHiddenReasons),
     contentHidden: Array.from(state.contentHidden),
     generatedCount: state.generatedCount,
     selectedNodeId: state.selectedNodeId,
@@ -16422,6 +16541,7 @@ async function loadSession(sessionId) {
         state.nodes.delete(id);
         state.collapsed.delete(id);
         state.selectiveHidden.delete(id);
+        state.autoHiddenReasons.delete(id);
         state.contentHidden.delete(id);
       }
     }
@@ -16429,6 +16549,7 @@ async function loadSession(sessionId) {
     state.links = [];
     state.collapsed.clear();
     state.selectiveHidden.clear();
+    state.autoHiddenReasons.clear();
     state.contentHidden.clear();
     state.generatedCount = 0;
     state.sourceImage = null;
@@ -16888,6 +17009,9 @@ async function loadSession(sessionId) {
     }
     if (sessionState?.selectiveHidden || data.selectiveHidden) {
       for (const id of (sessionState.selectiveHidden || data.selectiveHidden || [])) state.selectiveHidden.add(id);
+    }
+    if (sessionState?.autoHiddenReasons || data.autoHiddenReasons) {
+      state.autoHiddenReasons = new Map(Object.entries(sessionState.autoHiddenReasons || data.autoHiddenReasons || {}));
     }
     if (sessionState?.contentHidden || data.contentHidden) {
       for (const id of (sessionState.contentHidden || data.contentHidden || [])) state.contentHidden.add(id);
@@ -17435,6 +17559,7 @@ function renderFileUnderstanding(understanding) {
 
   state.links = [{ from: "source", to: "analysis", kind: "analysis" }];
   state.selectiveHidden.clear();
+  state.autoHiddenReasons.clear();
   state.contentHidden.clear();
   applyCollapseState();
 }
