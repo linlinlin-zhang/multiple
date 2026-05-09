@@ -4530,12 +4530,15 @@ function normalizeChatMarkdown(markdown) {
 
 function normalizeChatMarkdownText(segment) {
   let text = String(segment || "").replace(/[ \t]+$/gm, "");
+  text = text.replace(/([^\n])([ \t]*)(```|~~~)/g, "$1\n\n$3");
   text = text.replace(/([^\n])[ \t]+(-{3,}|\*{3,}|_{3,})[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "$1\n\n$2\n\n$3 ");
   text = text.replace(/(^|\n)(-{3,}|\*{3,}|_{3,})[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "$1$2\n\n$3 ");
   text = text.replace(/([^\n])[ \t]+(#{1,6})[ \t]+(?=[^\s#])/g, "$1\n\n$2 ");
   text = text.replace(/([。！？!?；;：:])\s*(#{1,6})[ \t]*(?=[^\s#])/g, "$1\n\n$2 ");
   text = text.replace(/\|[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "|\n\n$1 ");
   text = text.replace(/(^|\n)(#{1,6})[ \t]*(?=[^\s#])/g, "$1$2 ");
+  text = text.replace(/([。！？!?；;：:])\s*((?:[-*+]|\d+[.)])[ \t]+(?=\S))/g, "$1\n\n$2");
+  text = text.replace(/([^\n])([ \t]+)((?:[-*+]|\d+[.)])[ \t]+(?=\S))/g, "$1\n$3");
   text = text.split("\n").map(repairInlineMarkdownTableLine).join("\n");
   return text.replace(/\n{3,}/g, "\n\n");
 }
@@ -4588,11 +4591,16 @@ function formatMarkdownTableRow(cells) {
 function renderMarkdownToHtml(markdown) {
   if (!markdown) return "";
   const normalizedMarkdown = normalizeChatMarkdown(markdown);
-  const rawHtml = micromark(normalizedMarkdown, {
-    allowDangerousHtml: false,
-    extensions: [gfm()],
-    htmlExtensions: [gfmHtml()]
-  });
+  let rawHtml = "";
+  try {
+    rawHtml = micromark(normalizedMarkdown, {
+      allowDangerousHtml: false,
+      extensions: [gfm()],
+      htmlExtensions: [gfmHtml()]
+    });
+  } catch {
+    rawHtml = simpleMarkdownToHtml(normalizedMarkdown || markdown);
+  }
   return DOMPurify.sanitize(rawHtml, {
     ALLOWED_TAGS: [
       "p", "h1", "h2", "h3", "h4", "h5", "h6",
@@ -15149,13 +15157,7 @@ function mergeChatAttachmentPayloads(...groups) {
   for (const group of groups) {
     for (const item of (Array.isArray(group) ? group : [])) {
       if (!item || typeof item !== "object") continue;
-      const key = [
-        item.type || "file",
-        item.fileName || item.name || "",
-        item.dataUrl ? item.dataUrl.slice(0, 96) : "",
-        item.text ? item.text.slice(0, 96) : "",
-        item.assetUrl || ""
-      ].join("|");
+      const key = chatAttachmentDedupeKey(item);
       if (seen.has(key)) continue;
       seen.add(key);
       merged.push(item);
@@ -15163,6 +15165,19 @@ function mergeChatAttachmentPayloads(...groups) {
     }
   }
   return merged;
+}
+
+function chatAttachmentDedupeKey(item = {}) {
+  const contentKey = dataUrlDedupeKey(item.dataUrl || item.text || item.assetUrl || item.url || item.hash || "");
+  return [
+    item.type || item.kind || "file",
+    item.source || "",
+    item.fileName || item.name || item.title || "",
+    item.mimeType || "",
+    Number.isFinite(Number(item.size)) ? Number(item.size) : 0,
+    Number.isFinite(Number(item.duration)) ? Math.round(Number(item.duration) * 1000) : 0,
+    contentKey
+  ].join("|");
 }
 
 async function buildCanvasDocumentAttachmentPayload(options = {}) {
@@ -15186,6 +15201,7 @@ async function buildCanvasDocumentAttachmentPayload(options = {}) {
     if (attachment?.text || attachment?.dataUrl) {
       payloads.push({
         type: "file",
+        nodeId,
         name: attachment.fileName,
         fileName: attachment.fileName,
         mimeType: attachment.mimeType,
@@ -15210,13 +15226,37 @@ function mergeDataUrlList(...groups) {
     const items = Array.isArray(group) ? group : [group];
     for (const item of items) {
       const value = typeof item === "string" ? item.trim() : "";
-      if (!value || seen.has(value.slice(0, 160))) continue;
-      seen.add(value.slice(0, 160));
+      const key = dataUrlDedupeKey(value);
+      if (!value || seen.has(key)) continue;
+      seen.add(key);
       merged.push(value);
       if (merged.length >= 8) return merged;
     }
   }
   return merged;
+}
+
+function dataUrlDedupeKey(value) {
+  const text = String(value || "");
+  if (!text) return "";
+  if (text.length <= 4096) return `${text.length}:${text}`;
+  const chunkSize = 768;
+  const starts = [
+    0,
+    Math.max(0, Math.floor(text.length * 0.25) - Math.floor(chunkSize / 2)),
+    Math.max(0, Math.floor(text.length * 0.5) - Math.floor(chunkSize / 2)),
+    Math.max(0, Math.floor(text.length * 0.75) - Math.floor(chunkSize / 2)),
+    Math.max(0, text.length - chunkSize)
+  ];
+  let hash = 2166136261;
+  for (const start of starts) {
+    const end = Math.min(text.length, start + chunkSize);
+    for (let index = start; index < end; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+  return `${text.length}:${(hash >>> 0).toString(36)}:${text.slice(0, 64)}:${text.slice(-64)}`;
 }
 
 const CHAT_MODEL_IMAGE_TARGET_BYTES = 520 * 1024;
@@ -15276,6 +15316,11 @@ async function prepareChatMediaForModel({ imageDataUrls = [], videoDataUrl = "",
     notes.push(currentLang === "en"
       ? `${compressed.length - selectedImages.length} image(s) were kept on canvas but omitted from this model turn to stay under the request-size limit.`
       : `${compressed.length - selectedImages.length} 张图片保留在画布中，但本轮没有直接发给模型，以避免超过请求体大小限制。`);
+  }
+  if (selectedImages.length) {
+    notes.push(currentLang === "en"
+      ? `The model receives ${selectedImages.length} image(s) as direct visual input in this turn.`
+      : `本轮模型会直接收到 ${selectedImages.length} 张图片作为视觉输入。`);
   }
 
   return {
@@ -15429,22 +15474,54 @@ function canvasImageNodeIds(preferredNodeIds = []) {
   return ids;
 }
 
+async function firstReadableImageDataUrl(urls = []) {
+  const seen = new Set();
+  for (const url of urls) {
+    const value = typeof url === "string" ? url.trim() : "";
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    const dataUrl = await safeImageUrlToDataUrl(value);
+    if (dataUrl) return dataUrl;
+  }
+  return "";
+}
+
+async function firstReadableAssetDataUrl(urls = []) {
+  const seen = new Set();
+  for (const url of urls) {
+    const value = typeof url === "string" ? url.trim() : "";
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    const dataUrl = await safeAssetUrlToDataUrl(value);
+    if (dataUrl) return dataUrl;
+  }
+  return "";
+}
+
 async function getImageDataUrlForNodePreferLocal(nodeId) {
   if (!nodeId) return "";
   const node = state.nodes.get(nodeId);
   if (nodeId === "source") {
-    if (state.sourceImageHash) return safeAssetUrlToDataUrl(`/api/assets/${state.sourceImageHash}?kind=upload`);
-    if (state.sourceImage?.startsWith("data:")) return state.sourceImage;
-    return state.sourceImage ? safeImageUrlToDataUrl(state.sourceImage) : "";
+    return firstReadableImageDataUrl([
+      state.sourceImageHash ? `/api/assets/${state.sourceImageHash}?kind=upload` : "",
+      state.sourceImage || ""
+    ]);
   }
   if (node?.sourceCard) {
     const localUrl = sourceCardLocalImageUrl(node.sourceCard.imageHash);
-    const imageUrl = localUrl || node.sourceCard.imageUrl || node.sourceCard.remoteImageUrl || "";
-    return imageUrl ? safeImageUrlToDataUrl(imageUrl) : "";
+    return firstReadableImageDataUrl([
+      localUrl,
+      node.sourceCard.imageUrl || "",
+      node.sourceCard.remoteImageUrl || ""
+    ]);
   }
   if (node?.generated) {
-    const imageUrl = node.imageHash ? `/api/assets/${node.imageHash}?kind=generated` : node.element?.querySelector(".generated-image")?.src || "";
-    return imageUrl ? safeImageUrlToDataUrl(imageUrl) : "";
+    return firstReadableImageDataUrl([
+      node.imageHash ? `/api/assets/${node.imageHash}?kind=generated` : "",
+      node.imageUrl || "",
+      node.remoteImageUrl || "",
+      node.element?.querySelector(".generated-image")?.src || ""
+    ]);
   }
   return "";
 }
@@ -15466,17 +15543,25 @@ async function getVideoDataUrlForNode(nodeId) {
   const node = state.nodes.get(nodeId);
   if (nodeId === "source") {
     if (state.sourceType !== "video") return "";
-    if (state.sourceVideo?.startsWith("data:")) return state.sourceVideo;
-    if (state.sourceVideoHash) return safeAssetUrlToDataUrl(`/api/assets/${state.sourceVideoHash}?kind=upload`);
-    return state.sourceVideo ? safeAssetUrlToDataUrl(state.sourceVideo) : "";
+    return firstReadableAssetDataUrl([
+      state.sourceVideoHash ? `/api/assets/${state.sourceVideoHash}?kind=upload` : "",
+      state.sourceVideo || ""
+    ]);
   }
   if (node?.sourceCard) {
-    const videoUrl = sourceCardDisplayVideoUrl(node.sourceCard);
-    return videoUrl ? safeAssetUrlToDataUrl(videoUrl) : "";
+    return firstReadableAssetDataUrl([
+      node.sourceCard.sourceVideoHash ? `/api/assets/${node.sourceCard.sourceVideoHash}?kind=upload` : "",
+      node.sourceCard.videoHash ? `/api/assets/${node.sourceCard.videoHash}?kind=upload` : "",
+      node.sourceCard.sourceVideoUrl || "",
+      node.sourceCard.videoUrl || ""
+    ]);
   }
   if (node?.generated) {
-    const videoUrl = node.videoUrl || (node.videoHash ? `/api/assets/${node.videoHash}?kind=generated` : "") || node.element?.querySelector("video")?.src || "";
-    return videoUrl ? safeAssetUrlToDataUrl(videoUrl) : "";
+    return firstReadableAssetDataUrl([
+      node.videoHash ? `/api/assets/${node.videoHash}?kind=generated` : "",
+      node.videoUrl || "",
+      node.element?.querySelector("video")?.src || ""
+    ]);
   }
   return "";
 }
@@ -16355,39 +16440,47 @@ async function prepareStateForSave() {
 async function getSourceImageDataUrl(nodeId = state.selectedNodeId) {
   const selected = nodeId ? state.nodes.get(nodeId) : null;
   if (selected?.sourceCard) {
-    const imageUrl = sourceCardReferenceImageUrl(selected.sourceCard);
-    return imageUrl ? safeImageUrlToDataUrl(imageUrl) : "";
+    return firstReadableImageDataUrl([
+      sourceCardLocalImageUrl(selected.sourceCard.imageHash),
+      selected.sourceCard.imageUrl || "",
+      selected.sourceCard.remoteImageUrl || ""
+    ]);
   }
   if (selected && nodeId !== "source") {
     const info = getImageNodeInfo(nodeId);
-    if (info?.imageUrl) return safeImageUrlToDataUrl(info.imageUrl);
+    if (info?.imageUrl) return firstReadableImageDataUrl([
+      selected.imageHash ? `/api/assets/${selected.imageHash}?kind=generated` : "",
+      info.imageUrl
+    ]);
   }
-  if (state.sourceImage && state.sourceImage.startsWith("data:")) return state.sourceImage;
-  if (state.sourceImageHash) {
-    return safeAssetUrlToDataUrl(`/api/assets/${state.sourceImageHash}?kind=upload`);
-  }
-  return state.sourceImage;
+  return firstReadableImageDataUrl([
+    state.sourceImageHash ? `/api/assets/${state.sourceImageHash}?kind=upload` : "",
+    state.sourceImage || ""
+  ]);
 }
 
 async function getSourceVideoDataUrl(nodeId = state.selectedNodeId) {
   const selected = nodeId ? state.nodes.get(nodeId) : null;
   if (selected?.sourceCard) {
-    const videoUrl = sourceCardDisplayVideoUrl(selected.sourceCard);
-    return videoUrl ? safeAssetUrlToDataUrl(videoUrl) : "";
+    return firstReadableAssetDataUrl([
+      selected.sourceCard.sourceVideoHash ? `/api/assets/${selected.sourceCard.sourceVideoHash}?kind=upload` : "",
+      selected.sourceCard.videoHash ? `/api/assets/${selected.sourceCard.videoHash}?kind=upload` : "",
+      selected.sourceCard.sourceVideoUrl || "",
+      selected.sourceCard.videoUrl || ""
+    ]);
   }
   if (selected && nodeId !== "source") {
-    const videoUrl = selected.videoUrl || (selected.videoHash ? `/api/assets/${selected.videoHash}?kind=generated` : "") || selected.element?.querySelector("video")?.src || "";
-    if (videoUrl) return safeAssetUrlToDataUrl(videoUrl);
+    return firstReadableAssetDataUrl([
+      selected.videoHash ? `/api/assets/${selected.videoHash}?kind=generated` : "",
+      selected.videoUrl || "",
+      selected.element?.querySelector("video")?.src || ""
+    ]);
   }
   if (state.sourceType !== "video") return "";
-  if (state.sourceVideo && state.sourceVideo.startsWith("data:")) return state.sourceVideo;
-  if (state.sourceVideoHash) {
-    return safeAssetUrlToDataUrl(`/api/assets/${state.sourceVideoHash}?kind=upload`);
-  }
-  if (state.sourceVideo && !state.sourceVideo.startsWith("data:")) {
-    return safeAssetUrlToDataUrl(state.sourceVideo);
-  }
-  return "";
+  return firstReadableAssetDataUrl([
+    state.sourceVideoHash ? `/api/assets/${state.sourceVideoHash}?kind=upload` : "",
+    state.sourceVideo || ""
+  ]);
 }
 
 async function safeImageUrlToDataUrl(url) {

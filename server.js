@@ -1868,18 +1868,23 @@ async function handleChat(body, res) {
 async function normalizeChatDocumentAttachments(value, lang = "zh") {
   const raw = Array.isArray(value) ? value : (value ? [value] : []);
   const results = [];
+  const seen = new Set();
   for (const item of raw.slice(0, CHAT_ATTACHMENT_MAX_COUNT)) {
     if (!item || typeof item !== "object") continue;
     const kind = String(item.type || item.kind || "").toLowerCase();
     if (kind.includes("image")) continue;
     const fileName = String(item.fileName || item.name || item.title || "document").trim().slice(0, 180);
     const mimeType = String(item.mimeType || "").trim().slice(0, 180);
+    const source = String(item.source || "").trim().slice(0, 120);
+    const nodeId = String(item.nodeId || item.id || "").trim().slice(0, 120);
     if (kind.includes("video") || mimeType.startsWith("video/")) {
-      results.push({
+      const normalized = {
         type: "video",
         fileName: fileName || "video",
         mimeType,
         ext: extensionFromFileName(fileName) || extensionFromMimeType(mimeType) || "video",
+        source,
+        nodeId,
         text: "",
         truncated: false,
         totalPages: 0,
@@ -1887,7 +1892,12 @@ async function normalizeChatDocumentAttachments(value, lang = "zh") {
         parseError: "",
         duration: Number.isFinite(Number(item.duration)) ? Number(item.duration) : 0,
         size: Number.isFinite(Number(item.size)) ? Number(item.size) : 0
-      });
+      };
+      const key = chatAttachmentDedupeKey(normalized);
+      if (!seen.has(key)) {
+        seen.add(key);
+        results.push(normalized);
+      }
       continue;
     }
     const dataUrl = typeof item.dataUrl === "string" ? item.dataUrl.trim() : "";
@@ -1910,18 +1920,43 @@ async function normalizeChatDocumentAttachments(value, lang = "zh") {
     }
 
     const truncated = text.length > CHAT_ATTACHMENT_MAX_CHARS;
-    results.push({
+    const normalized = {
       fileName,
       mimeType,
       ext,
+      source,
+      nodeId,
       text: text.slice(0, CHAT_ATTACHMENT_MAX_CHARS),
       truncated,
       totalPages,
       isScanned,
       parseError: parseError.slice(0, 240)
+    };
+    const key = chatAttachmentDedupeKey({
+      ...normalized,
+      dataUrl,
+      size: Number.isFinite(Number(item.size)) ? Number(item.size) : 0
     });
+    if (!seen.has(key)) {
+      seen.add(key);
+      results.push(normalized);
+    }
   }
   return results.filter((item) => item.fileName || item.text || item.parseError);
+}
+
+function chatAttachmentDedupeKey(item = {}) {
+  const contentKey = dataUrlDedupeKey(item.dataUrl || item.text || item.assetUrl || item.url || item.hash || "");
+  return [
+    item.type || item.kind || "file",
+    item.source || "",
+    item.nodeId || item.id || "",
+    item.fileName || item.name || item.title || "",
+    item.mimeType || "",
+    Number.isFinite(Number(item.size)) ? Number(item.size) : 0,
+    Number.isFinite(Number(item.duration)) ? Math.round(Number(item.duration) * 1000) : 0,
+    contentKey
+  ].join("|");
 }
 
 async function extractDocumentTextFromDataUrl(dataUrl, fileName = "") {
@@ -1959,12 +1994,16 @@ async function extractDocumentTextFromBuffer(buffer, ext) {
 function buildChatAttachmentContext(attachments, lang = "zh") {
   if (!attachments.length) return "";
   const isEn = lang === "en";
-  let remaining = CHAT_ATTACHMENT_MAX_CHARS;
+  const textAttachments = attachments.filter((attachment) => attachment.type !== "video");
+  const perAttachmentReserve = textAttachments.length > 1
+    ? Math.max(1200, Math.floor(CHAT_ATTACHMENT_MAX_CHARS / Math.min(textAttachments.length, CHAT_ATTACHMENT_MAX_COUNT)))
+    : CHAT_ATTACHMENT_MAX_CHARS;
+  let sharedRemaining = CHAT_ATTACHMENT_MAX_CHARS;
   const lines = [
     isEn ? "# Document Context" : "# 文档上下文",
     isEn
-      ? "Use these uploaded or selected source-card document contents as first-class context for the current answer. If extraction is limited, state that limitation clearly."
-      : "请把这些上传或选中的源卡片文档内容作为本轮回答的一等上下文使用。如果提取受限，请在回答中明确说明局限。"
+      ? "Use these uploaded or selected source-card document contents as first-class context for the current answer. Multiple documents are sampled fairly so later files are not silently ignored. If extraction is limited, state that limitation clearly."
+      : "请把这些上传或选中的源卡片文档内容作为本轮回答的一等上下文使用。多个文档会公平采样，避免后面的文件被静默忽略；如果提取受限，请在回答中明确说明局限。"
   ];
 
   for (const attachment of attachments) {
@@ -1977,17 +2016,18 @@ function buildChatAttachmentContext(attachments, lang = "zh") {
     ].filter(Boolean).join(", ");
     lines.push("", `## ${title}${meta ? ` (${meta})` : ""}`);
     if (attachment.type === "video") {
-      lines.push(isEn ? "Video attachment metadata is listed here; the video bytes are sent separately as model video input." : "这里列出视频附件元数据；视频内容会作为模型视频输入单独发送。");
+      lines.push(isEn ? "Video attachment metadata is listed here; one selected/attached video may be sent separately as direct model video input, while additional videos remain represented by canvas metadata." : "这里列出视频附件元数据；一个选中/附加视频可能会作为模型视频输入单独发送，其余视频会以画布元数据形式保留。");
       continue;
     }
     if (attachment.parseError) {
       lines.push(isEn ? `Extraction warning: ${attachment.parseError}` : `提取警告：${attachment.parseError}`);
     }
-    if (attachment.text && remaining > 0) {
-      const chunk = attachment.text.slice(0, remaining);
+    if (attachment.text && sharedRemaining > 0) {
+      const limit = Math.min(perAttachmentReserve, sharedRemaining);
+      const chunk = attachment.text.slice(0, limit);
       lines.push(isEn ? "Extracted content:" : "提取内容：", chunk);
-      remaining -= chunk.length;
-      if (attachment.truncated || remaining <= 0) {
+      sharedRemaining -= chunk.length;
+      if (attachment.truncated || chunk.length < attachment.text.length || sharedRemaining <= 0) {
         lines.push(isEn ? "[Content truncated for prompt length.]" : "【因提示词长度限制，内容已截断。】");
       }
     } else if (!attachment.text) {
@@ -1999,14 +2039,22 @@ function buildChatAttachmentContext(attachments, lang = "zh") {
 
 async function ingestChatDocumentAttachments(sessionId, attachments) {
   if (!sessionId || !isEmbeddingConfigured()) return;
-  for (const attachment of attachments) {
+  for (let index = 0; index < attachments.length; index += 1) {
+    const attachment = attachments[index];
     const text = String(attachment?.text || "").trim();
     if (text.length < 30) continue;
+    const identity = [
+      attachment.nodeId || "",
+      attachment.source || "",
+      attachment.fileName || "",
+      dataUrlDedupeKey(text).slice(0, 48),
+      index
+    ].filter(Boolean).join(":");
     await ingestText({
       sessionId,
       kind: CONTEXT_KINDS.FILE,
       text,
-      sourceId: `chat-file:${attachment.fileName || Date.now()}`,
+      sourceId: `chat-file:${identity || Date.now()}`,
       sourceMeta: {
         fileName: attachment.fileName || "",
         mimeType: attachment.mimeType || "",
@@ -2079,17 +2127,6 @@ function fitChatPayloadToModelBudget(payload, config, { stream = false, transpor
     appendPromptNotice(payload, notice);
   }
 
-  while (estimateModelRequestBytes(payload, config, { stream, transport }) > target && removeLastImagePart(payload)) {
-    budget.droppedImages += 1;
-    budget.reduced = true;
-  }
-
-  if (estimateModelRequestBytes(payload, config, { stream, transport }) > target && removeVideoPart(payload)) {
-    budget.droppedVideo = true;
-    budget.reduced = true;
-    appendPromptNotice(payload, notice);
-  }
-
   const textLimits = [48000, 32000, 24000, 16000, 10000, 7000, 5000, 3500];
   for (const limit of textLimits) {
     if (estimateModelRequestBytes(payload, config, { stream, transport }) <= target) break;
@@ -2099,6 +2136,12 @@ function fitChatPayloadToModelBudget(payload, config, { stream = false, transpor
     } else {
       break;
     }
+  }
+
+  if (estimateModelRequestBytes(payload, config, { stream, transport }) > target && removeVideoPart(payload)) {
+    budget.droppedVideo = true;
+    budget.reduced = true;
+    appendPromptNotice(payload, notice);
   }
 
   while (estimateModelRequestBytes(payload, config, { stream, transport }) > target && removeLastImagePart(payload)) {
@@ -7447,13 +7490,36 @@ function normalizeImageDataUrls(value, first = "") {
   for (const item of [first, ...raw]) {
     const dataUrl = normalizeDataUrl(item);
     if (!dataUrl) continue;
-    const key = dataUrl.slice(0, 160);
+    const key = dataUrlDedupeKey(dataUrl);
     if (seen.has(key)) continue;
     seen.add(key);
     urls.push(dataUrl);
     if (urls.length >= CHAT_IMAGE_INPUT_MAX_COUNT) break;
   }
   return urls;
+}
+
+function dataUrlDedupeKey(value) {
+  const text = String(value || "");
+  if (!text) return "";
+  if (text.length <= 4096) return `${text.length}:${text}`;
+  const chunkSize = 768;
+  const starts = [
+    0,
+    Math.max(0, Math.floor(text.length * 0.25) - Math.floor(chunkSize / 2)),
+    Math.max(0, Math.floor(text.length * 0.5) - Math.floor(chunkSize / 2)),
+    Math.max(0, Math.floor(text.length * 0.75) - Math.floor(chunkSize / 2)),
+    Math.max(0, text.length - chunkSize)
+  ];
+  let hash = 2166136261;
+  for (const start of starts) {
+    const end = Math.min(text.length, start + chunkSize);
+    for (let index = start; index < end; index += 1) {
+      hash ^= text.charCodeAt(index);
+      hash = Math.imul(hash, 16777619);
+    }
+  }
+  return `${text.length}:${(hash >>> 0).toString(36)}:${text.slice(0, 64)}:${text.slice(-64)}`;
 }
 
 function normalizeVideoDataUrl(value) {
