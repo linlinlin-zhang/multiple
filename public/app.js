@@ -202,6 +202,7 @@ const DEFAULT_BLUEPRINT_REFERENCE_STRENGTH = 0.7;
 const BLUEPRINT_GUIDE_DISMISS_AFTER = 3;
 const ANALYSIS_CANVAS_CARD_MAX = 8;
 const EXPLORE_CANVAS_CARD_MAX = 10;
+const BATCH_FILE_IMPORT_MAX = 10;
 const MAX_QUICK_CANVAS_ACTIONS_PER_TURN = 8;
 const MAX_THINKING_CANVAS_ACTIONS_PER_TURN = 12;
 const MAX_DEEP_RESEARCH_CANVAS_CARDS = 20;
@@ -800,7 +801,10 @@ const i18n = {
     "save.alertFirst": "请先保存会话再导出。",
     "save.exportFailed": "导出失败：",
     "save.importFailed": "导入失败：",
-    "file.unsupported": "不支持的文件类型。请上传图片或文本文件。",
+    "file.unsupported": "不支持的文件类型。请上传图片、视频或文档。",
+    "file.batchLimited": "一次最多导入 {max} 个文件，已导入前 {count} 个。",
+    "file.batchImported": "已导入 {count} 个文件。",
+    "canvas.blankReused": "当前已是未使用的新画布。",
     "file.readError": "文件读取失败：",
     "material.searchPlaceholder": "搜索素材库素材...",
     "material.searchPrompt": "输入关键词搜索素材库",
@@ -1267,7 +1271,10 @@ const i18n = {
     "save.alertFirst": "Please save the session before exporting.",
     "save.exportFailed": "Export failed: ",
     "save.importFailed": "Import failed: ",
-    "file.unsupported": "Unsupported file type. Please upload an image or text document.",
+    "file.unsupported": "Unsupported file type. Please upload an image, video, or document.",
+    "file.batchLimited": "You can import up to {max} files at once; imported the first {count}.",
+    "file.batchImported": "Imported {count} files.",
+    "canvas.blankReused": "This is already an unused new canvas.",
     "file.readError": "File read failed: ",
     "image.error": "Image read failed",
     "image.chooseFile": "Please select an image file",
@@ -4809,6 +4816,7 @@ async function checkHealth() {
 function applyTheme(theme) {
   if (theme !== "light" && theme !== "dark") return;
   document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.classList.toggle("dark", theme === "dark");
   setStoredItem(STORAGE_KEYS.theme, theme);
 }
 
@@ -5148,6 +5156,28 @@ function sourceVideoPreviewRef(dataUrl = "", hash = "") {
   return "";
 }
 
+function selectedSourceImportFiles(fileList) {
+  const allFiles = Array.from(fileList || []).filter(Boolean);
+  return {
+    files: allFiles.slice(0, BATCH_FILE_IMPORT_MAX),
+    total: allFiles.length
+  };
+}
+
+function isSupportedSourceImportFile(file) {
+  return Boolean(
+    file?.type?.startsWith("image/") ||
+    isSupportedVideoFile(file) ||
+    isSupportedDocumentFile(file?.name || "")
+  );
+}
+
+function notifySourceImportLimit(total, count) {
+  if (total > count) {
+    showToast(t("file.batchLimited", { max: BATCH_FILE_IMPORT_MAX, count }));
+  }
+}
+
 function renderSourceDocumentPreviewFromState() {
   if (state.sourceType !== "text" || !state.fileName) return;
   renderDocumentPreview(
@@ -5170,11 +5200,29 @@ function renderSourceVideoPreviewFromState() {
 }
 
 async function handleFile(event) {
-  const file = event.target.files?.[0];
-  if (!file) return;
+  const selection = selectedSourceImportFiles(event.target.files);
   if (event.target && "value" in event.target) {
     event.target.value = "";
   }
+  if (!selection.files.length) return;
+  notifySourceImportLimit(selection.total, selection.files.length);
+  const files = selection.files.filter(isSupportedSourceImportFile);
+  if (!files.length) {
+    setStatus(t("file.unsupported"), "error");
+    return;
+  }
+  if (files.length < selection.files.length) showToast(t("file.unsupported"));
+  await handlePrimarySourceFile(files[0]);
+  for (let index = 1; index < files.length; index += 1) {
+    await createStandaloneSourceCardFromFile(files[index], { anchorNodeId: "source", index: index - 1 });
+  }
+  if (files.length > 1) {
+    showToast(t("file.batchImported", { count: files.length }));
+    autoSave();
+  }
+}
+
+async function handlePrimarySourceFile(file) {
   state.sourceNodeDeleted = false;
   sourceNode?.classList.remove("hidden");
 
@@ -8927,6 +8975,14 @@ function createNewCardNodeFromAction(action = {}) {
 }
 
 function createNewCanvas() {
+  if (!hasMeaningfulCanvasState()) {
+    if (autoSaveTimer) {
+      clearTimeout(autoSaveTimer);
+      autoSaveTimer = null;
+    }
+    showToast(t("canvas.blankReused"));
+    return;
+  }
   suppressSessionPersistence = true;
   if (autoSaveTimer) {
     clearTimeout(autoSaveTimer);
@@ -9081,6 +9137,7 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   upload.className = `upload-target${imageUrl ? " has-source-image" : ""}${sourceVideoUrl || sourceVideoHash ? " has-video-preview" : ""}`;
   const input = document.createElement("input");
   input.type = "file";
+  input.multiple = true;
   input.accept = "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov,.m4v,.txt,.md,.json,.doc,.docx,.pdf,.ppt,.pptx,text/plain,application/msword,application/pdf,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation";
   const empty = document.createElement("span");
   empty.className = `empty-state${hasInitialContent ? " hidden" : ""}`;
@@ -9169,9 +9226,21 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
   makeStandaloneSourceNameEditable(nodeId, name);
 
   input.addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    if (file) await handleStandaloneSourceFile(nodeId, file);
+    const selection = selectedSourceImportFiles(event.target.files);
     event.target.value = "";
+    if (!selection.files.length) return;
+    notifySourceImportLimit(selection.total, selection.files.length);
+    const files = selection.files.filter(isSupportedSourceImportFile);
+    if (!files.length) {
+      showToast(t("file.unsupported"));
+      return;
+    }
+    if (files.length < selection.files.length) showToast(t("file.unsupported"));
+    await handleStandaloneSourceFile(nodeId, files[0]);
+    for (let index = 1; index < files.length; index += 1) {
+      await createStandaloneSourceCardFromFile(files[index], { anchorNodeId: nodeId, index: index - 1 });
+    }
+    if (files.length > 1) showToast(t("file.batchImported", { count: files.length }));
   });
   wireSourceCardTabs(nodeId, element);
   textInputEl.addEventListener("input", () => {
@@ -9234,6 +9303,30 @@ function syncSourceCardImageActionState(nodeId) {
   upload.classList.toggle("has-source-image", hasImage);
   upload.classList.toggle("has-video-preview", hasVideo);
   upload.classList.toggle("has-source-file", hasFile);
+}
+
+async function createStandaloneSourceCardFromFile(file, { anchorNodeId = "", index = 0 } = {}) {
+  if (!isSupportedSourceImportFile(file)) {
+    showToast(t("file.unsupported"));
+    return "";
+  }
+  const anchor = anchorNodeId && state.nodes.has(anchorNodeId)
+    ? state.nodes.get(anchorNodeId)
+    : (state.selectedNodeId && state.nodes.has(state.selectedNodeId)
+      ? state.nodes.get(state.selectedNodeId)
+      : state.nodes.get("source"));
+  const column = Math.floor(index / 5);
+  const row = index % 5;
+  const nodeId = `source-card-upload-${Date.now().toString(36)}-${index}-${safeNodeSlug(file.name || "file")}`;
+  createStandaloneSourceCard({
+    id: nodeId,
+    title: file.name || t("source.defaultTitle"),
+    fileName: file.name || "",
+    x: (anchor?.x || 96) + (anchor?.width || 318) + 96 + column * 380,
+    y: (anchor?.y || 88) + 24 + row * 72
+  });
+  await handleStandaloneSourceFile(nodeId, file);
+  return nodeId;
 }
 
 async function handleStandaloneSourceFile(nodeId, file) {
@@ -16729,7 +16822,7 @@ async function renderSessionList() {
   list.innerHTML = "<span class='session-item-meta'>" + t("status.saving") + "</span>";
 
   try {
-    const data = await getJson("/api/history?limit=50");
+    const data = await getJson("/api/history");
     list.innerHTML = "";
 
     if (!data.sessions?.length) {
@@ -16781,7 +16874,7 @@ async function navigateHistoryCanvas(direction) {
     if (computeStateHash() !== lastSavedStateHash && (currentSessionId || hasMeaningfulCanvasState())) {
       await saveSession({ isAuto: true });
     }
-    const data = await getJson("/api/history?limit=100");
+    const data = await getJson("/api/history");
     const sessions = Array.isArray(data.sessions) ? data.sessions.filter((session) => session?.id) : [];
     if (!sessions.length) {
       showToast(t("history.empty"));

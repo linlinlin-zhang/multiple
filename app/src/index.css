@@ -32,6 +32,20 @@
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 0 0% 12%;
     --sidebar-ring: 207 100% 40%;
+    --cabinet-bg: 210 33% 97%;
+    --cabinet-paper: 0 0% 100%;
+    --cabinet-ink: 0 0% 0%;
+    --cabinet-ink2: 0 0% 12%;
+    --cabinet-ink-muted: 0 0% 42%;
+    --cabinet-item-bg: 210 33% 97%;
+    --cabinet-border: 0 0% 95%;
+    --cabinet-blue: 207 100% 40%;
+    --cabinet-cyan: 193 76% 49%;
+    --cabinet-black: 0 0% 0%;
+    --cabinet-muted: 0 0% 80%;
+    --cabinet-tab-notes: 0 0% 100%;
+    --cabinet-tab-projects: 210 33% 97%;
+    --cabinet-tab-archive: 0 0% 0%;
   }
 
   html[data-theme="dark"] {
@@ -62,6 +76,20 @@
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 0 0% 16%;
     --sidebar-ring: 207 100% 55%;
+    --cabinet-bg: 0 0% 6%;
+    --cabinet-paper: 0 0% 10%;
+    --cabinet-ink: 0 0% 94%;
+    --cabinet-ink2: 0 0% 88%;
+    --cabinet-ink-muted: 0 0% 64%;
+    --cabinet-item-bg: 0 0% 14%;
+    --cabinet-border: 0 0% 18%;
+    --cabinet-blue: 207 100% 55%;
+    --cabinet-cyan: 193 72% 61%;
+    --cabinet-black: 0 0% 4%;
+    --cabinet-muted: 0 0% 36%;
+    --cabinet-tab-notes: 0 0% 12%;
+    --cabinet-tab-projects: 0 0% 14%;
+    --cabinet-tab-archive: 0 0% 4%;
   }
 
   body {

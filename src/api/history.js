@@ -14,7 +14,8 @@ function sendJson(res, status, data) {
  */
 export async function handleListHistory(query, res, options = {}) {
   try {
-    const limit = Math.min(Number(query?.limit) || 20, 100);
+    const parsedLimit = Number(query?.limit);
+    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.floor(parsedLimit) : null;
     const offset = Math.max(Number(query?.offset) || 0, 0);
     const includeDemo = query?.includeDemo === "true";
     const visitorId = options.visitorId || "legacy";
@@ -29,7 +30,7 @@ export async function handleListHistory(query, res, options = {}) {
         where,
         orderBy: { updatedAt: "desc" },
         skip: offset,
-        take: limit,
+        ...(limit ? { take: limit } : {}),
         select: {
           id: true,
           title: true,

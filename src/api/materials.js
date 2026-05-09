@@ -14,8 +14,6 @@ function sendJson(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
-const MATERIAL_FILE_LIMIT = 100;
-
 /**
  * GET /api/materials?q=keyword&sort=date|added|name|size&favorited=1
  */
@@ -67,12 +65,6 @@ export async function handleCreateMaterial(body, res, options = {}) {
 
     if (!fileName || !dataUrl) {
       return sendJson(res, 400, { error: "fileName and dataUrl are required" });
-    }
-
-    // Check file count limit (LIB-03, D-09)
-    const count = await prisma.materialItem.count({ where: { visitorId } });
-    if (count >= MATERIAL_FILE_LIMIT) {
-      return sendJson(res, 409, { error: "Material library is full (100 items max)" });
     }
 
     // Decode dataUrl to buffer
@@ -304,13 +296,6 @@ export async function syncToMaterialLibrary({ hash, fileName, mimeType, fileSize
     const existing = await prisma.materialItem.findFirst({ where: { hash, visitorId } });
     if (existing) {
       return existing;
-    }
-
-    // 100-item limit check
-    const count = await prisma.materialItem.count({ where: { visitorId } });
-    if (count >= MATERIAL_FILE_LIMIT) {
-      console.warn("[syncToMaterialLibrary] Material library full (100 items), skipping sync for", fileName);
-      return null;
     }
 
     const item = await prisma.materialItem.create({

@@ -11,6 +11,7 @@
         var t = localStorage.getItem("thoughtgrid-theme") || localStorage.getItem("oryzae-theme");
         if (t === "dark" || t === "light") {
           document.documentElement.setAttribute("data-theme", t);
+          document.documentElement.classList.toggle("dark", t === "dark");
         }
         var l = localStorage.getItem("thoughtgrid-lang") || localStorage.getItem("oryzae-lang");
         if (l === "zh" || l === "en") {

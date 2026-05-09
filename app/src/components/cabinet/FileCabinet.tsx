@@ -223,7 +223,7 @@ function SessionList({
 }
 
 export default function FileCabinet() {
-  const { sessions, loading, error, refetch } = useHistory(50, 0, false);
+  const { sessions, loading, error, refetch } = useHistory(null, 0, false);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeOutputKind, setActiveOutputKind] = useState<OutputKind>("image");
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);

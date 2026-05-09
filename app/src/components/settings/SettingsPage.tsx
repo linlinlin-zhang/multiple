@@ -107,6 +107,12 @@ function getInitialTheme(): "light" | "dark" {
   return attr === "dark" ? "dark" : "light";
 }
 
+function applyTheme(theme: "light" | "dark") {
+  document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.classList.toggle("dark", theme === "dark");
+  localStorage.setItem("thoughtgrid-theme", theme);
+}
+
 function normalizeRole(value: unknown): RoleSettings {
   if (!value || typeof value !== "object") return { ...emptyRole };
   const input = value as Partial<RoleSettings>;
@@ -152,8 +158,7 @@ export default function SettingsPage() {
         });
         if (data.theme === "light" || data.theme === "dark") {
           setTheme(data.theme);
-          document.documentElement.setAttribute("data-theme", data.theme);
-          localStorage.setItem("thoughtgrid-theme", data.theme);
+          applyTheme(data.theme);
         }
         if (data.language === "zh" || data.language === "en") {
           setLang(data.language);
@@ -213,8 +218,7 @@ export default function SettingsPage() {
 
   const saveTheme = async (nextTheme: "light" | "dark") => {
     setTheme(nextTheme);
-    document.documentElement.setAttribute("data-theme", nextTheme);
-    localStorage.setItem("thoughtgrid-theme", nextTheme);
+    applyTheme(nextTheme);
     await fetch("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },

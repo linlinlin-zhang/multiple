@@ -29,6 +29,16 @@ const ACCEPTED_TYPES = [
   "text/plain",
   "video/mp4", "video/webm",
 ].join(",");
+const BATCH_MATERIAL_UPLOAD_MAX = 10;
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 
 function SkeletonGrid() {
   return (
@@ -122,33 +132,31 @@ export default function MaterialLibraryPage() {
   }, [refetch, t]);
 
   const handleUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const selectedFiles = Array.from(e.target.files || []).slice(0, BATCH_MATERIAL_UPLOAD_MAX);
+    const totalSelected = e.target.files?.length || 0;
+    if (!selectedFiles.length) return;
 
     setUploading(true);
     try {
-      const reader = new FileReader();
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
+      for (const file of selectedFiles) {
+        const dataUrl = await readFileAsDataUrl(file);
+        const res = await fetch("/api/materials", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName: file.name,
+            mimeType: file.type || "application/octet-stream",
+            dataUrl,
+          }),
+        });
 
-      const res = await fetch("/api/materials", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName: file.name,
-          mimeType: file.type || "application/octet-stream",
-          dataUrl,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || `HTTP ${res.status}`);
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error || `HTTP ${res.status}`);
+        }
       }
 
+      if (totalSelected > selectedFiles.length) alert(t("library.uploadLimit", { max: BATCH_MATERIAL_UPLOAD_MAX }));
       refetch();
     } catch (err) {
       console.error("Upload failed:", err);
@@ -194,6 +202,7 @@ export default function MaterialLibraryPage() {
                 ref={fileInputRef}
                 type="file"
                 accept={ACCEPTED_TYPES}
+                multiple
                 onChange={handleUpload}
                 className="hidden"
                 aria-hidden="true"
