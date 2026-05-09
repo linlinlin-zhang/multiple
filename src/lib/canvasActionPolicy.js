@@ -107,6 +107,13 @@ const WORKSPACE_TYPES = [
   "open_history", "open_settings", "open_upload", "set_thinking_mode",
   "set_deep_think_mode", "zoom_in", "zoom_out", "set_zoom", "reset_view"
 ];
+const STOP_AFTER_ACTION_TYPES = [
+  "delete_node", "research_node", "research_source", "explore_source", "analyze_source",
+  "create_agent", "generate_video", "new_chat", "open_history", "open_settings",
+  "open_chat_history", "open_upload", "export_report"
+];
+const STOP_AFTER_ACTION_GROUPS = ["destructive", "source_research", "agent"];
+const LOOP_TRACE_EVENT_LIMIT = 28;
 
 export function normalizeIntentText(message) {
   return String(message || "").normalize("NFKC").trim();
@@ -235,7 +242,7 @@ export function buildCanvasActionPolicy(message, options = {}) {
   const intent = classifyCanvasActionIntent(message, options);
   const allowedSet = allowedActionTypesForIntent(intent);
   const allowedActionTypes = CANVAS_ACTION_TYPES.filter((type) => allowedSet.has(type));
-  return {
+  const policy = {
     intent,
     allowCanvasTool: allowedActionTypes.length > 0,
     allowedActionTypes,
@@ -243,64 +250,306 @@ export function buildCanvasActionPolicy(message, options = {}) {
     maxActions: intent.automaticCardMode ? intent.maxAutomaticCards : intent.maxActions,
     maxAutomaticCards: intent.maxAutomaticCards
   };
+  policy.loopControl = buildCanvasLoopControl(policy, options);
+  return policy;
+}
+
+function normalizeLoopText(value) {
+  return String(value ?? "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/https?:\/\/[^\s)）\]】"'<>]+/gi, (url) => url.replace(/[?#].*$/, ""))
+    .replace(/[\s"'“”‘’`_*#>()[\]{}，。！？、；：:;,.!?|/\\-]+/g, " ")
+    .trim()
+    .slice(0, 240);
+}
+
+function safeContentSnippet(value) {
+  if (!value || typeof value !== "object") return "";
+  try {
+    return normalizeLoopText(JSON.stringify(value).slice(0, 900));
+  } catch {
+    return "";
+  }
+}
+
+function firstLoopValue(...values) {
+  for (const value of values) {
+    const normalized = normalizeLoopText(value);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+export function actionLoopKey(actionItem) {
+  const type = String(actionItem?.type || actionItem?.name || "").trim();
+  const content = actionItem?.content && typeof actionItem.content === "object" ? actionItem.content : {};
+  const parent = firstLoopValue(
+    actionItem?.parentNodeId,
+    actionItem?.parentNodeName,
+    actionItem?.anchorNodeId,
+    actionItem?.anchorNodeName
+  );
+  const identity = firstLoopValue(
+    actionItem?.nodeId,
+    actionItem?.nodeName,
+    actionItem?.target,
+    actionItem?.url,
+    content?.url,
+    actionItem?.query,
+    content?.query,
+    actionItem?.prompt,
+    content?.prompt,
+    actionItem?.title,
+    content?.title,
+    actionItem?.description,
+    content?.description,
+    content?.text
+  );
+  const contentSnippet = safeContentSnippet(content);
+  return [type, parent, identity, contentSnippet].filter(Boolean).join("|") || `${type}|empty`;
+}
+
+export function buildCanvasLoopControl(policy, options = {}) {
+  const intent = policy?.intent || {};
+  const maxActions = Math.max(0, Number(policy?.maxActions) || 0);
+  const maxActionsPerStep = Math.max(0, Math.min(Number(options.maxActionsPerStep) || maxActions, maxActions || 0));
+  const openWorldCap = intent.automaticCardMode
+    ? Math.min(2, maxActionsPerStep)
+    : (intent.mediaGeneration ? Math.min(6, maxActionsPerStep) : (intent.allowSourceResearch || intent.mediaSearch ? Math.min(4, maxActionsPerStep) : Math.min(2, maxActionsPerStep)));
+  return {
+    maxModelSteps: 1,
+    maxActionSteps: 1,
+    maxActionsPerStep,
+    repeatLimitPerKey: Math.max(1, Number(options.repeatLimitPerKey) || 1),
+    maxOpenWorldActions: Math.max(0, openWorldCap),
+    stopAfterActionTypes: STOP_AFTER_ACTION_TYPES,
+    stopAfterActionGroups: STOP_AFTER_ACTION_GROUPS,
+    continueActionGroups: ["card", "reference", "media_search", "media_generation", "workspace"]
+  };
+}
+
+function traceEvent(event, fields = {}) {
+  return { event, ...fields };
+}
+
+function limitTraceEvents(events, limit = LOOP_TRACE_EVENT_LIMIT) {
+  const list = Array.isArray(events) ? events.filter(Boolean) : [];
+  if (list.length <= limit) return list;
+  const headCount = Math.max(1, Math.floor((limit - 1) / 2));
+  const tailCount = Math.max(1, limit - headCount - 1);
+  return [
+    ...list.slice(0, headCount),
+    traceEvent("trace_truncated", { omittedCount: Math.max(0, list.length - headCount - tailCount) }),
+    ...list.slice(-tailCount)
+  ];
+}
+
+function compactActionTypes(actions) {
+  return (Array.isArray(actions) ? actions : [])
+    .map((actionItem) => actionItem?.type || actionItem?.name || "")
+    .filter(Boolean)
+    .slice(0, 24);
+}
+
+function shouldStopAfterAction(type, metadata, loopControl) {
+  return loopControl.stopAfterActionTypes.includes(type)
+    || loopControl.stopAfterActionGroups.includes(metadata?.group || "");
+}
+
+function compactLoopControl(loopControl) {
+  return {
+    maxModelSteps: loopControl.maxModelSteps,
+    maxActionSteps: loopControl.maxActionSteps,
+    maxActionsPerStep: loopControl.maxActionsPerStep,
+    repeatLimitPerKey: loopControl.repeatLimitPerKey,
+    maxOpenWorldActions: loopControl.maxOpenWorldActions,
+    stopAfterActionTypes: loopControl.stopAfterActionTypes,
+    stopAfterActionGroups: loopControl.stopAfterActionGroups
+  };
+}
+
+export function applyCanvasLoopControl(actions, policy, options = {}) {
+  const loopControl = {
+    ...(policy?.loopControl || buildCanvasLoopControl(policy, options)),
+    ...options
+  };
+  const raw = Array.isArray(actions) ? actions : [];
+  const kept = [];
+  const rejected = [];
+  const events = [
+    traceEvent("step_policy_prepared", {
+      maxModelSteps: loopControl.maxModelSteps,
+      maxActionSteps: loopControl.maxActionSteps,
+      maxActionsPerStep: loopControl.maxActionsPerStep,
+      repeatLimitPerKey: loopControl.repeatLimitPerKey,
+      maxOpenWorldActions: loopControl.maxOpenWorldActions
+    })
+  ];
+  const seenKeys = new Map();
+  let openWorldActions = 0;
+  let stoppedBy = null;
+
+  for (const [index, actionItem] of raw.entries()) {
+    const type = String(actionItem?.type || actionItem?.name || "").trim();
+    const metadata = CANVAS_ACTION_REGISTRY[type];
+    const group = metadata?.group || "";
+    const key = actionLoopKey(actionItem);
+
+    const reject = (reason, extra = {}) => {
+      rejected.push({ action: actionItem, type, reason, group, key, ...extra });
+      events.push(traceEvent("loop_action_rejected", { index, type, group, reason, ...extra }));
+    };
+
+    if (!type || !metadata) {
+      reject("unknown_action");
+      continue;
+    }
+
+    if (stoppedBy) {
+      reject("after_stop_condition", { stoppedByType: stoppedBy.type, stoppedByGroup: stoppedBy.group });
+      continue;
+    }
+
+    const seenCount = seenKeys.get(key) || 0;
+    if (seenCount >= loopControl.repeatLimitPerKey) {
+      reject("duplicate_circuit_breaker", { key });
+      continue;
+    }
+
+    if (metadata?.annotations?.openWorldHint) {
+      if (openWorldActions >= loopControl.maxOpenWorldActions) {
+        reject("over_open_world_step_budget", { maxOpenWorldActions: loopControl.maxOpenWorldActions });
+        continue;
+      }
+    }
+
+    if (kept.length >= loopControl.maxActionsPerStep) {
+      reject("over_step_action_budget", { maxActionsPerStep: loopControl.maxActionsPerStep });
+      continue;
+    }
+
+    kept.push(actionItem);
+    seenKeys.set(key, seenCount + 1);
+    if (metadata?.annotations?.openWorldHint) openWorldActions += 1;
+    events.push(traceEvent("loop_action_allowed", { index, type, group }));
+
+    if (shouldStopAfterAction(type, metadata, loopControl)) {
+      stoppedBy = { type, group, index };
+      events.push(traceEvent("stop_condition_hit", { index, type, group }));
+    }
+  }
+
+  events.push(traceEvent("loop_completed", {
+    finalCount: kept.length,
+    rejectedCount: rejected.length,
+    openWorldActions,
+    stoppedByType: stoppedBy?.type || ""
+  }));
+
+  return {
+    actions: kept,
+    rejected,
+    loop: {
+      control: compactLoopControl(loopControl),
+      openWorldActions,
+      stoppedBy,
+      events: limitTraceEvents(events)
+    }
+  };
 }
 
 export function filterCanvasActionsByPolicy(actions, policy) {
   const raw = Array.isArray(actions) ? actions : [];
   const allowed = [];
   const rejected = [];
-  for (const actionItem of raw) {
+  const events = [
+    traceEvent("intent_classified", {
+      taskType: policy.intent.taskType,
+      confidence: policy.intent.confidence,
+      automaticCardMode: policy.intent.automaticCardMode
+    }),
+    traceEvent("allowed_actions_prepared", {
+      count: policy.allowedActionTypes.length,
+      maxActions: policy.maxActions,
+      allowedActionTypes: policy.allowedActionTypes.slice(0, 32)
+    }),
+    traceEvent("model_actions_proposed", {
+      count: raw.length,
+      proposedActionTypes: compactActionTypes(raw)
+    })
+  ];
+  for (const [index, actionItem] of raw.entries()) {
     const type = String(actionItem?.type || actionItem?.name || "").trim();
     const metadata = CANVAS_ACTION_REGISTRY[type];
+    const reject = (reason) => {
+      rejected.push({ action: actionItem, type, reason, group: metadata?.group || "" });
+      events.push(traceEvent("guardrail_rejected", { index, type, reason, group: metadata?.group || "" }));
+    };
     if (!type || !metadata) {
-      rejected.push({ action: actionItem, type, reason: "unknown_action" });
+      reject("unknown_action");
       continue;
     }
     if (!policy.allowCanvasTool || !policy.allowedActionSet.has(type)) {
-      rejected.push({ action: actionItem, type, reason: "not_allowed_for_intent", group: metadata.group });
+      reject("not_allowed_for_intent");
       continue;
     }
     if (metadata.annotations.destructiveHint && !policy.intent.allowDestructive) {
-      rejected.push({ action: actionItem, type, reason: "destructive_requires_explicit_delete", group: metadata.group });
+      reject("destructive_requires_explicit_delete");
       continue;
     }
     if (metadata.group === "source_research" && !policy.intent.allowSourceResearch) {
-      rejected.push({ action: actionItem, type, reason: "source_research_requires_explicit_source_intent", group: metadata.group });
+      reject("source_research_requires_explicit_source_intent");
       continue;
     }
     if (metadata.group === "workspace" && metadata.requiresExplicitIntent && !policy.intent.allowWorkspaceAction) {
-      rejected.push({ action: actionItem, type, reason: "workspace_action_requires_explicit_intent", group: metadata.group });
+      reject("workspace_action_requires_explicit_intent");
       continue;
     }
     if (metadata.group === "media_generation" && !policy.intent.mediaGeneration) {
-      rejected.push({ action: actionItem, type, reason: "media_generation_requires_explicit_intent", group: metadata.group });
+      reject("media_generation_requires_explicit_intent");
       continue;
     }
     if (metadata.group === "media_search" && !policy.intent.mediaSearch) {
-      rejected.push({ action: actionItem, type, reason: "media_search_requires_explicit_intent", group: metadata.group });
+      reject("media_search_requires_explicit_intent");
       continue;
     }
     if (policy.intent.automaticCardMode && metadata.annotations.openWorldHint && !["create_quote", "create_link", "create_web_card"].includes(type)) {
-      rejected.push({ action: actionItem, type, reason: "automatic_mode_blocks_open_world_action", group: metadata.group });
+      reject("automatic_mode_blocks_open_world_action");
       continue;
     }
     if (policy.intent.automaticCardMode && (type === "create_link" || type === "create_web_card") && !(actionItem?.url || actionItem?.content?.url)) {
-      rejected.push({ action: actionItem, type, reason: "automatic_reference_card_requires_url", group: metadata.group });
+      reject("automatic_reference_card_requires_url");
       continue;
     }
     allowed.push(actionItem);
   }
-  if (allowed.length <= policy.maxActions) {
-    return { actions: allowed, rejected, policy };
-  }
-  const kept = allowed.slice(0, policy.maxActions);
-  for (const actionItem of allowed.slice(policy.maxActions)) {
-    rejected.push({ action: actionItem, type: actionItem?.type, reason: "over_policy_budget" });
-  }
-  return { actions: kept, rejected, policy };
+  events.push(traceEvent("guardrail_passed", {
+    count: allowed.length,
+    allowedActionTypes: compactActionTypes(allowed)
+  }));
+  const loopResult = applyCanvasLoopControl(allowed, policy);
+  const allRejected = [...rejected, ...loopResult.rejected];
+  const loopEvents = limitTraceEvents([...events, ...(loopResult.loop?.events || [])]);
+  return {
+    actions: loopResult.actions,
+    rejected: allRejected,
+    policy,
+    loop: {
+      ...(loopResult.loop || {}),
+      events: loopEvents
+    }
+  };
 }
 
-export function summarizeCanvasActionPolicy(policy, { proposed = [], final = [], rejected = [] } = {}) {
+export function summarizeCanvasActionPolicy(policy, { proposed = [], final = [], rejected = [], loop = null } = {}) {
+  const events = limitTraceEvents([
+    ...(loop?.events || []),
+    traceEvent("final_actions_selected", {
+      count: final.length,
+      finalActionTypes: compactActionTypes(final)
+    })
+  ]);
   return {
     taskType: policy.intent.taskType,
     confidence: policy.intent.confidence,
@@ -314,7 +563,13 @@ export function summarizeCanvasActionPolicy(policy, { proposed = [], final = [],
       type: item.type,
       reason: item.reason,
       group: item.group || CANVAS_ACTION_REGISTRY[item.type]?.group || ""
-    }))
+    })),
+    loop: loop ? {
+      control: loop.control,
+      stoppedBy: loop.stoppedBy,
+      openWorldActions: loop.openWorldActions
+    } : undefined,
+    events
   };
 }
 

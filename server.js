@@ -2404,6 +2404,7 @@ function cloneJson(value) {
 function actionPolicyTypeDescription(policy) {
   const allowed = policy.allowedActionTypes.join(", ");
   const groups = Array.from(new Set(policy.allowedActionTypes.map((type) => CANVAS_ACTION_REGISTRY[type]?.group).filter(Boolean))).join(", ");
+  const loop = policy.loopControl || {};
   return [
     CANVAS_ACTION_TOOL_SCHEMA.function.parameters.properties.type.description,
     "",
@@ -2411,9 +2412,15 @@ function actionPolicyTypeDescription(policy) {
     `- taskType=${policy.intent.taskType}`,
     `- automaticCardMode=${policy.intent.automaticCardMode ? "true" : "false"}`,
     `- maxActions=${policy.maxActions}`,
+    `- maxModelSteps=${loop.maxModelSteps || 1}`,
+    `- maxActionSteps=${loop.maxActionSteps || 1}`,
+    `- repeatLimitPerActionKey=${loop.repeatLimitPerKey || 1}`,
+    `- maxOpenWorldActions=${loop.maxOpenWorldActions ?? 0}`,
     `- allowedGroups=${groups || "none"}`,
     `- allowedActionTypes=${allowed || "none"}`,
-    "Do not call an action type outside this per-turn allowedActionTypes list."
+    `- stopAfterActionTypes=${Array.isArray(loop.stopAfterActionTypes) ? loop.stopAfterActionTypes.join(", ") : "none"}`,
+    "Do not call an action type outside this per-turn allowedActionTypes list.",
+    "Avoid duplicate action keys; after a stop-after action, do not propose additional canvas actions in the same turn."
   ].join("\n");
 }
 
@@ -3349,7 +3356,8 @@ function filterCanvasActionsForUserIntent(actions, message, context = {}) {
     context.policyTraces.push(summarizeCanvasActionPolicy(policy, {
       proposed: usable,
       final: result.actions,
-      rejected: result.rejected
+      rejected: result.rejected,
+      loop: result.loop
     }));
   }
   return result.actions;
@@ -3367,7 +3375,9 @@ function compactActionPolicyTrace(traces = []) {
     allowedActionTypes: final.allowedActionTypes,
     proposedActionTypes: Array.from(new Set(list.flatMap((item) => item.proposedActionTypes || []))),
     finalActionTypes: final.finalActionTypes || [],
-    rejected: list.flatMap((item) => item.rejected || []).slice(0, 12)
+    rejected: list.flatMap((item) => item.rejected || []).slice(0, 16),
+    loop: final.loop,
+    events: list.flatMap((item) => item.events || []).slice(-28)
   };
 }
 

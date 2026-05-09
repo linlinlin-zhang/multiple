@@ -6003,7 +6003,8 @@ async function submitChatMessage(message, options = {}) {
       actions: data.actions || data.action,
       artifacts: data.artifacts || data.agentPlan || [],
       references: data.references || [],
-      responseId: data.responseId || data.previousResponseId || ""
+      responseId: data.responseId || data.previousResponseId || "",
+      actionPolicy: data.actionPolicy || null
     };
     if (data.resetPreviousResponseId) {
       ensureActiveChatThread().previousResponseId = "";

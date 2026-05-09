@@ -1,4 +1,4 @@
-import { r as reactExports, u as useI18n, j as jsxRuntimeExports, N as NodeGraphThumbnail, b as buildAssetUrl, f as clientExports, I as I18nProvider } from "./NodeGraphThumbnail-CqhtW_dA.js";
+import { r as reactExports, u as useI18n, j as jsxRuntimeExports, N as NodeGraphThumbnail, b as buildAssetUrl, f as clientExports, I as I18nProvider } from "./NodeGraphThumbnail-CqZu9UyR.js";
 function formatBytes(bytes) {
   if (bytes < 1024) return bytes + " B";
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";

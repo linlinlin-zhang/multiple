@@ -1,4 +1,4 @@
-import { r as reactExports, j as jsxRuntimeExports, u as useI18n, b as buildAssetUrl, a as useSession, N as NodeGraphThumbnail, c as useHistory, R as React, g as getDefaultExportFromCjs, d as requireReactDom, e as React2, f as clientExports, I as I18nProvider } from "./NodeGraphThumbnail-CqhtW_dA.js";
+import { r as reactExports, j as jsxRuntimeExports, u as useI18n, b as buildAssetUrl, a as useSession, N as NodeGraphThumbnail, c as useHistory, R as React, g as getDefaultExportFromCjs, d as requireReactDom, e as React2, f as clientExports, I as I18nProvider } from "./NodeGraphThumbnail-CqZu9UyR.js";
 var PopStateEventType = "popstate";
 function isLocation(obj) {
   return typeof obj === "object" && obj != null && "pathname" in obj && "search" in obj && "hash" in obj && "state" in obj && "key" in obj;
@@ -4125,7 +4125,7 @@ function SessionList({
   ] });
 }
 function FileCabinet() {
-  const { sessions, loading, error, refetch } = useHistory(50, 0, false);
+  const { sessions, loading, error, refetch } = useHistory(null, 0, false);
   const [activeSessionId, setActiveSessionId] = reactExports.useState(null);
   const [activeOutputKind, setActiveOutputKind] = reactExports.useState("image");
   const [mobileSessionsOpen, setMobileSessionsOpen] = reactExports.useState(false);
@@ -4358,6 +4358,11 @@ function getInitialTheme() {
   const attr = document.documentElement.getAttribute("data-theme");
   return attr === "dark" ? "dark" : "light";
 }
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  document.documentElement.classList.toggle("dark", theme === "dark");
+  localStorage.setItem("thoughtgrid-theme", theme);
+}
 function normalizeRole(value) {
   if (!value || typeof value !== "object") return { ...emptyRole };
   const input = value;
@@ -4399,8 +4404,7 @@ function SettingsPage() {
       });
       if (data.theme === "light" || data.theme === "dark") {
         setTheme(data.theme);
-        document.documentElement.setAttribute("data-theme", data.theme);
-        localStorage.setItem("thoughtgrid-theme", data.theme);
+        applyTheme(data.theme);
       }
       if (data.language === "zh" || data.language === "en") {
         setLang(data.language);
@@ -4454,8 +4458,7 @@ function SettingsPage() {
   };
   const saveTheme = async (nextTheme) => {
     setTheme(nextTheme);
-    document.documentElement.setAttribute("data-theme", nextTheme);
-    localStorage.setItem("thoughtgrid-theme", nextTheme);
+    applyTheme(nextTheme);
     await fetch("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -4484,36 +4487,36 @@ function SettingsPage() {
       setStatus(`${t("settings.saveFailed")}: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:250:5", className: "min-h-screen bg-cabinet-bg p-3 text-cabinet-ink md:p-7", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(AppNavigation, { "code-path": "src/components/settings/SettingsPage.tsx:251:7", activePage: "settings", open: navOpen, onClose: () => setNavOpen(false) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { "code-path": "src/components/settings/SettingsPage.tsx:252:7", className: "mx-auto min-h-[calc(100vh-1.5rem)] max-w-[1160px] overflow-hidden rounded-[18px] border border-cabinet-border bg-cabinet-paper shadow-[0_22px_48px_rgba(0,0,0,0.08)] md:min-h-[calc(100vh-3.5rem)]", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { "code-path": "src/components/settings/SettingsPage.tsx:253:9", className: "flex h-16 items-center gap-4 border-b border-cabinet-border px-5", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:254:5", className: "min-h-screen bg-cabinet-bg p-3 text-cabinet-ink md:p-7", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(AppNavigation, { "code-path": "src/components/settings/SettingsPage.tsx:255:7", activePage: "settings", open: navOpen, onClose: () => setNavOpen(false) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { "code-path": "src/components/settings/SettingsPage.tsx:256:7", className: "mx-auto min-h-[calc(100vh-1.5rem)] max-w-[1160px] overflow-hidden rounded-[18px] border border-cabinet-border bg-cabinet-paper shadow-[0_22px_48px_rgba(0,0,0,0.08)] md:min-h-[calc(100vh-3.5rem)]", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { "code-path": "src/components/settings/SettingsPage.tsx:257:9", className: "flex h-16 items-center gap-4 border-b border-cabinet-border px-5", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
           {
-            "code-path": "src/components/settings/SettingsPage.tsx:254:11",
+            "code-path": "src/components/settings/SettingsPage.tsx:258:11",
             type: "button",
             onClick: () => setNavOpen(true),
             className: "flex h-10 w-10 items-center justify-center rounded hover:bg-cabinet-itemBg",
             "aria-label": t("nav.open"),
-            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Menu, { "code-path": "src/components/settings/SettingsPage.tsx:260:13", size: 20 })
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Menu, { "code-path": "src/components/settings/SettingsPage.tsx:264:13", size: 20 })
           }
         ),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:262:11", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/settings/SettingsPage.tsx:263:13", className: "text-xs text-cabinet-inkMuted", children: "织境" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { "code-path": "src/components/settings/SettingsPage.tsx:264:13", className: "text-xl font-medium tracking-[0]", children: t("settings.pageTitle") })
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:266:11", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/settings/SettingsPage.tsx:267:13", className: "text-xs text-cabinet-inkMuted", children: "织境" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { "code-path": "src/components/settings/SettingsPage.tsx:268:13", className: "text-xl font-medium tracking-[0]", children: t("settings.pageTitle") })
         ] })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:268:9", className: "grid gap-8 p-5 md:grid-cols-[300px_1fr] md:p-8", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "code-path": "src/components/settings/SettingsPage.tsx:269:11", className: "space-y-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:270:13", className: "border border-cabinet-border bg-cabinet-itemBg p-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { "code-path": "src/components/settings/SettingsPage.tsx:271:15", className: "text-sm font-medium", children: t("settings.appearance") }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { "code-path": "src/components/settings/SettingsPage.tsx:272:15", className: "mt-4 flex items-center justify-between gap-4 text-sm text-cabinet-inkMuted", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:273:17", children: t("settings.darkMode") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:272:9", className: "grid gap-8 p-5 md:grid-cols-[300px_1fr] md:p-8", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "code-path": "src/components/settings/SettingsPage.tsx:273:11", className: "space-y-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:274:13", className: "border border-cabinet-border bg-cabinet-itemBg p-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { "code-path": "src/components/settings/SettingsPage.tsx:275:15", className: "text-sm font-medium", children: t("settings.appearance") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { "code-path": "src/components/settings/SettingsPage.tsx:276:15", className: "mt-4 flex items-center justify-between gap-4 text-sm text-cabinet-inkMuted", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:277:17", children: t("settings.darkMode") }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "input",
                 {
-                  "code-path": "src/components/settings/SettingsPage.tsx:274:17",
+                  "code-path": "src/components/settings/SettingsPage.tsx:278:17",
                   type: "checkbox",
                   checked: theme === "dark",
                   onChange: (event) => saveTheme(event.target.checked ? "dark" : "light").catch(() => setStatus(t("settings.saveFailed"))),
@@ -4521,29 +4524,29 @@ function SettingsPage() {
                 }
               )
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { "code-path": "src/components/settings/SettingsPage.tsx:281:15", className: "mt-4 grid gap-2 text-sm text-cabinet-inkMuted", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:282:17", children: t("settings.language") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { "code-path": "src/components/settings/SettingsPage.tsx:285:15", className: "mt-4 grid gap-2 text-sm text-cabinet-inkMuted", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:286:17", children: t("settings.language") }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs(
                 "select",
                 {
-                  "code-path": "src/components/settings/SettingsPage.tsx:283:17",
+                  "code-path": "src/components/settings/SettingsPage.tsx:287:17",
                   value: lang,
                   onChange: (event) => saveLanguage(event.target.value).catch(() => setStatus(t("settings.saveFailed"))),
                   className: "h-10 border border-cabinet-border bg-cabinet-paper px-3 text-sm text-cabinet-ink",
                   children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { "code-path": "src/components/settings/SettingsPage.tsx:288:19", value: "zh", children: t("lang.zh") }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { "code-path": "src/components/settings/SettingsPage.tsx:289:19", value: "en", children: t("lang.en") })
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { "code-path": "src/components/settings/SettingsPage.tsx:292:19", value: "zh", children: t("lang.zh") }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("option", { "code-path": "src/components/settings/SettingsPage.tsx:293:19", value: "en", children: t("lang.en") })
                   ]
                 }
               )
             ] })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:293:13", className: "border border-cabinet-border bg-cabinet-itemBg p-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { "code-path": "src/components/settings/SettingsPage.tsx:294:15", className: "text-sm font-medium", children: t("settings.apiGroups") }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/settings/SettingsPage.tsx:295:15", className: "mt-3 grid gap-2", children: roles.map((role) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:297:13", className: "border border-cabinet-border bg-cabinet-itemBg p-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { "code-path": "src/components/settings/SettingsPage.tsx:298:15", className: "text-sm font-medium", children: t("settings.apiGroups") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/settings/SettingsPage.tsx:299:15", className: "mt-3 grid gap-2", children: roles.map((role) => /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
               {
-                "code-path": "src/components/settings/SettingsPage.tsx:297:19",
+                "code-path": "src/components/settings/SettingsPage.tsx:301:19",
                 type: "button",
                 onClick: () => setActiveRole(role),
                 className: `h-10 px-3 text-left text-sm transition-colors ${activeRole === role ? "bg-cabinet-blue text-cabinet-paper" : "bg-cabinet-paper text-cabinet-ink hover:bg-white"}`,
@@ -4553,21 +4556,21 @@ function SettingsPage() {
             )) })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "code-path": "src/components/settings/SettingsPage.tsx:312:11", className: "border border-cabinet-border p-5", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:313:13", className: "flex flex-wrap items-center justify-between gap-3 border-b border-cabinet-border pb-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:314:15", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/settings/SettingsPage.tsx:315:17", className: "text-xs text-cabinet-inkMuted", children: t("settings.apiSettings") }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { "code-path": "src/components/settings/SettingsPage.tsx:316:17", className: "text-2xl font-medium tracking-[0]", children: t(`settings.${activeRole}`) })
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "code-path": "src/components/settings/SettingsPage.tsx:316:11", className: "border border-cabinet-border p-5", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:317:13", className: "flex flex-wrap items-center justify-between gap-3 border-b border-cabinet-border pb-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:318:15", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/settings/SettingsPage.tsx:319:17", className: "text-xs text-cabinet-inkMuted", children: t("settings.apiSettings") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { "code-path": "src/components/settings/SettingsPage.tsx:320:17", className: "text-2xl font-medium tracking-[0]", children: t(`settings.${activeRole}`) })
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "code-path": "src/components/settings/SettingsPage.tsx:318:15", type: "button", onClick: saveApiSettings, className: "h-10 bg-cabinet-blue px-5 text-sm font-medium text-cabinet-paper hover:bg-cabinet-cyan", children: t("settings.save") })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "code-path": "src/components/settings/SettingsPage.tsx:322:15", type: "button", onClick: saveApiSettings, className: "h-10 bg-cabinet-blue px-5 text-sm font-medium text-cabinet-paper hover:bg-cabinet-cyan", children: t("settings.save") })
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:323:13", className: "mt-5 grid gap-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { "code-path": "src/components/settings/SettingsPage.tsx:324:15", className: "grid gap-2 text-sm text-cabinet-inkMuted", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:325:17", children: "API Endpoint" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:327:13", className: "mt-5 grid gap-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { "code-path": "src/components/settings/SettingsPage.tsx:328:15", className: "grid gap-2 text-sm text-cabinet-inkMuted", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:329:17", children: "API Endpoint" }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "input",
                 {
-                  "code-path": "src/components/settings/SettingsPage.tsx:326:17",
+                  "code-path": "src/components/settings/SettingsPage.tsx:330:17",
                   value: current.endpoint,
                   onChange: (event) => updateRole("endpoint", event.target.value),
                   className: "h-11 border border-cabinet-border bg-cabinet-paper px-3 text-cabinet-ink outline-none focus:ring-2 focus:ring-cabinet-blue",
@@ -4575,12 +4578,12 @@ function SettingsPage() {
                 }
               )
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { "code-path": "src/components/settings/SettingsPage.tsx:333:15", className: "grid gap-2 text-sm text-cabinet-inkMuted", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:334:17", children: "Model" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { "code-path": "src/components/settings/SettingsPage.tsx:337:15", className: "grid gap-2 text-sm text-cabinet-inkMuted", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:338:17", children: "Model" }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "input",
                 {
-                  "code-path": "src/components/settings/SettingsPage.tsx:335:17",
+                  "code-path": "src/components/settings/SettingsPage.tsx:339:17",
                   value: current.model,
                   onChange: (event) => updateRole("model", event.target.value),
                   className: "h-11 border border-cabinet-border bg-cabinet-paper px-3 text-cabinet-ink outline-none focus:ring-2 focus:ring-cabinet-blue",
@@ -4588,12 +4591,12 @@ function SettingsPage() {
                 }
               )
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { "code-path": "src/components/settings/SettingsPage.tsx:342:15", className: "grid gap-2 text-sm text-cabinet-inkMuted", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:343:17", children: "API Key" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { "code-path": "src/components/settings/SettingsPage.tsx:346:15", className: "grid gap-2 text-sm text-cabinet-inkMuted", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:347:17", children: "API Key" }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "input",
                 {
-                  "code-path": "src/components/settings/SettingsPage.tsx:344:17",
+                  "code-path": "src/components/settings/SettingsPage.tsx:348:17",
                   type: "password",
                   value: current.apiKey,
                   onChange: (event) => updateRole("apiKey", event.target.value),
@@ -4602,12 +4605,12 @@ function SettingsPage() {
                 }
               )
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { "code-path": "src/components/settings/SettingsPage.tsx:352:15", className: "grid gap-2 text-sm text-cabinet-inkMuted", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:353:17", children: "Temperature" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { "code-path": "src/components/settings/SettingsPage.tsx:356:15", className: "grid gap-2 text-sm text-cabinet-inkMuted", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:357:17", children: "Temperature" }),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "input",
                 {
-                  "code-path": "src/components/settings/SettingsPage.tsx:354:17",
+                  "code-path": "src/components/settings/SettingsPage.tsx:358:17",
                   type: "number",
                   min: "0",
                   max: "2",
@@ -4618,19 +4621,19 @@ function SettingsPage() {
                 }
               )
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:365:15", className: "grid gap-4 border-t border-cabinet-border pt-4", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/settings/SettingsPage.tsx:366:17", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/settings/SettingsPage.tsx:367:19", className: "text-xs font-medium text-cabinet-ink", children: t("settings.advanced") }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/settings/SettingsPage.tsx:369:15", className: "grid gap-4 border-t border-cabinet-border pt-4", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/settings/SettingsPage.tsx:370:17", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/settings/SettingsPage.tsx:371:19", className: "text-xs font-medium text-cabinet-ink", children: t("settings.advanced") }) }),
               optionFields[activeRole].map((field) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
                 "label",
                 {
-                  "code-path": "src/components/settings/SettingsPage.tsx:370:19",
+                  "code-path": "src/components/settings/SettingsPage.tsx:374:19",
                   className: `grid gap-2 text-sm text-cabinet-inkMuted ${field.type === "checkbox" ? "grid-cols-[1fr_auto] items-center" : ""}`,
                   children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:376:21", children: t(`settings.option.${field.key}`) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:380:21", children: t(`settings.option.${field.key}`) }),
                     field.type === "checkbox" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "input",
                       {
-                        "code-path": "src/components/settings/SettingsPage.tsx:378:23",
+                        "code-path": "src/components/settings/SettingsPage.tsx:382:23",
                         type: "checkbox",
                         checked: Boolean(current.options[field.key]),
                         onChange: (event) => updateOption(field.key, event.target.checked),
@@ -4639,19 +4642,19 @@ function SettingsPage() {
                     ) : field.type === "select" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "select",
                       {
-                        "code-path": "src/components/settings/SettingsPage.tsx:385:23",
+                        "code-path": "src/components/settings/SettingsPage.tsx:389:23",
                         value: optionValue(field),
                         onChange: (event) => {
                           const raw = event.target.value;
                           updateOption(field.key, field.key === "smoothOutput" ? raw === "true" ? true : raw === "false" ? false : "auto" : raw);
                         },
                         className: "h-11 border border-cabinet-border bg-cabinet-paper px-3 text-cabinet-ink outline-none focus:ring-2 focus:ring-cabinet-blue",
-                        children: (field.options || []).map(([value, label]) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { "code-path": "src/components/settings/SettingsPage.tsx:394:27", value, children: label }, value))
+                        children: (field.options || []).map(([value, label]) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { "code-path": "src/components/settings/SettingsPage.tsx:398:27", value, children: label }, value))
                       }
                     ) : field.type === "textarea" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "textarea",
                       {
-                        "code-path": "src/components/settings/SettingsPage.tsx:400:23",
+                        "code-path": "src/components/settings/SettingsPage.tsx:404:23",
                         value: optionValue(field),
                         onChange: (event) => updateOption(field.key, event.target.value),
                         className: "min-h-[84px] resize-y border border-cabinet-border bg-cabinet-paper px-3 py-2 text-cabinet-ink outline-none focus:ring-2 focus:ring-cabinet-blue"
@@ -4659,7 +4662,7 @@ function SettingsPage() {
                     ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "input",
                       {
-                        "code-path": "src/components/settings/SettingsPage.tsx:406:23",
+                        "code-path": "src/components/settings/SettingsPage.tsx:410:23",
                         type: field.type,
                         min: field.min,
                         max: field.max,
@@ -4670,14 +4673,14 @@ function SettingsPage() {
                         placeholder: field.placeholder
                       }
                     ),
-                    t(`settings.hint.${field.key}`) !== `settings.hint.${field.key}` && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:418:23", className: field.type === "checkbox" ? "col-span-2 text-xs leading-5 text-cabinet-inkMuted" : "text-xs leading-5 text-cabinet-inkMuted", children: t(`settings.hint.${field.key}`) })
+                    t(`settings.hint.${field.key}`) !== `settings.hint.${field.key}` && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/settings/SettingsPage.tsx:422:23", className: field.type === "checkbox" ? "col-span-2 text-xs leading-5 text-cabinet-inkMuted" : "text-xs leading-5 text-cabinet-inkMuted", children: t(`settings.hint.${field.key}`) })
                   ]
                 },
                 field.key
               ))
             ] })
           ] }),
-          status && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/settings/SettingsPage.tsx:426:24", className: "mt-4 text-sm text-cabinet-inkMuted", children: status })
+          status && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/settings/SettingsPage.tsx:430:24", className: "mt-4 text-sm text-cabinet-inkMuted", children: status })
         ] })
       ] })
     ] })
@@ -14290,12 +14293,21 @@ const ACCEPTED_TYPES = [
   "video/mp4",
   "video/webm"
 ].join(",");
+const BATCH_MATERIAL_UPLOAD_MAX = 10;
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
 function SkeletonGrid() {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:35:5", className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4", children: Array.from({ length: 8 }).map((_, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:37:9", className: "rounded-lg border border-cabinet-border bg-cabinet-paper overflow-hidden animate-pulse", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:38:11", className: "aspect-square bg-cabinet-bg" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:39:11", className: "px-3 py-2 space-y-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:40:13", className: "h-4 w-3/4 bg-cabinet-itemBg rounded" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:41:13", className: "h-3 w-1/2 bg-cabinet-itemBg rounded" })
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:45:5", className: "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4", children: Array.from({ length: 8 }).map((_, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:47:9", className: "rounded-lg border border-cabinet-border bg-cabinet-paper overflow-hidden animate-pulse", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:48:11", className: "aspect-square bg-cabinet-bg" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:49:11", className: "px-3 py-2 space-y-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:50:13", className: "h-4 w-3/4 bg-cabinet-itemBg rounded" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:51:13", className: "h-3 w-1/2 bg-cabinet-itemBg rounded" })
     ] })
   ] }, i)) });
 }
@@ -14368,29 +14380,28 @@ function MaterialLibraryPage() {
     }
   }, [refetch, t]);
   const handleUpload = reactExports.useCallback(async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const selectedFiles = Array.from(e.target.files || []).slice(0, BATCH_MATERIAL_UPLOAD_MAX);
+    const totalSelected = e.target.files?.length || 0;
+    if (!selectedFiles.length) return;
     setUploading(true);
     try {
-      const reader = new FileReader();
-      const dataUrl = await new Promise((resolve, reject) => {
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-      const res = await fetch("/api/materials", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fileName: file.name,
-          mimeType: file.type || "application/octet-stream",
-          dataUrl
-        })
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || `HTTP ${res.status}`);
+      for (const file of selectedFiles) {
+        const dataUrl = await readFileAsDataUrl(file);
+        const res = await fetch("/api/materials", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName: file.name,
+            mimeType: file.type || "application/octet-stream",
+            dataUrl
+          })
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => null);
+          throw new Error(data?.error || `HTTP ${res.status}`);
+        }
       }
+      if (totalSelected > selectedFiles.length) alert(t("library.uploadLimit", { max: BATCH_MATERIAL_UPLOAD_MAX }));
       refetch();
     } catch (err) {
       console.error("Upload failed:", err);
@@ -14406,33 +14417,34 @@ function MaterialLibraryPage() {
   const closePreview = reactExports.useCallback(() => {
     setPreviewItemId(null);
   }, []);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:171:5", className: "h-screen overflow-hidden bg-cabinet-bg p-3 md:p-7", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(AppNavigation, { "code-path": "src/components/material/MaterialLibraryPage.tsx:172:7", activePage: "library", open: navigationOpen, onClose: () => setNavigationOpen(false) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:174:7", className: "mx-auto flex h-full max-w-[1760px] overflow-hidden rounded-[18px] border border-cabinet-border bg-cabinet-paper shadow-[0_22px_48px_rgba(0,0,0,0.08)]", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:175:9", className: "flex min-w-0 flex-1 flex-col h-full", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:177:11", className: "flex-shrink-0 px-5 md:px-9 pt-7 pb-4", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:178:13", className: "flex items-center gap-3 mb-4", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:179:5", className: "h-screen overflow-hidden bg-cabinet-bg p-3 md:p-7", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(AppNavigation, { "code-path": "src/components/material/MaterialLibraryPage.tsx:180:7", activePage: "library", open: navigationOpen, onClose: () => setNavigationOpen(false) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:182:7", className: "mx-auto flex h-full max-w-[1760px] overflow-hidden rounded-[18px] border border-cabinet-border bg-cabinet-paper shadow-[0_22px_48px_rgba(0,0,0,0.08)]", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:183:9", className: "flex min-w-0 flex-1 flex-col h-full", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:185:11", className: "flex-shrink-0 px-5 md:px-9 pt-7 pb-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:186:13", className: "flex items-center gap-3 mb-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {
-              "code-path": "src/components/material/MaterialLibraryPage.tsx:179:15",
+              "code-path": "src/components/material/MaterialLibraryPage.tsx:187:15",
               type: "button",
               onClick: () => setNavigationOpen(true),
               className: "flex h-9 w-9 items-center justify-center rounded hover:bg-cabinet-itemBg",
               "aria-label": t("nav.open"),
-              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Menu, { "code-path": "src/components/material/MaterialLibraryPage.tsx:185:17", size: 19, className: "text-cabinet-ink2" })
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Menu, { "code-path": "src/components/material/MaterialLibraryPage.tsx:193:17", size: 19, className: "text-cabinet-ink2" })
             }
           ),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:187:15", className: "flex-1", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { "code-path": "src/components/material/MaterialLibraryPage.tsx:188:17", className: "text-xl font-medium text-cabinet-ink tracking-[0]", children: favoritedOnly ? t("library.favorites") : t("library.title") }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { "code-path": "src/components/material/MaterialLibraryPage.tsx:191:17", className: "text-[13px] text-cabinet-inkMuted mt-0.5", children: t("library.subtitle") })
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:195:15", className: "flex-1", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { "code-path": "src/components/material/MaterialLibraryPage.tsx:196:17", className: "text-xl font-medium text-cabinet-ink tracking-[0]", children: favoritedOnly ? t("library.favorites") : t("library.title") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { "code-path": "src/components/material/MaterialLibraryPage.tsx:199:17", className: "text-[13px] text-cabinet-inkMuted mt-0.5", children: t("library.subtitle") })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "input",
             {
-              "code-path": "src/components/material/MaterialLibraryPage.tsx:193:15",
+              "code-path": "src/components/material/MaterialLibraryPage.tsx:201:15",
               ref: fileInputRef,
               type: "file",
               accept: ACCEPTED_TYPES,
+              multiple: true,
               onChange: handleUpload,
               className: "hidden",
               "aria-hidden": "true"
@@ -14441,7 +14453,7 @@ function MaterialLibraryPage() {
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
             Button,
             {
-              "code-path": "src/components/material/MaterialLibraryPage.tsx:201:15",
+              "code-path": "src/components/material/MaterialLibraryPage.tsx:210:15",
               size: "sm",
               variant: favoritedOnly ? "default" : "outline",
               onClick: () => setFavoritedOnly((v) => !v),
@@ -14449,7 +14461,7 @@ function MaterialLibraryPage() {
               "aria-pressed": favoritedOnly,
               title: favoritedOnly ? t("library.favoritesAll") : t("library.favorites"),
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Star, { "code-path": "src/components/material/MaterialLibraryPage.tsx:209:17", size: 15, fill: favoritedOnly ? "currentColor" : "none" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Star, { "code-path": "src/components/material/MaterialLibraryPage.tsx:218:17", size: 15, fill: favoritedOnly ? "currentColor" : "none" }),
                 favoritedOnly ? t("library.favoritesAll") : t("library.favorites")
               ]
             }
@@ -14457,40 +14469,40 @@ function MaterialLibraryPage() {
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
             Button,
             {
-              "code-path": "src/components/material/MaterialLibraryPage.tsx:212:15",
+              "code-path": "src/components/material/MaterialLibraryPage.tsx:221:15",
               size: "sm",
               onClick: () => fileInputRef.current?.click(),
               disabled: uploading,
               className: "gap-1.5",
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Upload, { "code-path": "src/components/material/MaterialLibraryPage.tsx:218:17", size: 15 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Upload, { "code-path": "src/components/material/MaterialLibraryPage.tsx:227:17", size: 15 }),
                 uploading ? t("library.uploading") : t("library.upload")
               ]
             }
           )
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:224:13", className: "flex items-center gap-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(MaterialSearchBar, { "code-path": "src/components/material/MaterialLibraryPage.tsx:225:15", value: searchQuery, onChange: setSearchQuery }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:226:15", className: "flex items-center gap-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/material/MaterialLibraryPage.tsx:227:17", className: "text-xs text-cabinet-inkMuted hidden sm:inline", children: t("library.sortBy") }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(MaterialSortSelect, { "code-path": "src/components/material/MaterialLibraryPage.tsx:228:17", value: sort, onChange: setSort })
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:233:13", className: "flex items-center gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(MaterialSearchBar, { "code-path": "src/components/material/MaterialLibraryPage.tsx:234:15", value: searchQuery, onChange: setSearchQuery }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:235:15", className: "flex items-center gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/material/MaterialLibraryPage.tsx:236:17", className: "text-xs text-cabinet-inkMuted hidden sm:inline", children: t("library.sortBy") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(MaterialSortSelect, { "code-path": "src/components/material/MaterialLibraryPage.tsx:237:17", value: sort, onChange: setSort })
           ] })
         ] }),
-        !loading && !error && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:234:15", className: "mt-3 text-[13px] text-cabinet-inkMuted", children: t("library.itemCount", { count: total }) })
+        !loading && !error && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:243:15", className: "mt-3 text-[13px] text-cabinet-inkMuted", children: t("library.itemCount", { count: total }) })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:241:11", className: "flex-1 min-h-0 overflow-y-auto px-5 md:px-9 pb-6", children: [
-        error && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:243:15", className: "mb-4 px-5 py-2 text-sm text-[#d53b00] bg-cabinet-paper border border-cabinet-border flex items-center justify-between", role: "alert", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { "code-path": "src/components/material/MaterialLibraryPage.tsx:244:17", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:250:11", className: "flex-1 min-h-0 overflow-y-auto px-5 md:px-9 pb-6", children: [
+        error && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:252:15", className: "mb-4 px-5 py-2 text-sm text-[#d53b00] bg-cabinet-paper border border-cabinet-border flex items-center justify-between", role: "alert", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { "code-path": "src/components/material/MaterialLibraryPage.tsx:253:17", children: [
             t("library.loadError"),
             ": ",
             error
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "code-path": "src/components/material/MaterialLibraryPage.tsx:245:17", onClick: refetch, className: "text-sm text-cabinet-blue font-medium hover:underline", children: t("library.retry") })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { "code-path": "src/components/material/MaterialLibraryPage.tsx:254:17", onClick: refetch, className: "text-sm text-cabinet-blue font-medium hover:underline", children: t("library.retry") })
         ] }),
-        loading && items.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(SkeletonGrid, { "code-path": "src/components/material/MaterialLibraryPage.tsx:252:15" }) : items.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(MaterialEmptyState, { "code-path": "src/components/material/MaterialLibraryPage.tsx:254:15", isSearch: !!searchQuery.trim(), isFavoritesView: favoritedOnly }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+        loading && items.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(SkeletonGrid, { "code-path": "src/components/material/MaterialLibraryPage.tsx:261:15" }) : items.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(MaterialEmptyState, { "code-path": "src/components/material/MaterialLibraryPage.tsx:263:15", isSearch: !!searchQuery.trim(), isFavoritesView: favoritedOnly }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
           MaterialGrid,
           {
-            "code-path": "src/components/material/MaterialLibraryPage.tsx:256:15",
+            "code-path": "src/components/material/MaterialLibraryPage.tsx:265:15",
             items,
             onDelete: handleDelete,
             onRename: handleRename,
@@ -14500,19 +14512,19 @@ function MaterialLibraryPage() {
         )
       ] })
     ] }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(AlertDialog, { "code-path": "src/components/material/MaterialLibraryPage.tsx:269:7", open: !!deleteTarget, onOpenChange: (open) => {
+    /* @__PURE__ */ jsxRuntimeExports.jsx(AlertDialog, { "code-path": "src/components/material/MaterialLibraryPage.tsx:278:7", open: !!deleteTarget, onOpenChange: (open) => {
       if (!open) setDeleteTarget(null);
-    }, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(AlertDialogContent, { "code-path": "src/components/material/MaterialLibraryPage.tsx:270:9", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(AlertDialogHeader, { "code-path": "src/components/material/MaterialLibraryPage.tsx:271:11", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(AlertDialogTitle, { "code-path": "src/components/material/MaterialLibraryPage.tsx:272:13", children: t("library.deleteConfirmTitle") }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(AlertDialogDescription, { "code-path": "src/components/material/MaterialLibraryPage.tsx:273:13", children: t("library.deleteConfirmDesc", { name: deleteTarget?.name || "" }) })
+    }, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(AlertDialogContent, { "code-path": "src/components/material/MaterialLibraryPage.tsx:279:9", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(AlertDialogHeader, { "code-path": "src/components/material/MaterialLibraryPage.tsx:280:11", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(AlertDialogTitle, { "code-path": "src/components/material/MaterialLibraryPage.tsx:281:13", children: t("library.deleteConfirmTitle") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(AlertDialogDescription, { "code-path": "src/components/material/MaterialLibraryPage.tsx:282:13", children: t("library.deleteConfirmDesc", { name: deleteTarget?.name || "" }) })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(AlertDialogFooter, { "code-path": "src/components/material/MaterialLibraryPage.tsx:277:11", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(AlertDialogCancel, { "code-path": "src/components/material/MaterialLibraryPage.tsx:278:13", disabled: deleting, children: t("detail.close") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(AlertDialogFooter, { "code-path": "src/components/material/MaterialLibraryPage.tsx:286:11", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(AlertDialogCancel, { "code-path": "src/components/material/MaterialLibraryPage.tsx:287:13", disabled: deleting, children: t("detail.close") }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           AlertDialogAction,
           {
-            "code-path": "src/components/material/MaterialLibraryPage.tsx:279:13",
+            "code-path": "src/components/material/MaterialLibraryPage.tsx:288:13",
             onClick: confirmDelete,
             disabled: deleting,
             className: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
@@ -14524,7 +14536,7 @@ function MaterialLibraryPage() {
     previewItemId && /* @__PURE__ */ jsxRuntimeExports.jsx(
       MaterialPreviewModal,
       {
-        "code-path": "src/components/material/MaterialLibraryPage.tsx:292:9",
+        "code-path": "src/components/material/MaterialLibraryPage.tsx:301:9",
         items,
         previewItem,
         previewItemId,
@@ -14573,20 +14585,20 @@ function MaterialPreviewModal({ items, previewItem, previewItemId, onSelect, onC
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
-      "code-path": "src/components/material/MaterialLibraryPage.tsx:369:5",
+      "code-path": "src/components/material/MaterialLibraryPage.tsx:378:5",
       className: "fixed inset-0 z-50 flex bg-black/80",
       onClick: (e) => {
         if (e.currentTarget === e.target) onClose();
       },
       children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:376:7", className: "flex-shrink-0 w-[88px] h-full overflow-y-auto bg-black/40 border-r border-white/10 py-2 space-y-2 px-1.5", children: items.map((item) => {
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:385:7", className: "flex-shrink-0 w-[88px] h-full overflow-y-auto bg-black/40 border-r border-white/10 py-2 space-y-2 px-1.5", children: items.map((item) => {
           const isImage2 = item.mimeType.startsWith("image/");
           const isVideo = item.mimeType.startsWith("video/");
           const selected = item.id === previewItemId;
           return /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {
-              "code-path": "src/components/material/MaterialLibraryPage.tsx:382:13",
+              "code-path": "src/components/material/MaterialLibraryPage.tsx:391:13",
               type: "button",
               onClick: () => onSelect(item.id),
               className: `w-full aspect-square rounded overflow-hidden border-2 transition-colors ${selected ? "border-blue-500" : "border-transparent hover:border-white/30"}`,
@@ -14595,7 +14607,7 @@ function MaterialPreviewModal({ items, previewItem, previewItemId, onSelect, onC
               children: isImage2 ? /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "img",
                 {
-                  "code-path": "src/components/material/MaterialLibraryPage.tsx:393:17",
+                  "code-path": "src/components/material/MaterialLibraryPage.tsx:402:17",
                   src: `/api/materials/${item.id}/file`,
                   alt: item.fileName,
                   className: "w-full h-full object-cover",
@@ -14604,40 +14616,40 @@ function MaterialPreviewModal({ items, previewItem, previewItemId, onSelect, onC
               ) : isVideo ? /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "video",
                 {
-                  "code-path": "src/components/material/MaterialLibraryPage.tsx:400:17",
+                  "code-path": "src/components/material/MaterialLibraryPage.tsx:409:17",
                   src: `/api/materials/${item.id}/file`,
                   className: "w-full h-full object-cover",
                   muted: true,
                   playsInline: true,
                   preload: "metadata"
                 }
-              ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:408:17", className: "w-full h-full bg-cabinet-paper flex items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FileIcon, { "code-path": "src/components/material/MaterialLibraryPage.tsx:409:19", mimeType: item.mimeType, fileName: item.fileName }) })
+              ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:417:17", className: "w-full h-full bg-cabinet-paper flex items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FileIcon, { "code-path": "src/components/material/MaterialLibraryPage.tsx:418:19", mimeType: item.mimeType, fileName: item.fileName }) })
             },
             item.id
           );
         }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:418:7", className: "flex-1 min-w-0 h-full flex flex-col", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:420:9", className: "flex-shrink-0 flex items-center justify-end px-4 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:427:7", className: "flex-1 min-w-0 h-full flex flex-col", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:429:9", className: "flex-shrink-0 flex items-center justify-end px-4 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {
-              "code-path": "src/components/material/MaterialLibraryPage.tsx:421:11",
+              "code-path": "src/components/material/MaterialLibraryPage.tsx:430:11",
               type: "button",
               onClick: onClose,
               className: "flex h-9 w-9 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-colors",
               "aria-label": t("detail.close"),
               title: t("detail.close"),
-              children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { "code-path": "src/components/material/MaterialLibraryPage.tsx:428:13", size: 20 })
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { "code-path": "src/components/material/MaterialLibraryPage.tsx:437:13", size: 20 })
             }
           ) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:433:9", className: "flex-1 min-h-0 overflow-auto px-4 pb-4", children: previewItem ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:442:9", className: "flex-1 min-h-0 overflow-auto px-4 pb-4", children: previewItem ? /* @__PURE__ */ jsxRuntimeExports.jsx(
             PreviewContent,
             {
-              "code-path": "src/components/material/MaterialLibraryPage.tsx:435:13",
+              "code-path": "src/components/material/MaterialLibraryPage.tsx:444:13",
               item: previewItem,
               textContent: activeTextPreview?.content ?? null,
               textError: activeTextPreview?.error ?? null
             }
-          ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:441:13", className: "flex h-full items-center justify-center text-white/60 text-sm", children: t("library.itemNotFound") }) })
+          ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:450:13", className: "flex h-full items-center justify-center text-white/60 text-sm", children: t("library.itemNotFound") }) })
         ] })
       ]
     }
@@ -14650,10 +14662,10 @@ function PreviewContent({
 }) {
   const { t } = useI18n();
   if (item.mimeType.startsWith("image/")) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:464:7", className: "flex h-full items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:473:7", className: "flex h-full items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
       "img",
       {
-        "code-path": "src/components/material/MaterialLibraryPage.tsx:465:9",
+        "code-path": "src/components/material/MaterialLibraryPage.tsx:474:9",
         src: `/api/materials/${item.id}/file`,
         alt: item.fileName,
         className: "max-w-full max-h-full object-contain"
@@ -14661,10 +14673,10 @@ function PreviewContent({
     ) });
   }
   if (item.mimeType.startsWith("video/")) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:476:7", className: "flex h-full items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:485:7", className: "flex h-full items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
       "video",
       {
-        "code-path": "src/components/material/MaterialLibraryPage.tsx:477:9",
+        "code-path": "src/components/material/MaterialLibraryPage.tsx:486:9",
         src: `/api/materials/${item.id}/file`,
         controls: true,
         playsInline: true,
@@ -14677,7 +14689,7 @@ function PreviewContent({
     return /* @__PURE__ */ jsxRuntimeExports.jsx(
       "iframe",
       {
-        "code-path": "src/components/material/MaterialLibraryPage.tsx:490:7",
+        "code-path": "src/components/material/MaterialLibraryPage.tsx:499:7",
         src: `/api/materials/${item.id}/file`,
         title: item.fileName,
         className: "w-full h-full border-0 rounded"
@@ -14686,37 +14698,37 @@ function PreviewContent({
   }
   if (isTextMime(item.mimeType)) {
     if (textError) {
-      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:501:9", className: "flex h-full items-center justify-center text-white/60 text-sm", children: [
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:510:9", className: "flex h-full items-center justify-center text-white/60 text-sm", children: [
         t("library.loadError"),
         ": ",
         textError
       ] });
     }
     if (textContent === null) {
-      return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:508:9", className: "flex h-full items-center justify-center text-white/60 text-sm", children: t("library.loading") });
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:517:9", className: "flex h-full items-center justify-center text-white/60 text-sm", children: t("library.loading") });
     }
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { "code-path": "src/components/material/MaterialLibraryPage.tsx:514:7", className: "w-full h-full overflow-auto bg-black/30 text-white/90 text-sm p-4 rounded whitespace-pre-wrap break-words", children: textContent });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { "code-path": "src/components/material/MaterialLibraryPage.tsx:523:7", className: "w-full h-full overflow-auto bg-black/30 text-white/90 text-sm p-4 rounded whitespace-pre-wrap break-words", children: textContent });
   }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:522:5", className: "flex h-full flex-col items-center justify-center gap-4 text-white", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:523:7", className: "scale-150", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FileIcon, { "code-path": "src/components/material/MaterialLibraryPage.tsx:524:9", mimeType: item.mimeType, fileName: item.fileName }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:526:7", className: "text-center space-y-1", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:527:9", className: "text-lg font-medium", children: item.fileName }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:528:9", className: "text-sm text-white/60", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:531:5", className: "flex h-full flex-col items-center justify-center gap-4 text-white", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:532:7", className: "scale-150", children: /* @__PURE__ */ jsxRuntimeExports.jsx(FileIcon, { "code-path": "src/components/material/MaterialLibraryPage.tsx:533:9", mimeType: item.mimeType, fileName: item.fileName }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:535:7", className: "text-center space-y-1", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:536:9", className: "text-lg font-medium", children: item.fileName }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:537:9", className: "text-sm text-white/60", children: [
         formatFileSize(item.fileSize),
         " · ",
         item.mimeType
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:531:9", className: "text-sm text-white/60", children: new Date(item.addedAt).toLocaleDateString() })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/material/MaterialLibraryPage.tsx:540:9", className: "text-sm text-white/60", children: new Date(item.addedAt).toLocaleDateString() })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "a",
       {
-        "code-path": "src/components/material/MaterialLibraryPage.tsx:535:7",
+        "code-path": "src/components/material/MaterialLibraryPage.tsx:544:7",
         href: `/api/materials/${item.id}/file?download=1`,
         download: item.fileName,
         className: "inline-flex items-center gap-2 rounded bg-white/10 px-4 py-2 text-sm text-white hover:bg-white/20 transition-colors",
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Download, { "code-path": "src/components/material/MaterialLibraryPage.tsx:540:9", size: 16 }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Download, { "code-path": "src/components/material/MaterialLibraryPage.tsx:549:9", size: 16 }),
           t("library.download")
         ]
       }

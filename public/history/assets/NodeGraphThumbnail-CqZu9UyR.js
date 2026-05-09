@@ -12505,7 +12505,7 @@ function requireClient() {
   return client.exports;
 }
 var clientExports = requireClient();
-function useHistory(limit = 20, offset = 0, includeDemo = false) {
+function useHistory(limit = null, offset = 0, includeDemo = false) {
   const [sessions, setSessions] = reactExports.useState([]);
   const [total, setTotal] = reactExports.useState(0);
   const [loading, setLoading] = reactExports.useState(true);
@@ -12514,7 +12514,11 @@ function useHistory(limit = 20, offset = 0, includeDemo = false) {
     setLoading(true);
     setError(null);
     try {
-      const url = `/api/history?limit=${limit}&offset=${offset}&includeDemo=${includeDemo}`;
+      const params = new URLSearchParams({ offset: String(offset), includeDemo: String(includeDemo) });
+      if (typeof limit === "number" && Number.isFinite(limit) && limit > 0) {
+        params.set("limit", String(limit));
+      }
+      const url = `/api/history?${params.toString()}`;
       const res = await fetch(url);
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -12803,6 +12807,7 @@ const dictionaries = {
     "library.upload": "上传素材",
     "library.uploading": "上传中...",
     "library.uploadFailed": "上传失败",
+    "library.uploadLimit": "一次最多上传 {max} 个文件，已上传前 {max} 个。",
     "library.uploadSuccess": "上传成功",
     "library.favorites": "收藏夹",
     "library.favoritesAll": "全部素材",
@@ -13043,6 +13048,7 @@ const dictionaries = {
     "library.upload": "Upload material",
     "library.uploading": "Uploading...",
     "library.uploadFailed": "Upload failed",
+    "library.uploadLimit": "You can upload up to {max} files at once; uploaded the first {max}.",
     "library.uploadSuccess": "Uploaded",
     "library.favorites": "Favorites",
     "library.favoritesAll": "All materials",
