@@ -3,7 +3,7 @@ const prisma = new PrismaClient();
 
 const DEFAULTS = {
   analysis: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: { enableWebSearch: true, jsonObjectResponse: false } },
-  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: { enableWebSearch: true, enableWebExtractor: true, enableCodeInterpreter: true, enableCanvasTools: true, enablePreviousResponse: true } },
+  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: { enableWebSearch: true, enableWebExtractor: true, enableCodeInterpreter: true, enableCanvasTools: true, enablePreviousResponse: true, showActionPolicyTrace: false } },
   image: {
     endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
     model: "qwen-image-2.0-pro",
@@ -214,7 +214,8 @@ function normalizeOptions(role, value) {
       enableWebExtractor: cleanBoolean(merged.enableWebExtractor, true),
       enableCodeInterpreter: cleanBoolean(merged.enableCodeInterpreter, true),
       enableCanvasTools: cleanBoolean(merged.enableCanvasTools, true),
-      enablePreviousResponse: cleanBoolean(merged.enablePreviousResponse, true)
+      enablePreviousResponse: cleanBoolean(merged.enablePreviousResponse, true),
+      showActionPolicyTrace: cleanBoolean(merged.showActionPolicyTrace, false)
     });
   }
 

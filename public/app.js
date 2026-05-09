@@ -91,6 +91,7 @@ const STORAGE_KEYS = {
   chatSidebarOpen: ["thoughtgrid.chatSidebarOpen", "oryzae.chatSidebarOpen"],
   chatSidebarWidth: ["thoughtgrid.chatSidebarWidth", "oryzae.chatSidebarWidth"],
   chatInputHeight: ["thoughtgrid.chatInputHeight", "oryzae.chatInputHeight"],
+  actionPolicyTrace: ["thoughtgrid.actionPolicyTrace", "oryzae.actionPolicyTrace"],
   subagentsEnabled: ["thoughtgrid-subagents-enabled", "oryzae-subagents-enabled"],
   thinkingMode: ["thoughtgrid-thinking-mode", "oryzae-thinking-mode"],
   workbenchTourSeen: ["thoughtgrid.workbenchTourSeen.v5", "oryzae.workbenchTourSeen.v5"]
@@ -212,7 +213,7 @@ const MAX_CANVAS_ACTIONS_PER_TURN = MAX_THINKING_CANVAS_ACTIONS_PER_TURN;
 const settingsCache = {
   currentRole: "analysis",
   analysis: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: { enableWebSearch: true, jsonObjectResponse: false } },
-  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: { enableWebSearch: true, enableWebExtractor: true, enableCodeInterpreter: true, enableCanvasTools: true, enablePreviousResponse: true } },
+  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: { enableWebSearch: true, enableWebExtractor: true, enableCodeInterpreter: true, enableCanvasTools: true, enablePreviousResponse: true, showActionPolicyTrace: false } },
   image: {
     endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
     model: "qwen-image-2.0-pro",
@@ -245,7 +246,8 @@ const MODEL_OPTION_FIELDS = {
     { key: "enableWebExtractor", type: "checkbox" },
     { key: "enableCodeInterpreter", type: "checkbox" },
     { key: "enableCanvasTools", type: "checkbox" },
-    { key: "enablePreviousResponse", type: "checkbox" }
+    { key: "enablePreviousResponse", type: "checkbox" },
+    { key: "showActionPolicyTrace", type: "checkbox", local: true }
   ],
   image: [
     { key: "size", type: "text", placeholder: "2048*2048" },
@@ -529,6 +531,7 @@ const i18n = {
     "settings.option.enableWebExtractor": "启用网页提取",
     "settings.option.enableCanvasTools": "启用画布工具",
     "settings.option.enablePreviousResponse": "启用多轮响应 ID",
+    "settings.option.showActionPolicyTrace": "显示动作轨迹",
     "settings.option.voice": "音色",
     "settings.option.outputAudio": "返回语音回复",
     "settings.option.enableSearch": "实时语音联网搜索",
@@ -878,6 +881,7 @@ const i18n = {
     "settings.hint.enableCodeInterpreter": "允许 Qwen Responses 在计算、数据分析和图表任务中使用代码解释器。",
     "settings.hint.enableCanvasTools": "允许对话模型返回 canvas_action，用于创建或控制画布卡片。",
     "settings.hint.enablePreviousResponse": "开启后同一聊天线程会复用 Qwen Responses previous_response_id。",
+    "settings.hint.showActionPolicyTrace": "开启后在助手消息下显示本轮动作策略、拒绝原因和 pipeline 阶段，适合调试。",
     "settings.hint.targetLanguage": "选择语音转写的目标语言，Auto 会自动识别。",
     "settings.hint.chunkMs": "每次发送的音频长度；越短越实时，越长越稳定。",
     "settings.hint.voice": "例如 Ethan、Cherry 或 Chelsie；也可以填写自定义复刻音色 ID。",
@@ -972,6 +976,7 @@ const i18n = {
     "settings.option.enableCodeInterpreter": "Enable code interpreter",
     "settings.option.enableCanvasTools": "Enable canvas tools",
     "settings.option.enablePreviousResponse": "Enable previous response ID",
+    "settings.option.showActionPolicyTrace": "Show action trace",
     "settings.option.voice": "Voice",
     "settings.option.outputAudio": "Play voice reply",
     "settings.option.enableSearch": "Realtime web search",
@@ -999,6 +1004,7 @@ const i18n = {
     "settings.hint.enableCodeInterpreter": "Allow Qwen Responses to use code interpreter for calculations, data analysis, and charts.",
     "settings.hint.enableCanvasTools": "Allow the chat model to return canvas_action calls that create or control canvas cards.",
     "settings.hint.enablePreviousResponse": "Reuse Qwen Responses previous_response_id inside the same chat thread.",
+    "settings.hint.showActionPolicyTrace": "Show each turn's action policy, rejected actions, and pipeline stages under assistant messages. Useful for debugging.",
     "settings.hint.targetLanguage": "Select the target language for speech transcription; Auto detects it automatically.",
     "settings.hint.chunkMs": "Audio duration sent per request; shorter is more realtime, longer is more stable.",
     "settings.hint.voice": "For example Ethan, Cherry, or Chelsie; custom cloned voice IDs also work.",
@@ -3216,6 +3222,7 @@ function wireControls() {
       if (data[role]) {
         settingsCache[role] = data[role];
       }
+      if (role === "chat") renderChatMessages();
       showSaveConfirmation(t("status.saved"));
       checkHealth();
     } catch (err) {
@@ -4162,6 +4169,7 @@ function normalizeChatThreadMessage(message) {
     thinkingContent: normalizeChatThinkingContent(message?.thinkingContent || message?.reasoningContent || message?.reasoning),
     thinkingRequested: Boolean(message?.thinkingRequested || message?.thinkingContent || message?.reasoningContent),
     actions: normalizeChatMessageActions(message?.actions),
+    actionResults: normalizeChatActionResults(message?.actionResults),
     actionPolicy: normalizeChatActionPolicy(message?.actionPolicy),
     artifacts: normalizeChatArtifacts(message?.artifacts || message?.materials || message?.cards),
     references: normalizeChatReferences(message?.references),
@@ -4410,7 +4418,17 @@ function normalizeChatThread(thread, index = 0) {
   const fallback = createChatThread([], t("chat.conversationUntitled", { index: index + 1 }));
   if (!thread || typeof thread !== "object") return fallback;
   const messages = Array.isArray(thread.messages)
-    ? thread.messages.map(normalizeChatThreadMessage).filter((m) => m.content || m.thinkingContent || m.pending || m.actions?.length || m.artifacts?.length)
+    ? thread.messages.map(normalizeChatThreadMessage).filter((m) => (
+        m.content ||
+        m.attachments?.length ||
+        m.thinkingContent ||
+        m.pending ||
+        m.actions?.length ||
+        m.actionResults?.length ||
+        m.actionPolicy ||
+        m.artifacts?.length ||
+        m.references?.length
+      ))
     : [];
   return {
     id: typeof thread.id === "string" && thread.id ? thread.id : fallback.id,
@@ -4485,6 +4503,7 @@ function serializeChatThreads() {
       thinkingContent: normalizeChatThinkingContent(message.thinkingContent),
       thinkingRequested: Boolean(message.thinkingRequested),
       actions: normalizeChatMessageActions(message.actions),
+      actionResults: normalizeChatActionResults(message.actionResults),
       actionPolicy: normalizeChatActionPolicy(message.actionPolicy),
       artifacts: normalizeChatArtifacts(message.artifacts),
       references: normalizeChatReferences(message.references),
@@ -4860,6 +4879,7 @@ async function saveTheme(theme) {
 async function loadSettings() {
   try {
     const data = await getJson("/api/settings");
+    const chatTraceWasVisible = shouldShowActionPolicyTrace();
     for (const role of ["analysis", "chat", "image", "asr", "realtime", "deepthink"]) {
       if (data[role]) {
         settingsCache[role] = {
@@ -4874,6 +4894,7 @@ async function loadSettings() {
     if (data.theme === "light" || data.theme === "dark") {
       applyTheme(data.theme);
     }
+    if (chatTraceWasVisible !== shouldShowActionPolicyTrace()) renderChatMessages();
   } catch (err) {
     console.error("Failed to load settings:", err);
   }
@@ -4911,7 +4932,9 @@ function renderSettingsAdvancedFields() {
     label.textContent = t(`settings.option.${field.key}`);
     row.appendChild(label);
 
-    const value = options[field.key];
+    const value = field.local && field.key === "showActionPolicyTrace"
+      ? shouldShowActionPolicyTrace()
+      : options[field.key];
     let control;
     if (field.type === "textarea") {
       control = document.createElement("textarea");
@@ -4941,6 +4964,12 @@ function renderSettingsAdvancedFields() {
     }
     control.dataset.optionKey = field.key;
     control.dataset.optionType = field.type;
+    if (field.local) {
+      control.dataset.optionLocal = "true";
+      if (field.key === "showActionPolicyTrace") {
+        control.addEventListener("change", () => setActionPolicyTraceVisible(Boolean(control.checked)));
+      }
+    }
     row.appendChild(control);
 
     const hintKey = `settings.hint.${field.key}`;
@@ -4976,6 +5005,7 @@ function collectSettingsOptions() {
     const key = control.dataset.optionKey;
     const type = control.dataset.optionType;
     if (!key) return;
+    if (control.dataset.optionLocal === "true") return;
     if (type === "checkbox") {
       options[key] = Boolean(control.checked);
       return;
@@ -7029,6 +7059,19 @@ function expandActionBatchNodes(nodeIds = []) {
   if (changed) applyCollapseState();
 }
 
+function normalizeAutoHiddenReasonEntries(value) {
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => Array.isArray(item) && item.length >= 2)
+      .map(([id, reason]) => [String(id || "").trim(), String(reason || "").trim()])
+      .filter(([id]) => id);
+  }
+  if (!value || typeof value !== "object") return [];
+  return Object.entries(value)
+    .map(([id, reason]) => [String(id || "").trim(), String(reason || "").trim()])
+    .filter(([id]) => id);
+}
+
 function autoCollapseActionBatch(nodeIds = [], parentNodeId = "", options = {}) {
   const ids = Array.from(new Set(nodeIds)).filter((id) => id && id !== parentNodeId && state.nodes.has(id));
   if (ids.length < 2) return;
@@ -7043,11 +7086,40 @@ function autoCollapseActionBatch(nodeIds = [], parentNodeId = "", options = {}) 
   if (options.save) autoSave();
 }
 
+function shouldCancelScheduledAutoCollapse(ids = [], options = {}) {
+  const liveIds = ids.filter((id) => id && state.nodes.has(id));
+  if (liveIds.length < 2) return true;
+
+  if (options.cancelIfSelected !== false) {
+    const selectedIds = new Set(Array.from(state.selectedNodeIds || []));
+    if (state.selectedNodeId) selectedIds.add(state.selectedNodeId);
+    if (liveIds.some((id) => selectedIds.has(id))) return true;
+  }
+
+  if (options.cancelIfManuallyHidden !== false) {
+    if (liveIds.some((id) => state.selectiveHidden.has(id) && !state.autoHiddenReasons.has(id))) return true;
+  }
+
+  if (options.cancelIfInteracting !== false) {
+    const active = document.activeElement;
+    return liveIds.some((id) => {
+      const element = state.nodes.get(id)?.element;
+      if (!element) return false;
+      if (element.classList.contains("dragging") || element.classList.contains("resizing") || element.classList.contains("rotating")) return true;
+      if (active && active !== document.body && element.contains(active)) return true;
+      return typeof element.matches === "function" && element.matches(":hover");
+    });
+  }
+
+  return false;
+}
+
 function scheduleAutoCollapseActionBatch(nodeIds = [], parentNodeId = "", options = {}) {
   const ids = Array.from(new Set(nodeIds)).filter(Boolean);
   if (ids.length < 2) return;
   const delay = Number.isFinite(options.delay) ? Math.max(0, options.delay) : 720;
   window.setTimeout(() => {
+    if (shouldCancelScheduledAutoCollapse(ids, options)) return;
     autoCollapseActionBatch(ids, parentNodeId, {
       reason: options.reason || "batch-complete-after-layout",
       save: options.save !== false
@@ -10305,6 +10377,17 @@ function formatChatActionPolicyTrace(policy = {}) {
   return lines.join("\n").trim();
 }
 
+function shouldShowActionPolicyTrace() {
+  const saved = getStoredItem(STORAGE_KEYS.actionPolicyTrace);
+  if (saved === "true" || saved === "false") return saved === "true";
+  return settingsCache.chat?.options?.showActionPolicyTrace === true;
+}
+
+function setActionPolicyTraceVisible(enabled) {
+  setStoredItem(STORAGE_KEYS.actionPolicyTrace, enabled ? "true" : "false");
+  renderChatMessages();
+}
+
 function renderChatActionPolicyTrace(policy = {}) {
   const text = formatChatActionPolicyTrace(policy);
   if (!text) return null;
@@ -10451,7 +10534,7 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       actions.textContent = t("chat.actionsApplied", { count: message.actions.length });
       line.appendChild(actions);
     }
-    if (message.role === "assistant" && message.actionPolicy) {
+    if (message.role === "assistant" && message.actionPolicy && shouldShowActionPolicyTrace()) {
       const trace = renderChatActionPolicyTrace(message.actionPolicy);
       if (trace) line.appendChild(trace);
     }
@@ -17011,7 +17094,7 @@ async function loadSession(sessionId) {
       for (const id of (sessionState.selectiveHidden || data.selectiveHidden || [])) state.selectiveHidden.add(id);
     }
     if (sessionState?.autoHiddenReasons || data.autoHiddenReasons) {
-      state.autoHiddenReasons = new Map(Object.entries(sessionState.autoHiddenReasons || data.autoHiddenReasons || {}));
+      state.autoHiddenReasons = new Map(normalizeAutoHiddenReasonEntries(sessionState.autoHiddenReasons || data.autoHiddenReasons || {}));
     }
     if (sessionState?.contentHidden || data.contentHidden) {
       for (const id of (sessionState.contentHidden || data.contentHidden || [])) state.contentHidden.add(id);
@@ -17020,7 +17103,9 @@ async function loadSession(sessionId) {
     hydrateChatThreads({
       threads: data.viewState?.chatThreads,
       activeId: data.viewState?.activeChatThreadId,
-      fallbackMessages: data.chatMessages.map(m => ({ role: m.role, content: m.content }))
+      fallbackMessages: Array.isArray(data.viewState?.stateSnapshot?.chatMessages)
+        ? data.viewState.stateSnapshot.chatMessages
+        : (Array.isArray(data.chatMessages) ? data.chatMessages : [])
     });
     renderChatMessages();
 

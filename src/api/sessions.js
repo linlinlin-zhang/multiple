@@ -133,6 +133,89 @@ function serializeState(state) {
   return { nodes, links, chatMessages };
 }
 
+function cloneJson(value, fallback = null, maxBytes = 65536) {
+  if (value === undefined || value === null) return fallback;
+  try {
+    const json = JSON.stringify(value);
+    if (!json || json.length > maxBytes) return fallback;
+    return JSON.parse(json);
+  } catch {
+    return fallback;
+  }
+}
+
+function cloneJsonArray(value, maxItems = 32, maxBytes = 65536) {
+  if (!Array.isArray(value)) return [];
+  return cloneJson(value.slice(0, maxItems), [], maxBytes) || [];
+}
+
+function cloneJsonObject(value, maxBytes = 65536) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return cloneJson(value, null, maxBytes);
+}
+
+function normalizePersistedChatMessages(messages) {
+  const raw = Array.isArray(messages) ? messages : [];
+  return raw.slice(-500).map((m) => {
+    const content = typeof m?.content === "string" ? m.content : "";
+    const thinkingContent = typeof m?.thinkingContent === "string"
+      ? m.thinkingContent
+      : (typeof m?.reasoningContent === "string" ? m.reasoningContent : "");
+    return {
+      role: m?.role === "assistant" ? "assistant" : "user",
+      content,
+      attachments: cloneJsonArray(m?.attachments, 12, 256000),
+      branchNodeId: typeof m?.branchNodeId === "string" ? m.branchNodeId : null,
+      thinkingTrace: cloneJsonArray(m?.thinkingTrace || m?.trace, 24, 64000),
+      thinkingContent: thinkingContent.trim() ? thinkingContent.slice(0, 120000) : "",
+      thinkingRequested: Boolean(m?.thinkingRequested || thinkingContent),
+      actions: cloneJsonArray(m?.actions, 48, 128000),
+      actionResults: cloneJsonArray(m?.actionResults, 48, 96000),
+      actionPolicy: cloneJsonObject(m?.actionPolicy, 160000),
+      artifacts: cloneJsonArray(m?.artifacts || m?.materials || m?.cards, 48, 160000),
+      references: cloneJsonArray(m?.references, 48, 96000),
+      responseId: typeof m?.responseId === "string" ? m.responseId.slice(0, 160) : "",
+      pending: false,
+      createdAt: typeof m?.createdAt === "string" ? m.createdAt : null
+    };
+  }).filter((m) => (
+    m.content ||
+    m.attachments.length ||
+    m.thinkingContent ||
+    m.actions.length ||
+    m.actionResults.length ||
+    m.actionPolicy ||
+    m.artifacts.length ||
+    m.references.length
+  ));
+}
+
+function normalizeAutoHiddenReasons(value) {
+  const raw = Array.isArray(value)
+    ? Object.fromEntries(value.filter((item) => Array.isArray(item) && item.length >= 2))
+    : normalizeRecordMap(value);
+  return Object.fromEntries(
+    Object.entries(raw)
+      .map(([id, reason]) => [String(id || "").trim(), String(reason || "").trim().slice(0, 80)])
+      .filter(([id]) => id)
+  );
+}
+
+function dbChatMessagesToPayload(messages = []) {
+  return (Array.isArray(messages) ? messages : []).map((m) => ({
+    role: m.role === "assistant" ? "assistant" : "user",
+    content: typeof m.content === "string" ? m.content : "",
+    thinkingContent: m.thinkingContent || null,
+    references: Array.isArray(m.references) ? m.references : null
+  })).filter((m) => m.content || m.thinkingContent || m.references?.length);
+}
+
+function sessionChatMessagesForPayload(session = {}) {
+  const snapshotMessages = session.viewState?.stateSnapshot?.chatMessages;
+  if (Array.isArray(snapshotMessages)) return normalizePersistedChatMessages(snapshotMessages);
+  return dbChatMessagesToPayload(session.chatMessages);
+}
+
 function buildPersistedViewState(state) {
   const view = state?.view && typeof state.view === "object" ? state.view : {};
   const snapshot = {
@@ -153,10 +236,12 @@ function buildPersistedViewState(state) {
     selectedNodeIds: Array.isArray(state.selectedNodeIds) ? state.selectedNodeIds : [],
     collapsed: Array.isArray(state.collapsed) ? state.collapsed : [],
     selectiveHidden: Array.isArray(state.selectiveHidden) ? state.selectiveHidden : [],
+    autoHiddenReasons: normalizeAutoHiddenReasons(state.autoHiddenReasons),
     contentHidden: Array.isArray(state.contentHidden) ? state.contentHidden : [],
     junctions: state.junctions || {},
     blueprints: state.blueprints || {},
     groups: state.groups || {},
+    chatMessages: normalizePersistedChatMessages(state.chatMessages),
     chatThreads: view.chatThreads || state.chatThreads || [],
     activeChatThreadId: view.activeChatThreadId || state.activeChatThreadId || null
   };
@@ -183,7 +268,7 @@ function normalizeCollapsedIds(collapsed) {
 
 function normalizeRecordMap(value) {
   if (!value) return {};
-  if (typeof value.entries === "function") return Object.fromEntries(value);
+  if (!Array.isArray(value) && typeof value.entries === "function") return Object.fromEntries(value);
   if (typeof value === "object" && !Array.isArray(value)) return value;
   return {};
 }
@@ -730,6 +815,7 @@ export async function handleGetSession(sessionId, res, options = {}) {
 
     return sendJson(res, 200, {
       ...session,
+      chatMessages: sessionChatMessagesForPayload(session),
       title,
       state: session.viewState?.stateSnapshot || null
     });
@@ -896,12 +982,7 @@ export async function handleExportSession(sessionId, res, options = {}) {
           toNodeId: l.toNodeId,
           kind: l.kind
         })),
-        chatMessages: session.chatMessages.map((m) => ({
-          role: m.role,
-          content: m.content,
-          thinkingContent: m.thinkingContent || null,
-          references: Array.isArray(m.references) ? m.references : null
-        }))
+        chatMessages: sessionChatMessagesForPayload(session)
       },
       assets: []
     };

@@ -82,7 +82,8 @@ let runtimeConfigs = {
       enableWebExtractor: true,
       enableCodeInterpreter: true,
       enableCanvasTools: true,
-      enablePreviousResponse: true
+      enablePreviousResponse: true,
+      showActionPolicyTrace: false
     }
   }),
   analysis: buildModelConfig("ANALYSIS", {
@@ -835,7 +836,8 @@ async function refreshConfigs() {
         enableWebExtractor: true,
         enableCodeInterpreter: true,
         enableCanvasTools: true,
-        enablePreviousResponse: true
+        enablePreviousResponse: true,
+        showActionPolicyTrace: false
       }
     }, dbMap.chat);
 
@@ -1093,7 +1095,8 @@ function normalizeModelOptions(role, value) {
       enableWebExtractor: cleanBoolean(raw.enableWebExtractor, true),
       enableCodeInterpreter: cleanBoolean(raw.enableCodeInterpreter, true),
       enableCanvasTools: cleanBoolean(raw.enableCanvasTools, true),
-      enablePreviousResponse: cleanBoolean(raw.enablePreviousResponse, true)
+      enablePreviousResponse: cleanBoolean(raw.enablePreviousResponse, true),
+      showActionPolicyTrace: cleanBoolean(raw.showActionPolicyTrace, false)
     });
   }
   if (role === "asr") {

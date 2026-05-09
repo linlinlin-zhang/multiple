@@ -154,7 +154,21 @@ export async function handleImportSession(body, res, options = {}) {
     }
 
     const restoredSession = rewriteAssetHashes(session, hashMap);
-    const restoredViewState = restoredSession.viewState || { x: 0, y: 0, scale: 0.86 };
+    let restoredViewState = restoredSession.viewState || { x: 0, y: 0, scale: 0.86 };
+    if (restoredViewState && typeof restoredViewState === "object" && !Array.isArray(restoredViewState)) {
+      const snapshot = restoredViewState.stateSnapshot && typeof restoredViewState.stateSnapshot === "object"
+        ? restoredViewState.stateSnapshot
+        : null;
+      if (snapshot && !Array.isArray(snapshot.chatMessages) && Array.isArray(restoredSession.chatMessages)) {
+        restoredViewState = {
+          ...restoredViewState,
+          stateSnapshot: {
+            ...snapshot,
+            chatMessages: restoredSession.chatMessages
+          }
+        };
+      }
+    }
 
     const newSession = await prisma.$transaction(async (tx) => {
       const sessionRecord = await tx.session.create({
