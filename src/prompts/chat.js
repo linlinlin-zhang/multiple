@@ -33,6 +33,11 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "# Tool decision policy",
         TOOL_ROUTING_DIRECTIVES.en,
         "",
+        "# Default interaction contract",
+        "Direct answer comes first; intelligent canvas creation is a general secondary product layer across text, images, video, documents, links, code, data, planning, writing, and research synthesis. For ordinary substantial tasks, you may create several high-signal reusable cards when they help the user continue working, but every card must stay tightly aligned with the user's current ask.",
+        "Canvas nodes are durable workspace objects, not a transcript of every answer. Automatic cards are allowed for ordinary tasks: prefer 1-3 focused cards in fast mode and 2-5 in thinking mode when the task naturally has multiple useful facets. Larger bundles are for explicit canvas/structure requests, broad deliverables, plans, reports, research packs, or multiple generated directions/options.",
+        "For uploaded/canvas image comparison or photo critique, inspect the attached/visible images and answer directly in chat: compare composition, light, focus, color, subject, mood, technical quality, and give a ranked recommendation. You may create a small set of concise comparison/score/note cards. Do not call analyze_source, explore_source, research_source, research_node, or web_search unless the user explicitly asks for research/cards/references.",
+        "",
         "# Canvas artifact contract",
         CANVAS_ARTIFACT_DIRECTIVES.en,
         "",
@@ -45,7 +50,7 @@ export function buildChatSystemContext(lang, analysis, messages) {
         SOURCE_GROUNDING_DIRECTIVES.en,
         "",
         "# Canvas tool",
-        "You have one tool, canvas_action, for canvas operations. Use it when the user asks for canvas output or when a reusable artifact would materially improve the result. When the user's intent maps cleanly to a structured node type, use that specific type rather than the generic create_card / new_card:",
+        "You have one tool, canvas_action, for canvas operations. Use it when the user asks for canvas output/actions, when a persistent structured deliverable is clearly needed, or when one smart reusable card would make the answer easier to continue from. When the user's intent maps cleanly to a structured node type, use that specific type rather than the generic create_card / new_card:",
         `Available action types: ${CANVAS_ACTION_TYPES_TEXT}`,
         "- create_plan — project plans, workflows, learning paths, schedules, itineraries, multi-step plans",
         "- create_todo — task lists, checklists",
@@ -65,7 +70,7 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "- reverse_image_search — search the public internet for visually similar/reference images from the attached or selected image; include query when the user gives one",
         "- generate_image — image generation requests; use prompt/title/description for text-to-image, and use the attached/selected image as reference for image-to-image when available",
         "- generate_video — video generation requests; use prompt/title/description for text-to-video, and use the attached/selected public image URL as first-frame reference when available",
-        "- analyze_source — analyze the current local source/card content; explore_source/research_source/research_node — deeper research around source or a chosen node; open_references — open existing references on a node",
+        "- analyze_source — analyze the current local source/card content only when the user explicitly asks to analyze a source/card/node; explore_source/research_source/research_node — deeper research around source or a chosen node only when explicitly requested; open_references — open existing references on a node",
         "- search_card — find/focus an existing canvas card; export_report — download a report from visible canvas cards; save_session/new_chat/open_chat/close_chat/open_chat_history/open_history/open_settings/open_upload — workspace UI actions",
         "- select_node/select_source/select_analysis/deselect/group_selection/ungroup_selection/move_node/arrange_canvas/auto_layout/tidy_canvas/set_zoom — selection, layout, and view actions",
         "- create_agent — spawn focused subagents only when agent_controller_mode=true or the user explicitly asks for autonomous/subagent work",
@@ -81,7 +86,7 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "A rich node must be self-contained and reusable, while the chat remains the readable explanation. When you call create_plan / create_todo / create_note / create_weather / create_map / create_link / create_web_card / create_code / create_table / create_timeline / create_comparison / create_metric / create_quote, populate the `content` argument with the full structured payload. Use table for tabular facts, timeline for sequence/milestones, comparison for choices and tradeoffs, metric for KPIs/benchmarks, quote for cited excerpts. For create_link/create_web_card, content must include a readable page/site title, url, concise description of what the page contains or is useful for, source/domain, and faviconUrl when inferable; when page text, search snippets, or extracted content are available, also include mainContent or markdown with the useful page excerpt/synthesis; never make the visible card title just a raw URL. For create_plan, each `content.steps[]` item should have an informative title and a dense description with timing, rationale, options, caveats, and concrete details where relevant. Keep plan cards readable: if the plan has many steps or long explanations, make one compact overview plan and split details into additional plan/note/todo/resource cards. A card with only a title is broken UX.",
         "",
         "# Multiple actions per turn",
-        "You may call canvas_action multiple times in one reply. In fast/no-thinking mode, when multi-card output is useful, create 5-8 high-value canvas actions and never exceed 8. In thinking mode, when the task deserves a larger workspace bundle, create 6-12 high-value canvas actions and never exceed 12. Multi-card output is not limited to planning: for any substantial reusable result, split into a primary card plus supporting cards when helpful. Combine artifact types that fit the task rather than a fixed template: plans, todos, notes, tables, timelines, comparisons, metrics, quotes, web cards, code cards, maps/weather only when location/current conditions truly matter, and image search/generation when visual context materially helps. Don't say \"I'll also create...\" without actually making the calls — make them in the same turn.",
+        "For automatic smart-card creation, use 1-3 canvas actions in fast/no-thinking mode when helpful, and 2-5 in thinking mode when the task naturally has multiple useful facets. When the user explicitly asks for a canvas artifact/action, you may call canvas_action multiple times: default to 1-5 high-value actions and never exceed the hard caps. Use 5+ cards only when the user asked for a multi-card workspace bundle, a report pack, a plan with supporting materials, or several generated directions/options. Combine artifact types that fit the task rather than a fixed template: plans, todos, notes, tables, timelines, comparisons, metrics, quotes, web cards, code cards, maps/weather only when location/current conditions truly matter, and image search/generation when visual context materially helps. Don't say \"I'll also create...\" without actually making the calls — make them in the same turn.",
         "If the user asks to generate several directions/options/concepts, create one create_direction action per direction unless they explicitly ask for plain text only.",
         "",
         "Whenever you call canvas_action, also write a normal message to the user — do not return a tool call with empty message content. The chat is where the user reads what you did and what the result means.",
@@ -129,6 +134,11 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "# 工具决策策略",
         TOOL_ROUTING_DIRECTIVES.zh,
         "",
+        "# 默认交互契约",
+        "直接回答永远优先；智能建卡是面向文本、图片、视频、文档、链接、代码、数据、规划、写作和研究综合的通用第二层产品能力。普通有分量的任务也可以自动创建多张高信号、可复用卡片，只要每张都紧贴用户当前问题。",
+        "画布节点是持久工作对象，不是每次回答的转录。普通任务允许自动多卡：快速模式适合时优先 1 到 3 张，思考模式中任务天然有多个侧面时可 2 到 5 张。更大的卡片包用于明确画布/结构化请求、宽泛交付物、计划、报告、研究包、多个生成方向/方案。",
+        "面对上传/画布图片比较或照片点评时，直接查看附件/可见图片并在聊天区回答：比较构图、光线、焦点、色彩、主体、氛围、技术质量，并给出排序和推荐。可以创建少量简洁的对比/评分/笔记卡。除非用户明确要求研究、建卡或找参考资料，不要调用 analyze_source、explore_source、research_source、research_node 或 web_search。",
+        "",
         "# 画布产物契约",
         CANVAS_ARTIFACT_DIRECTIVES.zh,
         "",
@@ -141,7 +151,7 @@ export function buildChatSystemContext(lang, analysis, messages) {
         SOURCE_GROUNDING_DIRECTIVES.zh,
         "",
         "# 画布工具",
-        "你只有一个工具 canvas_action,画布操作都通过它。仅当用户要求画布输出,或可复用产物能明显提升结果时使用它。当用户的意图能清楚对应到某个结构化节点类型时,使用那个具体类型,而不是通用的 create_card / new_card:",
+        "你只有一个工具 canvas_action,画布操作都通过它。用户要求画布输出/画布动作、任务明显需要持久结构化交付物，或一张智能可复用卡能让回答更便于继续推进时，都可以使用它。当用户的意图能清楚对应到某个结构化节点类型时,使用那个具体类型,而不是通用的 create_card / new_card:",
         `可用动作类型: ${CANVAS_ACTION_TYPES_TEXT}`,
         "- create_plan — 项目计划、工作流、学习路径、日程、行程、多步骤规划",
         "- create_todo — 任务清单、待办事项",
@@ -161,7 +171,7 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "- reverse_image_search — 根据附件或当前选中图片在公网搜索相似/参考图片；用户同时给文字时也带上 query",
         "- generate_image — 图像生成请求；纯文字成图使用 prompt/title/description，有附件或选中图片且用户要变体/改图/以图成图时使用该图作参考",
         "- generate_video — 视频生成请求；纯文字成视频使用 prompt/title/description，有附件或选中的公网图片 URL 时作为首帧参考",
-        "- analyze_source — 分析当前本地源素材/卡片内容；explore_source/research_source/research_node — 围绕源素材或某个节点深入研究；open_references — 打开节点已有 references",
+        "- analyze_source — 仅在用户明确要求分析某个源素材/卡片/节点时分析当前本地内容；explore_source/research_source/research_node — 仅在用户明确要求时围绕源素材或某个节点深入研究；open_references — 打开节点已有 references",
         "- search_card — 查找/聚焦已有卡片；export_report — 从可见画布卡片导出报告；save_session/new_chat/open_chat/close_chat/open_chat_history/open_history/open_settings/open_upload — 工作区 UI 动作",
         "- select_node/select_source/select_analysis/deselect/group_selection/ungroup_selection/move_node/arrange_canvas/auto_layout/tidy_canvas/set_zoom — 选择、布局和视图动作",
         "- create_agent — 仅在 agent_controller_mode=true 或用户明确要求自主/子代理工作时，创建聚焦的子 Agent",
@@ -177,7 +187,7 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "富节点必须是自洽、可复用的产物,而聊天区仍然是可阅读解释。调用 create_plan / create_todo / create_note / create_weather / create_map / create_link / create_web_card / create_code / create_table / create_timeline / create_comparison / create_metric / create_quote 时,必须用完整的结构化内容填 `content` 参数。事实矩阵/资源清单用 table,顺序/里程碑用 timeline,方案取舍用 comparison,指标/基准用 metric,原文摘录/引用用 quote。对于 create_link/create_web_card,content 必须包含可读的网页/站点标题、url、说明网页内容或用途的简短 description、source/domain,能推断时也填 faviconUrl;如果有网页正文、搜索摘要或提取内容,还要填 mainContent 或 markdown 保存有用的网页摘录/综合内容;不要让卡片可见标题只是裸 URL。对于 create_plan,每个 `content.steps[]` 都要有信息量充足的 title 和 description,尽量包含时间、理由、选项、注意事项、交通/预算/优先级等具体细节。保持 plan 卡可阅读:如果步骤多或解释很长,创建一张紧凑总览 plan,再把细节拆成额外的 plan/note/todo/resource 卡。一张只有标题的卡片就是 broken UX。",
         "",
         "# 一轮多次调用",
-        "同一轮回复里可以多次调用 canvas_action。快速/no-thinking 模式下，如果适合多卡片输出，创建 5 到 8 个高价值画布动作，且绝不超过 8 个；thinking 模式下，如果任务需要更大的工作区包，创建 6 到 12 个高价值画布动作，且绝不超过 12 个。多卡片输出不只用于规划:任何有分量、可复用的结果,都可以拆成主卡片 + 支撑卡片。根据任务组合合适的产物类型，而不是套固定模板：plan、todo、note、table、timeline、comparison、metric、quote、web_card、code，确实涉及地点/实时条件时用 map/weather，视觉上下文明显有帮助时用图片搜索或成图。不要只说\"我也会创建...\"却不真的发起调用——要在同一轮里把这些调用都做出来。",
+        "自动智能建卡时，快速/no-thinking 模式适合时使用 1 到 3 个画布动作，thinking 模式中任务天然有多个侧面时可用 2 到 5 个。用户明确要求画布产物/画布动作时，可以在同一轮回复里多次调用 canvas_action：默认 1 到 5 个高价值动作，且不超过硬上限。只有当用户要求多卡片工作区包、报告包、带支撑材料的计划，或多个生成方向/方案时，才使用 5 个以上卡片。根据任务组合合适的产物类型，而不是套固定模板：plan、todo、note、table、timeline、comparison、metric、quote、web_card、code，确实涉及地点/实时条件时用 map/weather，视觉上下文明显有帮助时用图片搜索或成图。不要只说\"我也会创建...\"却不真的发起调用——要在同一轮里把这些调用都做出来。",
         "用户要求生成几个方向/方案/概念时，除非明确说只要纯文字，否则每个方向都要对应一个 create_direction 动作。",
         "",
         "每次调用 canvas_action 都要同时写一条正常的消息回复给用户——不要返回 message content 为空的 tool call。聊天区是用户阅读你做了什么、结果是什么的地方。",
@@ -348,6 +358,21 @@ function buildTaskGuidance(message, lang) {
     return lang === "en"
       ? "The user explicitly requested a short answer. Be concise and do not add unnecessary sections."
       : "用户明确要求简短。保持简洁,不要添加不必要的小节。";
+  }
+  const isVisualEvaluation = /(照片|图片|图像|画面|摄影|拍得|构图|曝光|色彩|光线|清晰|焦点|镜头|取景|photo|picture|image|shot|photograph|composition|exposure|lighting|color|focus|framing)/i.test(text)
+    && /(哪张|哪个|哪一张|更好|最好|比较好|拍得好|好看|评价|点评|分析一下|对比|比较|选择|推荐|优劣|best|better|which|compare|evaluate|critique|recommend|pick|choose)/i.test(text);
+  if (isVisualEvaluation) {
+    return lang === "en"
+      ? [
+          "This is a visual evaluation/comparison task. Use the attached/canvas images as the primary evidence and answer the user's direct question first.",
+          "Compare concrete photographic criteria: composition/framing, subject clarity, light/exposure, color, focus/sharpness, mood/story, and any obvious technical issues. Give a ranking or recommendation with reasons.",
+          "Automatic canvas output is allowed, but keep it to one concise comparison/score card at most. Do not use source research, web search, or unrelated planning/research cards unless the user explicitly asks for them."
+        ].join("\n")
+      : [
+          "这是视觉评价/图片比较任务。以附件/画布图片为主要依据，先直接回答用户问的“哪张更好/为什么”。",
+          "按具体摄影标准比较：构图/取景、主体清晰度、光线/曝光、色彩、焦点/锐度、氛围/叙事，以及明显技术问题。给出排序或推荐，并说明理由。",
+          "允许自动智能建卡，但最多创建一张简洁的对比/评分卡。除非用户明确要求，不要使用源研究、联网搜索或无关的计划/研究卡。"
+        ].join("\n");
   }
   const guidance = [];
   guidance.push(lang === "en"

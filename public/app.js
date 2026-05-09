@@ -822,7 +822,7 @@ const i18n = {
     "session.exploration": "的探索",
     "reference.title": "参考资料",
     "history.empty": "暂无历史会话",
-    "chat.systemContext": "你是 ThoughtGrid 画布式 AI 工作台内的助手。适合时使用 canvas_action 增强回答：结构化卡片（plan/todo/note/table/timeline/comparison/metric/quote/code/link/web_card）、视觉工具（image_search/reverse_image_search/generate_image/generate_video）、研究/来源工具（analyze_source/explore_source/research_source/research_node/open_references）、视图与工作区控制（focus_node/search_card/arrange_canvas/save_session 等）。明确成图/视频请求必须调用 generate_image/generate_video；每次工具调用也要给用户正常文字回复。",
+    "chat.systemContext": "你是 ThoughtGrid 画布式 AI 工作台内的助手。直接回答优先，同时可以用 canvas_action 自动创建贴题的智能卡片。ThoughtGrid 是通用多媒体/多文件智能画布：文本、图片、视频、文档、链接、代码、数据、规划、写作和研究综合都可以形成画布产物。普通有分量任务也允许自动创建多张高价值结果卡；明确画布、结构化交付物、报告、计划或多方案任务可创建更完整的卡片组。只有用户明确要求研究某个源/节点时，才使用 analyze_source/explore_source/research_source/research_node；不要把普通图片比较升级成研究流水线。明确成图/视频请求必须调用 generate_image/generate_video；每次工具调用也要给用户正常文字回复。",
     "chat.actionFeedback.create_direction": "已创建方向卡片",
     "chat.actionFeedback.create_card": "已创建卡片",
     "chat.actionFeedback.new_card": "已创建卡片",
@@ -1228,7 +1228,7 @@ const i18n = {
     "health.demo": "demo",
     "health.api": "api",
     "health.mixed": "mixed",
-    "chat.systemContext": "You are the assistant inside ThoughtGrid, a canvas-based AI workbench. Use canvas_action when it materially improves the answer: structured cards (plan/todo/note/table/timeline/comparison/metric/quote/code/link/web_card), visual tools (image_search/reverse_image_search/generate_image/generate_video), source/research tools (analyze_source/explore_source/research_source/research_node/open_references), and view/workspace controls (focus_node/search_card/arrange_canvas/save_session, etc.). Explicit image/video generation requests must call generate_image/generate_video. Whenever you call a tool, also write a normal message reply to the user.",
+    "chat.systemContext": "You are the assistant inside ThoughtGrid, a canvas-based AI workbench. Direct answer comes first, and canvas_action may create tightly relevant smart cards. ThoughtGrid is a general multimodal/multifile intelligent canvas: text, images, video, documents, links, code, data, planning, writing, and research synthesis can all become canvas artifacts. Ordinary substantial tasks may create multiple high-value result cards; explicit canvas, structured deliverable, report, plan, or multi-option tasks may create a fuller card set. Use analyze_source/explore_source/research_source/research_node only when the user explicitly asks to research a source/node; do not turn ordinary image comparison into a research workflow. Explicit image/video generation requests must call generate_image/generate_video. Whenever you call a tool, also write a normal message reply to the user.",
     "chat.systemRole": "You are ThoughtGrid's canvas assistant.",
     "chat.selectedCardContext": "The user is currently chatting about the following card on the canvas:\nType: {type}\nTitle: {title}\nSummary: {summary}",
     "chat.selectedCardPrompt": "Prompt: {prompt}",
@@ -5787,6 +5787,52 @@ function buildSelectedNodeContext(nodeId = state.selectedNodeId) {
   return context;
 }
 
+function isVisualEvaluationChatRequest(message) {
+  const text = String(message || "").normalize("NFKC");
+  const visual = /(照片|图片|图像|画面|摄影|拍得|构图|曝光|色彩|光线|清晰|焦点|镜头|取景|photo|picture|image|shot|photograph|composition|exposure|lighting|color|focus|framing)/i.test(text);
+  const judge = /(哪张|哪个|哪一张|更好|最好|比较好|拍得好|好看|评价|点评|分析一下|对比|比较|选择|推荐|优劣|best|better|which|compare|evaluate|critique|recommend|pick|choose)/i.test(text);
+  return visual && judge;
+}
+
+function isChatMediaNode(nodeId) {
+  if (!nodeId || !state.nodes.has(nodeId)) return false;
+  if (nodeId === "source") return state.sourceType === "image" || state.sourceType === "video" || Boolean(state.sourceImage || state.sourceImageHash || state.sourceVideo || state.sourceVideoHash);
+  const node = state.nodes.get(nodeId);
+  const sourceCard = node?.sourceCard || {};
+  return Boolean(
+    sourceCard.sourceType === "image" ||
+    sourceCard.sourceType === "video" ||
+    sourceCard.imageHash ||
+    sourceCard.imageUrl ||
+    sourceCard.remoteImageUrl ||
+    sourceCard.sourceVideoHash ||
+    sourceCard.sourceVideoUrl ||
+    node?.generated ||
+    node?.imageHash ||
+    node?.videoHash ||
+    node?.videoUrl
+  );
+}
+
+function buildTaskScopedCanvasContext(message, selectedNodeId = state.selectedNodeId) {
+  const context = buildVoiceCanvasContext();
+  if (!isVisualEvaluationChatRequest(message)) return context;
+  const mediaIds = new Set((context.mediaNodes || [])
+    .filter((node) => node.hasImage || node.hasVideo)
+    .map((node) => node.id));
+  if (isChatMediaNode(selectedNodeId)) mediaIds.add(selectedNodeId);
+  if (!mediaIds.size) return context;
+  const keep = (node) => mediaIds.has(node?.id);
+  return {
+    ...context,
+    selectedNodeId: isChatMediaNode(selectedNodeId) ? selectedNodeId : null,
+    selectedNodeIds: Array.from(state.selectedNodeIds).filter((id) => mediaIds.has(id)),
+    nodes: (context.nodes || []).filter(keep),
+    visibleNodes: (context.visibleNodes || []).filter(keep),
+    contextMode: "visual-evaluation-media-only"
+  };
+}
+
 async function handleChatSubmit(event) {
   event.preventDefault();
   if (chatOperationBusy || deepThinkBusy) return;
@@ -5834,6 +5880,7 @@ async function submitChatMessage(message, options = {}) {
   const agentMode = Boolean(options.agentMode || inferredAgentMode);
   const effectiveThinkingMode = options.forcedThinkingMode || (agentMode ? "no-thinking" : state.thinkingMode);
   const selectedNodeId = options.selectedNodeId || state.selectedNodeId;
+  const visualEvaluationRequest = isVisualEvaluationChatRequest(text);
   const chatAttachment = pendingChatAttachment;
   const attachmentImageDataUrl = chatAttachment?.kind === "image" ? chatAttachment.dataUrl : "";
   const attachmentVideoDataUrl = chatAttachment?.kind === "video" ? chatAttachment.dataUrl : "";
@@ -5895,9 +5942,18 @@ async function submitChatMessage(message, options = {}) {
     });
     imageDataUrls = preparedMedia.imageDataUrls;
     sourceVideoDataUrl = preparedMedia.videoDataUrl;
-    const selectedContext = options.selectedContext || buildSelectedNodeContext(selectedNodeId);
+    const selectedContext = Object.prototype.hasOwnProperty.call(options, "selectedContext")
+      ? options.selectedContext
+      : (visualEvaluationRequest && !isChatMediaNode(selectedNodeId) ? null : buildSelectedNodeContext(selectedNodeId));
+    const analysisForChat = visualEvaluationRequest && !isChatMediaNode(selectedNodeId) ? null : state.latestAnalysis;
+    const canvasContext = options.canvasContext || buildTaskScopedCanvasContext(text, selectedNodeId);
 
     let systemContext = t("chat.systemContext");
+    if (visualEvaluationRequest) {
+      systemContext += "\n\n" + (currentLang === "en"
+        ? "Current task mode: visual evaluation/comparison. Prioritize the attached/canvas images and answer the comparison directly. Automatic canvas output may be a small concise comparison/score/note set; do not call source research or web research unless explicitly requested."
+        : "当前任务模式：视觉评价/图片比较。优先依据附件/画布图片，直接回答比较结果。自动画布输出可以是少量简洁的对比/评分/笔记卡；除非用户明确要求，不要调用源研究或联网研究。");
+    }
     if (selectedContext) {
       systemContext += "\n\n" + t("chat.selectedCardContext", {
         type: selectedContext.type,
@@ -5924,11 +5980,11 @@ async function submitChatMessage(message, options = {}) {
       imageDataUrl: imageDataUrls[0] || "",
       imageDataUrls,
       videoDataUrl: sourceVideoDataUrl,
-      analysis: state.latestAnalysis,
+      analysis: analysisForChat,
       messages: getChatHistoryPayload(),
       systemContext,
       selectedContext,
-      canvas: options.canvasContext || buildVoiceCanvasContext(),
+      canvas: canvasContext,
       language: currentLang,
       selectedNodeId,
       thinkingMode: effectiveThinkingMode,
@@ -5957,7 +6013,11 @@ async function submitChatMessage(message, options = {}) {
     const returnedActions = typeof options.transformActions === "function"
       ? options.transformActions(data?.actions || data?.action, data)
       : (data?.actions || data?.action);
-    const actionList = dedupeCanvasActions(Array.isArray(returnedActions) ? returnedActions : (returnedActions ? [returnedActions] : []));
+    const actionList = filterChatActionsForIntent(
+      dedupeCanvasActions(Array.isArray(returnedActions) ? returnedActions : (returnedActions ? [returnedActions] : [])),
+      text,
+      { thinkingMode: effectiveThinkingMode }
+    );
     assistantMeta.actions = actionList;
     let actionResults = [];
     const baseReply = data.reply || t("chat.systemContext");
@@ -6860,6 +6920,35 @@ function dedupeCanvasActions(actions) {
     seen.add(key);
     return true;
   });
+}
+
+function isExplicitSourceResearchChatRequest(message) {
+  const text = String(message || "").normalize("NFKC");
+  return /(研究|深入研究|探索|分析).{0,16}(这张|这个|当前|选中|源|素材|来源|卡片|节点|source|card|node)|(?:analy[sz]e|explore|research).{0,16}(?:selected|current|source|card|node)|打开.{0,8}(引用|参考资料|references)|open\s+references/i.test(text);
+}
+
+function isExplicitCanvasOrMediaChatRequest(message) {
+  const text = String(message || "").normalize("NFKC");
+  return /(画布|卡片|节点|创建|新建|新增|保存成|放到画布|整理到画布|计划|规划|清单|待办|表格|时间线|报告|提纲|搜图|找图|参考图|成图|出图|生成.{0,10}(图|图片|图像|视频|动画)|canvas|card|node|create|save.*card|checklist|table|timeline|report|image search|generate.*(?:image|video))/i.test(text);
+}
+
+function filterChatActionsForIntent(actions, message, { thinkingMode = "no-thinking" } = {}) {
+  const list = Array.isArray(actions) ? actions : [];
+  if (!list.length) return list;
+  const sourceResearchTypes = new Set(["analyze_source", "explore_source", "research_source", "research_node", "open_references"]);
+  const visualEvaluation = isVisualEvaluationChatRequest(message);
+  const explicitResearch = isExplicitSourceResearchChatRequest(message);
+  const explicitCanvasOrMedia = isExplicitCanvasOrMediaChatRequest(message);
+  let filtered = list.filter((action) => {
+    const type = String(action?.type || action?.name || "");
+    if (sourceResearchTypes.has(type) && !explicitResearch) return false;
+    if (visualEvaluation && !explicitCanvasOrMedia && !["create_comparison", "create_metric", "create_note"].includes(type)) return false;
+    return true;
+  });
+  if (visualEvaluation && !explicitCanvasOrMedia) {
+    filtered = filtered.slice(0, thinkingMode === "thinking" ? 3 : 2);
+  }
+  return filtered;
 }
 
 function actionRequiresConcreteResult(action) {
