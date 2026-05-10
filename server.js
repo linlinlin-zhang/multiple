@@ -23,7 +23,7 @@ import { ingestText, ingestSnippet, retrieveContext, formatContextForPrompt, isE
 import { classifyContent, getFallbackTaskType, resolveTaskType, routeContent } from "./src/lib/taskRouter.js";
 import { ensureMediaGenerationActions } from "./src/lib/chatActionGuard.js";
 import { ensureCommittedCanvasActions } from "./src/lib/canvasActionReliability.js";
-import { finalizeCanvasActions as runCanvasActionPipeline } from "./src/lib/canvasActionPipeline.js";
+import { compactPipelineActionTypes, finalizeCanvasActions as runCanvasActionPipeline } from "./src/lib/canvasActionPipeline.js";
 import { extractInlineCanvasActionsFromReply, removeInlineCanvasActionBlocks } from "./src/lib/inlineCanvasActions.js";
 import { extractResponsesReasoningDelta, extractResponsesTextDelta } from "./src/lib/responsesStreamParser.js";
 import {
@@ -1946,8 +1946,9 @@ async function handleChat(body, res) {
   const visibleRawReply = inlineActions.length ? removeInlineCanvasActionBlocks(rawReply, { allowedTypes: CANVAS_ACTION_TYPES }) : rawReply;
   const thinkingContent = thinkingMode === "thinking" ? sanitizeReasoningContent(collectReasoningContent(response), rawReply) : "";
   const reply = visibleChatReplyOrEmpty(normalizeCitationMarkers(stripReasoningEchoFromResponseText(visibleRawReply, thinkingContent).trim(), references));
+  const rawActions = [...extractToolCallActions(response), ...inlineActions];
   const actionPipeline = runCanvasActionPipeline({
-    rawActions: [...extractToolCallActions(response), ...inlineActions],
+    rawActions,
     message,
     reply,
     response,
@@ -1962,6 +1963,16 @@ async function handleChat(body, res) {
     dependencies: canvasActionPipelineDependencies()
   });
   const actions = actionPipeline.actions;
+  logCanvasActionPipelineDiagnostics({
+    source: "chat",
+    message,
+    reply,
+    thinkingMode,
+    rawActions,
+    inlineActions,
+    thinkingContent,
+    actionPipeline
+  });
   const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
 
   // Fire-and-forget: persist this turn into the session context pool.
@@ -2193,8 +2204,9 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
   const visibleRawReply = inlineActions.length ? removeInlineCanvasActionBlocks(rawReply, { allowedTypes: CANVAS_ACTION_TYPES }) : rawReply;
   const thinkingContent = thinkingMode === "thinking" ? sanitizeReasoningContent(streamedReasoning || collectReasoningContent(response), rawReply) : "";
   const reply = visibleChatReplyOrEmpty(normalizeCitationMarkers(stripReasoningEchoFromResponseText(visibleRawReply, thinkingContent).trim(), references));
+  const rawActions = [...extractToolCallActions(response), ...inlineActions];
   const actionPipeline = runCanvasActionPipeline({
-    rawActions: [...extractToolCallActions(response), ...inlineActions],
+    rawActions,
     message,
     reply,
     response,
@@ -2209,6 +2221,16 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
     dependencies: canvasActionPipelineDependencies()
   });
   const actions = actionPipeline.actions;
+  logCanvasActionPipelineDiagnostics({
+    source: "chat_stream",
+    message,
+    reply,
+    thinkingMode,
+    rawActions,
+    inlineActions,
+    thinkingContent,
+    actionPipeline
+  });
   const finalReply = finalizeChatReply(reply, actions, lang, references) || (lang === "en" ? "Got it. We can keep exploring from here." : "我读到了，我们可以继续从这里展开。");
   return {
     provider: "api",
@@ -3524,6 +3546,45 @@ function compactActionPolicyTrace(traces = []) {
   };
 }
 
+function compactMentionedCanvasActionTypes(text = "") {
+  const value = String(text || "");
+  if (!value) return [];
+  return CANVAS_ACTION_TYPES.filter((type) => value.includes(type)).slice(0, 24);
+}
+
+function logCanvasActionPipelineDiagnostics({
+  source = "chat",
+  message = "",
+  reply = "",
+  thinkingMode = "no-thinking",
+  rawActions = [],
+  inlineActions = [],
+  thinkingContent = "",
+  actionPipeline = {}
+} = {}) {
+  const stages = Array.isArray(actionPipeline?.stages) ? actionPipeline.stages : [];
+  const finalActions = Array.isArray(actionPipeline?.actions) ? actionPipeline.actions : [];
+  if (rawActions.length && finalActions.length) return;
+  const stageSummary = stages
+    .map((stage) => `${stage.name}:${stage.inputCount}->${stage.outputCount}[${(stage.actionTypes || []).join(",")}]`)
+    .join(" | ");
+  const policy = actionPipeline?.actionPolicy || {};
+  console.warn("[canvas-actions] pipeline diagnostic", {
+    source,
+    thinkingMode,
+    rawActionTypes: compactPipelineActionTypes(rawActions),
+    inlineActionTypes: compactPipelineActionTypes(inlineActions),
+    finalActionTypes: compactPipelineActionTypes(finalActions),
+    thinkingMentionedActionTypes: compactMentionedCanvasActionTypes(thinkingContent),
+    taskType: policy.taskType,
+    automaticCardMode: policy.automaticCardMode,
+    rejected: policy.rejected || [],
+    stages: stageSummary,
+    messageSnippet: String(message || "").slice(0, 160),
+    replySnippet: String(reply || "").slice(0, 160)
+  });
+}
+
 function automaticCardLimitForIntent(intent, thinkingMode = "no-thinking") {
   if (intent?.visualEvaluation) return thinkingMode === "thinking" ? 3 : 2;
   return thinkingMode === "thinking" ? 5 : 3;
@@ -4743,7 +4804,16 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
 
   const requestText = String(message || "").normalize("NFKC");
   const combinedText = requestText + " " + String(reply || "").normalize("NFKC");
-  const wantsArtifact = /(画布|卡片|节点|创建|新建|生成.*(卡片|节点|方向|方案)|保存成|放到画布|整理到画布|canvas|card|node|create|add|save.*card|generate.*(?:direction|option|concept))/i.test(requestText);
+  const intent = classifyChatIntent(requestText);
+  const wantsArtifact = !intent.noCanvas && !intent.trivial && (
+    intent.explicitCanvas ||
+    intent.structuredDeliverable ||
+    isPlanningRequest(requestText) ||
+    isComparisonRequest(requestText) ||
+    isResearchRequest(requestText) ||
+    isDataOrCodeRequest(requestText) ||
+    /(画布|卡片|节点|创建|新建|生成.*(卡片|节点|方向|方案)|保存成|放到画布|整理到画布|canvas|card|node|create|add|save.*card|generate.*(?:direction|option|concept))/i.test(requestText)
+  );
   const matchedTypes = [];
 
   for (const [actionType, regex] of Object.entries(FALLBACK_KEYWORDS)) {

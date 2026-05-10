@@ -4355,14 +4355,19 @@ function formatActionProgressNote({ done = 0, total = 0, action = null } = {}) {
 
 function formatActionCompletionNote(actionResults = []) {
   const results = normalizeChatActionResults(actionResults);
-  const mediaResults = results.filter((item) => ["generate_image", "generate_video", "image_search", "reverse_image_search", "text_image_search"].includes(item.type));
-  if (!mediaResults.length) return "";
-  const successCount = mediaResults.filter((item) => item.success !== false).length;
-  const total = mediaResults.length;
+  const concreteResults = results.filter((item) => item.nodeId || [
+    "create_plan", "create_todo", "create_note", "create_weather", "create_map", "create_link", "create_web_card",
+    "create_code", "create_table", "create_timeline", "create_comparison", "create_metric", "create_quote",
+    "create_direction", "create_card", "new_card", "generate_image", "generate_video", "image_search",
+    "reverse_image_search", "text_image_search", "web_search"
+  ].includes(item.type));
+  if (!concreteResults.length) return "";
+  const successCount = concreteResults.filter((item) => item.success !== false).length;
+  const total = concreteResults.length;
   if (!successCount) return "";
   return currentLang === "en"
-    ? `\n\n> Completed ${successCount}/${total} visual action${total > 1 ? "s" : ""}. Use the feedback card${total > 1 ? "s" : ""} below to jump to the canvas result.`
-    : `\n\n> 已完成 ${successCount}/${total} 个视觉动作，可点击下方反馈卡跳转到画布结果。`;
+    ? `\n\n> Completed ${successCount}/${total} canvas action${total > 1 ? "s" : ""}. Use the feedback card${total > 1 ? "s" : ""} below to jump to the canvas result.`
+    : `\n\n> 已完成 ${successCount}/${total} 个画布动作，可点击下方反馈卡跳转到画布结果。`;
 }
 
 function formatActionFailureNote(actionResults = []) {
