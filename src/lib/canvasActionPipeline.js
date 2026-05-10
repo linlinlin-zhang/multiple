@@ -1,6 +1,8 @@
 const PIPELINE_STAGE_LIMIT = 14;
 const PIPELINE_ACTION_TYPE_LIMIT = 24;
 const PIPELINE_REJECTION_LIMIT = 10;
+const TRACE_SNIPPET_LIMIT = 240;
+export const CANVAS_ACTION_TRACE_VERSION = 1;
 
 export function compactPipelineActionTypes(actions = []) {
   return (Array.isArray(actions) ? actions : [])
@@ -38,6 +40,112 @@ export function attachActionPipelineTrace(actionPolicy, stages = []) {
   };
 }
 
+function snippet(value, limit = TRACE_SNIPPET_LIMIT) {
+  return String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim().slice(0, limit);
+}
+
+function stableHash(value) {
+  const text = String(value || "");
+  let hash = 2166136261;
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function compactStage(stage = {}) {
+  return {
+    name: String(stage.name || ""),
+    inputCount: Number(stage.inputCount) || 0,
+    outputCount: Number(stage.outputCount) || 0,
+    actionTypes: Array.isArray(stage.actionTypes) ? stage.actionTypes.slice(0, PIPELINE_ACTION_TYPE_LIMIT) : [],
+    rejected: Array.isArray(stage.rejected) ? stage.rejected.slice(0, PIPELINE_REJECTION_LIMIT) : []
+  };
+}
+
+function compactFrontendResult(result = {}) {
+  return {
+    type: String(result.type || ""),
+    success: result.success !== false,
+    nodeId: String(result.nodeId || "").slice(0, 96),
+    nodeIds: Array.isArray(result.nodeIds) ? result.nodeIds.map((id) => String(id || "").slice(0, 96)).filter(Boolean).slice(0, 24) : [],
+    title: String(result.title || "").slice(0, 120),
+    error: String(result.error || "").slice(0, 240),
+    errorCode: String(result.errorCode || "").slice(0, 80)
+  };
+}
+
+function compactIntent(actionPolicy = {}, policyTraces = []) {
+  const first = policyTraces.find((trace) => trace && typeof trace === "object") || {};
+  return {
+    taskType: actionPolicy.taskType || first.taskType || "",
+    confidence: actionPolicy.confidence ?? first.confidence,
+    automaticCardMode: Boolean(actionPolicy.automaticCardMode ?? first.automaticCardMode),
+    allowCanvasTool: actionPolicy.allowCanvasTool ?? first.allowCanvasTool,
+    allowedActionTypes: Array.isArray(actionPolicy.allowedActionTypes)
+      ? actionPolicy.allowedActionTypes.slice(0, PIPELINE_ACTION_TYPE_LIMIT)
+      : (Array.isArray(first.allowedActionTypes) ? first.allowedActionTypes.slice(0, PIPELINE_ACTION_TYPE_LIMIT) : []),
+    maxActions: actionPolicy.maxActions ?? first.maxActions
+  };
+}
+
+export function buildCanvasActionTrace({
+  traceId = "",
+  sessionId = "",
+  messageId = "",
+  model = "",
+  provider = "",
+  thinkingMode = "no-thinking",
+  message = "",
+  reply = "",
+  rawActions = [],
+  toolActions = null,
+  inlineActions = [],
+  thinkingMentionedActionTypes = [],
+  actionPolicy = {},
+  policyTraces = [],
+  stages = [],
+  finalActions = [],
+  frontendResults = []
+} = {}) {
+  const rawToolActionTypes = compactPipelineActionTypes(Array.isArray(toolActions) ? toolActions : rawActions);
+  const finalActionTypes = compactPipelineActionTypes(finalActions);
+  const identity = [
+    sessionId,
+    messageId,
+    model,
+    thinkingMode,
+    snippet(message),
+    rawToolActionTypes.join(","),
+    finalActionTypes.join(",")
+  ].join("|");
+  return {
+    version: CANVAS_ACTION_TRACE_VERSION,
+    traceId: traceId || `cat_${stableHash(identity)}`,
+    sessionId: String(sessionId || ""),
+    messageId: String(messageId || ""),
+    model: String(model || ""),
+    provider: String(provider || ""),
+    thinkingMode,
+    intent: compactIntent(actionPolicy, policyTraces),
+    modelOutput: {
+      rawToolActionTypes,
+      inlineActionTypes: compactPipelineActionTypes(inlineActions),
+      thinkingMentionedActionTypes: Array.isArray(thinkingMentionedActionTypes)
+        ? thinkingMentionedActionTypes.map((type) => String(type || "")).filter(Boolean).slice(0, PIPELINE_ACTION_TYPE_LIMIT)
+        : []
+    },
+    pipelineStages: stages.map(compactStage).slice(0, PIPELINE_STAGE_LIMIT),
+    finalActionTypes,
+    frontendResults: (Array.isArray(frontendResults) ? frontendResults : []).map(compactFrontendResult).slice(0, 32),
+    snippets: {
+      message: snippet(message),
+      reply: snippet(reply)
+    }
+  };
+}
+
 function identityActions(actions) {
   return Array.isArray(actions) ? actions : [];
 }
@@ -66,6 +174,15 @@ export function finalizeCanvasActions({
   analysis = {},
   webSearchEnabled = false,
   maxActions = 8,
+  traceId = "",
+  sessionId = "",
+  messageId = "",
+  model = "",
+  provider = "",
+  inlineActions = [],
+  toolActions = null,
+  thinkingMentionedActionTypes = [],
+  frontendResults = [],
   dependencies = {}
 } = {}) {
   const policyTraces = [];
@@ -142,10 +259,31 @@ export function finalizeCanvasActions({
   const compactPolicy = dependencies.compactActionPolicyTrace
     ? dependencies.compactActionPolicyTrace(policyTraces)
     : undefined;
+  const actionPolicy = attachActionPipelineTrace(compactPolicy, stages);
+  const trace = buildCanvasActionTrace({
+    traceId,
+    sessionId,
+    messageId,
+    model,
+    provider,
+    thinkingMode,
+    message,
+    reply,
+    rawActions,
+    toolActions,
+    inlineActions,
+    thinkingMentionedActionTypes,
+    actionPolicy,
+    policyTraces,
+    stages,
+    finalActions: actions,
+    frontendResults
+  });
   return {
     actions,
     policyTraces,
     stages,
-    actionPolicy: attachActionPipelineTrace(compactPolicy, stages)
+    actionPolicy,
+    trace
   };
 }

@@ -50,6 +50,9 @@ function typeList(actions) {
   ]);
   assert.equal(result.actionPolicy.traceCount, 3);
   assert.equal(result.actionPolicy.stages.find((stage) => stage.name === "reference_merge").outputCount, 3);
+  assert.equal(result.trace.version, 1);
+  assert.deepEqual(result.trace.finalActionTypes, ["create_note", "generate_image", "create_web_card"]);
+  assert.equal(result.trace.pipelineStages.length, result.stages.length);
 }
 
 {

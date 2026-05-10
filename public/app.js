@@ -4323,14 +4323,17 @@ function normalizeChatActionResults(value) {
     .map((entry) => {
       const result = entry.result;
       const nodeId = (typeof result === "string" ? result : result?.nodeId) || entry.nodeId || "";
+      const nodeIds = Array.isArray(result?.nodeIds) ? result.nodeIds : (Array.isArray(entry.nodeIds) ? entry.nodeIds : []);
       const hasExplicitSuccess = result && typeof result === "object" && "success" in result;
       const success = hasExplicitSuccess ? Boolean(result.success) : result !== null && result !== undefined;
       return {
         type: String(entry.type),
         title: String(result?.title || entry.title || entry.nodeName || "").slice(0, 80),
         nodeId: String(nodeId).slice(0, 96),
+        nodeIds: nodeIds.map((id) => String(id || "").slice(0, 96)).filter(Boolean).slice(0, 24),
         success,
-        error: String(result?.error || entry.error || "").slice(0, 240)
+        error: String(result?.error || entry.error || "").slice(0, 240),
+        errorCode: String(result?.errorCode || entry.errorCode || "").slice(0, 80)
       };
     });
 }
@@ -4439,7 +4442,54 @@ function normalizeChatThinkingContent(value) {
 }
 
 function sanitizeChatThinkingContent(value, reply = "") {
-  return normalizeChatThinkingContent(value);
+  const raw = dedupeThinkingParagraphs(normalizeChatThinkingContent(value));
+  if (!raw) return "";
+  const rawKey = normalizeThinkingEchoKey(raw);
+  const replyKey = normalizeThinkingEchoKey(reply);
+  if (rawKey && replyKey && (rawKey === replyKey || rawKey.includes(replyKey) || replyKey.includes(rawKey))) return "";
+  if (looksLikeInternalThinking(raw)) return "";
+  return raw;
+}
+
+function normalizeThinkingEchoKey(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/[#*_`~>|[\](){}"'“”‘’《》「」]/g, " ")
+    .replace(/[，。！？、；：:;,.!?/\\\-\s]+/g, " ")
+    .toLowerCase()
+    .trim();
+}
+
+function dedupeThinkingParagraphs(value) {
+  const seen = new Set();
+  const kept = [];
+  String(value || "")
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .forEach((part) => {
+      const key = normalizeThinkingEchoKey(part).slice(0, 600);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      kept.push(part);
+    });
+  return kept.join("\n\n").trim();
+}
+
+function looksLikeInternalThinking(value) {
+  const text = String(value || "").normalize("NFKC").trim();
+  if (text.length < 24) return false;
+  const markers = [
+    /用户.{0,24}(选中|选择|要求|请求|想要|希望|问|上传|提供)/,
+    /我(?:需要|应该|要|会|将|可以|来|打算|必须).{0,80}(分析|判断|创建|生成|调用|使用|提出|总结|回复|检查|需要)/,
+    /(create_direction|create_comparison|generate_image|tool|function call|canvas action)/i,
+    /\b(the user|i need to|i should|i will|i must|we need to)\b/i
+  ];
+  const markerCount = markers.reduce((count, re) => count + (re.test(text) ? 1 : 0), 0);
+  if (markerCount >= 2) return true;
+  const paragraphs = text.split(/\n{2,}/).map((part) => normalizeThinkingEchoKey(part)).filter(Boolean);
+  return paragraphs.length >= 2 && new Set(paragraphs).size < paragraphs.length;
 }
 
 function responseThinkingContent(data = {}, fallback = "", reply = "") {
@@ -4600,8 +4650,11 @@ function normalizeChatMarkdownText(segment) {
   text = text.replace(/(^|\n)(-{3,}|\*{3,}|_{3,})[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "$1$2\n\n$3 ");
   text = text.replace(/([^\n])[ \t]+(#{1,6})[ \t]+(?=[^\s#])/g, "$1\n\n$2 ");
   text = text.replace(/([。！？!?；;：:])\s*(#{1,6})[ \t]*(?=[^\s#])/g, "$1\n\n$2 ");
+  text = text.replace(/([^\n])\s*(#{1,6})(?=\S)/g, "$1\n\n$2 ");
   text = text.replace(/\|[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "|\n\n$1 ");
   text = text.replace(/(^|\n)(#{1,6})[ \t]*(?=[^\s#])/g, "$1$2 ");
+  text = text.replace(/([^\n])\s*(\*\*(?:优势|优点|不足|缺点|风险|小结|结论|类型|整体风格|视觉风格特征|色彩风格|构图风格|光影处理|推荐|建议|适合)[:：]?\*\*)/g, "$1\n\n$2");
+  text = text.replace(/\*\*([^*\n]{1,48})\n\*\*/g, "**$1**\n");
   text = text.replace(/([。！？!?；;：:])\s*((?:[-*+]|\d+[.)])[ \t]+(?=\S))/g, "$1\n\n$2");
   text = text.replace(/([^\n])([ \t]+)((?:[-*+]|\d+[.)])[ \t]+(?=\S))/g, "$1\n$3");
   text = text.split("\n").map(repairInlineMarkdownTableLine).join("\n");
@@ -7125,7 +7178,7 @@ function normalizeCanvasActionExecutionResult(action, result) {
         ? "The app did not create a canvas result for this action."
         : "应用没有为这个动作创建画布结果。"
     });
-  return verifyCanvasActionExecutionResult(action, normalized);
+  return normalizeCanvasActionResultContract(action, verifyCanvasActionExecutionResult(action, normalized));
 }
 
 function verifyCanvasActionExecutionResult(action, result) {
@@ -7138,9 +7191,37 @@ function verifyCanvasActionExecutionResult(action, result) {
     ...(result && typeof result === "object" ? result : { value: result }),
     type,
     success: false,
+    errorCode: "missing_canvas_result",
     error: currentLang === "en"
       ? "The action finished without a verifiable canvas result."
       : "该动作执行结束，但没有可验证的画布结果。"
+  };
+}
+
+function normalizeCanvasActionResultContract(action, result) {
+  const type = String(action?.type || action?.name || "");
+  const base = result && typeof result === "object" && !Array.isArray(result)
+    ? { ...result }
+    : { value: result };
+  const nodeIds = actionResultNodeIds({ ...action, result: base });
+  const success = base.success === false ? false : true;
+  const primaryNodeId = String(base.nodeId || nodeIds[0] || "").slice(0, 96);
+  const mergedNodeIds = Array.from(new Set([
+    primaryNodeId,
+    ...(Array.isArray(base.nodeIds) ? base.nodeIds : []),
+    ...nodeIds
+  ].map((id) => String(id || "").slice(0, 96)).filter(Boolean))).slice(0, 24);
+  const title = String(base.title || action?.title || action?.nodeName || action?.target || action?.query || "").slice(0, 120);
+  const error = String(base.error || "").slice(0, 240);
+  return {
+    ...base,
+    type: String(base.type || type),
+    success,
+    nodeId: primaryNodeId,
+    nodeIds: mergedNodeIds,
+    title,
+    error,
+    errorCode: String(base.errorCode || (!success ? "execution_failed" : "")).slice(0, 80)
   };
 }
 
@@ -7774,6 +7855,28 @@ function actionContentText(action = {}) {
   return "";
 }
 
+function readableComparisonTitle(title, content = {}, fallback = "") {
+  const cleanTitle = plainCardText(title, 120);
+  const items = Array.isArray(content?.items) ? content.items : [];
+  if (!isMechanicalComparisonTitle(cleanTitle, items)) return cleanTitle || plainCardText(fallback, 80) || (currentLang === "en" ? "Comparison" : "对比结论");
+  const contentTitle = plainCardText(content?.title || content?.heading || "", 80);
+  if (contentTitle && !isMechanicalComparisonTitle(contentTitle, items)) return contentTitle;
+  const hasPhotos = items.some((item) => /照片\s*[0-9一二两三四五六七八九十]+|photo\s*[0-9]+/i.test(String(item?.title || item?.name || item?.option || "")));
+  return hasPhotos ? (currentLang === "en" ? "Photo comparison" : "照片对比结论") : (currentLang === "en" ? "Comparison" : "对比结论");
+}
+
+function isMechanicalComparisonTitle(title, items = []) {
+  const text = plainCardText(title, 160);
+  if (!text) return true;
+  if (/^(照片\s*[0-9一二两三四五六七八九十]+(?:\s*[、,， ]\s*|\s+))*照片\s*[0-9一二两三四五六七八九十]+$/i.test(text)) return true;
+  if ((text.match(/照片\s*[0-9一二两三四五六七八九十]+/g) || []).length >= 3 && text.length > 18) return true;
+  const names = (Array.isArray(items) ? items : [])
+    .map((item) => plainCardText(item?.title || item?.name || item?.option || "", 80))
+    .filter(Boolean);
+  if (names.length >= 2 && text.replace(/\s+/g, "") === names.join("").replace(/\s+/g, "")) return true;
+  return false;
+}
+
 function createDirectionFromAction(action) {
   const fallbackParent = state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
   const parentId = resolveParentNodeId(action, fallbackParent);
@@ -7823,9 +7926,12 @@ function createDirectionFromAction(action) {
       normalizedContent.faviconUrl = normalizedContent.faviconUrl || faviconUrl(url);
     }
   }
-  const displayTitle = nodeType === "link"
+  const rawDisplayTitle = nodeType === "link"
     ? readableLinkTitle(normalizedContent?.title, normalizedContent?.url || action.url || text, action.title)
     : String(action.title || text);
+  const displayTitle = nodeType === "comparison"
+    ? readableComparisonTitle(rawDisplayTitle, normalizedContent, text)
+    : rawDisplayTitle;
   const batchSlug = Number.isFinite(action.batchIndex) ? `${action.batchIndex}-` : "";
   const defaultLayoutHint = isWebCard
     ? "reference"
@@ -8706,6 +8812,20 @@ function comparableSummaryText(value) {
     .trim();
 }
 
+function plainCardText(value, limit = 0) {
+  let text = String(value || "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .replace(/<\/?[^>]+>/g, " ")
+    .replace(/[#*_`~>|]/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n+\s*/g, " ")
+    .trim();
+  text = text.replace(/\s{2,}/g, " ").trim();
+  return limit > 0 ? text.slice(0, limit).trim() : text;
+}
+
 function isRedundantCardSummary(title, summary) {
   const a = comparableSummaryText(title);
   const b = comparableSummaryText(summary);
@@ -8716,7 +8836,7 @@ function isRedundantCardSummary(title, summary) {
 
 function firstUsefulSummary(title, values = [], limit = 220) {
   for (const value of values) {
-    const text = String(value || "").replace(/\s+/g, " ").trim();
+    const text = plainCardText(value, limit);
     if (text && !isRedundantCardSummary(title, text)) return text.slice(0, limit);
   }
   return "";
@@ -8728,12 +8848,23 @@ function deriveOptionSummary(option = {}) {
   const c = option.content && typeof option.content === "object" ? option.content : {};
   if (nodeType === "comparison") {
     const items = Array.isArray(c.items) ? c.items : [];
-    const names = items.map((item) => String(item?.title || item?.name || item?.option || "").trim()).filter(Boolean);
+    const names = items.map((item) => plainCardText(item?.title || item?.name || item?.option || "", 80)).filter(Boolean);
+    const itemDetails = items
+      .map((item) => {
+        const name = plainCardText(item?.title || item?.name || item?.option || "", 56);
+        const summary = plainCardText(item?.summary || item?.description || item?.notes || "", 120);
+        if (!name || !summary || isRedundantCardSummary(name, summary)) return summary || name;
+        return `${name}: ${summary}`;
+      })
+      .filter(Boolean)
+      .slice(0, 4)
+      .join("；");
     const count = items.length ? (currentLang === "en" ? `${items.length} compared items` : `共 ${items.length} 项对比`) : "";
     return firstUsefulSummary(title, [
-      [count, names.length ? names.slice(0, 4).join("、") : ""].filter(Boolean).join("："),
       c.recommendation,
-      c.summary
+      c.summary,
+      itemDetails,
+      [count, names.length ? names.slice(0, 4).join("、") : ""].filter(Boolean).join("：")
     ], 180);
   }
   if (nodeType === "table") {
@@ -8759,7 +8890,7 @@ function deriveOptionSummary(option = {}) {
 
 function displayOptionSummary(option = {}) {
   const title = option.title || "";
-  const raw = String(option.description || option.summary || "").replace(/\s+/g, " ").trim();
+  const raw = plainCardText(option.description || option.summary || "", 260);
   if (raw && !isRedundantCardSummary(title, raw)) return raw;
   return deriveOptionSummary(option);
 }
@@ -8806,7 +8937,23 @@ function normalizeOptionContent(option) {
   if (nodeType === "comparison") {
     const items = Array.isArray(current.items) ? current.items : (Array.isArray(current.options) ? current.options : []);
     const criteria = Array.isArray(current.criteria) ? current.criteria : [];
-    const next = { ...current, items: items.slice(0, 8), criteria: criteria.slice(0, 8) };
+    const normalizedItems = items.slice(0, 8).map((item, index) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) {
+        const text = plainCardText(item, 160);
+        return { title: text || `${currentLang === "en" ? "Item" : "项目"} ${index + 1}`, summary: text };
+      }
+      const pros = Array.isArray(item.pros) ? item.pros.map((value) => plainCardText(value, 180)).filter(Boolean) : [];
+      const cons = Array.isArray(item.cons) ? item.cons.map((value) => plainCardText(value, 180)).filter(Boolean) : [];
+      const summary = plainCardText(item.summary || item.description || item.notes || [pros[0], cons[0]].filter(Boolean).join("；"), 520);
+      return {
+        ...item,
+        title: plainCardText(item.title || item.name || item.option || "", 120) || `${currentLang === "en" ? "Item" : "项目"} ${index + 1}`,
+        summary,
+        pros,
+        cons
+      };
+    });
+    const next = { ...current, items: normalizedItems, criteria: criteria.slice(0, 8).map((item) => plainCardText(item, 80)).filter(Boolean) };
     option.content = next;
     return next;
   }
@@ -9019,14 +9166,17 @@ function renderComparisonCard(content = {}, compact = false) {
     const card = document.createElement("div");
     card.className = "rich-comparison-item";
     const title = document.createElement("strong");
-    title.textContent = String(item?.title || item?.name || item?.option || item || "").slice(0, 120);
+    title.textContent = plainCardText(item?.title || item?.name || item?.option || item || "", 120);
     card.appendChild(title);
-    const pros = Array.isArray(item?.pros) ? item.pros : [];
-    const cons = Array.isArray(item?.cons) ? item.cons : [];
-    const detail = String(item?.summary || item?.description || item?.notes || "").trim();
+    const pros = Array.isArray(item?.pros) ? item.pros.map((value) => plainCardText(value, 180)).filter(Boolean) : [];
+    const cons = Array.isArray(item?.cons) ? item.cons.map((value) => plainCardText(value, 180)).filter(Boolean) : [];
+    const detail = plainCardText(
+      item?.summary || item?.description || item?.notes || [pros[0], cons[0]].filter(Boolean).join("；"),
+      compact ? 120 : 420
+    );
     if (detail && !isRedundantCardSummary(title.textContent, detail)) {
       const p = document.createElement("p");
-      p.textContent = detail.slice(0, compact ? 88 : 360);
+      p.textContent = detail.slice(0, compact ? 120 : 420);
       card.appendChild(p);
     }
     if (!compact && (pros.length || cons.length)) {

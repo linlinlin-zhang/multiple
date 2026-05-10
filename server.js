@@ -1461,6 +1461,9 @@ async function handleRealtimeVoice(body, res) {
     reply,
     lang,
     thinkingMode: "no-thinking",
+    model: runtimeConfigs.realtime.model,
+    provider: runtimeConfigs.realtime.provider,
+    sessionId: typeof body?.sessionId === "string" ? body.sessionId.trim() : "",
     selectedContext: body?.selectedContext || null,
     canvas: body?.canvas && typeof body.canvas === "object" ? body.canvas : {},
     analysis: normalizeChatAnalysis(body?.analysis),
@@ -1946,7 +1949,8 @@ async function handleChat(body, res) {
   const visibleRawReply = inlineActions.length ? removeInlineCanvasActionBlocks(rawReply, { allowedTypes: CANVAS_ACTION_TYPES }) : rawReply;
   const thinkingContent = thinkingMode === "thinking" ? sanitizeReasoningContent(collectReasoningContent(response), rawReply) : "";
   const reply = visibleChatReplyOrEmpty(normalizeCitationMarkers(stripReasoningEchoFromResponseText(visibleRawReply, thinkingContent).trim(), references));
-  const rawActions = [...extractToolCallActions(response), ...inlineActions];
+  const toolActions = extractToolCallActions(response);
+  const rawActions = [...toolActions, ...inlineActions];
   const actionPipeline = runCanvasActionPipeline({
     rawActions,
     message,
@@ -1954,6 +1958,12 @@ async function handleChat(body, res) {
     response,
     lang,
     thinkingMode,
+    model: runtimeConfigs.chat.model,
+    provider: runtimeConfigs.chat.provider,
+    sessionId,
+    toolActions,
+    inlineActions,
+    thinkingMentionedActionTypes: compactMentionedCanvasActionTypes(thinkingContent),
     agentMode,
     selectedContext,
     canvas,
@@ -2204,7 +2214,8 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
   const visibleRawReply = inlineActions.length ? removeInlineCanvasActionBlocks(rawReply, { allowedTypes: CANVAS_ACTION_TYPES }) : rawReply;
   const thinkingContent = thinkingMode === "thinking" ? sanitizeReasoningContent(streamedReasoning || collectReasoningContent(response), rawReply) : "";
   const reply = visibleChatReplyOrEmpty(normalizeCitationMarkers(stripReasoningEchoFromResponseText(visibleRawReply, thinkingContent).trim(), references));
-  const rawActions = [...extractToolCallActions(response), ...inlineActions];
+  const toolActions = extractToolCallActions(response);
+  const rawActions = [...toolActions, ...inlineActions];
   const actionPipeline = runCanvasActionPipeline({
     rawActions,
     message,
@@ -2212,6 +2223,11 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
     response,
     lang,
     thinkingMode,
+    model: runtimeConfigs.chat.model,
+    provider: runtimeConfigs.chat.provider,
+    toolActions,
+    inlineActions,
+    thinkingMentionedActionTypes: compactMentionedCanvasActionTypes(thinkingContent),
     agentMode,
     selectedContext,
     canvas,
@@ -2841,12 +2857,186 @@ function repairCanvasAction(action, message, reply = "", lang = "zh") {
   if (!STRUCTURED_CONTENT_ACTION_TYPES.has(action.type)) return action;
 
   const content = normalizeStructuredContentForAction(action.type, action.content, text, action, lang);
-  if (hasUsableStructuredContent(action.type, content)) {
-    return { ...action, content };
+  const polished = polishStructuredAction({ ...action, content }, text, message, reply, lang);
+  if (hasUsableStructuredContent(action.type, polished.content)) {
+    return polished;
   }
 
   const fallbackContent = buildFallbackActionContent(action.type, action.title || deriveSearchQueryClean(message), text || message);
   return fallbackContent ? { ...action, content: fallbackContent } : action;
+}
+
+function polishStructuredAction(action, text, message, reply, lang = "zh") {
+  if (action?.type !== "create_comparison") return action;
+  return polishComparisonAction(action, [text, reply, message].filter(Boolean).join("\n\n"), lang);
+}
+
+function polishComparisonAction(action, sourceText, lang = "zh") {
+  const content = action.content && typeof action.content === "object" && !Array.isArray(action.content)
+    ? { ...action.content }
+    : {};
+  const extractedItems = extractPhotoComparisonItems(sourceText, 8);
+  const rawItems = Array.isArray(content.items) ? content.items : [];
+  const normalizedItems = rawItems.map((item, index) => normalizeComparisonItem(item, index, lang)).filter((item) => item.title || item.summary);
+  const mergedItems = mergeComparisonItems(normalizedItems, extractedItems, lang);
+  if (mergedItems.length) content.items = mergedItems;
+
+  const fallbackTitle = extractedItems.length
+    ? (lang === "en" ? "Photo comparison" : "照片对比结论")
+    : (lang === "en" ? "Comparison" : "对比结论");
+  const currentTitle = plainCardText(action.title || content.title || "", 120);
+  const title = isMechanicalComparisonTitle(currentTitle, content.items)
+    ? fallbackTitle
+    : (currentTitle || fallbackTitle);
+
+  const recommendation = plainCardText(content.recommendation || content.summary || "", 700);
+  if (recommendation) content.recommendation = recommendation;
+  if (plainCardText(content.summary || "", 260)) content.summary = plainCardText(content.summary, 260);
+  const derivedDescription = comparisonDescriptionFromItems(content.items || [], recommendation, lang);
+  const currentDescription = plainCardText(action.description || content.description || "", 260);
+  const description = isMechanicalComparisonDescription(currentDescription, content.items)
+    ? derivedDescription
+    : (currentDescription || derivedDescription);
+
+  return {
+    ...action,
+    title,
+    description,
+    content
+  };
+}
+
+function normalizeComparisonItem(item, index, lang = "zh") {
+  if (item && typeof item === "object" && !Array.isArray(item)) {
+    const title = plainCardText(item.title || item.name || item.option || item.label || "", 120)
+      || (lang === "en" ? `Item ${index + 1}` : `项目 ${index + 1}`);
+    const summary = plainCardText(item.summary || item.description || item.notes || item.detail || item.value || "", 520);
+    const pros = normalizeComparisonList(item.pros || item.advantages || item.strengths || item.优点 || item.优势);
+    const cons = normalizeComparisonList(item.cons || item.risks || item.weaknesses || item.缺点 || item.风险 || item.不足);
+    return {
+      ...item,
+      title,
+      summary: summary || [...pros, ...cons].slice(0, 2).join("；"),
+      pros,
+      cons,
+      score: plainCardText(item.score || item.rating || item.stars || "", 80)
+    };
+  }
+  const title = plainCardText(item || "", 120) || (lang === "en" ? `Item ${index + 1}` : `项目 ${index + 1}`);
+  return { title, summary: title };
+}
+
+function normalizeComparisonList(value) {
+  const raw = Array.isArray(value) ? value : (value ? String(value).split(/[；;。\n]/) : []);
+  return raw.map((item) => plainCardText(item, 180)).filter(Boolean).slice(0, 6);
+}
+
+function mergeComparisonItems(items = [], extracted = [], lang = "zh") {
+  const merged = [];
+  const used = new Set();
+  const byPhotoNumber = new Map();
+  extracted.forEach((item, index) => {
+    const number = photoNumberFromTitle(item.title);
+    if (number) byPhotoNumber.set(number, { item, index });
+  });
+  const maxLength = Math.max(items.length, extracted.length);
+  for (let index = 0; index < maxLength; index += 1) {
+    const existing = items[index] || null;
+    const existingNumber = photoNumberFromTitle(existing?.title);
+    const extractedMatch = existingNumber && byPhotoNumber.has(existingNumber)
+      ? byPhotoNumber.get(existingNumber)
+      : (extracted[index] ? { item: extracted[index], index } : null);
+    const extractedItem = extractedMatch?.item || null;
+    if (extractedMatch) used.add(extractedMatch.index);
+    if (existing || extractedItem) {
+      merged.push(mergeComparisonItem(existing, extractedItem, index, lang));
+    }
+  }
+  extracted.forEach((item, index) => {
+    if (!used.has(index)) merged.push(mergeComparisonItem(null, item, merged.length, lang));
+  });
+  return merged.filter((item) => item.title || item.summary);
+}
+
+function mergeComparisonItem(existing, extracted, index, lang = "zh") {
+  const fallbackTitle = lang === "en" ? `Item ${index + 1}` : `项目 ${index + 1}`;
+  const title = betterComparisonTitle(existing?.title, extracted?.title, fallbackTitle);
+  const summary = betterComparisonSummary(existing?.summary, extracted?.summary, title);
+  const pros = (existing?.pros && existing.pros.length ? existing.pros : extracted?.pros) || [];
+  const cons = (existing?.cons && existing.cons.length ? existing.cons : extracted?.cons) || [];
+  return {
+    ...(extracted || {}),
+    ...(existing || {}),
+    title,
+    summary,
+    pros,
+    cons
+  };
+}
+
+function betterComparisonTitle(current, extracted, fallback) {
+  const a = plainCardText(current, 120);
+  const b = plainCardText(extracted, 120);
+  if (!a || /^项目\s*\d+$/.test(a) || /^item\s*\d+$/i.test(a)) return b || fallback;
+  if (/^照片\s*[0-9一二两三四五六七八九十]+$/.test(a) && b && b.length > a.length + 2) return b;
+  return a;
+}
+
+function betterComparisonSummary(current, extracted, title) {
+  const a = plainCardText(current, 520);
+  const b = plainCardText(extracted, 520);
+  if (!a) return b;
+  if (isMechanicalComparisonDescription(a, [{ title }]) && b) return b;
+  if (/^照片\s*[0-9一二两三四五六七八九十]+$/.test(a) && b) return b;
+  return a;
+}
+
+function photoNumberFromTitle(value) {
+  const match = String(value || "").normalize("NFKC").match(/照片\s*([0-9一二两三四五六七八九十]+)|photo\s*([0-9]+)/i);
+  return match ? String(match[1] || match[2] || "").trim() : "";
+}
+
+function isMechanicalComparisonTitle(title, items = []) {
+  const text = plainCardText(title, 180);
+  if (!text) return true;
+  if (/^(照片\s*[0-9一二两三四五六七八九十]+(?:\s*[、,， ]\s*|\s+))*照片\s*[0-9一二两三四五六七八九十]+$/i.test(text)) return true;
+  if ((text.match(/照片\s*[0-9一二两三四五六七八九十]+/g) || []).length >= 3 && text.length > 18) return true;
+  const itemNames = (Array.isArray(items) ? items : [])
+    .map((item) => plainCardText(item?.title || item?.name || item?.option || "", 80))
+    .filter(Boolean);
+  if (itemNames.length >= 2) {
+    const joined = itemNames.join(" ");
+    if (text === joined || joined.includes(text)) return true;
+  }
+  return false;
+}
+
+function isMechanicalComparisonDescription(description, items = []) {
+  const text = plainCardText(description, 260);
+  if (!text) return true;
+  if (/^共\s*\d+\s*项对比/.test(text)) return true;
+  if ((text.match(/照片\s*[0-9一二两三四五六七八九十]+/g) || []).length >= 3 && text.length < 80) return true;
+  const itemNames = (Array.isArray(items) ? items : [])
+    .map((item) => plainCardText(item?.title || item?.name || item?.option || "", 80))
+    .filter(Boolean);
+  if (itemNames.length >= 2 && text.replace(/\s+/g, "") === itemNames.join("").replace(/\s+/g, "")) return true;
+  return false;
+}
+
+function comparisonDescriptionFromItems(items = [], recommendation = "", lang = "zh") {
+  const rec = plainCardText(recommendation, 220);
+  if (rec && !isMechanicalComparisonDescription(rec, items)) return rec;
+  const parts = (Array.isArray(items) ? items : [])
+    .map((item) => {
+      const title = plainCardText(item?.title || item?.name || item?.option || "", 60);
+      const summary = plainCardText(item?.summary || item?.description || item?.notes || "", 140);
+      if (!title || !summary || title === summary) return summary || title;
+      return `${title}: ${summary}`;
+    })
+    .filter(Boolean)
+    .slice(0, 4);
+  if (parts.length) return parts.join("；").slice(0, 260);
+  return lang === "en" ? "Structured comparison card." : "结构化整理本轮对比结论。";
 }
 
 function repairWebReferenceAction(action, message, text, lang) {
@@ -3305,6 +3495,8 @@ function genericCardTitle(message, suffix, lang) {
 }
 
 function genericItemsFromText(text, limit = 8) {
+  const photoItems = extractPhotoComparisonItems(text, limit);
+  if (photoItems.length >= Math.min(2, limit)) return photoItems;
   const items = extractFallbackListItems(text).slice(0, limit);
   if (items.length) return items;
   return String(text || "")
@@ -3671,11 +3863,17 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
   let effectiveContextBudget = contextBudget;
   try {
     let response;
+    let streamedReasoningText = "";
+    let thinkingNoticeSent = false;
+    const handleReasoningDelta = (delta) => {
+      streamedReasoningText += String(delta || "");
+      if (thinkingMode !== "thinking" || thinkingNoticeSent) return;
+      thinkingNoticeSent = true;
+      writeSse(res, "thinking", { delta: lang === "en" ? "Thinking..." : "正在梳理思路..." });
+    };
     try {
       response = await (transport === "chat-completions" ? streamChatCompletions : streamQwenResponses)(runtimeConfigs.chat, payload, {
-        onReasoning(delta) {
-          if (thinkingMode === "thinking") writeSse(res, "thinking", { delta });
-        },
+        onReasoning: handleReasoningDelta,
         onText(delta) {
           writeSse(res, "reply", { delta });
         }
@@ -3689,9 +3887,7 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
         previousBudget: contextBudget
       });
       response = await (transport === "chat-completions" ? streamChatCompletions : streamQwenResponses)(runtimeConfigs.chat, payload, {
-        onReasoning(delta) {
-          if (thinkingMode === "thinking") writeSse(res, "thinking", { delta });
-        },
+        onReasoning: handleReasoningDelta,
         onText(delta) {
           writeSse(res, "reply", { delta });
         }
@@ -3703,7 +3899,7 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
       thinkingMode,
       agentMode,
       lang,
-      streamedReasoning: response?.choices?.[0]?.message?.reasoning_content || "",
+      streamedReasoning: streamedReasoningText || response?.choices?.[0]?.message?.reasoning_content || "",
       selectedContext,
       canvas,
       analysis,
@@ -4920,18 +5116,18 @@ function buildFallbackActionContent(actionType, title, text) {
     return { language: "text", code: code.slice(0, 6000), explanation: body.slice(0, 1200) };
   }
   if (actionType === "create_table") {
-    const items = extractFallbackListItems(body).slice(0, 8);
+    const items = genericItemsFromText(body, 8);
     return {
       columns: ["Item", "Details"],
       rows: (items.length ? items : [{ title, description: body.slice(0, 700) }]).map((item) => ({ Item: item.title, Details: item.description || item.title }))
     };
   }
   if (actionType === "create_timeline") {
-    const items = extractFallbackListItems(body).slice(0, 8);
+    const items = genericItemsFromText(body, 8);
     return { items: (items.length ? items : [{ title, description: body.slice(0, 700) }]).map((item, index) => ({ phase: `${index + 1}`, title: item.title, description: item.description || item.title })) };
   }
   if (actionType === "create_comparison") {
-    const items = extractFallbackListItems(body).slice(0, 6);
+    const items = genericItemsFromText(body, 6);
     return { items: (items.length ? items : [{ title, description: body.slice(0, 700) }]).map((item) => ({ title: item.title, summary: item.description || item.title })) };
   }
   if (actionType === "create_metric") return { metrics: [{ label: title || "Metric", value: body.slice(0, 80), note: body.slice(0, 400) }] };
@@ -4940,13 +5136,13 @@ function buildFallbackActionContent(actionType, title, text) {
 }
 
 function extractFallbackListItems(text) {
-  const lines = String(text || "")
+  const lines = normalizeGeneratedMarkdownForExtraction(text)
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean);
   const items = [];
   for (const line of lines) {
-    const cleaned = line.replace(/^#{1,6}\s+/, "").replace(/^[-*•]\s+/, "").replace(/^\d+[.)、]\s+/, "").trim();
+    const cleaned = plainCardText(line.replace(/^#{1,6}\s+/, "").replace(/^[-*•]\s+/, "").replace(/^\d+[.)、]\s+/, "").trim(), 900);
     if (!cleaned || cleaned.length < 3) continue;
     const [rawTitle, ...rest] = cleaned.split(/[:：]\s*/);
     const description = rest.join("：").trim();
@@ -4956,6 +5152,110 @@ function extractFallbackListItems(text) {
     });
   }
   return items;
+}
+
+function normalizeGeneratedMarkdownForExtraction(text) {
+  let value = String(text || "").normalize("NFKC").replace(/\r\n?/g, "\n");
+  value = value.replace(/([^\n])\s*(#{1,6})(?=\S)/g, "$1\n\n$2 ");
+  value = value.replace(/(^|\n)(#{1,6})(?=\S)/g, "$1$2 ");
+  value = value.replace(/([^\n])\s*((?:\*\*)?(?:优势|优点|不足|缺点|风险|小结|结论|类型|整体风格|视觉风格特征|色彩风格|构图风格|光影处理|推荐|建议|适合)[:：]?(?:\*\*)?)/g, "$1\n$2");
+  value = value.replace(/([^\n])\s*((?:📸\s*)?(?:\*\*)?(?:照片|Photo)\s*[0-9一二两三四五六七八九十]+(?:\*\*)?\s*[：:、.)-]?)/gi, "$1\n\n$2");
+  return value.replace(/\n{3,}/g, "\n\n");
+}
+
+function plainCardText(value, max = 0) {
+  let text = String(value || "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, "$1")
+    .replace(/<\/?[^>]+>/g, " ")
+    .replace(/[#*_`~>|]/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n+\s*/g, " ")
+    .trim();
+  text = text.replace(/\s{2,}/g, " ").trim();
+  return max > 0 ? text.slice(0, max).trim() : text;
+}
+
+function extractPhotoComparisonItems(text, limit = 8) {
+  const normalized = normalizeGeneratedMarkdownForExtraction(text);
+  const re = /(?:^|\n)\s*(?:#{1,6}\s*)?(?:📸\s*)?(?:\*\*)?(照片|photo)\s*([0-9一二两三四五六七八九十]+)(?:\*\*)?\s*[：:、.)-]?\s*([^\n]*)/gi;
+  const matches = [];
+  let match;
+  while ((match = re.exec(normalized))) {
+    matches.push({
+      index: match.index,
+      end: re.lastIndex,
+      label: match[1],
+      number: match[2],
+      suffix: match[3] || ""
+    });
+  }
+  if (!matches.length) return [];
+  return matches.slice(0, limit).map((entry, index) => {
+    const next = matches[index + 1];
+    const section = normalized.slice(entry.index, next ? next.index : normalized.length);
+    const title = cleanPhotoComparisonTitle(`${entry.label}${entry.number}${entry.suffix ? ` ${entry.suffix}` : ""}`, entry.number);
+    const pros = extractLabeledList(section, ["优势", "优点", "亮点"]);
+    const cons = extractLabeledList(section, ["不足", "缺点", "风险", "问题"]);
+    const summary = extractPhotoSummary(section, title, pros, cons);
+    return {
+      title,
+      summary,
+      pros,
+      cons
+    };
+  }).filter((item) => item.title || item.summary);
+}
+
+function cleanPhotoComparisonTitle(rawTitle, number) {
+  let title = plainCardText(rawTitle, 140)
+    .replace(/^(photo)\s*/i, "Photo ")
+    .replace(/^照片\s+/, "照片")
+    .trim();
+  title = title.replace(/\s*(整体风格|视觉风格特征|色彩风格|构图风格|光影处理|优势|优点|不足|风险|小结|结论|类型)[:：]?.*$/i, "").trim();
+  if (!title || /^照片\s*$/.test(title)) title = `照片${number}`;
+  return title.slice(0, 120);
+}
+
+function extractLabeledList(section, labels = []) {
+  const snippet = extractLabeledSnippet(section, labels);
+  if (!snippet) return [];
+  return snippet
+    .split(/[；;。\n]/)
+    .map((item) => plainCardText(item, 160))
+    .filter((item) => item && !labels.some((label) => item === label))
+    .slice(0, 4);
+}
+
+function extractLabeledSnippet(section, labels = []) {
+  if (!labels.length) return "";
+  const labelSource = labels.map(escapeRegExp).join("|");
+  const labelRe = new RegExp(`(?:^|\\n)\\s*(?:#{1,6}\\s*)?(?:\\*\\*)?(?:${labelSource})\\s*[:：]?\\s*(?:\\*\\*)?\\s*`, "i");
+  const match = labelRe.exec(section);
+  if (!match) return "";
+  const rest = section.slice(match.index + match[0].length);
+  const stop = rest.search(/\n\s*(?:#{1,6}\s*)?(?:\*\*)?(?:优势|优点|亮点|不足|缺点|风险|问题|小结|结论|类型|整体风格|视觉风格特征|色彩风格|构图风格|光影处理|推荐|建议|适合|照片\s*[0-9一二两三四五六七八九十]+|photo\s*[0-9]+)\s*[:：]?(?:\*\*)?/i);
+  return (stop >= 0 ? rest.slice(0, stop) : rest).trim();
+}
+
+function extractPhotoSummary(section, title, pros = [], cons = []) {
+  const labeledSummary = extractLabeledSnippet(section, ["小结", "结论", "推荐", "建议"]);
+  if (labeledSummary) return plainCardText(labeledSummary, 420);
+  const normalizedTitle = plainCardText(title);
+  const lines = normalizeGeneratedMarkdownForExtraction(section)
+    .split(/\n+/)
+    .map((line) => plainCardText(line, 420))
+    .filter(Boolean)
+    .filter((line) => line !== normalizedTitle && !/^照片\s*[0-9一二两三四五六七八九十]+$/i.test(line))
+    .filter((line) => !/^(优势|优点|亮点|不足|缺点|风险|问题|小结|结论|类型|整体风格|视觉风格特征|色彩风格|构图风格|光影处理|推荐|建议|适合)[:：]?$/i.test(line));
+  const firstUseful = lines.find((line) => !line.includes("----") && line.length > 3);
+  if (firstUseful) return firstUseful.slice(0, 420);
+  return [...pros, ...cons].slice(0, 2).join("；").slice(0, 420);
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function deriveSearchQueryClean(message) {
@@ -6229,11 +6529,83 @@ function normalizeTextFingerprint(value) {
 }
 
 function stripReasoningEchoFromResponseText(text, reasoning) {
-  return String(text || "").trim();
+  let value = String(text || "").trim();
+  const reasoningText = String(reasoning || "").trim();
+  if (!value) return "";
+  if (reasoningText) {
+    const replyKey = normalizeReasoningEchoKey(value);
+    const reasoningKey = normalizeReasoningEchoKey(reasoningText);
+    if (replyKey && reasoningKey) {
+      const shortReasoningKey = reasoningKey.slice(0, Math.min(800, reasoningKey.length));
+      if (replyKey === reasoningKey || replyKey.startsWith(shortReasoningKey) || reasoningKey.includes(replyKey)) {
+        return "";
+      }
+    }
+  }
+  value = removeLeadingInternalPlanningBlock(value);
+  return value.trim();
 }
 
 function sanitizeReasoningContent(reasoning, reply = "") {
-  return String(reasoning || "").trim();
+  const raw = dedupeReasoningParagraphs(String(reasoning || "").trim());
+  if (!raw) return "";
+  const rawKey = normalizeReasoningEchoKey(raw);
+  const replyKey = normalizeReasoningEchoKey(reply);
+  if (rawKey && replyKey && (rawKey === replyKey || rawKey.includes(replyKey) || replyKey.includes(rawKey))) return "";
+  if (looksLikeRawInternalReasoning(raw)) return "";
+  return raw.slice(0, 12000);
+}
+
+function normalizeReasoningEchoKey(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/[#*_`~>|[\](){}"'“”‘’《》「」]/g, " ")
+    .replace(/[，。！？、；：:;,.!?/\\\-\s]+/g, " ")
+    .toLowerCase()
+    .trim();
+}
+
+function dedupeReasoningParagraphs(value) {
+  const seen = new Set();
+  const parts = String(value || "")
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const kept = [];
+  for (const part of parts) {
+    const key = normalizeReasoningEchoKey(part).slice(0, 600);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    kept.push(part);
+  }
+  return kept.join("\n\n").trim();
+}
+
+function removeLeadingInternalPlanningBlock(value) {
+  const parts = String(value || "")
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  while (parts.length > 1 && looksLikeRawInternalReasoning(parts[0])) parts.shift();
+  if (parts.length === 1 && looksLikeRawInternalReasoning(parts[0])) return "";
+  return parts.join("\n\n");
+}
+
+function looksLikeRawInternalReasoning(value) {
+  const text = String(value || "").normalize("NFKC").trim();
+  if (text.length < 24) return false;
+  const markers = [
+    /用户.{0,24}(选中|选择|要求|请求|想要|希望|问|上传|提供)/,
+    /我(?:需要|应该|要|会|将|可以|来|打算|必须).{0,80}(分析|判断|创建|生成|调用|使用|提出|总结|回复|检查|需要)/,
+    /(create_direction|create_comparison|generate_image|tool|function call|canvas action)/i,
+    /\b(the user|i need to|i should|i will|i must|we need to)\b/i
+  ];
+  const markerCount = markers.reduce((count, re) => count + (re.test(text) ? 1 : 0), 0);
+  if (markerCount >= 2) return true;
+  const paragraphs = text.split(/\n{2,}/).map((part) => normalizeReasoningEchoKey(part)).filter(Boolean);
+  if (paragraphs.length >= 2 && new Set(paragraphs).size < paragraphs.length) return true;
+  return false;
 }
 
 function extractReferencesFromObject(value) {

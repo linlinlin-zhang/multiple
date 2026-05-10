@@ -78,6 +78,19 @@ import {
 
 {
   const actions = ensureCommittedCanvasActions({
+    message: "能不能帮我组合一下这两张卡片生成几个成图方向的卡片呢",
+    reply: "已开始生成图片，稍候请查看画布上的新节点。",
+    actions: [{ type: "generate_image", title: "误判成图", prompt: "海岸森林" }],
+    lang: "zh",
+    maxActions: 8
+  });
+  assert.equal(actions.length, 5);
+  assert.equal(actions.every((action) => action.type === "create_direction"), true);
+  assert.equal(actions.some((action) => action.type === "generate_image"), false);
+}
+
+{
+  const actions = ensureCommittedCanvasActions({
     message: "帮我生成 3 个视觉方向",
     reply: "我为你整理了一个对比。",
     actions: [{ type: "create_comparison", title: "错误的对比卡" }],

@@ -85,10 +85,11 @@ export const CANVAS_ACTION_REGISTRY = {
 };
 
 const CARD_TYPES = [
-  "create_note", "create_plan", "create_todo", "create_weather", "create_map",
+  "create_direction", "create_note", "create_plan", "create_todo", "create_weather", "create_map",
   "create_link", "create_code", "create_table", "create_timeline",
   "create_comparison", "create_metric", "create_quote", "create_card", "new_card"
 ];
+const DIRECTION_TYPES = ["create_direction", "create_note"];
 const SUMMARY_TYPES = ["create_note", "create_table", "create_todo"];
 const VISUAL_EVALUATION_TYPES = ["create_comparison", "create_metric", "create_note"];
 const PLANNING_TYPES = ["create_plan", "create_todo", "create_timeline", "create_table", "create_note"];
@@ -142,7 +143,16 @@ function detect(message) {
     && /(画布|卡片|节点|视图|会话|历史|设置|canvas|card|node|view|session|history|settings)/i.test(text);
   const deleteAction = /(删除|移除|删掉|delete|remove)/i.test(text) && /(卡片|节点|选中|这个|当前|card|node|selected|current)/i.test(text);
   const sourceResearch = /(研究|深入研究|探索|分析).{0,16}(当前|选中|源|素材|来源|卡片|节点|source|card|node)|(?:analy[sz]e|explore|research).{0,16}(?:selected|current|source|card|node)|打开.{0,8}(引用|参考资料|references)|open\s+references/i.test(text);
-  const mediaGeneration = !deferredMediaGeneration && /(成图|出图|生成.{0,10}(图|图片|图像|视觉|海报|插画)|画.{0,8}(图|图片|画面)|绘制|渲染|改图|变体|生成.{0,10}(视频|动画|短片|动态镜头)|制作.{0,10}(视频|动画|短片)|generate.{0,16}(image|picture|visual|video|animation|clip)|draw.{0,12}(image|picture)|render.{0,12}(image|picture|visual)|make.{0,12}(video|animation|clip))/i.test(text);
+  const directionCardRequest = /(方向|方案|概念|direction|option|concept).{0,16}(卡片|节点|card|node)|(?:卡片|节点|card|node).{0,16}(方向|方案|概念|direction|option|concept)/i.test(text);
+  const directionContext = directionCardRequest || /(方向|概念方向|视觉概念|创意概念|风格方向|成图方向|视觉|创意|风格|directions?|concepts?|visual concepts?)/i.test(text);
+  const directionRequest = directionContext
+    && /(方向|方案|概念方向|视觉概念|创意概念|风格方向|directions?|options?|concepts?|visual concepts?)/i.test(text)
+    && /(生成|创建|新建|做|产出|给我|帮我|发散|展开|拆出|列出|设计|组合|generate|create|make|produce|brainstorm|develop|propose|give me)/i.test(text);
+  const mediaFromExistingDirection = /(?:根据|基于|按照|用|把|从|选择|选中|current|selected|use|from|based on).{0,24}(方向|方案|概念|direction|option|concept).{0,24}(成图|出图|生成(?:图片|图像|图)|generate\s+(?:image|picture|visual))|(?:方向|方案|概念|direction|option|concept).{0,24}(生成(?:图片|图像|图)|成图|出图|generate\s+(?:image|picture|visual))/i.test(text);
+  const mediaGeneration = !deferredMediaGeneration
+    && (!directionCardRequest || mediaFromExistingDirection)
+    && (!(directionRequest && !mediaFromExistingDirection))
+    && /(成图|出图|生成.{0,10}(图|图片|图像|视觉|海报|插画)|画.{0,8}(图|图片|画面)|绘制|渲染|改图|变体|生成.{0,10}(视频|动画|短片|动态镜头)|制作.{0,10}(视频|动画|短片)|generate.{0,16}(image|picture|visual|video|animation|clip)|draw.{0,12}(image|picture)|render.{0,12}(image|picture|visual)|make.{0,12}(video|animation|clip))/i.test(text);
   const mediaSearch = /(搜图|找图|参考图|视觉参考|相似图片|以图搜图|图片搜索|找.{0,8}(图片|照片|图像|案例)|image search|visual reference|find.{0,10}(images|photos|pictures)|reverse image search)/i.test(text);
   const planning = /(计划|规划|方案|步骤|流程|路线图|日程|行程|旅行|旅游|攻略|安排|执行|落地|roadmap|workflow|schedule|itinerary|travel|trip|plan|milestone|implementation)/i.test(text);
   const research = /(研究|资料|论文|文献|来源|引用|最新|官方|新闻|调研|research|source|citation|latest|official|news|literature)/i.test(text);
@@ -162,6 +172,9 @@ function detect(message) {
     sourceResearch,
     webResearch,
     deferredMediaGeneration,
+    directionRequest,
+    directionCardRequest,
+    mediaFromExistingDirection,
     mediaGeneration,
     mediaSearch,
     planning,
@@ -178,12 +191,13 @@ export function classifyCanvasActionIntent(message, options = {}) {
   const flags = detect(message);
   const agentMode = Boolean(options.agentMode);
   const explicitToolIntent = flags.explicitCanvas || flags.structuredDeliverable || flags.workspaceAction
-    || flags.sourceResearch || flags.webResearch || flags.mediaGeneration || flags.mediaSearch || agentMode;
+    || flags.sourceResearch || flags.webResearch || flags.directionRequest || flags.directionCardRequest || flags.mediaGeneration || flags.mediaSearch || agentMode;
   const automaticCardMode = !flags.noCanvas && !explicitToolIntent && flags.autoCanvasCandidate;
   let taskType = "general";
   if (flags.noCanvas) taskType = "no_canvas";
   else if (flags.trivial) taskType = "trivial";
   else if (flags.mediaGeneration) taskType = "media_generation";
+  else if (flags.directionRequest || flags.directionCardRequest) taskType = "direction_generation";
   else if (flags.mediaSearch) taskType = "media_search";
   else if (flags.sourceResearch) taskType = "source_research";
   else if (flags.webResearch) taskType = "web_research";
@@ -202,7 +216,7 @@ export function classifyCanvasActionIntent(message, options = {}) {
     explicitToolIntent,
     automaticCardMode,
     allowCanvasTool: !flags.noCanvas && !flags.trivial && (explicitToolIntent || automaticCardMode),
-    allowCardCreation: !flags.noCanvas && !flags.trivial && (flags.explicitCanvas || flags.structuredDeliverable || flags.mediaGeneration || flags.mediaSearch || agentMode || automaticCardMode),
+    allowCardCreation: !flags.noCanvas && !flags.trivial && (flags.explicitCanvas || flags.structuredDeliverable || flags.directionRequest || flags.directionCardRequest || flags.mediaGeneration || flags.mediaSearch || agentMode || automaticCardMode),
     allowSourceResearch: flags.sourceResearch,
     allowWorkspaceAction: flags.workspaceAction || agentMode,
     allowDestructive: flags.deleteAction,
@@ -237,6 +251,7 @@ function allowedActionTypesForIntent(intent) {
     if (intent.dataCode) addMany(allowed, DATA_CODE_TYPES);
     if (intent.writing) addMany(allowed, WRITING_TYPES);
   }
+  if (intent.directionRequest || intent.directionCardRequest) addMany(allowed, DIRECTION_TYPES);
   if (intent.mediaSearch) addMany(allowed, MEDIA_SEARCH_TYPES);
   if (intent.mediaGeneration) addMany(allowed, MEDIA_GENERATION_TYPES);
   if (intent.webResearch) addMany(allowed, WEB_RESEARCH_TYPES);

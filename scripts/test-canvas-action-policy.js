@@ -50,6 +50,13 @@ import {
 }
 
 {
+  const policy = buildCanvasActionPolicy("能不能帮我组合一下这两张卡片生成几个成图方向的卡片呢", { thinkingMode: "thinking" });
+  assert.equal(policy.intent.taskType, "direction_generation");
+  assert.equal(policy.allowedActionSet.has("create_direction"), true);
+  assert.equal(policy.allowedActionSet.has("generate_image"), false);
+}
+
+{
   const policy = buildCanvasActionPolicy("请深入研究当前选中的源卡片，并整理参考资料", { thinkingMode: "thinking" });
   assert.equal(policy.intent.taskType, "source_research");
   assert.equal(policy.allowedActionSet.has("research_node"), true);

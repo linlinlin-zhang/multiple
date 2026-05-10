@@ -18,6 +18,9 @@ const CHINESE_NUMERAL_COUNTS = new Map([
 const DIRECTION_WORD_RE = /(方向|方案|概念方向|视觉概念|创意概念|风格方向|directions?|options?|concepts?|visual concepts?)/i;
 const DIRECTION_CREATE_RE = /(生成|创建|新建|做|产出|给我|帮我|发散|展开|拆出|列出|设计|generate|create|make|produce|brainstorm|develop|propose|give me)/i;
 const DIRECTION_EXPLAIN_ONLY_RE = /(怎么|如何|流程|教程|说明|解释|原理|为什么|how to|explain|tutorial|guide).{0,24}(方向|方案|direction|option|concept)/i;
+const DIRECTION_CARD_RE = /(方向|方案|概念|direction|option|concept).{0,16}(卡片|节点|card|node)|(?:卡片|节点|card|node).{0,16}(方向|方案|概念|direction|option|concept)/i;
+const DIRECTION_CONTEXT_RE = /(方向|概念方向|视觉概念|创意概念|风格方向|成图方向|视觉|创意|风格|directions?|concepts?|visual concepts?)/i;
+const MEDIA_FROM_EXISTING_DIRECTION_RE = /(?:根据|基于|按照|用|把|从|选择|选中|current|selected|use|from|based on).{0,24}(方向|方案|概念|direction|option|concept).{0,24}(成图|出图|生成(?:图片|图像|图)|generate\s+(?:image|picture|visual))|(?:方向|方案|概念|direction|option|concept).{0,24}(生成(?:图片|图像|图)|成图|出图|generate\s+(?:image|picture|visual))/i;
 const CANVAS_ARTIFACT_RE = /(画布|卡片|节点|创建|新建|生成|添加|放到|整理到|产物|canvas|card|node|artifact|create|add|generate)/i;
 const PROMISED_ACTION_RE = /(我(?:会|来|将|可以|已经|已)|已为你|已经为你|会帮你|马上|接下来|i(?:'|’)ll|i will|i can|i(?:'|’)ve|i have|let me|going to).{0,120}(创建|新建|生成|添加|放到|整理|拆成|产出|create|generate|add|make|put|split|produce)/i;
 const PROMISED_CANVAS_RE = new RegExp(`${PROMISED_ACTION_RE.source}.{0,120}(画布|卡片|节点|方向|方案|canvas|card|node|direction|option|artifact)`, "i");
@@ -70,12 +73,15 @@ export function ensureCommittedCanvasActions({
 }
 
 function hasConcreteDirectionAction(actions = []) {
-  return actions.some((action) => ["create_direction", "generate_image", "generate_video"].includes(String(action?.type || action?.name || "")));
+  return actions.some((action) => String(action?.type || action?.name || "") === "create_direction");
 }
 
 function mergePrimaryActions(primary = [], secondary = [], maxActions = 8) {
   const max = clampPositiveNumber(maxActions, 8);
-  const support = secondary.filter((action) => action && !hasConcreteDirectionAction([action]));
+  const support = secondary.filter((action) => {
+    const type = String(action?.type || action?.name || "");
+    return action && !["create_direction", "generate_image", "generate_video"].includes(type);
+  });
   return [...primary, ...support].slice(0, max);
 }
 
@@ -86,7 +92,8 @@ export function shouldCreateDirectionActions(message = "", reply = "") {
   if (DIRECTION_EXPLAIN_ONLY_RE.test(requestText) && !/(帮我|给我|请|直接|现在|马上|生成\s*\d|create|generate|make)/i.test(requestText)) {
     return false;
   }
-  const explicitRequest = DIRECTION_WORD_RE.test(requestText) && DIRECTION_CREATE_RE.test(requestText);
+  if (MEDIA_FROM_EXISTING_DIRECTION_RE.test(requestText)) return false;
+  const explicitRequest = DIRECTION_WORD_RE.test(requestText) && DIRECTION_CREATE_RE.test(requestText) && (DIRECTION_CONTEXT_RE.test(requestText) || DIRECTION_CARD_RE.test(requestText));
   const promisedDirections = DIRECTION_WORD_RE.test(replyText) && PROMISED_ACTION_RE.test(replyText);
   return explicitRequest || promisedDirections;
 }
@@ -103,6 +110,10 @@ export function requestedDirectionCount(message = "", reply = "", maxActions = 8
     if (Number.isFinite(count)) return Math.max(1, Math.min(max, count));
   }
 
+  if (/(几个|几种|若干|多(?:个|张|种|款|条|份)?|several|multiple|few|a few)/i.test(text)) {
+    return Math.max(1, Math.min(max, DEFAULT_DIRECTION_COUNT));
+  }
+
   const chinese =
     text.match(/([一二两三四五六七八九十])\s*(个|张|种|款|条|份)?\s*(不同|视觉|创意|概念|风格)?\s*(方向|方案|概念)/) ||
     text.match(/([一二两三四五六七八九十]).{0,32}(方向|方案|概念)/) ||
@@ -113,9 +124,6 @@ export function requestedDirectionCount(message = "", reply = "", maxActions = 8
     if (Number.isFinite(count)) return Math.max(1, Math.min(max, count));
   }
 
-  if (/(几个|几种|若干|多(?:个|张|种|款|条|份)?|several|multiple|few|a few)/i.test(text)) {
-    return Math.max(1, Math.min(max, DEFAULT_DIRECTION_COUNT));
-  }
   return Math.max(1, Math.min(max, DEFAULT_GENERIC_COUNT));
 }
 
