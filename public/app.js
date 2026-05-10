@@ -4190,6 +4190,8 @@ function normalizeChatThreadMessage(message) {
     actions: normalizeChatMessageActions(message?.actions),
     actionResults: normalizeChatActionResults(message?.actionResults),
     actionPolicy: normalizeChatActionPolicy(message?.actionPolicy),
+    actionTrace: normalizeChatActionPolicy(message?.actionTrace),
+    contextBudget: normalizeChatActionPolicy(message?.contextBudget),
     artifacts: normalizeChatArtifacts(message?.artifacts || message?.materials || message?.cards),
     references: normalizeChatReferences(message?.references),
     responseId: typeof message?.responseId === "string" ? message.responseId : "",
@@ -4620,6 +4622,8 @@ function serializeChatThreads() {
       actions: normalizeChatMessageActions(message.actions),
       actionResults: normalizeChatActionResults(message.actionResults),
       actionPolicy: normalizeChatActionPolicy(message.actionPolicy),
+      actionTrace: normalizeChatActionPolicy(message.actionTrace),
+      contextBudget: normalizeChatActionPolicy(message.contextBudget),
       artifacts: normalizeChatArtifacts(message.artifacts),
       references: normalizeChatReferences(message.references),
       responseId: message.responseId || "",
@@ -6209,7 +6213,9 @@ async function submitChatMessage(message, options = {}) {
       artifacts: data.artifacts || data.agentPlan || [],
       references: data.references || [],
       responseId: data.responseId || data.previousResponseId || "",
-      actionPolicy: data.actionPolicy || null
+      actionPolicy: data.actionPolicy || null,
+      actionTrace: data.actionTrace || null,
+      contextBudget: data.contextBudget || null
     };
     if (data.resetPreviousResponseId) {
       ensureActiveChatThread().previousResponseId = "";
@@ -8883,7 +8889,15 @@ function deriveOptionSummary(option = {}) {
     return firstUsefulSummary(title, [c.summary, names.slice(0, 3).join("；")], 180);
   }
   if (nodeType === "note") return firstUsefulSummary(title, [c.summary, c.text, c.body, option.prompt], 220);
-  if (nodeType === "plan") return firstUsefulSummary(title, [c.summary, ...(Array.isArray(c.steps) ? c.steps.map((step) => step?.description || step?.desc || step?.title || step) : []), option.prompt], 220);
+  if (nodeType === "plan") return firstUsefulSummary(title, [
+    c.summary,
+    c.goal,
+    c.context,
+    ...(Array.isArray(c.outcomes) ? c.outcomes.map(planRichItemText) : []),
+    ...(Array.isArray(c.risks) ? c.risks.map(planRichItemText) : []),
+    ...(Array.isArray(c.steps) ? c.steps.map((step) => step?.description || step?.desc || step?.title || step) : []),
+    option.prompt
+  ], 220);
   if (nodeType === "todo") return firstUsefulSummary(title, [c.summary, ...(Array.isArray(c.items) ? c.items.map((item) => item?.text || item?.label || item) : []), option.prompt], 220);
   return firstUsefulSummary(title, [option.summary, option.prompt], 220);
 }
@@ -8893,6 +8907,42 @@ function displayOptionSummary(option = {}) {
   const raw = plainCardText(option.description || option.summary || "", 260);
   if (raw && !isRedundantCardSummary(title, raw)) return raw;
   return deriveOptionSummary(option);
+}
+
+function planRichItemText(item) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return plainCardText(item, 260);
+  return [
+    plainCardText(item.title || item.name || item.label || "", 120),
+    plainCardText(item.description || item.body || item.text || item.summary || item.value || "", 320),
+    plainCardText(item.status || item.state || "", 80),
+    plainCardText(item.owner || item.role || "", 120),
+    plainCardText(item.priority || "", 80)
+  ].filter(Boolean).join(" · ");
+}
+
+function appendPlanSection(slot, title, value) {
+  const items = Array.isArray(value) ? value.map(planRichItemText).filter(Boolean) : [];
+  const text = !Array.isArray(value) ? plainCardText(value, 600) : "";
+  if (!items.length && !text) return;
+  const section = document.createElement("section");
+  section.className = "option-plan-section";
+  const heading = document.createElement("h4");
+  heading.textContent = title;
+  section.appendChild(heading);
+  if (items.length) {
+    const ul = document.createElement("ul");
+    items.slice(0, 8).forEach((item) => {
+      const li = document.createElement("li");
+      li.textContent = item;
+      ul.appendChild(li);
+    });
+    section.appendChild(ul);
+  } else {
+    const p = document.createElement("p");
+    p.textContent = text;
+    section.appendChild(p);
+  }
+  slot.appendChild(section);
 }
 
 function setElementTextOrHidden(element, text) {
@@ -8966,6 +9016,46 @@ function normalizeOptionContent(option) {
   if (nodeType === "quote") {
     const quotes = Array.isArray(current.quotes) ? current.quotes : (current.text || current.quote ? [current] : []);
     const next = { ...current, quotes: quotes.slice(0, 8) };
+    option.content = next;
+    return next;
+  }
+  if (nodeType === "plan") {
+    const steps = Array.isArray(current.steps) ? current.steps : (Array.isArray(current.items) ? current.items : []);
+    const next = {
+      ...current,
+      summary: plainCardText(current.summary || current.overview || "", 900),
+      goal: plainCardText(current.goal || current.objective || "", 500),
+      context: plainCardText(current.context || current.background || "", 900),
+      steps: steps.slice(0, 16).map((step, index) => {
+        if (!step || typeof step !== "object" || Array.isArray(step)) {
+          const text = plainCardText(step, 320);
+          return { title: text || `${currentLang === "en" ? "Step" : "步骤"} ${index + 1}`, description: text };
+        }
+        return {
+          ...step,
+          title: plainCardText(step.title || step.name || step.text || "", 140) || `${currentLang === "en" ? "Step" : "步骤"} ${index + 1}`,
+          description: plainCardText(step.description || step.body || step.detail || step.text || "", 900),
+          time: plainCardText(step.time || step.date || step.phase || "", 120),
+          priority: plainCardText(step.priority || "", 80),
+          owner: plainCardText(step.owner || step.role || "", 120),
+          status: plainCardText(step.status || step.state || "", 80),
+          validation: plainCardText(step.validation || step.successCriteria || step.check || "", 240)
+        };
+      })
+    };
+    ["constraints", "validation", "progress", "decisions", "risks", "outcomes", "assumptions", "tips"].forEach((key) => {
+      if (!Array.isArray(current[key])) return;
+      next[key] = current[key].slice(0, 12).map((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return plainCardText(item, 260);
+        return {
+          title: plainCardText(item.title || item.name || item.label || "", 120),
+          description: plainCardText(item.description || item.body || item.text || item.summary || item.value || "", 320),
+          status: plainCardText(item.status || item.state || "", 80),
+          owner: plainCardText(item.owner || item.role || "", 120),
+          priority: plainCardText(item.priority || "", 80)
+        };
+      }).filter((item) => typeof item === "string" ? item : (item.title || item.description || item.status || item.owner || item.priority));
+    });
     option.content = next;
     return next;
   }
@@ -9257,12 +9347,16 @@ function renderRichNodeContent(element, option) {
   const nt = String(option.nodeType || "").toLowerCase();
 
   if (nt === "plan" && Array.isArray(c.steps) && c.steps.length) {
+    appendPlanSection(slot, currentLang === "en" ? "Goal" : "目标", c.goal);
+    appendPlanSection(slot, currentLang === "en" ? "Context" : "背景", c.context);
+    appendPlanSection(slot, currentLang === "en" ? "Constraints" : "约束", c.constraints);
+    appendPlanSection(slot, currentLang === "en" ? "Assumptions" : "假设", c.assumptions);
     const ol = document.createElement("ol");
     ol.className = "option-plan-steps";
     c.steps.forEach((step) => {
       const li = document.createElement("li");
       const title = (step && (step.title || step.name)) || (typeof step === "string" ? step : "");
-      const desc = step && step.description;
+      const desc = step && [step.description, step.time, step.owner, step.status, step.priority, step.validation].filter(Boolean).join(" · ");
       if (title) {
         const titleEl = document.createElement("strong");
         titleEl.textContent = title;
@@ -9276,6 +9370,12 @@ function renderRichNodeContent(element, option) {
       ol.appendChild(li);
     });
     slot.appendChild(ol);
+    appendPlanSection(slot, currentLang === "en" ? "Validation" : "验证", c.validation);
+    appendPlanSection(slot, currentLang === "en" ? "Progress" : "进展", c.progress);
+    appendPlanSection(slot, currentLang === "en" ? "Decisions" : "决策", c.decisions);
+    appendPlanSection(slot, currentLang === "en" ? "Risks" : "风险", c.risks);
+    appendPlanSection(slot, currentLang === "en" ? "Outcomes" : "产出", c.outcomes);
+    appendPlanSection(slot, currentLang === "en" ? "Tips" : "提醒", c.tips);
     slot.hidden = false;
   } else if (nt === "todo" && Array.isArray(c.items) && c.items.length) {
     const ul = document.createElement("ul");
@@ -10499,6 +10599,8 @@ function appendChatMessage(role, content, metadata = {}) {
     thinkingRequested: Boolean(pending || thinkingContent || thinkingTrace.length || (metadata.thinkingRequested && !normalizedContent)),
     actions: normalizeChatMessageActions(metadata.actions),
     actionPolicy: normalizeChatActionPolicy(metadata.actionPolicy),
+    actionTrace: normalizeChatActionPolicy(metadata.actionTrace),
+    contextBudget: normalizeChatActionPolicy(metadata.contextBudget),
     actionResults: normalizeChatActionResults(metadata.actionResults),
     artifacts: normalizeChatArtifacts(metadata.artifacts || metadata.materials || metadata.cards),
     references: normalizeChatReferences(metadata.references),
@@ -10536,6 +10638,12 @@ function updateChatMessage(message, updates = {}) {
   }
   if ("actionPolicy" in updates) {
     message.actionPolicy = normalizeChatActionPolicy(updates.actionPolicy);
+  }
+  if ("actionTrace" in updates) {
+    message.actionTrace = normalizeChatActionPolicy(updates.actionTrace);
+  }
+  if ("contextBudget" in updates) {
+    message.contextBudget = normalizeChatActionPolicy(updates.contextBudget);
   }
   if ("actionResults" in updates) {
     message.actionResults = normalizeChatActionResults(updates.actionResults);
@@ -10730,6 +10838,63 @@ function formatChatActionPolicyTrace(policy = {}) {
   return lines.join("\n").trim();
 }
 
+function formatChatActionTraceDetails(trace = {}, contextBudget = null) {
+  const lines = [];
+  if (trace.traceId || trace.model || trace.thinkingMode) {
+    lines.push(`trace=${trace.traceId || ""} model=${trace.model || ""} thinking=${trace.thinkingMode || ""}`.trim());
+  }
+  const intent = trace.intent && typeof trace.intent === "object" ? trace.intent : {};
+  if (intent.taskType || intent.maxActions !== undefined) {
+    lines.push(`intent=${intent.taskType || "unknown"} automatic=${Boolean(intent.automaticCardMode)} maxActions=${intent.maxActions ?? ""}`.trim());
+  }
+  if (trace.modelOutput && typeof trace.modelOutput === "object") {
+    const raw = Array.isArray(trace.modelOutput.rawToolActionTypes) ? trace.modelOutput.rawToolActionTypes : [];
+    const inline = Array.isArray(trace.modelOutput.inlineActionTypes) ? trace.modelOutput.inlineActionTypes : [];
+    const mentioned = Array.isArray(trace.modelOutput.thinkingMentionedActionTypes) ? trace.modelOutput.thinkingMentionedActionTypes : [];
+    if (raw.length) lines.push(`modelTools=${raw.join(", ")}`);
+    if (inline.length) lines.push(`inline=${inline.join(", ")}`);
+    if (mentioned.length) lines.push(`thinkingMentioned=${mentioned.join(", ")}`);
+  }
+  if (Array.isArray(trace.finalActionTypes) && trace.finalActionTypes.length) {
+    lines.push(`final=${trace.finalActionTypes.join(", ")}`);
+  }
+  if (trace.harness && typeof trace.harness === "object") {
+    lines.push("harness:");
+    Object.entries(trace.harness).forEach(([key, value]) => {
+      if (!value || typeof value !== "object") return;
+      lines.push(`- ${key}: ${value.version || ""} ${value.hash || ""}`.trim());
+    });
+  }
+  const budget = contextBudget && typeof contextBudget === "object" ? contextBudget : null;
+  if (budget) {
+    lines.push("contextBudget:");
+    lines.push(`- version=${budget.version || ""} transport=${budget.transport || ""} reduced=${Boolean(budget.reduced)}`);
+    if (Array.isArray(budget.tiers)) {
+      budget.tiers.slice(0, 16).forEach((tier) => {
+        lines.push(`- ${tier.name || tier.id || "tier"}: ${tier.bytes ?? ""} bytes${tier.included === false ? " omitted" : ""}`);
+      });
+    }
+  }
+  if (Array.isArray(trace.pipelineStages) && trace.pipelineStages.length) {
+    lines.push("pipeline:");
+    trace.pipelineStages.slice(0, 16).forEach((stage) => {
+      const actionTypes = Array.isArray(stage.actionTypes) && stage.actionTypes.length ? ` [${stage.actionTypes.join(", ")}]` : "";
+      lines.push(`- ${stage.name}: ${stage.inputCount ?? 0} -> ${stage.outputCount ?? 0}${actionTypes}`);
+      if (Array.isArray(stage.repairs) && stage.repairs.length) {
+        stage.repairs.slice(0, 6).forEach((repair) => {
+          lines.push(`  repair ${repair.type || "action"}: ${repair.reason || ""}${repair.field ? ` (${repair.field})` : ""}`);
+        });
+      }
+      if (Array.isArray(stage.rejected) && stage.rejected.length) {
+        stage.rejected.slice(0, 4).forEach((item) => {
+          lines.push(`  reject ${item.type || "unknown"}: ${item.reason || ""}`);
+        });
+      }
+    });
+  }
+  return lines.join("\n").trim();
+}
+
 function shouldShowActionPolicyTrace() {
   const saved = getStoredItem(STORAGE_KEYS.actionPolicyTrace);
   if (saved === "true" || saved === "false") return saved === "true";
@@ -10739,6 +10904,15 @@ function shouldShowActionPolicyTrace() {
 function setActionPolicyTraceVisible(enabled) {
   setStoredItem(STORAGE_KEYS.actionPolicyTrace, enabled ? "true" : "false");
   renderChatMessages();
+}
+
+function buildChatActionTraceJson(message = {}) {
+  return {
+    actionPolicy: message.actionPolicy || null,
+    actionTrace: message.actionTrace || null,
+    contextBudget: message.contextBudget || null,
+    actionResults: message.actionResults || []
+  };
 }
 
 function renderChatActionPolicyTrace(policy = {}) {
@@ -10756,6 +10930,44 @@ function renderChatActionPolicyTrace(policy = {}) {
   const pre = document.createElement("pre");
   pre.textContent = text;
   details.append(summary, pre);
+  return details;
+}
+
+function renderChatActionTraceViewer(message = {}) {
+  const policyText = message.actionPolicy ? formatChatActionPolicyTrace(message.actionPolicy) : "";
+  const traceText = message.actionTrace || message.contextBudget ? formatChatActionTraceDetails(message.actionTrace || {}, message.contextBudget) : "";
+  const text = [policyText, traceText].filter(Boolean).join("\n\n");
+  if (!text) return null;
+  const details = document.createElement("details");
+  details.className = "chat-policy-trace";
+  const summary = document.createElement("summary");
+  summary.className = "chat-policy-trace-summary";
+  const policy = message.actionPolicy || {};
+  const trace = message.actionTrace || {};
+  const rejectedCount = Array.isArray(policy.rejected) ? policy.rejected.length : 0;
+  const stageCount = Array.isArray(trace.pipelineStages) ? trace.pipelineStages.length : (Array.isArray(policy.stages) ? policy.stages.length : 0);
+  summary.textContent = currentLang === "en"
+    ? `Action trace · ${policy.taskType || trace.intent?.taskType || "unknown"} · ${stageCount} stages · ${rejectedCount} rejected`
+    : `动作轨迹 · ${policy.taskType || trace.intent?.taskType || "unknown"} · ${stageCount} 阶段 · ${rejectedCount} 拒绝`;
+  const toolbar = document.createElement("div");
+  toolbar.className = "chat-policy-trace-toolbar";
+  const copyButton = document.createElement("button");
+  copyButton.type = "button";
+  copyButton.className = "chat-policy-trace-copy";
+  copyButton.textContent = currentLang === "en" ? "Copy JSON" : "复制 JSON";
+  copyButton.addEventListener("click", async (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const copied = await copyTextToClipboard(JSON.stringify(buildChatActionTraceJson(message), null, 2));
+    copyButton.textContent = copied ? (currentLang === "en" ? "Copied" : "已复制") : (currentLang === "en" ? "Copy failed" : "复制失败");
+    window.setTimeout(() => {
+      copyButton.textContent = currentLang === "en" ? "Copy JSON" : "复制 JSON";
+    }, 1200);
+  });
+  toolbar.appendChild(copyButton);
+  const pre = document.createElement("pre");
+  pre.textContent = text;
+  details.append(summary, toolbar, pre);
   return details;
 }
 
@@ -10894,8 +11106,8 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       actions.textContent = t("chat.actionsApplied", { count: message.actions.length });
       line.appendChild(actions);
     }
-    if (message.role === "assistant" && message.actionPolicy && shouldShowActionPolicyTrace()) {
-      const trace = renderChatActionPolicyTrace(message.actionPolicy);
+    if (message.role === "assistant" && (message.actionPolicy || message.actionTrace || message.contextBudget) && shouldShowActionPolicyTrace()) {
+      const trace = renderChatActionTraceViewer(message);
       if (trace) line.appendChild(trace);
     }
     chatMessages.appendChild(line);

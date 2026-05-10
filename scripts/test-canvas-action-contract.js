@@ -8,6 +8,7 @@ import { CANVAS_ACTION_REGISTRY } from "../src/lib/canvasActionPolicy.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const publicApp = fs.readFileSync(path.join(repoRoot, "public", "app.js"), "utf8");
+const server = fs.readFileSync(path.join(repoRoot, "server.js"), "utf8");
 
 function extractFunctionBody(source, functionName, nextFunctionName) {
   const start = source.indexOf(`function ${functionName}`);
@@ -51,6 +52,31 @@ for (const type of richCardTypes) {
 const resultNormalizer = extractFunctionBody(publicApp, "normalizeCanvasActionResultContract", "actionResultNodeIds");
 for (const field of ["type", "success", "nodeId", "nodeIds", "title", "error", "errorCode"]) {
   assert.ok(new RegExp(`\\b${field}\\b`).test(resultNormalizer), `action result contract must normalize ${field}`);
+}
+
+const chatMessageNormalizer = extractFunctionBody(publicApp, "normalizeChatThreadMessage", "normalizeChatAttachments");
+const chatMessageSerializer = extractFunctionBody(publicApp, "serializeChatThreads", "getChatThreadTitle");
+const chatMessageUpdater = extractFunctionBody(publicApp, "updateChatMessage", "ensureRenderedThinkingPre");
+for (const field of ["actionPolicy", "actionTrace", "contextBudget"]) {
+  assert.ok(chatMessageNormalizer.includes(field), `chat message normalizer must preserve ${field}`);
+  assert.ok(chatMessageSerializer.includes(field), `chat message serializer must persist ${field}`);
+  assert.ok(chatMessageUpdater.includes(field), `chat message updater must accept ${field}`);
+}
+assert.ok(publicApp.includes("renderChatActionTraceViewer"), "frontend must expose developer action trace viewer");
+
+for (const token of [
+  "/api/debug/action-traces",
+  "handleListActionTraceSummaries",
+  "persistActionTraceSummary",
+  "buildActionTraceSummary",
+  "CANVAS_ACTION_TRACE_LOG_RETENTION",
+  "summary_only_no_hidden_reasoning"
+]) {
+  assert.ok(server.includes(token), `server must preserve action trace summary support: ${token}`);
+}
+
+for (const type of ["create_plan", "create_comparison", "generate_image", "create_note", "create_table"]) {
+  assert.ok(server.includes(`${type}:`), `${type} must have agent-facing action selection guidance`);
 }
 
 console.log("[test] canvas action contract: PASS");

@@ -1,0 +1,4 @@
+{"id":"capability.planning.tool_or_fallback","category":"planning","message":"帮我创建一个三步产品发布计划卡片","expected":{"any":["create_plan"],"none":["generate_image"]}}
+{"id":"capability.visual.analysis_not_generation","category":"visual_evaluation","message":"这几张照片哪张拍得最好？请分析，不要直接成图","expected":{"any":["create_comparison","create_metric","create_note"],"none":["generate_image"]}}
+{"id":"capability.web.latest_sources","category":"web_research","message":"帮我找最新官方资料并整理成参考卡","expected":{"any":["web_search","create_web_card","create_quote","create_note"]}}
+{"id":"capability.negative.no_canvas","category":"negative","message":"只要文字回答，不要创建卡片：比较 React 和 Vue","expected":{"exactCount":0}}

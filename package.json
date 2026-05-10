@@ -12,6 +12,7 @@
     "test": "node scripts/test-integration.js",
     "test:guards": "node scripts/test-chat-action-guard.js && node scripts/test-canvas-action-reliability.js && node scripts/test-canvas-action-policy.js && node scripts/test-canvas-action-pipeline.js && node scripts/test-canvas-action-regression.js && node scripts/test-canvas-action-contract.js && node scripts/test-canvas-action-trajectory-eval.js && node scripts/test-responses-stream-parser.js && node scripts/test-inline-canvas-actions.js",
     "test:canvas-actions": "node scripts/test-canvas-action-regression.js",
+    "eval:canvas-actions:smoke": "node scripts/run-canvas-action-capability-smoke.js",
     "test:db": "node scripts/test-db.js",
     "test:rag": "node scripts/test-rag.js",
     "db:migrate": "prisma migrate dev",

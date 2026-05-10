@@ -1,6 +1,7 @@
 const PIPELINE_STAGE_LIMIT = 14;
 const PIPELINE_ACTION_TYPE_LIMIT = 24;
 const PIPELINE_REJECTION_LIMIT = 10;
+const PIPELINE_REPAIR_LIMIT = 10;
 const TRACE_SNIPPET_LIMIT = 240;
 export const CANVAS_ACTION_TRACE_VERSION = 1;
 
@@ -32,6 +33,19 @@ export function policyRejectedSince(policyTraces = [], startIndex = 0) {
     .slice(0, PIPELINE_REJECTION_LIMIT);
 }
 
+export function repairEventsSince(repairEvents = [], startIndex = 0) {
+  return repairEvents
+    .slice(startIndex)
+    .map((item) => ({
+      type: String(item?.type || ""),
+      reason: String(item?.reason || ""),
+      field: String(item?.field || ""),
+      from: String(item?.from || ""),
+      to: String(item?.to || "")
+    }))
+    .slice(0, PIPELINE_REPAIR_LIMIT);
+}
+
 export function attachActionPipelineTrace(actionPolicy, stages = []) {
   if (!actionPolicy && !stages.length) return actionPolicy;
   return {
@@ -60,7 +74,8 @@ function compactStage(stage = {}) {
     inputCount: Number(stage.inputCount) || 0,
     outputCount: Number(stage.outputCount) || 0,
     actionTypes: Array.isArray(stage.actionTypes) ? stage.actionTypes.slice(0, PIPELINE_ACTION_TYPE_LIMIT) : [],
-    rejected: Array.isArray(stage.rejected) ? stage.rejected.slice(0, PIPELINE_REJECTION_LIMIT) : []
+    rejected: Array.isArray(stage.rejected) ? stage.rejected.slice(0, PIPELINE_REJECTION_LIMIT) : [],
+    repairs: Array.isArray(stage.repairs) ? stage.repairs.slice(0, PIPELINE_REPAIR_LIMIT) : []
   };
 }
 
@@ -73,6 +88,23 @@ function compactFrontendResult(result = {}) {
     title: String(result.title || "").slice(0, 120),
     error: String(result.error || "").slice(0, 240),
     errorCode: String(result.errorCode || "").slice(0, 80)
+  };
+}
+
+function compactHarnessComponent(component = {}) {
+  return {
+    version: String(component.version || "").slice(0, 80),
+    hash: String(component.hash || "").slice(0, 80)
+  };
+}
+
+function compactHarness(harness = {}) {
+  return {
+    systemPrompt: compactHarnessComponent(harness.systemPrompt),
+    toolSchema: compactHarnessComponent(harness.toolSchema),
+    policy: compactHarnessComponent(harness.policy),
+    fallback: compactHarnessComponent(harness.fallback),
+    contextBudget: compactHarnessComponent(harness.contextBudget)
   };
 }
 
@@ -107,7 +139,8 @@ export function buildCanvasActionTrace({
   policyTraces = [],
   stages = [],
   finalActions = [],
-  frontendResults = []
+  frontendResults = [],
+  harness = {}
 } = {}) {
   const rawToolActionTypes = compactPipelineActionTypes(Array.isArray(toolActions) ? toolActions : rawActions);
   const finalActionTypes = compactPipelineActionTypes(finalActions);
@@ -139,6 +172,7 @@ export function buildCanvasActionTrace({
     pipelineStages: stages.map(compactStage).slice(0, PIPELINE_STAGE_LIMIT),
     finalActionTypes,
     frontendResults: (Array.isArray(frontendResults) ? frontendResults : []).map(compactFrontendResult).slice(0, 32),
+    harness: compactHarness(harness),
     snippets: {
       message: snippet(message),
       reply: snippet(reply)
@@ -183,11 +217,12 @@ export function finalizeCanvasActions({
   toolActions = null,
   thinkingMentionedActionTypes = [],
   frontendResults = [],
+  harness = {},
   dependencies = {}
 } = {}) {
   const policyTraces = [];
   const stages = [];
-  const policyContext = { agentMode, selectedContext, canvas, analysis, thinkingMode, policyTraces };
+  const policyContext = { agentMode, selectedContext, canvas, analysis, thinkingMode, policyTraces, repairEvents: [] };
   const normalizeActions = dependencies.normalizeActions || identityActions;
   let actions = normalizeActions(rawActions);
   recordActionPipelineStage(stages, "raw_model_actions", [], actions);
@@ -235,10 +270,13 @@ export function finalizeCanvasActions({
   }
 
   const beforeEnrich = actions;
+  const beforeRepairCount = policyContext.repairEvents.length;
   actions = dependencies.enrichActions
-    ? dependencies.enrichActions({ actions, message, reply, lang, thinkingMode })
+    ? dependencies.enrichActions({ actions, message, reply, lang, thinkingMode, context: policyContext })
     : actions;
-  recordActionPipelineStage(stages, "action_enrichment", beforeEnrich, actions);
+  recordActionPipelineStage(stages, "action_enrichment", beforeEnrich, actions, {
+    repairs: repairEventsSince(policyContext.repairEvents, beforeRepairCount)
+  });
 
   const beforeAgentFinalize = actions;
   actions = dependencies.finalizeAgentActions
@@ -277,7 +315,8 @@ export function finalizeCanvasActions({
     policyTraces,
     stages,
     finalActions: actions,
-    frontendResults
+    frontendResults,
+    harness
   });
   return {
     actions,

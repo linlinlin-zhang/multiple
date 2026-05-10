@@ -155,6 +155,16 @@ function hasIntersection(actual, expected) {
   return expected.some((type) => actual.includes(type));
 }
 
+function hasOwnPath(value, pathExpression) {
+  const parts = String(pathExpression || "").split(".").filter(Boolean);
+  let current = value;
+  for (const part of parts) {
+    if (!current || typeof current !== "object" || !(part in current)) return false;
+    current = current[part];
+  }
+  return true;
+}
+
 function assertFixture(fixture) {
   const result = runFixture(fixture);
   const actual = typeList(result.actions);
@@ -199,6 +209,25 @@ function assertFixture(fixture) {
     const rejectedReasons = (result.actionPolicy?.rejected || []).map((item) => item.reason).filter(Boolean);
     const missing = expected.rejectedReasons.filter((reason) => !rejectedReasons.includes(reason));
     if (missing.length) failures.push(`missing rejection reasons [${missing.join(", ")}], got [${rejectedReasons.join(", ")}]`);
+  }
+  if (expected.contentFields && typeof expected.contentFields === "object") {
+    for (const [type, fields] of Object.entries(expected.contentFields)) {
+      const action = result.actions.find((item) => item?.type === type);
+      if (!action) {
+        failures.push(`missing ${type} action for content field checks`);
+        continue;
+      }
+      const missing = fields.filter((field) => !hasOwnPath(action.content, field));
+      if (missing.length) failures.push(`${type} missing content fields [${missing.join(", ")}]`);
+    }
+  }
+  if (expected.absentContentFields && typeof expected.absentContentFields === "object") {
+    for (const [type, fields] of Object.entries(expected.absentContentFields)) {
+      const action = result.actions.find((item) => item?.type === type);
+      if (!action) continue;
+      const present = fields.filter((field) => hasOwnPath(action.content, field));
+      if (present.length) failures.push(`${type} should not include content fields [${present.join(", ")}]`);
+    }
   }
 
   if (failures.length) {

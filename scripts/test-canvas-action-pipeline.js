@@ -57,6 +57,37 @@ function typeList(actions) {
 
 {
   const result = finalizeCanvasActions({
+    rawActions: [{ type: "create_note", title: "Harness" }],
+    message: "记录 harness 元数据",
+    harness: {
+      systemPrompt: { version: "prompt-v1", hash: "abc" },
+      toolSchema: { version: "schema-v1", hash: "def" },
+      policy: { version: "policy-v1", hash: "ghi" },
+      fallback: { version: "fallback-v1", hash: "jkl" },
+      contextBudget: { version: "budget-v1", hash: "mno" }
+    },
+    dependencies: {
+      normalizeActions: (raw) => raw,
+      applyPolicy: ({ actions, context }) => {
+        context.policyTraces.push({ rejected: [] });
+        return actions;
+      },
+      finalizeAgentActions: ({ actions }) => actions,
+      compactActionPolicyTrace: () => ({ taskType: "metadata" })
+    }
+  });
+
+  assert.deepEqual(result.trace.harness, {
+    systemPrompt: { version: "prompt-v1", hash: "abc" },
+    toolSchema: { version: "schema-v1", hash: "def" },
+    policy: { version: "policy-v1", hash: "ghi" },
+    fallback: { version: "fallback-v1", hash: "jkl" },
+    contextBudget: { version: "budget-v1", hash: "mno" }
+  });
+}
+
+{
+  const result = finalizeCanvasActions({
     rawActions: [{ type: "create_note", title: "Maybe" }],
     message: "只要文字回答，不要创建卡片",
     dependencies: {
@@ -85,6 +116,42 @@ function typeList(actions) {
   assert.equal(finalStage.inputCount, 1);
   assert.equal(finalStage.outputCount, 0);
   assert.deepEqual(finalStage.rejected, [{ type: "create_note", reason: "not_allowed_for_intent", group: "card" }]);
+}
+
+{
+  const result = finalizeCanvasActions({
+    rawActions: [{ type: "create_plan", content: { items: [{ title: "One" }] } }],
+    message: "帮我做一个计划",
+    dependencies: {
+      normalizeActions: (raw) => raw,
+      applyPolicy: ({ actions, context }) => {
+        context.policyTraces.push({ rejected: [] });
+        return actions;
+      },
+      enrichActions: ({ actions, context }) => {
+        context.repairEvents.push({
+          type: "create_plan",
+          reason: "converted_items_to_steps",
+          field: "content.steps",
+          from: "content.items",
+          to: "content.steps"
+        });
+        return actions.map((action) => ({ ...action, content: { steps: action.content.items } }));
+      },
+      finalizeAgentActions: ({ actions }) => actions,
+      compactActionPolicyTrace: () => ({ taskType: "planning" })
+    }
+  });
+
+  const enrichmentStage = result.actionPolicy.stages.find((stage) => stage.name === "action_enrichment");
+  assert.deepEqual(enrichmentStage.repairs, [{
+    type: "create_plan",
+    reason: "converted_items_to_steps",
+    field: "content.steps",
+    from: "content.items",
+    to: "content.steps"
+  }]);
+  assert.deepEqual(result.trace.pipelineStages.find((stage) => stage.name === "action_enrichment").repairs, enrichmentStage.repairs);
 }
 
 console.log("[test] canvas action pipeline: PASS");

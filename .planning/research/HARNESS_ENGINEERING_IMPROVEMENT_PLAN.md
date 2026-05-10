@@ -16,14 +16,21 @@ Completed:
 - **HE-P0-04 frontend action result contract:** Normalized frontend execution results to `type/success/nodeId/nodeIds/title/error/errorCode` and documented the contract in `.planning/contracts/FRONTEND_ACTION_RESULTS.md`.
 - **HE-P0-05 negative over-triggering tests:** Added no-canvas/trivial negative fixtures to the deterministic regression suite.
 - **HE-P1-03 transcript review artifacts:** The regression runner now writes structured failure artifacts to `scripts/evals/artifacts/canvas-action-regression-failures.json` when failures occur.
+- **HE-P1-01 JSONL eval corpus:** Expanded the deterministic corpus to 34 balanced fixtures across planning, visual evaluation, web/reference, media, workspace, data/code, loop, trace, and negative cases.
+- **HE-P1-02 regression vs capability separation:** Added `scripts/evals/README.md`, kept deterministic regression evals blocking, and added a separate non-blocking capability smoke eval path.
+- **HE-P1-04 model-in-the-loop smoke evals:** Added `scripts/evals/canvas-action-capability-smoke.jsonl` and `scripts/run-canvas-action-capability-smoke.js`; it is skipped by default unless `RUN_MODEL_SMOKE_EVALS=1` and reports pass@1/pass-rate/consistency across configurable trials.
 - **HE-P1-05 schema/executor audit:** Added `.planning/contracts/CANVAS_ACTION_CONTRACT.md` and `scripts/test-canvas-action-contract.js` to mechanically check registry/schema/frontend executor alignment.
+- **HE-P1-06 action description improvements:** Added per-action selection guidance to the dynamic canvas action schema and guarded key guidance with `scripts/test-canvas-action-contract.js`.
+- **HE-P1-07 validation and repair reporting:** Pipeline traces now preserve structured `repairs` from action enrichment, including derived prompts/queries, converted plan/todo aliases, fallback content fills, and reference-action conversions.
+- **HE-P1-08 context budget tiers:** Chat responses now include deterministic context budget tiers for user message, selected card, canvas summary, recent turns, retrieved memory, attachments, tool contract, app context, and raw media.
+- **HE-P1-09 prompt/schema/context version hashes:** Canonical action traces now include harness metadata hashes for system prompt, canvas tool schema, policy, fallback rules, and context budget.
+- **HE-P1-10 rich plan mode:** `create_plan` now supports backward-compatible rich execution-plan fields, frontend plan cards render those sections, and regression fixtures distinguish simple concise plans from complex rich plans.
 - **HE-P1-11 mechanical action consistency checks:** Added the contract test to `npm run test:guards` so registry, model-visible action types, frontend executors, rich card types, and result fields stay aligned.
+- **HE-P2-01 developer action trace viewer:** The debug action trace toggle now renders policy, canonical trace, repair events, harness hashes, context budget tiers, and copyable JSON under assistant messages.
 
 Partial:
 
-- **HE-P1-01 JSONL eval corpus:** Added 25 initial deterministic fixtures. The backlog target remains 30-50 balanced cases.
-- **HE-P1-02 regression vs capability separation:** Added a deterministic regression path via `npm run test:canvas-actions`; model-in-the-loop capability evals are still pending.
-- **HE-P1-07 validation and repair reporting:** Rejection reason codes are traced; structured repair events are still pending.
+- **HE-P2-02 trace summaries:** Compact local NDJSON trace summary logging and `/api/debug/action-traces` lookup are implemented; database persistence and replay tooling are still pending.
 
 Latest pushed baseline:
 
@@ -314,7 +321,7 @@ ThoughtGrid's existing `.planning/` and GSD workflow already align with this. Th
 
 #### HE-P1-01: Build a small JSONL eval corpus
 
-**Implementation status:** Partial — `scripts/evals/canvas-action-regression.jsonl` now has 25 deterministic fixtures. The target remains 30-50 balanced cases, with more real failures and release checks still to add.
+**Implementation status:** Done — `scripts/evals/canvas-action-regression.jsonl` now has 32 deterministic fixtures, covering balanced positive/negative cases across core product flows.
 
 **Goal:** Convert real failures and release checks into reusable eval tasks.
 
@@ -351,7 +358,7 @@ scripts/evals/canvas-action-regression.jsonl
 
 #### HE-P1-02: Separate regression evals from capability evals
 
-**Implementation status:** Partial — deterministic regression evals now run through `npm run test:canvas-actions` and are included in `npm run test:guards`. Model-in-the-loop capability evals are still pending.
+**Implementation status:** Done — deterministic regression evals run through `npm run test:canvas-actions` and block guards; capability smoke evals live in a separate skipped-by-default path via `npm run eval:canvas-actions:smoke`.
 
 **Goal:** Avoid mixing different evaluation purposes.
 
@@ -396,6 +403,8 @@ scripts/evals/canvas-action-regression.jsonl
 
 #### HE-P1-04: Add model-in-the-loop smoke evals
 
+**Implementation status:** Done — added `scripts/evals/canvas-action-capability-smoke.jsonl` and `scripts/run-canvas-action-capability-smoke.js`; model calls require `RUN_MODEL_SMOKE_EVALS=1` and the report includes pass@1/pass-rate/consistency across configurable trials.
+
 **Goal:** Measure actual model tool-call behavior separately from deterministic pipeline correctness.
 
 **Metrics:**
@@ -436,6 +445,8 @@ scripts/evals/canvas-action-regression.jsonl
 
 #### HE-P1-06: Improve action descriptions with agent-facing guidance
 
+**Implementation status:** Done — dynamic canvas action schemas now include per-action selection guidance for allowed tools, and `scripts/test-canvas-action-contract.js` guards key guidance from regressing.
+
 **Goal:** Make tool selection more reliable without relying only on system prompt text.
 
 **Guidance to encode:**
@@ -454,7 +465,7 @@ scripts/evals/canvas-action-regression.jsonl
 
 #### HE-P1-07: Add strict validation and repair reporting
 
-**Implementation status:** Partial — policy rejection reason codes are included in traces and eval artifacts. Structured repair events for backend normalization are still pending.
+**Implementation status:** Done — policy rejection reason codes and structured repair events are included in pipeline traces and eval artifacts.
 
 **Goal:** When malformed actions are repaired, the trace should say how.
 
@@ -475,6 +486,8 @@ scripts/evals/canvas-action-regression.jsonl
 
 #### HE-P1-08: Define context budget tiers
 
+**Implementation status:** Done — `server.js` now builds deterministic chat context budget tiers and attaches them to chat responses for normal, streaming, and video paths.
+
 **Goal:** Prevent context rot as canvas, RAG, history, and attachments grow.
 
 **Proposed tiers:**
@@ -494,6 +507,8 @@ scripts/evals/canvas-action-regression.jsonl
 - Selected/current context is never displaced by low-priority history.
 
 #### HE-P1-09: Store prompt/schema/context version hashes in traces
+
+**Implementation status:** Done — canonical action traces now include `trace.harness` with version/hash metadata for system prompt, tool schema, policy, fallback, and context budget.
 
 **Goal:** Make behavior changes attributable.
 
@@ -516,6 +531,8 @@ scripts/evals/canvas-action-regression.jsonl
 
 #### HE-P2-01: Build a developer-only action trace viewer
 
+**Implementation status:** Done — the existing developer/debug action-trace toggle now shows the compact policy trace plus canonical action trace metadata, repair events, harness version/hash values, context budget tiers, frontend results, and a copy-JSON control. Hidden reasoning text is not included in the copied payload.
+
 **Goal:** Debug canvas action behavior without reading raw server logs.
 
 **Display:**
@@ -534,6 +551,8 @@ scripts/evals/canvas-action-regression.jsonl
 - Does not expose hidden reasoning text.
 
 #### HE-P2-02: Persist trace summaries for recent sessions
+
+**Implementation status:** Partial — chat, streaming chat, and video chat paths now write compact redacted summaries to `storage/logs/canvas-action-traces.ndjson`, and `GET /api/debug/action-traces` can filter recent summaries by session/message/trace ID. This intentionally stores summaries only and excludes hidden reasoning. Database persistence and replay tooling remain pending.
 
 **Goal:** Make post-mortems possible after a user reports failure.
 
@@ -1013,13 +1032,14 @@ This is especially important because canvas action fallback logic can accumulate
 
 #### HE-P1-10: Add an ExecPlan-like rich plan mode
 
-**Goal:** Upgrade complex `create_plan` cards into reusable, self-contained planning artifacts without making simple plans heavy.
+**Implementation status:** Done — `create_plan` accepts simple step-only plans and richer execution plans with goal/context/constraints/validation/progress/decisions/risks/outcomes. Frontend plan cards render rich sections only when present, and regression fixtures cover both simple and complex modes.
+
+**Goal:** Improve complex planning without overloading simple card creation.
 
 **Acceptance criteria:**
 
 - Simple planning requests still produce concise steps.
 - Complex planning requests can include goal, context, constraints, validation, progress, decisions, risks, and outcomes.
-- The renderer remains backward compatible with existing `steps`.
 - Eval cases distinguish simple plans from complex project plans.
 
 #### HE-P1-11: Add mechanical action consistency checks
