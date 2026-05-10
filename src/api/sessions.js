@@ -120,11 +120,15 @@ function serializeState(state) {
   }));
 
   const chatMessages = (Array.isArray(state.chatMessages) ? state.chatMessages : []).map((m) => {
-    const thinking = typeof m.thinkingContent === "string" ? m.thinkingContent : (typeof m.thinking === "string" ? m.thinking : null);
+    const content = typeof m.content === "string" ? m.content : "";
+    const thinking = sanitizePersistedThinkingContent(
+      typeof m.thinkingContent === "string" ? m.thinkingContent : (typeof m.thinking === "string" ? m.thinking : null),
+      content
+    );
     const refs = Array.isArray(m.references) ? m.references : null;
     return {
       role: m.role === "assistant" ? "assistant" : "user",
-      content: typeof m.content === "string" ? m.content : "",
+      content,
       thinkingContent: thinking && thinking.trim() ? thinking : null,
       references: refs && refs.length ? refs : null
     };
@@ -154,13 +158,32 @@ function cloneJsonObject(value, maxBytes = 65536) {
   return cloneJson(value, null, maxBytes);
 }
 
+function persistedTextFingerprint(value) {
+  return String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim();
+}
+
+function sanitizePersistedThinkingContent(value, reply = "") {
+  const thinking = typeof value === "string" ? value.trim() : "";
+  const content = typeof reply === "string" ? reply.trim() : "";
+  if (!thinking || !content) return thinking;
+  const thinkingKey = persistedTextFingerprint(thinking);
+  const contentKey = persistedTextFingerprint(content);
+  if (!thinkingKey || !contentKey) return thinking;
+  if (thinkingKey === contentKey) return "";
+  const shorter = thinkingKey.length < contentKey.length ? thinkingKey : contentKey;
+  const longer = thinkingKey.length < contentKey.length ? contentKey : thinkingKey;
+  if (shorter.length > 80 && longer.includes(shorter) && shorter.length / Math.max(longer.length, 1) > 0.9) return "";
+  return thinking;
+}
+
 function normalizePersistedChatMessages(messages) {
   const raw = Array.isArray(messages) ? messages : [];
   return raw.slice(-500).map((m) => {
     const content = typeof m?.content === "string" ? m.content : "";
-    const thinkingContent = typeof m?.thinkingContent === "string"
+    const rawThinkingContent = typeof m?.thinkingContent === "string"
       ? m.thinkingContent
       : (typeof m?.reasoningContent === "string" ? m.reasoningContent : "");
+    const thinkingContent = sanitizePersistedThinkingContent(rawThinkingContent, content);
     return {
       role: m?.role === "assistant" ? "assistant" : "user",
       content,
@@ -168,7 +191,7 @@ function normalizePersistedChatMessages(messages) {
       branchNodeId: typeof m?.branchNodeId === "string" ? m.branchNodeId : null,
       thinkingTrace: cloneJsonArray(m?.thinkingTrace || m?.trace, 24, 64000),
       thinkingContent: thinkingContent.trim() ? thinkingContent.slice(0, 120000) : "",
-      thinkingRequested: Boolean(m?.thinkingRequested || thinkingContent),
+      thinkingRequested: Boolean(thinkingContent),
       actions: cloneJsonArray(m?.actions, 48, 128000),
       actionResults: cloneJsonArray(m?.actionResults, 48, 96000),
       actionPolicy: cloneJsonObject(m?.actionPolicy, 160000),
@@ -205,7 +228,7 @@ function dbChatMessagesToPayload(messages = []) {
   return (Array.isArray(messages) ? messages : []).map((m) => ({
     role: m.role === "assistant" ? "assistant" : "user",
     content: typeof m.content === "string" ? m.content : "",
-    thinkingContent: m.thinkingContent || null,
+    thinkingContent: sanitizePersistedThinkingContent(m.thinkingContent || "", m.content || "") || null,
     references: Array.isArray(m.references) ? m.references : null
   })).filter((m) => m.content || m.thinkingContent || m.references?.length);
 }

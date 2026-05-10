@@ -4171,21 +4171,25 @@ function createChatThread(messages = [], title = "") {
 }
 
 function normalizeChatThreadMessage(message) {
+  const content = typeof message?.content === "string" ? message.content : "";
+  const thinkingTrace = normalizeChatThinkingTrace(message?.thinkingTrace || message?.trace);
+  const thinkingContent = sanitizeChatThinkingContent(message?.thinkingContent || message?.reasoningContent || message?.reasoning, content);
+  const pending = Boolean(message?.pending);
   return {
     role: message?.role === "assistant" ? "assistant" : "user",
-    content: typeof message?.content === "string" ? message.content : "",
+    content,
     attachments: normalizeChatAttachments(message?.attachments),
     branchNodeId: message?.branchNodeId ?? null,
-    thinkingTrace: normalizeChatThinkingTrace(message?.thinkingTrace || message?.trace),
-    thinkingContent: normalizeChatThinkingContent(message?.thinkingContent || message?.reasoningContent || message?.reasoning),
-    thinkingRequested: Boolean(message?.thinkingRequested || message?.thinkingContent || message?.reasoningContent),
+    thinkingTrace,
+    thinkingContent,
+    thinkingRequested: Boolean(pending || thinkingContent || thinkingTrace.length || (message?.thinkingRequested && !content)),
     actions: normalizeChatMessageActions(message?.actions),
     actionResults: normalizeChatActionResults(message?.actionResults),
     actionPolicy: normalizeChatActionPolicy(message?.actionPolicy),
     artifacts: normalizeChatArtifacts(message?.artifacts || message?.materials || message?.cards),
     references: normalizeChatReferences(message?.references),
     responseId: typeof message?.responseId === "string" ? message.responseId : "",
-    pending: Boolean(message?.pending),
+    pending,
     createdAt: message?.createdAt || new Date().toISOString()
   };
 }
@@ -4425,6 +4429,19 @@ function normalizeChatThinkingContent(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function sanitizeChatThinkingContent(value, reply = "") {
+  return normalizeChatThinkingContent(value);
+}
+
+function responseThinkingContent(data = {}, fallback = "", reply = "") {
+  if (!data || typeof data !== "object") return sanitizeChatThinkingContent(fallback, reply);
+  const hasThinking = Object.prototype.hasOwnProperty.call(data, "thinkingContent")
+    || Object.prototype.hasOwnProperty.call(data, "reasoningContent")
+    || Object.prototype.hasOwnProperty.call(data, "reasoning");
+  if (!hasThinking) return sanitizeChatThinkingContent(fallback, reply);
+  return sanitizeChatThinkingContent(data.thinkingContent ?? data.reasoningContent ?? data.reasoning ?? "", reply);
+}
+
 function normalizeChatThread(thread, index = 0) {
   const fallback = createChatThread([], t("chat.conversationUntitled", { index: index + 1 }));
   if (!thread || typeof thread !== "object") return fallback;
@@ -4539,8 +4556,8 @@ function serializeChatThreads() {
       attachments: normalizeChatAttachments(message.attachments),
       branchNodeId: message.branchNodeId ?? null,
       thinkingTrace: normalizeChatThinkingTrace(message.thinkingTrace),
-      thinkingContent: normalizeChatThinkingContent(message.thinkingContent),
-      thinkingRequested: Boolean(message.thinkingRequested),
+      thinkingContent: sanitizeChatThinkingContent(message.thinkingContent, message.content),
+      thinkingRequested: Boolean(sanitizeChatThinkingContent(message.thinkingContent, message.content) || message.thinkingTrace?.length),
       actions: normalizeChatMessageActions(message.actions),
       actionResults: normalizeChatActionResults(message.actionResults),
       actionPolicy: normalizeChatActionPolicy(message.actionPolicy),
@@ -6109,11 +6126,12 @@ async function submitChatMessage(message, options = {}) {
       previousResponseId: ensureActiveChatThread().previousResponseId || ""
     };
     const data = await postStreamingChat("/api/chat", chatPayload, pendingAssistant);
+    const responseThinking = responseThinkingContent(data, "", data.reply || "");
     const assistantMeta = {
       pending: false,
       thinkingTrace: data.thinkingTrace || data.trace,
-      thinkingContent: data.thinkingContent || data.reasoningContent || data.reasoning,
-      thinkingRequested: effectiveThinkingMode === "thinking",
+      thinkingContent: responseThinking,
+      thinkingRequested: Boolean(responseThinking),
       actions: data.actions || data.action,
       artifacts: data.artifacts || data.agentPlan || [],
       references: data.references || [],
@@ -6296,10 +6314,13 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
       canvas: buildVoiceCanvasContext(),
       imageDataUrl
     }, pendingAssistant);
+    const replyContent = data.reply || t("deepthink.complete");
+    const finalThinkingContent = responseThinkingContent(data, "", replyContent);
     updateChatMessage(pendingAssistant, {
-      content: data.reply || t("deepthink.complete"),
+      content: replyContent,
       pending: false,
-      thinkingContent: data.thinkingContent || data.reasoningContent || data.reasoning,
+      thinkingContent: finalThinkingContent,
+      thinkingRequested: Boolean(finalThinkingContent),
       artifacts: buildDeepThinkArtifacts(data)
     });
     const created = applyDeepThinkPlan({ ...data, message: prompt, query: prompt }, parentNodeId);
@@ -10220,21 +10241,25 @@ function rewireLinksThroughJunction(junctionId) {
 
 function appendChatMessage(role, content, metadata = {}) {
   const thread = ensureActiveChatThread();
+  const normalizedContent = typeof content === "string" ? content : String(content || "");
+  const thinkingTrace = normalizeChatThinkingTrace(metadata.thinkingTrace || metadata.trace);
+  const thinkingContent = sanitizeChatThinkingContent(metadata.thinkingContent || metadata.reasoningContent || metadata.reasoning, normalizedContent);
+  const pending = Boolean(metadata.pending);
   const message = {
     role: role === "assistant" ? "assistant" : "user",
-    content,
+    content: normalizedContent,
     attachments: normalizeChatAttachments(metadata.attachments),
     branchNodeId: state.selectedNodeId,
-    thinkingTrace: normalizeChatThinkingTrace(metadata.thinkingTrace || metadata.trace),
-    thinkingContent: normalizeChatThinkingContent(metadata.thinkingContent || metadata.reasoningContent || metadata.reasoning),
-    thinkingRequested: Boolean(metadata.thinkingRequested || metadata.pending),
+    thinkingTrace,
+    thinkingContent,
+    thinkingRequested: Boolean(pending || thinkingContent || thinkingTrace.length || (metadata.thinkingRequested && !normalizedContent)),
     actions: normalizeChatMessageActions(metadata.actions),
     actionPolicy: normalizeChatActionPolicy(metadata.actionPolicy),
     actionResults: normalizeChatActionResults(metadata.actionResults),
     artifacts: normalizeChatArtifacts(metadata.artifacts || metadata.materials || metadata.cards),
     references: normalizeChatReferences(metadata.references),
     responseId: typeof metadata.responseId === "string" ? metadata.responseId : "",
-    pending: Boolean(metadata.pending),
+    pending,
     createdAt: new Date().toISOString()
   };
   thread.messages.push(message);
@@ -10246,14 +10271,21 @@ function appendChatMessage(role, content, metadata = {}) {
 
 function updateChatMessage(message, updates = {}) {
   if (!message) return;
-  if (typeof updates.content === "string") message.content = updates.content;
+  if (typeof updates.content === "string") {
+    message.content = updates.content;
+    if (message.thinkingContent) {
+      message.thinkingContent = sanitizeChatThinkingContent(message.thinkingContent, message.content);
+    }
+  }
   if ("thinkingTrace" in updates || "trace" in updates) {
     message.thinkingTrace = normalizeChatThinkingTrace(updates.thinkingTrace || updates.trace);
   }
   if ("thinkingContent" in updates || "reasoningContent" in updates || "reasoning" in updates) {
-    message.thinkingContent = normalizeChatThinkingContent(updates.thinkingContent || updates.reasoningContent || updates.reasoning);
+    message.thinkingContent = sanitizeChatThinkingContent(updates.thinkingContent ?? updates.reasoningContent ?? updates.reasoning ?? "", message.content);
   }
-  if ("thinkingRequested" in updates) message.thinkingRequested = Boolean(updates.thinkingRequested);
+  if ("thinkingRequested" in updates) {
+    message.thinkingRequested = Boolean(updates.thinkingRequested && (updates.pending || message.pending || message.thinkingContent || message.thinkingTrace?.length || !message.content));
+  }
   if ("attachments" in updates) message.attachments = normalizeChatAttachments(updates.attachments);
   if ("actions" in updates) {
     message.actions = normalizeChatMessageActions(updates.actions);
@@ -10273,7 +10305,12 @@ function updateChatMessage(message, updates = {}) {
   if ("responseId" in updates) {
     message.responseId = typeof updates.responseId === "string" ? updates.responseId : "";
   }
-  if ("pending" in updates) message.pending = Boolean(updates.pending);
+  if ("pending" in updates) {
+    message.pending = Boolean(updates.pending);
+    if (!message.pending && !message.thinkingContent && !message.thinkingTrace?.length && message.content) {
+      message.thinkingRequested = false;
+    }
+  }
   if (updateRenderedChatMessage(message, updates)) {
     scrollChatToBottom();
     return;
@@ -10494,17 +10531,24 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
     line.className = `chat-line ${message.role}`;
     line.classList.toggle("pending", Boolean(message.pending));
     const rendered = { line };
+    const displayThinkingContent = sanitizeChatThinkingContent(message.thinkingContent, message.content);
+    const shouldRenderThinking = message.role === "assistant" && (
+      message.pending ||
+      displayThinkingContent ||
+      message.thinkingTrace?.length ||
+      (message.thinkingRequested && !message.content)
+    );
 
-    if (message.role === "assistant" && (message.pending || message.thinkingRequested || message.thinkingContent || message.thinkingTrace?.length)) {
+    if (shouldRenderThinking) {
       const details = document.createElement("details");
       details.className = "chat-thinking";
       details.classList.toggle("is-running", Boolean(message.pending));
-      details.classList.toggle("is-complete", Boolean(!message.pending && (message.thinkingContent || message.thinkingTrace?.length)));
+      details.classList.toggle("is-complete", Boolean(!message.pending && (displayThinkingContent || message.thinkingTrace?.length)));
       const summary = document.createElement("summary");
       summary.className = "chat-thinking-bar";
       const label = message.pending
         ? t("chat.thinkingRunning")
-        : (message.thinkingContent ? t("chat.thinkingComplete") : t("chat.thinkingDetails"));
+        : (displayThinkingContent ? t("chat.thinkingComplete") : t("chat.thinkingDetails"));
       const icon = document.createElement("span");
       icon.className = "chat-thinking-icon";
       icon.setAttribute("aria-hidden", "true");
@@ -10520,9 +10564,9 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       panel.className = "chat-thinking-panel";
       rendered.thinkingDetails = details;
       rendered.thinkingPanel = panel;
-      if (message.thinkingContent) {
+      if (displayThinkingContent) {
         const pre = document.createElement("pre");
-        pre.textContent = message.thinkingContent;
+        pre.textContent = displayThinkingContent;
         rendered.thinkingPre = pre;
         panel.appendChild(pre);
       } else if (!message.pending && message.thinkingTrace?.length) {
@@ -16109,10 +16153,12 @@ async function postStreamingChat(url, payload, pendingMessage) {
   if (buffer.trim()) consumeEvent(buffer);
   if (streamError) {
     if (pendingMessage && replyBuffer.trim()) {
+      const finalThinkingContent = sanitizeChatThinkingContent(thinkingContent || pendingMessage.thinkingContent || "", replyBuffer);
       updateChatMessage(pendingMessage, {
         content: `${replyBuffer.trim()}\n\n> ${currentLang === "en" ? "The stream was interrupted before completion." : "模型流式回复在完成前中断。"}`,
         pending: false,
-        thinkingContent: thinkingContent || pendingMessage.thinkingContent || ""
+        thinkingContent: finalThinkingContent,
+        thinkingRequested: Boolean(finalThinkingContent)
       });
       streamError.partialHandled = true;
     }
@@ -16121,20 +16167,24 @@ async function postStreamingChat(url, payload, pendingMessage) {
   if (!finalData) {
     const error = new Error("Chat stream ended without a final response");
     if (pendingMessage && replyBuffer.trim()) {
+      const finalThinkingContent = sanitizeChatThinkingContent(thinkingContent || pendingMessage.thinkingContent || "", replyBuffer);
       updateChatMessage(pendingMessage, {
         content: `${replyBuffer.trim()}\n\n> ${currentLang === "en" ? "The stream ended before finalizing canvas actions." : "流式回复结束时未收到最终结果，画布动作可能没有执行。"}`,
         pending: false,
-        thinkingContent: thinkingContent || pendingMessage.thinkingContent || ""
+        thinkingContent: finalThinkingContent,
+        thinkingRequested: Boolean(finalThinkingContent)
       });
       error.partialHandled = true;
     }
     throw error;
   }
   if (pendingMessage && typeof finalData.reply === "string" && finalData.reply.trim()) {
+    const finalThinkingContent = responseThinkingContent(finalData, thinkingContent || pendingMessage.thinkingContent || "", finalData.reply);
     updateChatMessage(pendingMessage, {
       content: finalData.reply,
       pending: false,
-      thinkingContent: finalData.thinkingContent || thinkingContent || pendingMessage.thinkingContent || "",
+      thinkingContent: finalThinkingContent,
+      thinkingRequested: Boolean(finalThinkingContent),
       artifacts: finalData.artifacts || pendingMessage.artifacts || [],
       references: finalData.references || pendingMessage.references || []
     });

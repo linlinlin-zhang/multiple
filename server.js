@@ -1927,8 +1927,9 @@ async function handleChat(body, res) {
   const response = responsesToChatCompletion(rawChatResponse, runtimeConfigs.chat);
 
   const references = extractResponseReferences(response);
-  const thinkingContent = thinkingMode === "thinking" ? collectReasoningContent(response) : "";
-  const reply = normalizeCitationMarkers(stripReasoningEchoFromResponseText(collectChatContent(response), thinkingContent).trim(), references);
+  const rawReply = collectChatContent(response);
+  const thinkingContent = thinkingMode === "thinking" ? sanitizeReasoningContent(collectReasoningContent(response), rawReply) : "";
+  const reply = normalizeCitationMarkers(stripReasoningEchoFromResponseText(rawReply, thinkingContent).trim(), references);
   const actionPipeline = runCanvasActionPipeline({
     rawActions: extractToolCallActions(response),
     message,
@@ -2171,8 +2172,9 @@ async function ingestChatDocumentAttachments(sessionId, attachments) {
 
 function buildChatResultFromResponse({ response, message, thinkingMode, agentMode, lang, streamedReasoning = "", webSearchEnabled = false, selectedContext = null, canvas = {}, analysis = {} }) {
   const references = extractResponseReferences(response);
-  const thinkingContent = thinkingMode === "thinking" ? (streamedReasoning || collectReasoningContent(response)) : "";
-  const reply = normalizeCitationMarkers(stripReasoningEchoFromResponseText(collectChatContent(response), thinkingContent).trim(), references);
+  const rawReply = collectChatContent(response);
+  const thinkingContent = thinkingMode === "thinking" ? sanitizeReasoningContent(streamedReasoning || collectReasoningContent(response), rawReply) : "";
+  const reply = normalizeCitationMarkers(stripReasoningEchoFromResponseText(rawReply, thinkingContent).trim(), references);
   const actionPipeline = runCanvasActionPipeline({
     rawActions: extractToolCallActions(response),
     message,
@@ -5981,8 +5983,9 @@ async function collectStreamingResponsesPayload(response, options = {}) {
 
 function responsesToChatCompletion(response, config, collected = {}) {
   const raw = response?.response || response || {};
-  const reasoning = collected.reasoning || extractResponsesReasoning(raw);
-  const content = stripReasoningEchoFromResponseText(collected.content || extractResponsesText(raw), reasoning);
+  const rawContent = collected.content || extractResponsesText(raw);
+  const reasoning = sanitizeReasoningContent(collected.reasoning || extractResponsesReasoning(raw), rawContent);
+  const content = stripReasoningEchoFromResponseText(rawContent, reasoning);
   const toolCalls = mergeResponsesToolCalls(collected.toolCalls || [], extractResponsesToolCallsAsChat(raw));
   const message = {
     role: "assistant",
@@ -6021,6 +6024,7 @@ function mergeResponsesToolCalls(...groups) {
 }
 
 function extractResponsesTextDelta(eventName, chunk) {
+  if (/reasoning|thinking/i.test(String(eventName || ""))) return "";
   if (/output_text\.delta|text\.delta|message\.delta/i.test(eventName)) {
     return stringOr(chunk?.delta || chunk?.text || chunk?.content, "");
   }
@@ -6031,10 +6035,12 @@ function extractResponsesTextDelta(eventName, chunk) {
 }
 
 function extractResponsesReasoningDelta(eventName, chunk) {
-  if (/reasoning|thinking/i.test(eventName)) {
+  const name = String(eventName || "");
+  const type = String(chunk?.type || "");
+  if (/reasoning|thinking/i.test(name) && /\.delta$/i.test(name)) {
     return stringOr(chunk?.delta || chunk?.text || chunk?.content, "");
   }
-  if (typeof chunk?.delta === "string" && /reasoning|thinking/i.test(String(chunk?.type || ""))) {
+  if (typeof chunk?.delta === "string" && /reasoning|thinking/i.test(type) && /\.delta$/i.test(type)) {
     return chunk.delta;
   }
   return "";
@@ -6045,11 +6051,24 @@ function extractResponsesReasoning(value) {
   walkJson(value, (item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return;
     const type = String(item.type || item.kind || "");
-    const text = item.reasoning || item.reasoning_content || item.thinking || item.thinking_content;
-    if (typeof text === "string") parts.push(text);
-    if (/reasoning|thinking/i.test(type) && typeof item.text === "string") parts.push(item.text);
+    const isReasoningTyped = /reasoning|thinking/i.test(type);
+    const explicit = normalizeReasoningPart(
+      item.reasoning_content ??
+      item.reasoningContent ??
+      item.thinking_content ??
+      item.thinkingContent,
+      "reasoning"
+    );
+    if (explicit) parts.push(explicit);
+    if (isReasoningTyped) {
+      const text = normalizeReasoningPart(
+        item.text ?? item.content ?? item.summary ?? item.reasoning ?? item.thinking,
+        type
+      );
+      if (text) parts.push(text);
+    }
   });
-  return parts.join("\n\n").trim();
+  return dedupeTextParts(parts);
 }
 
 function extractResponsesToolCallsAsChat(value) {
@@ -6145,18 +6164,11 @@ function normalizeTextFingerprint(value) {
 }
 
 function stripReasoningEchoFromResponseText(text, reasoning) {
-  const reply = String(text || "").trim();
-  const thought = String(reasoning || "").trim();
-  if (!reply || !thought) return reply;
-  const withoutThinkTags = reply.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-  if (withoutThinkTags && withoutThinkTags !== reply) return withoutThinkTags;
-  const replyKey = normalizeTextFingerprint(reply);
-  const thoughtKey = normalizeTextFingerprint(thought);
-  if (replyKey && replyKey === thoughtKey) return "";
-  if (reply.startsWith(thought)) {
-    return reply.slice(thought.length).trim();
-  }
-  return reply;
+  return String(text || "").trim();
+}
+
+function sanitizeReasoningContent(reasoning, reply = "") {
+  return String(reasoning || "").trim();
 }
 
 function extractReferencesFromObject(value) {
@@ -6546,42 +6558,43 @@ function collectChatContent(response) {
 
 function collectReasoningContent(response) {
   const message = response?.choices?.[0]?.message || {};
-  const candidates = [
-    message.reasoning_content,
-    message.reasoningContent,
-    message.reasoning,
-    message.thinking,
-    message.thinking_content,
-    message.thoughts,
-    response?.reasoning_content,
-    response?.reasoning
-  ];
+  return dedupeTextParts([
+    normalizeReasoningPart(message.reasoning_content, "reasoning"),
+    normalizeReasoningPart(message.reasoningContent, "reasoning"),
+    normalizeReasoningPart(message.thinking_content, "thinking"),
+    normalizeReasoningPart(message.thinkingContent, "thinking"),
+    normalizeReasoningPart(message.reasoning, "reasoning"),
+    normalizeReasoningPart(message.thinking, "thinking"),
+    normalizeReasoningPart(message.thoughts, "thinking"),
+    normalizeReasoningPart(response?.reasoning_content, "reasoning"),
+    normalizeReasoningPart(response?.reasoning, "reasoning")
+  ]);
+}
 
-  const normalizePart = (value) => {
-    if (!value) return "";
-    if (typeof value === "string") return value.trim();
-    if (Array.isArray(value)) {
-      return value
-        .map((part) => normalizePart(part?.text || part?.content || part?.reasoning || part))
-        .filter(Boolean)
-        .join("\n");
-    }
-    if (typeof value === "object") {
-      const text = value.text || value.content || value.reasoning || value.reasoning_content || value.summary;
-      if (typeof text === "string") return text.trim();
-      try {
-        return JSON.stringify(value, null, 2);
-      } catch {
-        return "";
-      }
-    }
-    return "";
-  };
+function normalizeReasoningPart(value, contextType = "") {
+  if (!value) return "";
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value)) {
+    return value
+      .map((part) => normalizeReasoningPart(part, contextType))
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (typeof value !== "object") return "";
 
-  return candidates
-    .map(normalizePart)
-    .filter(Boolean)
-    .join("\n\n");
+  const type = String(value.type || value.kind || contextType || "");
+  const isReasoningTyped = /reasoning|thinking/i.test(type);
+  const explicit = value.reasoning_content ?? value.reasoningContent ?? value.thinking_content ?? value.thinkingContent;
+  if (typeof explicit === "string") return explicit.trim();
+  if (explicit) return normalizeReasoningPart(explicit, "reasoning");
+
+  if (isReasoningTyped) {
+    const text = value.text ?? value.content ?? value.summary ?? value.reasoning ?? value.thinking;
+    if (typeof text === "string") return text.trim();
+    if (Array.isArray(text)) return normalizeReasoningPart(text, type);
+  }
+
+  return "";
 }
 
 async function generateTokenHubImage(prompt, imageUrl, imageDataUrl) {

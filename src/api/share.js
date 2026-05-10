@@ -35,10 +35,28 @@ function cloneJsonObject(value, maxBytes = 65536) {
   return cloneJson(value, null, maxBytes);
 }
 
+function snapshotTextFingerprint(value) {
+  return String(value || "").normalize("NFKC").replace(/\s+/g, " ").trim();
+}
+
+function sanitizeSnapshotThinkingContent(value, reply = "") {
+  const thinking = typeof value === "string" ? value.trim() : "";
+  const content = typeof reply === "string" ? reply.trim() : "";
+  if (!thinking || !content) return thinking;
+  const thinkingKey = snapshotTextFingerprint(thinking);
+  const contentKey = snapshotTextFingerprint(content);
+  if (!thinkingKey || !contentKey) return thinking;
+  if (thinkingKey === contentKey) return "";
+  const shorter = thinkingKey.length < contentKey.length ? thinkingKey : contentKey;
+  const longer = thinkingKey.length < contentKey.length ? contentKey : thinkingKey;
+  if (shorter.length > 80 && longer.includes(shorter) && shorter.length / Math.max(longer.length, 1) > 0.9) return "";
+  return thinking;
+}
+
 function normalizeSnapshotChatMessages(messages = []) {
   return (Array.isArray(messages) ? messages : []).slice(-500).map((m) => {
     const content = typeof m?.content === "string" ? m.content : "";
-    const thinkingContent = typeof m?.thinkingContent === "string" ? m.thinkingContent : "";
+    const thinkingContent = sanitizeSnapshotThinkingContent(typeof m?.thinkingContent === "string" ? m.thinkingContent : "", content);
     return {
       role: m?.role === "assistant" ? "assistant" : "user",
       content,
@@ -46,7 +64,7 @@ function normalizeSnapshotChatMessages(messages = []) {
       branchNodeId: typeof m?.branchNodeId === "string" ? m.branchNodeId : null,
       thinkingTrace: cloneJsonArray(m?.thinkingTrace || m?.trace, 24, 64000),
       thinkingContent: thinkingContent.trim() ? thinkingContent.slice(0, 120000) : "",
-      thinkingRequested: Boolean(m?.thinkingRequested || thinkingContent),
+      thinkingRequested: Boolean(thinkingContent),
       actions: cloneJsonArray(m?.actions, 48, 128000),
       actionResults: cloneJsonArray(m?.actionResults, 48, 96000),
       actionPolicy: cloneJsonObject(m?.actionPolicy, 160000),
@@ -74,7 +92,7 @@ function sessionChatMessagesForPayload(session = {}) {
   return (Array.isArray(session.chatMessages) ? session.chatMessages : []).map((m) => ({
     role: m.role === "assistant" ? "assistant" : "user",
     content: typeof m.content === "string" ? m.content : "",
-    thinkingContent: m.thinkingContent || null,
+    thinkingContent: sanitizeSnapshotThinkingContent(m.thinkingContent || "", m.content || "") || null,
     references: Array.isArray(m.references) ? m.references : null
   })).filter((m) => m.content || m.thinkingContent || m.references?.length);
 }
