@@ -1014,8 +1014,8 @@ function buildModelConfig(role, defaults, dbSettings = null) {
   const ignoreLegacyEnv = isLegacyEnvDefault(role, { provider: envProvider, endpoint: envBaseUrl, model: envModel });
   const apiKey =
     (effectiveDbSettings?.apiKey ?? "") ||
-    firstEnv(defaults.apiKeyEnv || []) ||
     process.env[`${role}_API_KEY`] ||
+    firstEnv(defaults.apiKeyEnv || []) ||
     "";
   const baseUrl = (
     (effectiveDbSettings?.endpoint || "").replace(/\/+$/, "") ||
@@ -1281,14 +1281,28 @@ function isDemoRole(config) {
 }
 
 function applyReasoningMode(payload, config, thinkingMode) {
-  if (config.provider === "kimi" && /^kimi-k2\./.test(config.model)) {
+  if (!payload || !config) return payload;
+  if (config.provider === "anthropic") {
     payload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
   } else if (config.provider === "openrouter") {
     payload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
+  } else if (isKimiChatConfig(config)) {
+    payload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
   } else if (isDashScopeQwenConfig(config)) {
     payload.enable_thinking = thinkingMode === "thinking";
   }
   return payload;
+}
+
+function isKimiChatConfig(config) {
+  const provider = String(config?.provider || "").toLowerCase();
+  const baseUrl = String(config?.baseUrl || "").toLowerCase();
+  const model = String(config?.model || "").toLowerCase();
+  return provider === "kimi" || baseUrl.includes("moonshot") || model.startsWith("kimi-");
+}
+
+function shouldUseQwenResponsesTransport(config) {
+  return isDashScopeQwenConfig(config);
 }
 
 function isDashScopeQwenConfig(config) {
@@ -1346,7 +1360,9 @@ function applyAnalysisJsonObjectResponseMode(payload) {
 
 function applyRequestOptions(payload, config) {
   const options = config?.options || {};
-  if (payload.temperature === undefined && typeof config?.temperature === "number") {
+  if (payload.temperature === undefined && isKimiChatConfig(config)) {
+    payload.temperature = 0.6;
+  } else if (payload.temperature === undefined && typeof config?.temperature === "number") {
     payload.temperature = config.temperature;
   }
   if (payload.top_p === undefined && typeof options.top_p === "number") {
@@ -1956,23 +1972,36 @@ async function handleChat(body, res) {
     return sendJson(res, 200, finalPayload);
   }
 
-  const chatPayload = buildChatResponsesPayload({
-    instructions: buildChatSystemContext(lang, analysis, promptMessages),
-    content,
-    message,
-    previousResponseId: effectivePreviousResponseId,
-    webSearchEnabled: webSearchEnabled || webSearchForced,
-    thinkingMode,
-    agentMode,
-    agentSkill: activeAgentSkill
-  });
+  const chatTransport = shouldUseQwenResponsesTransport(runtimeConfigs.chat) ? "responses" : "chat-completions";
+  const chatPayload = chatTransport === "responses"
+    ? buildChatResponsesPayload({
+        instructions: buildChatSystemContext(lang, analysis, promptMessages),
+        content,
+        message,
+        previousResponseId: effectivePreviousResponseId,
+        webSearchEnabled: webSearchEnabled || webSearchForced,
+        thinkingMode,
+        agentMode,
+        agentSkill: activeAgentSkill
+      })
+    : buildTextChatCompletionsPayload({
+        instructions: context,
+        userPrompt,
+        imageDataUrl,
+        imageDataUrls,
+        message,
+        webSearchEnabled: webSearchEnabled || webSearchForced,
+        thinkingMode,
+        agentMode,
+        agentSkill: activeAgentSkill
+      });
   applyChatQualityRequestOptions(chatPayload, runtimeConfigs.chat, message, {
     webSearchEnabled: webSearchEnabled || webSearchForced,
     agentMode
   });
   const contextBudget = attachContextBudgetDetails(fitChatPayloadToModelBudget(chatPayload, runtimeConfigs.chat, {
     stream: body?.stream === true,
-    transport: "responses",
+    transport: chatTransport,
     lang
   }), contextTiers);
 
@@ -1991,32 +2020,39 @@ async function handleChat(body, res) {
       retrievedCount: retrieved.length,
       webSearchEnabled: webSearchEnabled || webSearchForced,
       contextBudget,
-      systemPrompt: chatPayload.instructions
+      systemPrompt: chatPayload.instructions || context,
+      transport: chatTransport
     }, res);
   }
 
   let rawChatResponse;
   let effectiveContextBudget = contextBudget;
   try {
-    rawChatResponse = await qwenResponsesRequest(runtimeConfigs.chat, applyRequestOptions({
-      model: runtimeConfigs.chat.model,
-      ...chatPayload
-    }, runtimeConfigs.chat));
+    rawChatResponse = chatTransport === "responses"
+      ? await qwenResponsesRequest(runtimeConfigs.chat, applyRequestOptions({
+          model: runtimeConfigs.chat.model,
+          ...chatPayload
+        }, runtimeConfigs.chat))
+      : await chatCompletions(runtimeConfigs.chat, chatPayload);
   } catch (error) {
     if (!isRequestBodyTooLargeError(error)) throw error;
     effectiveContextBudget = attachContextBudgetDetails(emergencyFitChatPayloadToModelBudget(chatPayload, runtimeConfigs.chat, {
       stream: false,
-      transport: "responses",
+      transport: chatTransport,
       lang,
       previousBudget: contextBudget
     }), contextTiers);
-    rawChatResponse = await qwenResponsesRequest(runtimeConfigs.chat, applyRequestOptions({
-      model: runtimeConfigs.chat.model,
-      ...chatPayload
-    }, runtimeConfigs.chat));
+    rawChatResponse = chatTransport === "responses"
+      ? await qwenResponsesRequest(runtimeConfigs.chat, applyRequestOptions({
+          model: runtimeConfigs.chat.model,
+          ...chatPayload
+        }, runtimeConfigs.chat))
+      : await chatCompletions(runtimeConfigs.chat, chatPayload);
   }
 
-  const response = responsesToChatCompletion(rawChatResponse, runtimeConfigs.chat);
+  const response = chatTransport === "responses"
+    ? responsesToChatCompletion(rawChatResponse, runtimeConfigs.chat)
+    : rawChatResponse;
 
   const references = extractResponseReferences(response);
   const rawReply = collectChatContent(response);
@@ -2839,6 +2875,35 @@ function buildVideoChatCompletionsPayload({ instructions, userPrompt, imageDataU
   applyReasoningMode(payload, runtimeConfigs.chat, thinkingMode);
   applyWebSearchMode(payload, runtimeConfigs.chat, webSearchEnabled);
   if (skillTools.codeInterpreter && chatOptions.enableCodeInterpreter !== false) {
+    payload.tools = payload.tools || [];
+    if (!payload.tools.some((tool) => tool.type === "code_interpreter")) payload.tools.push({ type: "code_interpreter" });
+    payload.tool_choice = "auto";
+  }
+  return payload;
+}
+
+function buildTextChatCompletionsPayload({ instructions, userPrompt, imageDataUrl, imageDataUrls = [], message, webSearchEnabled, thinkingMode, agentMode = false, agentSkill = "" }) {
+  const content = [{ type: "text", text: userPrompt }];
+  const images = normalizeImageDataUrls(imageDataUrls, imageDataUrl);
+  for (const imageUrl of images) {
+    content.push({ type: "image_url", image_url: { url: imageUrl } });
+  }
+  const payload = {
+    messages: [
+      { role: "system", content: instructions },
+      { role: "user", content }
+    ]
+  };
+  const chatOptions = runtimeConfigs.chat.options || {};
+  const skillTools = agentSkillToolFlags(agentSkill);
+  const canvasPolicy = buildCanvasActionPolicy(message, { agentMode, agentSkill, thinkingMode });
+  if (chatOptions.enableCanvasTools !== false && canvasPolicy.allowCanvasTool) {
+    payload.tools = [buildChatCompletionsCanvasToolSchema(canvasPolicy)];
+    payload.tool_choice = "auto";
+  }
+  applyReasoningMode(payload, runtimeConfigs.chat, thinkingMode);
+  applyWebSearchMode(payload, runtimeConfigs.chat, webSearchEnabled);
+  if (skillTools.codeInterpreter && chatOptions.enableCodeInterpreter !== false && isDashScopeQwenConfig(runtimeConfigs.chat)) {
     payload.tools = payload.tools || [];
     if (!payload.tools.some((tool) => tool.type === "code_interpreter")) payload.tools.push({ type: "code_interpreter" });
     payload.tool_choice = "auto";
@@ -4156,7 +4221,8 @@ function logCanvasActionPipelineDiagnostics({
 }
 
 function automaticCardLimitForIntent(intent, thinkingMode = "no-thinking") {
-  if (intent?.visualEvaluation) return thinkingMode === "thinking" ? 3 : 2;
+  if (intent?.visualComparison) return thinkingMode === "thinking" ? 3 : 2;
+  if (intent?.visualEvaluation) return 2;
   return thinkingMode === "thinking" ? 5 : 3;
 }
 
@@ -4175,7 +4241,7 @@ function ensureAutomaticSmartCardActions(actions, message, reply, lang = "zh", t
 }
 
 function buildAutomaticSmartCardActions(message, reply, lang, intent) {
-  if (intent.visualEvaluation) {
+  if (intent.visualComparison) {
     const items = genericItemsFromText(reply, 5).map((item, index) => ({
       title: item.title && item.title !== `${index + 1}` ? item.title : (lang === "en" ? `Point ${index + 1}` : `要点 ${index + 1}`),
       summary: String(item.description || item.title || "").slice(0, 420)
@@ -4192,6 +4258,12 @@ function buildAutomaticSmartCardActions(message, reply, lang, intent) {
         recommendation: reply.slice(0, 700)
       }
     }];
+  }
+  if (intent.visualEvaluation) {
+    return [
+      buildGenericNoteAction(message, reply, lang),
+      buildGenericMetricAction(message, reply, lang)
+    ].filter(Boolean);
   }
   if (isPlanningRequest(message)) {
     return [
@@ -5359,7 +5431,7 @@ const FALLBACK_KEYWORDS = {
   create_direction: /方向|方案|概念方向|视觉概念|风格方向|direction|option|concept/i,
   create_plan: /计划|日程|行程|规划|itinerary|schedule|plan/i,
   create_todo: /任务|待办|清单|checklist|todo|task list/i,
-  create_note: /笔记|记录|备忘|note|jot down/i,
+  create_note: /笔记|记录|备忘|建议|可行性|分析卡片|评价卡片|note|jot down|recommendation|feasibility/i,
   create_weather: /天气|气温|forecast|weather/i,
   create_map: /地图|位置|地址|导航|map|location/i,
   create_link: /链接|收藏|书签|link|bookmark/i,
@@ -5370,6 +5442,7 @@ const FALLBACK_KEYWORDS = {
   create_comparison: /对比|比较|取舍|决策|comparison|compare|tradeoff|decision/i,
   create_metric: /指标|KPI|数据看板|度量|metric|kpi|dashboard|benchmark/i,
   create_quote: /引用|摘录|金句|原文|quote|excerpt|citation/i,
+  arrange_canvas: /整理.{0,12}(画布|布局)|排列.{0,12}(画布|布局)|避免?重叠|不?要重叠|arrange|layout|tidy|overlap/i,
   zoom_in: /放大|zoom in|enlarge/i,
   zoom_out: /缩小|zoom out|shrink/i,
   reset_view: /重置视图|reset view|恢复默认视图/i
@@ -5377,7 +5450,7 @@ const FALLBACK_KEYWORDS = {
 
 function ensureChatFallbackActionsClean(message, actions, reply = "") {
   const normalized = Array.isArray(actions) ? [...actions] : [];
-  if (normalized.length > 0) return normalized;
+  const fallbackOnlyAfterRejection = normalized.length > 0;
 
   const requestText = String(message || "").normalize("NFKC");
   const combinedText = requestText + " " + String(reply || "").normalize("NFKC");
@@ -5389,7 +5462,7 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
     isComparisonRequest(requestText) ||
     isResearchRequest(requestText) ||
     isDataOrCodeRequest(requestText) ||
-    /(画布|卡片|节点|创建|新建|生成.*(卡片|节点|方向|方案)|保存成|放到画布|整理到画布|canvas|card|node|create|add|save.*card|generate.*(?:direction|option|concept))/i.test(requestText)
+    /(画布|卡片|节点|创建|新建|生成.*(卡片|节点|方向|方案)|保存成|保存一个|保存为|放到画布|整理到画布|canvas|card|node|create|add|save.*card|generate.*(?:direction|option|concept))/i.test(requestText)
   );
   const matchedTypes = [];
 
@@ -5400,6 +5473,7 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
       matchedTypes.push(actionType);
     }
   }
+  if (fallbackOnlyAfterRejection && !shouldRecoverFromRejectedActions(requestText, normalized)) return normalized;
   if (!wantsArtifact) return normalized;
   const fallbackTypes = fallbackActionTypesForRequest(requestText, matchedTypes);
   const title = requestText.slice(0, 48);
@@ -5418,8 +5492,19 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
   return normalized;
 }
 
+function shouldRecoverFromRejectedActions(text, actions) {
+  const requestText = String(text || "");
+  if (!Array.isArray(actions) || actions.length === 0) return false;
+  if (isWorkspaceLayoutRequest(requestText)) return true;
+  if (/(保存成|保存一个|保存为|卡片|节点|save.*card|as.*card)/i.test(requestText)) return true;
+  if (extractFirstUrl(requestText) && /(网页|网址|链接|url|参考|来源|引用|总结|保存成|卡片|web|link|reference|source|citation|summari[sz]e|save)/i.test(requestText)) return true;
+  return false;
+}
+
 function fallbackActionTypesForRequest(text, matchedTypes = []) {
   const primary = matchedTypes.find((type) => !isViewOnlyFallbackAction(type));
+  if (isWorkspaceLayoutRequest(text)) return uniqueActionTypes([primary || "arrange_canvas"]);
+  if (extractFirstUrl(text) && /(网页|网址|链接|url|参考|来源|引用|总结|保存成|卡片|web|link|reference|source|citation|summari[sz]e|save)/i.test(String(text || ""))) return uniqueActionTypes([primary || "create_web_card"]);
   if (isDirectionRequest(text)) return uniqueActionTypes([primary || "create_direction"]);
   if (isPlanningRequest(text)) return uniqueActionTypes([primary || "create_plan", "create_timeline", "create_todo", "create_table"]);
   if (isComparisonRequest(text)) return uniqueActionTypes([primary || "create_comparison", "create_metric", "create_todo"]);
@@ -5439,6 +5524,11 @@ function extractFirstUrl(text) {
 
 function isViewOnlyFallbackAction(actionType) {
   return ["zoom_in", "zoom_out", "reset_view"].includes(actionType);
+}
+
+function isWorkspaceLayoutRequest(text) {
+  return /(整理|排列|排版|布局|重叠|arrange|layout|tidy|overlap)/i.test(String(text || ""))
+    && /(画布|布局|重叠|节点|canvas|layout|overlap|node)/i.test(String(text || ""));
 }
 
 function isDirectionRequest(text) {

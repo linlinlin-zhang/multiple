@@ -92,6 +92,7 @@ const CARD_TYPES = [
 const DIRECTION_TYPES = ["create_direction", "create_note"];
 const SUMMARY_TYPES = ["create_note", "create_table", "create_todo"];
 const VISUAL_EVALUATION_TYPES = ["create_comparison", "create_metric", "create_note"];
+const VISUAL_CRITIQUE_TYPES = ["create_note", "create_metric"];
 const PLANNING_TYPES = ["create_plan", "create_todo", "create_timeline", "create_table", "create_note"];
 const COMPARISON_TYPES = ["create_comparison", "create_metric", "create_table", "create_note"];
 const RESEARCH_SYNTHESIS_TYPES = ["create_note", "create_table", "create_quote", "create_web_card", "create_link"];
@@ -122,7 +123,7 @@ export function normalizeIntentText(message) {
 }
 
 export function isNoCanvasRequest(message) {
-  return /(不要.*(画布|卡片|节点)|不需要.*(画布|卡片|节点)|只要文字|纯文字|直接回答|别建卡|别创建|no\s+canvas|no\s+cards?|text\s+only|answer\s+only)/i.test(normalizeIntentText(message));
+  return /((不要|不需要)[^,，。！？.!?；;：:]{0,18}(画布|卡片|节点)|只要文字|纯文字|直接回答|别建卡|别创建|no\s+canvas|no\s+cards?|text\s+only|answer\s+only)/i.test(normalizeIntentText(message));
 }
 
 function isTrivialChatRequest(message) {
@@ -133,14 +134,24 @@ function isTrivialChatRequest(message) {
 function detect(message) {
   const text = normalizeIntentText(message);
   const deferredMediaGeneration = /(先.*(分析|评价|评估|讨论|看看|方案|建议).{0,24}(不要|别|不用|无需|暂时不|先不).{0,16}(生成|出图|成图|绘制|渲染|视频|动画)|(?:不要|别|不用|无需|暂时不|先不).{0,12}(直接|马上|现在)?[^，。！？.!?]{0,12}(生成|出图|成图|绘制|渲染|视频|动画|image|video|visual)|只(?:分析|评价|评估|讨论|看看|给方案|给建议)|先(?:分析|评价|评估|讨论|看看|给方案|给建议)|(?:do\s+not|don't|dont|without|no).{0,16}(generate|make|create|render).{0,16}(image|video|visual|picture)|(?:analy[sz]e|discuss|review).{0,16}first|analysis\s+only)/i.test(text);
-  const webResearch = /((搜索|查找|检索|搜|找|联网查|查一下|查找一下|帮我找|找一下).{0,24}(资料|来源|引用|论文|文献|案例|新闻|信息|数据|参考|reference|source|sources|citation|paper|news|case|data))|((最新|官方|实时|新闻|current|latest|official|recent).{0,18}(资料|来源|引用|论文|文献|案例|新闻|信息|数据|reference|source|sources|citation|paper|news|case|data))|web\s*search|search\s+(?:the\s+)?web|find\s+(?:current|latest|official|sources|references)/i.test(text);
-  const visualEvaluation = /(照片|图片|图像|画面|摄影|拍得|构图|曝光|色彩|光线|清晰|焦点|镜头|取景|photo|picture|image|shot|photograph|composition|exposure|lighting|color|focus|framing)/i.test(text)
-    && /(哪张|哪个|哪一张|更好|最好|比较好|拍得好|好看|评价|点评|分析一下|对比|比较|选择|推荐|优劣|best|better|which|compare|evaluate|critique|recommend|pick|choose)/i.test(text);
+  const hasUrl = /https?:\/\/[^\s)）\]】"'<>]+/i.test(text);
+  const webResearch = /((搜索|查找|检索|搜|找|联网查|查一下|查找一下|帮我找|找一下).{0,24}(资料|来源|引用|论文|文献|案例|新闻|信息|数据|参考|reference|source|sources|citation|paper|news|case|data))|((最新|官方|实时|新闻|current|latest|official|recent).{0,18}(资料|来源|引用|论文|文献|案例|新闻|信息|数据|reference|source|sources|citation|paper|news|case|data))|web\s*search|search\s+(?:the\s+)?web|find\s+(?:current|latest|official|sources|references)/i.test(text)
+    || (hasUrl && /(网页|网址|链接|url|参考|来源|引用|总结|保存成|卡片|web|link|reference|source|citation|summari[sz]e|save)/i.test(text));
+  const visualSubject = /(照片|图片|图像|画面|摄影|拍得|构图|曝光|色彩|光线|清晰|焦点|镜头|取景|这张图|这幅图|这张海报|这幅海报|photo|picture|image|shot|photograph|composition|exposure|lighting|color|focus|framing)/i.test(text);
+  const multiVisualContext = /(几张|多张|两张|三张|四张|五张|这些|这几张|一组|多个|多图|两幅|三幅|四幅|photos|pictures|images|shots|A\s*\/\s*B|1\s*(和|与|vs|,|，|、)\s*2)/i.test(text);
+  const visualComparison = visualSubject && (/(哪张|哪一张|哪个(?:更|最)|更好|最好|比较好|哪.*好|拍得更好|拍得最好|优劣|排序|排名|best|better|which|pick|choose|rank)/i.test(text)
+    || (/(对比|比较|compare|comparison)/i.test(text) && multiVisualContext));
+  const visualEvaluation = visualSubject && (visualComparison || /(好看|评价|点评|分析一下|分析|看看|评估|建议|诊断|对比|比较|compare|comparison|evaluate|critique|review|recommend|diagnose)/i.test(text));
   const directAnalysis = /(分析|对比|比较|评估|评价|点评|判断|选择|推荐|优缺点|analysis|compare|comparison|evaluate|critique|judge|recommend|choose|pick)/i.test(text);
   const explicitCanvas = /(画布|卡片|节点|创建|新建|新增|加一张|建一张|生成.{0,8}(卡片|节点)|保存成.{0,8}(卡片|节点)|放到画布|整理到画布|做成.{0,8}(卡片|表格|清单|时间线)|canvas|card|node|create|add\s+(?:a\s+)?card|save\s+(?:it\s+)?as\s+(?:a\s+)?card|put\s+(?:it\s+)?on\s+(?:the\s+)?canvas)/i.test(text);
   const structuredDeliverable = /(做|制定|生成|创建|整理|输出|列|写一份|给我一份|帮我做|make|create|build|generate|draft|produce|turn\s+.*\s+into).{0,18}(计划|规划|清单|待办|表格|时间线|路线图|报告|提纲|矩阵|对比表|checklist|todo|table|timeline|roadmap|report|outline|matrix|comparison)/i.test(text);
-  const workspaceAction = /(放大|缩小|重置视图|聚焦|定位|移动|整理|排列|删除|移除|打开历史|打开设置|保存会话|新建对话|导出|zoom|focus|pan|move|arrange|layout|delete|remove|open history|open settings|save session|new chat|export)/i.test(text)
-    && /(画布|卡片|节点|视图|会话|历史|设置|canvas|card|node|view|session|history|settings)/i.test(text);
+  const workspaceAction = (
+    /(放大|缩小|重置视图|聚焦|定位|移动|删除|移除|打开历史|打开设置|保存会话|新建对话|导出|zoom|focus|pan|move|delete|remove|open history|open settings|save session|new chat|export)/i.test(text)
+      && /(画布|卡片|节点|视图|会话|历史|设置|canvas|card|node|view|session|history|settings)/i.test(text)
+  ) || (
+    /(整理|排列|排版|布局|重叠|arrange|layout|tidy)/i.test(text)
+      && /(画布|布局|重叠|节点|canvas|layout|overlap|node)/i.test(text)
+  );
   const deleteAction = /(删除|移除|删掉|delete|remove)/i.test(text) && /(卡片|节点|选中|这个|当前|card|node|selected|current)/i.test(text);
   const sourceResearch = /(研究|深入研究|探索|分析).{0,16}(当前|选中|源|素材|来源|卡片|节点|source|card|node)|(?:analy[sz]e|explore|research).{0,16}(?:selected|current|source|card|node)|打开.{0,8}(引用|参考资料|references)|open\s+references/i.test(text);
   const directionCardRequest = /(方向|方案|概念|direction|option|concept).{0,16}(卡片|节点|card|node)|(?:卡片|节点|card|node).{0,16}(方向|方案|概念|direction|option|concept)/i.test(text);
@@ -171,6 +182,7 @@ function detect(message) {
     deleteAction,
     sourceResearch,
     webResearch,
+    visualComparison,
     deferredMediaGeneration,
     directionRequest,
     directionCardRequest,
@@ -202,7 +214,8 @@ export function classifyCanvasActionIntent(message, options = {}) {
   else if (flags.sourceResearch) taskType = "source_research";
   else if (flags.webResearch) taskType = "web_research";
   else if (flags.workspaceAction || flags.deleteAction) taskType = "workspace";
-  else if (flags.visualEvaluation) taskType = "visual_evaluation";
+  else if (flags.visualComparison) taskType = "visual_evaluation";
+  else if (flags.visualEvaluation) taskType = "visual_critique";
   else if (flags.planning) taskType = "planning";
   else if (flags.research) taskType = "research_synthesis";
   else if (flags.dataCode) taskType = "data_code";
@@ -235,7 +248,8 @@ function allowedActionTypesForIntent(intent) {
   const allowed = new Set();
   if (!intent.allowCanvasTool) return allowed;
   if (intent.automaticCardMode) {
-    if (intent.visualEvaluation) addMany(allowed, VISUAL_EVALUATION_TYPES);
+    if (intent.visualComparison) addMany(allowed, VISUAL_EVALUATION_TYPES);
+    else if (intent.visualEvaluation) addMany(allowed, VISUAL_CRITIQUE_TYPES);
     else if (intent.planning) addMany(allowed, PLANNING_TYPES);
     else if (intent.research) addMany(allowed, RESEARCH_SYNTHESIS_TYPES);
     else if (intent.dataCode) addMany(allowed, DATA_CODE_TYPES);
@@ -246,7 +260,9 @@ function allowedActionTypesForIntent(intent) {
   if (intent.explicitCanvas || intent.structuredDeliverable) {
     addMany(allowed, CARD_TYPES);
     if (intent.planning) addMany(allowed, PLANNING_TYPES);
-    if (intent.directAnalysis || intent.visualEvaluation) addMany(allowed, COMPARISON_TYPES);
+    if (intent.visualComparison) addMany(allowed, COMPARISON_TYPES);
+    else if (intent.visualEvaluation) addMany(allowed, VISUAL_CRITIQUE_TYPES);
+    else if (intent.directAnalysis) addMany(allowed, COMPARISON_TYPES);
     if (intent.research) addMany(allowed, RESEARCH_SYNTHESIS_TYPES);
     if (intent.dataCode) addMany(allowed, DATA_CODE_TYPES);
     if (intent.writing) addMany(allowed, WRITING_TYPES);
@@ -516,6 +532,10 @@ export function filterCanvasActionsByPolicy(actions, policy) {
     }
     if (!policy.allowCanvasTool || !policy.allowedActionSet.has(type)) {
       reject("not_allowed_for_intent");
+      continue;
+    }
+    if (policy.intent.visualEvaluation && !policy.intent.visualComparison && type === "create_comparison") {
+      reject("single_visual_critique_not_comparison");
       continue;
     }
     if (metadata.annotations.destructiveHint && !policy.intent.allowDestructive) {

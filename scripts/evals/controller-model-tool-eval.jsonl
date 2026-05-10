@@ -1,0 +1,10 @@
+{"id":"tool.plan_card","category":"planning","message":"请创建一个三步产品发布计划卡片，包含目标、风险和下一步。","expected":{"any":["create_plan"],"none":["generate_image","create_comparison"]}}
+{"id":"tool.no_canvas","category":"negative","message":"只要文字回答，不要创建卡片：比较 React 和 Vue 的适用场景。","expected":{"exactCount":0}}
+{"id":"tool.single_photo_critique","category":"visual_critique","message":"这张照片点评一下，保存成简短的评价卡片，不要生成图片。","expected":{"any":["create_note","create_metric"],"none":["create_comparison","generate_image"]}}
+{"id":"tool.multi_photo_comparison","category":"visual_evaluation","message":"这几张照片哪张拍得最好？请比较构图、光线和氛围，并保存结论卡片，不要生成图片。","expected":{"any":["create_comparison","create_metric","create_note"],"none":["generate_image","research_node"]}}
+{"id":"tool.image_generation","category":"media_generation","message":"直接生成一张海边咖啡馆概念图，暖色灯光，木质室内，傍晚海景。","expected":{"any":["generate_image"],"none":["create_comparison","create_plan"]}}
+{"id":"tool.image_search","category":"media_search","message":"帮我找几张海边咖啡馆室内设计的视觉参考图。","expected":{"any":["image_search","text_image_search"],"none":["generate_image","create_comparison"]}}
+{"id":"tool.table_card","category":"data","message":"把季度销售指标整理成表格卡片：Q1 120万，Q2 160万，Q3 150万，Q4 210万。","expected":{"any":["create_table"],"none":["generate_image","create_comparison"]}}
+{"id":"tool.code_card","category":"code","message":"创建一个代码卡片，保存一个 JavaScript debounce 函数并说明用法。","expected":{"any":["create_code"],"none":["generate_image","create_comparison"]}}
+{"id":"tool.web_reference","category":"web_research","message":"帮我找最新官方资料，整理成参考卡片：2026 年中国新能源汽车出口政策。","expected":{"any":["web_search","create_web_card","create_quote","create_note"],"none":["generate_image"]}}
+{"id":"tool.workspace_arrange","category":"workspace","message":"帮我整理一下画布布局，让卡片不要重叠。","expected":{"any":["arrange_canvas","auto_layout","tidy_canvas"],"none":["delete_node","generate_image"]}}
