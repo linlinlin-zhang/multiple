@@ -24,6 +24,7 @@ import { classifyContent, getFallbackTaskType, resolveTaskType, routeContent } f
 import { ensureMediaGenerationActions } from "./src/lib/chatActionGuard.js";
 import { ensureCommittedCanvasActions } from "./src/lib/canvasActionReliability.js";
 import { finalizeCanvasActions as runCanvasActionPipeline } from "./src/lib/canvasActionPipeline.js";
+import { extractResponsesReasoningDelta, extractResponsesTextDelta } from "./src/lib/responsesStreamParser.js";
 import {
   CANVAS_ACTION_REGISTRY,
   buildCanvasActionPolicy,
@@ -495,6 +496,18 @@ function finalizeChatReply(reply, actions, lang, references = []) {
   }
   if (isSubstantiveActionReply(text, lang)) return text;
   return appendReferencesIfMissing(synthesizeReplyFromActions(actions, lang, references) || text, references, lang);
+}
+
+function isInternalPlanningReply(reply) {
+  const text = String(reply || "").trim();
+  if (!text) return false;
+  return /^(the user (is asking|wants|asked)|i need to|i should|we need to|\*\*?plan\*\*?\s*:|plan\s*:)/i.test(text)
+    || /^(用户(正在|要求|想要|询问)|我需要|我应该|我们需要|计划\s*[:：]|内部计划\s*[:：])/i.test(text)
+    || /\bI will create\b.{0,180}\b(create_|canvas_action|card|node|comparison)\b/is.test(text);
+}
+
+function visibleChatReplyOrEmpty(reply) {
+  return isInternalPlanningReply(reply) ? "" : String(reply || "").trim();
 }
 
 function formatActionBundleSection(actions, lang) {
@@ -1929,7 +1942,7 @@ async function handleChat(body, res) {
   const references = extractResponseReferences(response);
   const rawReply = collectChatContent(response);
   const thinkingContent = thinkingMode === "thinking" ? sanitizeReasoningContent(collectReasoningContent(response), rawReply) : "";
-  const reply = normalizeCitationMarkers(stripReasoningEchoFromResponseText(rawReply, thinkingContent).trim(), references);
+  const reply = visibleChatReplyOrEmpty(normalizeCitationMarkers(stripReasoningEchoFromResponseText(rawReply, thinkingContent).trim(), references));
   const actionPipeline = runCanvasActionPipeline({
     rawActions: extractToolCallActions(response),
     message,
@@ -2174,7 +2187,7 @@ function buildChatResultFromResponse({ response, message, thinkingMode, agentMod
   const references = extractResponseReferences(response);
   const rawReply = collectChatContent(response);
   const thinkingContent = thinkingMode === "thinking" ? sanitizeReasoningContent(streamedReasoning || collectReasoningContent(response), rawReply) : "";
-  const reply = normalizeCitationMarkers(stripReasoningEchoFromResponseText(rawReply, thinkingContent).trim(), references);
+  const reply = visibleChatReplyOrEmpty(normalizeCitationMarkers(stripReasoningEchoFromResponseText(rawReply, thinkingContent).trim(), references));
   const actionPipeline = runCanvasActionPipeline({
     rawActions: extractToolCallActions(response),
     message,
@@ -6021,29 +6034,6 @@ function mergeResponsesToolCalls(...groups) {
     }
   }
   return merged;
-}
-
-function extractResponsesTextDelta(eventName, chunk) {
-  if (/reasoning|thinking/i.test(String(eventName || ""))) return "";
-  if (/output_text\.delta|text\.delta|message\.delta/i.test(eventName)) {
-    return stringOr(chunk?.delta || chunk?.text || chunk?.content, "");
-  }
-  if (typeof chunk?.delta === "string" && /text|message|output/i.test(String(chunk?.type || eventName))) {
-    return chunk.delta;
-  }
-  return "";
-}
-
-function extractResponsesReasoningDelta(eventName, chunk) {
-  const name = String(eventName || "");
-  const type = String(chunk?.type || "");
-  if (/reasoning|thinking/i.test(name) && /\.delta$/i.test(name)) {
-    return stringOr(chunk?.delta || chunk?.text || chunk?.content, "");
-  }
-  if (typeof chunk?.delta === "string" && /reasoning|thinking/i.test(type) && /\.delta$/i.test(type)) {
-    return chunk.delta;
-  }
-  return "";
 }
 
 function extractResponsesReasoning(value) {

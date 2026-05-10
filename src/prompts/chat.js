@@ -17,6 +17,10 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "",
         "Use tools and canvas artifacts to augment the answer, not to replace it. If you create a canvas node, still write a useful chat response that explains the key result, why it is structured that way, and how the user can use or iterate on it.",
         "",
+        "# Visible answer boundary",
+        "Reasoning, scratchpad notes, tool plans, and action-planning text are internal. Never put phrases like \"The user is asking...\", \"I need to...\", \"I should...\", \"Plan:\", or \"I will create...\" in the visible chat answer.",
+        "The visible answer must directly address the user in the user's language. For image comparisons, start with the recommendation/ranking and then explain each image's visible qualities; do not narrate your internal plan.",
+        "",
         "Use the canvas as spatial working memory. When the task benefits from structure, split work into meaningful cards, choose the right card types, connect the chat answer to those cards, and manipulate the view when useful. Avoid one giant card: prefer an overview card plus supporting cards for resources, references, checklists, risks, data, drafts, or detailed subtopics. Do not create cards for every answer; create them when they help the user continue working.",
         "",
         "Choose the structure based on the task, not on a fixed template. Research/current-information tasks should synthesize sources with citations when references are available. Planning tasks should include goals, constraints, phases or milestones, dependencies, alternatives, risks, and next actions. Analysis/comparison tasks should include criteria, reasoning, pros/cons, and a recommendation when appropriate. Creative/writing tasks should include direction, rationale, drafts, variants, and revision options. Code/data tasks should include method, result, validation, and edge cases.",
@@ -117,6 +121,10 @@ export function buildChatSystemContext(lang, analysis, messages) {
         "面对宽泛目标时,不要只按字面请求收缩作答,要主动扩展相邻信息需求:背景脉络、权威规则或来源、时间线与地点/流程、资料与资源、市场或趋势信号、参考基准、风险、依赖关系以及下一步应核实的问题。如果任务涉及考试、证书、政策、地点、价格、工具或实时条件,且可联网搜索,要主动查找当前/官方信息。",
         "",
         "工具和画布产物是对回答的增强,不是替代品。如果你创建了画布节点,仍然要在聊天区写出有信息量的正文,总结关键内容、解释结构选择,并说明用户如何使用或继续迭代。",
+        "",
+        "# 可见正文边界",
+        "推理、草稿、工具计划、动作规划文字都属于内部内容。可见聊天正文里绝不能出现 \"The user is asking...\"、\"I need to...\"、\"I should...\"、\"Plan:\"、\"I will create...\" 这类内部计划语气。",
+        "可见正文必须用用户的语言直接回答用户。图片比较任务要先给推荐/排序，再解释每张图的可见特点；不要叙述你的内部分析计划。",
         "",
         "把画布当作空间化工作记忆来使用。当任务适合结构化时,把工作拆成有意义的卡片,选择合适的卡片类型,让聊天正文和卡片互相配合,必要时操作视图、聚焦或整理节点。避免把所有内容塞进一张巨长卡片:优先使用一张总览卡,再配合资源、参考资料、清单、风险、数据、草稿或细分主题卡。不要每个回答都机械建卡;只有当卡片能帮助用户继续工作时才创建。",
         "",
@@ -242,7 +250,20 @@ export function buildChatUserPrompt({ message, analysis, selectedContext, canvas
     ),
     skillGuidance ? promptSection(isEn ? "Active Skill Lens" : "当前技能视角", skillGuidance) : "",
     promptSection(isEn ? "Response Guidance" : "回答指导", taskGuidance),
-    promptSection(isEn ? "Current Mode" : "当前模式", thinkingMode),
+    promptSection(
+      isEn ? "Visible Answer Contract" : "可见正文契约",
+      isEn
+        ? [
+            `internal_reasoning_mode=${thinkingMode === "thinking" ? "enabled" : "disabled"}`,
+            "This mode is internal only. Do not copy reasoning summaries, scratchpad analysis, tool plans, or action plans into the visible answer.",
+            "Write the visible answer as the final user-facing response, not as a description of what you are about to do."
+          ].join("\n")
+        : [
+            `internal_reasoning_mode=${thinkingMode === "thinking" ? "enabled" : "disabled"}`,
+            "该模式只影响内部推理。不要把 reasoning summary、草稿分析、工具计划或动作计划复制到可见正文。",
+            "可见正文必须是最终给用户看的回答,不要写成“我准备做什么”的内部说明。"
+          ].join("\n")
+    ),
     promptSection(isEn ? "Execution Hints" : "执行提示", [
       `web_search_enabled=${webSearchEnabled ? "true" : "false"}`,
       `agent_controller_mode=${agentMode ? "true" : "false"}`,
