@@ -40,7 +40,7 @@ function typeList(actions) {
     "policy_initial",
     "media_generation_guard",
     "committed_canvas_guard",
-    "fallback_cleanup",
+    "fallback_recovery",
     "reference_merge",
     "action_enrichment",
     "agent_finalize",

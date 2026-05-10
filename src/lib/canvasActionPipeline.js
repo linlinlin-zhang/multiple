@@ -226,7 +226,7 @@ export function finalizeCanvasActions({
   actions = dependencies.cleanupFallbackActions
     ? dependencies.cleanupFallbackActions({ message, actions, reply })
     : actions;
-  recordActionPipelineStage(stages, "fallback_cleanup", beforeFallbackClean, actions);
+  recordActionPipelineStage(stages, "fallback_recovery", beforeFallbackClean, actions);
 
   if (response && dependencies.mergeReferenceActions) {
     const beforeReferences = actions;

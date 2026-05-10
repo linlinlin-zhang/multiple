@@ -16,6 +16,10 @@ import { ensureCommittedCanvasActions } from "../src/lib/canvasActionReliability
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_FIXTURE_PATH = path.join(__dirname, "evals", "canvas-action-regression.jsonl");
 const fixturePath = process.argv[2] || DEFAULT_FIXTURE_PATH;
+const artifactDir = process.env.CANVAS_ACTION_EVAL_ARTIFACT_DIR
+  ? path.resolve(process.env.CANVAS_ACTION_EVAL_ARTIFACT_DIR)
+  : path.join(__dirname, "evals", "artifacts");
+const failureArtifactPath = path.join(artifactDir, "canvas-action-regression-failures.json");
 
 function readJsonl(filePath) {
   return fs.readFileSync(filePath, "utf8")
@@ -198,7 +202,7 @@ function assertFixture(fixture) {
   }
 
   if (failures.length) {
-    const report = {
+    return {
       id: fixture.id,
       category: fixture.category,
       message: fixture.message,
@@ -207,10 +211,21 @@ function assertFixture(fixture) {
       actionPolicy: result.actionPolicy,
       trace: result.trace
     };
-    assert.fail(JSON.stringify(report, null, 2));
   }
+  return null;
 }
 
 const fixtures = readJsonl(fixturePath);
-fixtures.forEach(assertFixture);
+const failures = fixtures.map(assertFixture).filter(Boolean);
+if (failures.length) {
+  fs.mkdirSync(artifactDir, { recursive: true });
+  fs.writeFileSync(failureArtifactPath, `${JSON.stringify({
+    createdAt: new Date().toISOString(),
+    fixturePath,
+    failureCount: failures.length,
+    failures
+  }, null, 2)}\n`);
+  assert.fail(`canvas action regression failed (${failures.length}/${fixtures.length}); artifact: ${failureArtifactPath}\n${JSON.stringify(failures[0], null, 2)}`);
+}
+if (fs.existsSync(failureArtifactPath)) fs.rmSync(failureArtifactPath);
 console.log(`[test] canvas action regression: PASS (${fixtures.length} fixtures)`);

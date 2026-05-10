@@ -2,7 +2,32 @@
 
 **Date:** 2026-05-10  
 **Scope:** ThoughtGrid / 织境 AI canvas workbench  
-**Status:** Research-backed improvement backlog; no implementation yet
+**Status:** Research-backed improvement backlog; implementation in progress
+
+## 0. Implementation Progress
+
+Updated: 2026-05-10
+
+Completed:
+
+- **HE-P0-01 canonical trace object:** Added `buildCanvasActionTrace()` and `trace` output from `finalizeCanvasActions()` in `src/lib/canvasActionPipeline.js`. The trace records intent, model action types, inline action types, thinking-mentioned action types, pipeline stages, final action types, frontend result slots, and redacted snippets.
+- **HE-P0-02 pipeline stage semantics:** Standardized the recovery stage name to `fallback_recovery` and covered the full ordered stage contract in `scripts/test-canvas-action-pipeline.js`.
+- **HE-P0-03 deterministic canvas action eval fixtures:** Added deterministic JSONL regression fixtures and runner at `scripts/evals/canvas-action-regression.jsonl` and `scripts/test-canvas-action-regression.js`.
+- **HE-P0-04 frontend action result contract:** Normalized frontend execution results to `type/success/nodeId/nodeIds/title/error/errorCode` and documented the contract in `.planning/contracts/FRONTEND_ACTION_RESULTS.md`.
+- **HE-P0-05 negative over-triggering tests:** Added no-canvas/trivial negative fixtures to the deterministic regression suite.
+- **HE-P1-03 transcript review artifacts:** The regression runner now writes structured failure artifacts to `scripts/evals/artifacts/canvas-action-regression-failures.json` when failures occur.
+- **HE-P1-05 schema/executor audit:** Added `.planning/contracts/CANVAS_ACTION_CONTRACT.md` and `scripts/test-canvas-action-contract.js` to mechanically check registry/schema/frontend executor alignment.
+- **HE-P1-11 mechanical action consistency checks:** Added the contract test to `npm run test:guards` so registry, model-visible action types, frontend executors, rich card types, and result fields stay aligned.
+
+Partial:
+
+- **HE-P1-01 JSONL eval corpus:** Added 25 initial deterministic fixtures. The backlog target remains 30-50 balanced cases.
+- **HE-P1-02 regression vs capability separation:** Added a deterministic regression path via `npm run test:canvas-actions`; model-in-the-loop capability evals are still pending.
+- **HE-P1-07 validation and repair reporting:** Rejection reason codes are traced; structured repair events are still pending.
+
+Latest pushed baseline:
+
+- `0484c6d Add canvas action harness regression foundation`
 
 ---
 
@@ -135,6 +160,8 @@ ThoughtGrid's existing `.planning/` and GSD workflow already align with this. Th
 
 #### HE-P0-01: Define a canonical canvas action trace object
 
+**Implementation status:** Done — implemented in `src/lib/canvasActionPipeline.js` via `buildCanvasActionTrace()` and emitted as `result.trace` from `finalizeCanvasActions()`. The trace is snippet-limited and includes intent, model action types, inline action types, thinking-mentioned action types, pipeline stages, final actions, and frontend result slots.
+
 **Goal:** Every chat turn that may create or execute canvas actions should produce a structured trace.
 
 **Suggested fields:**
@@ -158,7 +185,7 @@ ThoughtGrid's existing `.planning/` and GSD workflow already align with this. Th
   },
   "pipelineStages": [
     { "name": "raw_model_actions", "inputCount": 0, "outputCount": 0 },
-    { "name": "fallback_cleanup", "inputCount": 0, "outputCount": 3 },
+    { "name": "fallback_recovery", "inputCount": 0, "outputCount": 3 },
     { "name": "policy_final", "inputCount": 3, "outputCount": 3 }
   ],
   "finalActionTypes": ["create_plan", "create_timeline", "create_todo"],
@@ -175,6 +202,8 @@ ThoughtGrid's existing `.planning/` and GSD workflow already align with this. Th
 - Sensitive content is redacted or snippet-limited.
 
 #### HE-P0-02: Standardize pipeline stage names and semantics
+
+**Implementation status:** Done — pipeline stages are recorded centrally by `recordActionPipelineStage()` and the recovery stage is now named `fallback_recovery`. `scripts/test-canvas-action-pipeline.js` asserts the ordered stage contract.
 
 **Goal:** Make the pipeline readable, stable, and testable.
 
@@ -199,6 +228,8 @@ ThoughtGrid's existing `.planning/` and GSD workflow already align with this. Th
 - Rejections include stable reason codes.
 
 #### HE-P0-03: Create deterministic canvas action eval fixtures
+
+**Implementation status:** Done — added `scripts/test-canvas-action-regression.js` and `scripts/evals/canvas-action-regression.jsonl`, with 25 deterministic fixtures covering historical failures, positive cases, negative no-canvas cases, media generation, source research, workspace actions, and loop guards.
 
 **Goal:** Catch regressions without calling external models.
 
@@ -236,6 +267,8 @@ ThoughtGrid's existing `.planning/` and GSD workflow already align with this. Th
 
 #### HE-P0-04: Define frontend action result contract
 
+**Implementation status:** Done — frontend execution results are normalized in `normalizeCanvasActionResultContract()` and documented in `.planning/contracts/FRONTEND_ACTION_RESULTS.md`.
+
 **Goal:** Make backend returned actions and frontend execution results auditable.
 
 **Required result fields:**
@@ -260,6 +293,8 @@ ThoughtGrid's existing `.planning/` and GSD workflow already align with this. Th
 
 #### HE-P0-05: Add negative tests for over-triggering
 
+**Implementation status:** Done — no-canvas/trivial negative fixtures are included in `scripts/evals/canvas-action-regression.jsonl` and run through `npm run test:guards`.
+
 **Goal:** Prevent the fallback system from creating cards when the user explicitly asks for text only.
 
 **Cases:**
@@ -278,6 +313,8 @@ ThoughtGrid's existing `.planning/` and GSD workflow already align with this. Th
 ### P1 — Eval and Regression Harness
 
 #### HE-P1-01: Build a small JSONL eval corpus
+
+**Implementation status:** Partial — `scripts/evals/canvas-action-regression.jsonl` now has 25 deterministic fixtures. The target remains 30-50 balanced cases, with more real failures and release checks still to add.
 
 **Goal:** Convert real failures and release checks into reusable eval tasks.
 
@@ -314,6 +351,8 @@ scripts/evals/canvas-action-regression.jsonl
 
 #### HE-P1-02: Separate regression evals from capability evals
 
+**Implementation status:** Partial — deterministic regression evals now run through `npm run test:canvas-actions` and are included in `npm run test:guards`. Model-in-the-loop capability evals are still pending.
+
 **Goal:** Avoid mixing different evaluation purposes.
 
 **Regression evals:**
@@ -335,6 +374,8 @@ scripts/evals/canvas-action-regression.jsonl
 - Capability evals produce reports but do not block by default.
 
 #### HE-P1-03: Add transcript review artifacts
+
+**Implementation status:** Done — the deterministic regression runner now writes structured failure artifacts to `scripts/evals/artifacts/canvas-action-regression-failures.json`, including message, mock output, final actions, policy trace, pipeline stages, rejection reasons, and canonical trace.
 
 **Goal:** Make failed evals debuggable.
 
@@ -377,6 +418,8 @@ scripts/evals/canvas-action-regression.jsonl
 
 #### HE-P1-05: Audit `canvas_action` schema against actual executors
 
+**Implementation status:** Done — added `.planning/contracts/CANVAS_ACTION_CONTRACT.md` and `scripts/test-canvas-action-contract.js` to check model-visible action names, registry metadata, frontend executor coverage, rich card coverage, and normalized result fields.
+
 **Goal:** Ensure model-facing schema, backend normalization, and frontend execution agree.
 
 **Audit matrix columns:**
@@ -410,6 +453,8 @@ scripts/evals/canvas-action-regression.jsonl
 - Tool descriptions are covered by eval cases.
 
 #### HE-P1-07: Add strict validation and repair reporting
+
+**Implementation status:** Partial — policy rejection reason codes are included in traces and eval artifacts. Structured repair events for backend normalization are still pending.
 
 **Goal:** When malformed actions are repaired, the trace should say how.
 
@@ -978,6 +1023,8 @@ This is especially important because canvas action fallback logic can accumulate
 - Eval cases distinguish simple plans from complex project plans.
 
 #### HE-P1-11: Add mechanical action consistency checks
+
+**Implementation status:** Done — `scripts/test-canvas-action-contract.js` is now part of `npm run test:guards` and checks registry/model-visible action alignment, frontend executor coverage, rich card registration, and frontend result contract fields.
 
 **Goal:** Improve architecture fitness by ensuring action registry, schema, policy, normalization, tests, and frontend executors stay aligned.
 
