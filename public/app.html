@@ -18,7 +18,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="/styles.css?v=27" />
+    <link rel="stylesheet" href="/styles.css?v=28" />
   </head>
   <body>
     <div class="app-shell">
@@ -164,6 +164,7 @@
           </div>
           <div class="canvas-zoom-hint">按 Ctrl 或 ⌘ + 滚轮可以缩放画布</div>
           <div class="canvas-link-hint">双击连线可以进行删除</div>
+          <div class="canvas-selection-hint">双击卡片空白区域可以取消选中</div>
         </div>
         <aside id="minimap" class="minimap hidden" aria-label="画布缩略地图">
           <button id="minimapCloseButton" class="minimap-close" type="button" aria-label="关闭缩略图">×</button>
@@ -555,6 +556,6 @@
     <div id="selectionToast" class="selection-toast" role="status" aria-live="polite"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.8/dist/purify.min.js"></script>
-    <script type="module" src="/app.js?v=26"></script>
+    <script type="module" src="/app.js?v=27"></script>
   </body>
 </html>

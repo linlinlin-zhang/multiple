@@ -495,6 +495,7 @@ const i18n = {
     "canvas.switchLabel": "切换画布",
     "canvas.zoomHint": "按 Ctrl 或 ⌘ + 滚轮可以缩放画布",
     "canvas.linkHint": "双击连线可以进行删除",
+    "canvas.selectionHint": "双击卡片空白区域可以取消选中",
     "canvas.titleSaved": "画布名字已更新",
     "canvas.newCardCreated": "已创建新卡片",
     "command.searchCard": "搜索卡片",
@@ -566,8 +567,8 @@ const i18n = {
     "chat.conversationListEmpty": "暂无历史对话",
     "chat.conversationUntitled": "新对话 {index}",
     "chat.closePanel": "关闭对话区域",
-    "chat.openPanel": "打开对话区域",
-    "chat.placeholderWithCard": "与 '{title}' 对话...",
+    "chat.placeholderWithCard": "围绕「{title}」继续提问…",
+    "chat.placeholderWithCards": "围绕已选 {count} 张卡片继续提问…",
     "chat.contextIndicator": "对话上下文：{title}",
     "chat.roleUser": "You",
     "chat.roleAssistant": "AI",
@@ -932,6 +933,7 @@ const i18n = {
     "canvas.switchLabel": "Switch canvas",
     "canvas.zoomHint": "Hold Ctrl or ⌘ and scroll to zoom the canvas",
     "canvas.linkHint": "Double-click a connection to delete it",
+    "canvas.selectionHint": "Double-click blank space on a card to deselect",
     "canvas.titleSaved": "Canvas name updated",
     "canvas.newCardCreated": "Created a new card",
     "command.searchCard": "Search card",
@@ -1073,6 +1075,7 @@ const i18n = {
     "chat.closePanel": "Close chat panel",
     "chat.openPanel": "Open chat panel",
     "chat.placeholderWithCard": "Chat with '{title}'...",
+    "chat.placeholderWithCards": "Chat with {count} selected cards...",
     "chat.contextIndicator": "Context: {title}",
     "chat.noMessages": "No messages yet. Enter a direction, constraint, or press / for workbench commands.",
     "chat.emptyTitle": "Try starting with",
@@ -1364,10 +1367,12 @@ function normalizeCanvasTitle(value) {
 }
 
 function currentCanvasTitle() {
-  return normalizeCanvasTitle(state.sessionTitle) || t("canvas.untitled");
+  return normalizeCanvasTitle(state.sessionTitle) || normalizeCanvasTitle(ensureActiveChatThread()?.title || "") || t("canvas.untitled");
 }
 
 function getAutoCanvasTitle(payloadState) {
+  const threadTitle = normalizeCanvasTitle(ensureActiveChatThread()?.title || "");
+  if (threadTitle) return threadTitle;
   const aiTitle = state.latestAnalysis?.title?.trim();
   const hasChatTitleSource = Array.isArray(payloadState.chatMessages) && payloadState.chatMessages.some((message) => message?.role === "user" && String(message?.content || "").trim());
   return hasChatTitleSource ? t("session.unnamed") : (aiTitle || (state.fileName ? `${state.fileName}${t("session.exploration")}` : t("session.unnamed")));
@@ -1395,7 +1400,7 @@ function beginCanvasTitleEdit() {
 function finishCanvasTitleEdit({ cancel = false } = {}) {
   if (!canvasTitleDisplay || !canvasTitleInput) return;
   const previousStored = normalizeCanvasTitle(state.sessionTitle);
-  const previousVisible = previousStored || t("canvas.untitled");
+  const previousVisible = currentCanvasTitle();
   const next = normalizeCanvasTitle(canvasTitleInput.value) || t("canvas.untitled");
   if (!cancel) {
     state.sessionTitle = next === previousVisible && !previousStored ? "" : next;
@@ -1470,6 +1475,8 @@ function renderAllText() {
   if (canvasZoomHint) canvasZoomHint.textContent = t("canvas.zoomHint");
   const canvasLinkHint = document.querySelector(".canvas-link-hint");
   if (canvasLinkHint) canvasLinkHint.textContent = t("canvas.linkHint");
+  const canvasSelectionHint = document.querySelector(".canvas-selection-hint");
+  if (canvasSelectionHint) canvasSelectionHint.textContent = t("canvas.selectionHint");
   if (quickNewCardButton) {
     quickNewCardButton.title = t("command.newCard");
     quickNewCardButton.setAttribute("aria-label", t("command.newCard"));
@@ -1518,8 +1525,11 @@ function renderAllText() {
 
   const chatIn = document.querySelector("#chatInput");
   if (chatIn) {
+    const selectionCount = state.selectedNodeIds?.size || 0;
     const hasSelection = state.selectedNodeId !== null;
-    if (hasSelection) {
+    if (selectionCount > 1) {
+      chatIn.placeholder = t("chat.placeholderWithCards", { count: selectionCount });
+    } else if (hasSelection) {
       const node = state.nodes.get(state.selectedNodeId);
       const title = node?.option?.title || node?.id || "";
       chatIn.placeholder = t("chat.placeholderWithCard", { title: title.slice(0, 20) });
@@ -4152,6 +4162,7 @@ function createChatThread(messages = [], title = "") {
   return {
     id: `chat-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
     title,
+    titleFinalized: false,
     createdAt: new Date().toISOString(),
     previousResponseId: "",
     topicNodeId: "",
@@ -4433,6 +4444,7 @@ function normalizeChatThread(thread, index = 0) {
   return {
     id: typeof thread.id === "string" && thread.id ? thread.id : fallback.id,
     title: typeof thread.title === "string" ? thread.title : "",
+    titleFinalized: Boolean(thread.titleFinalized),
     createdAt: thread.createdAt || fallback.createdAt,
     previousResponseId: typeof thread.previousResponseId === "string" ? thread.previousResponseId : "",
     topicNodeId: typeof thread.topicNodeId === "string" ? thread.topicNodeId : "",
@@ -4480,10 +4492,36 @@ function resetChatThreads(messages = []) {
   renderChatConversationList();
 }
 
+function fallbackChatThreadTitle(message) {
+  const value = String(message || "").replace(/\s+/g, " ").trim();
+  if (!value) return "";
+  return value.length > 26 ? `${value.slice(0, 26)}...` : value;
+}
+
+function requestChatThreadTitle(threadId, message) {
+  if (!threadId || !message) return;
+  postJson("/api/chat-title", { message, language: currentLang }).then((data) => {
+    const thread = state.chatThreads.find((item) => item.id === threadId);
+    const title = normalizeCanvasTitle(data?.title || "");
+    if (!thread || !title || thread.titleFinalized) return;
+    thread.title = title;
+    thread.titleFinalized = true;
+    renderChatConversationList();
+    syncCanvasTitleDisplay();
+    autoSave();
+  }).catch((error) => {
+    console.warn("[chat-title] failed:", error);
+  });
+}
+
 function updateActiveChatThreadTitle(message) {
   const thread = ensureActiveChatThread();
-  if (thread.title || !message) return;
-  thread.title = message.length > 26 ? `${message.slice(0, 26)}...` : message;
+  if (thread.titleFinalized || !message) return;
+  if (!thread.title) {
+    thread.title = fallbackChatThreadTitle(message);
+    renderChatConversationList();
+    requestChatThreadTitle(thread.id, message);
+  }
 }
 
 function serializeChatThreads() {
@@ -4491,6 +4529,7 @@ function serializeChatThreads() {
   return state.chatThreads.map((thread) => ({
     id: thread.id,
     title: thread.title || "",
+    titleFinalized: Boolean(thread.titleFinalized),
     createdAt: thread.createdAt || new Date().toISOString(),
     previousResponseId: thread.previousResponseId || "",
     topicNodeId: thread.topicNodeId || "",
@@ -5837,6 +5876,29 @@ function buildSelectedNodeContext(nodeId = state.selectedNodeId) {
   return context;
 }
 
+function orderedSelectedNodeIds(primaryId = state.selectedNodeId) {
+  const ids = [];
+  const add = (id) => {
+    if (id && state.nodes.has(id) && !ids.includes(id)) ids.push(id);
+  };
+  add(primaryId);
+  Array.from(state.selectedNodeIds || []).forEach(add);
+  return ids;
+}
+
+function buildSelectedNodesContext(primaryId = state.selectedNodeId) {
+  const ids = orderedSelectedNodeIds(primaryId);
+  if (ids.length <= 1) return buildSelectedNodeContext(ids[0] || primaryId);
+  const cards = ids.map((id) => buildSelectedNodeContext(id)).filter(Boolean);
+  if (!cards.length) return null;
+  return {
+    type: "multi-selection",
+    title: currentLang === "en" ? `${cards.length} selected cards` : `已选 ${cards.length} 张卡片`,
+    summary: cards.map((card, index) => `${index + 1}. [${card.type}] ${card.title || card.id}: ${String(card.summary || card.prompt || "").slice(0, 360)}`).join("\n"),
+    cards
+  };
+}
+
 function isVisualEvaluationChatRequest(message) {
   const text = String(message || "").normalize("NFKC");
   const visual = /(照片|图片|图像|画面|摄影|拍得|构图|曝光|色彩|光线|清晰|焦点|镜头|取景|photo|picture|image|shot|photograph|composition|exposure|lighting|color|focus|framing)/i.test(text);
@@ -5867,16 +5929,17 @@ function isChatMediaNode(nodeId) {
 function buildTaskScopedCanvasContext(message, selectedNodeId = state.selectedNodeId) {
   const context = buildVoiceCanvasContext();
   if (!isVisualEvaluationChatRequest(message)) return context;
+  const selectedIds = orderedSelectedNodeIds(selectedNodeId);
   const mediaIds = new Set((context.mediaNodes || [])
     .filter((node) => node.hasImage || node.hasVideo)
     .map((node) => node.id));
-  if (isChatMediaNode(selectedNodeId)) mediaIds.add(selectedNodeId);
+  selectedIds.filter(isChatMediaNode).forEach((id) => mediaIds.add(id));
   if (!mediaIds.size) return context;
   const keep = (node) => mediaIds.has(node?.id);
   return {
     ...context,
     selectedNodeId: isChatMediaNode(selectedNodeId) ? selectedNodeId : null,
-    selectedNodeIds: Array.from(state.selectedNodeIds).filter((id) => mediaIds.has(id)),
+    selectedNodeIds: selectedIds.filter((id) => mediaIds.has(id)),
     nodes: (context.nodes || []).filter(keep),
     visibleNodes: (context.visibleNodes || []).filter(keep),
     contextMode: "visual-evaluation-media-only"
@@ -5930,6 +5993,7 @@ async function submitChatMessage(message, options = {}) {
   const agentMode = Boolean(options.agentMode || inferredAgentMode);
   const effectiveThinkingMode = options.forcedThinkingMode || (agentMode ? "no-thinking" : state.thinkingMode);
   const selectedNodeId = options.selectedNodeId || state.selectedNodeId;
+  const selectedNodeIds = orderedSelectedNodeIds(selectedNodeId);
   const visualEvaluationRequest = isVisualEvaluationChatRequest(text);
   const chatAttachment = pendingChatAttachment;
   const attachmentImageDataUrl = chatAttachment?.kind === "image" ? chatAttachment.dataUrl : "";
@@ -5979,12 +6043,12 @@ async function submitChatMessage(message, options = {}) {
     const canvasImageDataUrls = options.includeCanvasImages === false
       ? []
       : await buildCanvasImageDataUrlPayload({
-          preferredNodeIds: [selectedNodeId, ...(options.preferredMediaNodeIds || [])].filter(Boolean),
+          preferredNodeIds: [...selectedNodeIds, ...(options.preferredMediaNodeIds || [])].filter(Boolean),
           extraImageDataUrls: options.imageDataUrls || [],
           max: options.maxImageDataUrls || 6
         });
     let imageDataUrls = mergeDataUrlList(sourceImageDataUrl, options.imageDataUrls || [], canvasImageDataUrls).slice(0, options.maxImageDataUrls || 6);
-    let sourceVideoDataUrl = options.videoDataUrl || attachmentVideoDataUrl || await getSourceVideoDataUrl(selectedNodeId) || (options.includeCanvasVideos === false ? "" : await buildCanvasVideoDataUrlPayload({ preferredNodeIds: [selectedNodeId, ...(options.preferredMediaNodeIds || [])].filter(Boolean) }));
+    let sourceVideoDataUrl = options.videoDataUrl || attachmentVideoDataUrl || await getSourceVideoDataUrl(selectedNodeId) || (options.includeCanvasVideos === false ? "" : await buildCanvasVideoDataUrlPayload({ preferredNodeIds: [...selectedNodeIds, ...(options.preferredMediaNodeIds || [])].filter(Boolean) }));
     const preparedMedia = await prepareChatMediaForModel({
       imageDataUrls,
       videoDataUrl: sourceVideoDataUrl,
@@ -5994,8 +6058,8 @@ async function submitChatMessage(message, options = {}) {
     sourceVideoDataUrl = preparedMedia.videoDataUrl;
     const selectedContext = Object.prototype.hasOwnProperty.call(options, "selectedContext")
       ? options.selectedContext
-      : (visualEvaluationRequest && !isChatMediaNode(selectedNodeId) ? null : buildSelectedNodeContext(selectedNodeId));
-    const analysisForChat = visualEvaluationRequest && !isChatMediaNode(selectedNodeId) ? null : state.latestAnalysis;
+      : (visualEvaluationRequest && !selectedNodeIds.some(isChatMediaNode) ? null : buildSelectedNodesContext(selectedNodeId));
+    const analysisForChat = visualEvaluationRequest && !selectedNodeIds.some(isChatMediaNode) ? null : state.latestAnalysis;
     const canvasContext = options.canvasContext || buildTaskScopedCanvasContext(text, selectedNodeId);
 
     let systemContext = t("chat.systemContext");
@@ -10693,9 +10757,16 @@ function renderChatContextIndicator() {
   }
 
   const selectedId = state.selectedNodeId;
+  const selectionCount = state.selectedNodeIds?.size || 0;
   if (!selectedId) {
     indicator.textContent = "";
     indicator.classList.add("hidden");
+    return;
+  }
+
+  if (selectionCount > 1) {
+    indicator.textContent = t("chat.contextIndicator", { title: currentLang === "en" ? `${selectionCount} selected cards` : `已选 ${selectionCount} 张卡片` });
+    indicator.classList.remove("hidden");
     return;
   }
 
@@ -13393,16 +13464,7 @@ function selectNode(nodeId) {
     deselectNode();
     return;
   }
-  deselectNode();
-  state.selectedNodeId = nodeId;
-  state.selectedNodeIds = new Set([nodeId]);
-  const node = state.nodes.get(nodeId);
-  if (node && node.element) {
-    node.element.classList.add("is-selected");
-    node.element.style.zIndex = "9";
-  }
-  updateMultiSelectionVisuals();
-  updateDialogState();
+  setMultiSelection([nodeId], { primaryId: nodeId });
 }
 
 function deselectNode() {
@@ -13417,6 +13479,7 @@ function deselectNode() {
   state.selectedNodeIds.clear();
   updateMultiSelectionVisuals();
   updateDialogState();
+  renderAllText();
 }
 
 function clearMultiSelection({ keepPrimary = false } = {}) {
@@ -13444,6 +13507,7 @@ function setMultiSelection(nodeIds, { primaryId = null } = {}) {
   }
   updateMultiSelectionVisuals();
   updateDialogState();
+  renderAllText();
 }
 
 function updateMultiSelectionVisuals() {
@@ -13668,10 +13732,13 @@ function ungroupSelectedNodes() {
 function updateDialogState() {
   const hasSelection = state.selectedNodeId !== null;
   const node = hasSelection ? state.nodes.get(state.selectedNodeId) : null;
+  const selectionCount = state.selectedNodeIds?.size || 0;
 
   if (chatInput) {
     chatInput.disabled = false;
-    if (hasSelection && node) {
+    if (selectionCount > 1) {
+      chatInput.placeholder = t("chat.placeholderWithCards", { count: selectionCount });
+    } else if (hasSelection && node) {
       const title = node.option?.title || node.id;
       chatInput.placeholder = t("chat.placeholderWithCard", { title: title.slice(0, 20) });
     } else {
@@ -13822,7 +13889,11 @@ function registerNode(id, element, data) {
       openReferenceModal(id);
       return;
     }
-    selectNode(id);
+    if (state.selectedNodeIds.has(id) || state.selectedNodeId === id) {
+      deselectNode();
+    } else {
+      selectNode(id);
+    }
   });
 
   ensureDeleteControl(id, element);

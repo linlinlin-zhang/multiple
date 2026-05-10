@@ -648,7 +648,8 @@ body.chat-sidebar-closed .canvas-history-nav {
 
 .canvas-history-label,
 .canvas-zoom-hint,
-.canvas-link-hint {
+.canvas-link-hint,
+.canvas-selection-hint {
   display: block;
   width: 100%;
   color: var(--inkMuted);
@@ -2060,9 +2061,12 @@ body.chat-sidebar-closed .canvas-history-nav {
 }
 
 .node.content-hidden {
+  width: min(280px, var(--node-hidden-width, 280px)) !important;
   height: auto !important;
   min-height: 0 !important;
+  padding: 14px 16px !important;
   overflow: visible;
+  border-radius: 22px;
 }
 
 .node.content-hidden .source-tabs,
@@ -2070,7 +2074,6 @@ body.chat-sidebar-closed .canvas-history-nav {
 .node.content-hidden .url-input-panel,
 .node.content-hidden .source-text-panel,
 .node.content-hidden .source-text-tools,
-.node.content-hidden .research-dropdown-wrapper,
 .node.content-hidden .option-description,
 .node.content-hidden .option-rich-content,
 .node.content-hidden .option-action-row,
@@ -2085,29 +2088,63 @@ body.chat-sidebar-closed .canvas-history-nav {
   display: none !important;
 }
 
-.node.content-hidden .generated-image-wrap,
-.node.content-hidden .upload-target.has-source-image,
-.node.content-hidden .upload-target.has-video-preview {
-  display: block !important;
-}
-
-.source-node.content-hidden .upload-target.has-source-image,
-.source-node.content-hidden .upload-target.has-video-preview {
-  margin-top: 10px;
-}
-
 .source-node.content-hidden {
-  min-height: 76px !important;
-  padding: 16px 18px;
+  min-height: 0 !important;
   background: var(--paper);
   border: 1px solid var(--divider);
-  border-radius: 24px;
   box-shadow: var(--shadow-08);
 }
 
 .source-node.content-hidden .node-caption {
   position: static;
-  margin-top: 24px;
+  margin-top: 0;
+  gap: 10px;
+}
+
+.node.content-hidden .node-caption,
+.generated-node.content-hidden h3,
+.option-node.content-hidden .option-title,
+.rich-node.content-hidden .rich-title,
+.analysis-node.content-hidden h2 {
+  max-width: 100%;
+}
+
+.node.content-hidden .node-caption > span,
+.generated-node.content-hidden h3,
+.option-node.content-hidden .option-title,
+.rich-node.content-hidden .rich-title,
+.analysis-node.content-hidden h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.option-node.content-hidden,
+.generated-node.content-hidden,
+.rich-node.content-hidden,
+.analysis-node.content-hidden {
+  display: block;
+}
+
+.option-node.content-hidden h3,
+.generated-node.content-hidden h3,
+.rich-node.content-hidden .rich-title,
+.analysis-node.content-hidden h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.option-node.content-hidden .eyebrow,
+.generated-node.content-hidden .eyebrow,
+.rich-node.content-hidden .rich-eyebrow {
+  margin: 0 0 4px;
+  font-size: 10px;
+}
+
+.node.content-hidden .source-card-research-actions,
+.node.content-hidden .research-dropdown-wrapper {
+  display: inline-flex;
 }
 
 .rich-summary {

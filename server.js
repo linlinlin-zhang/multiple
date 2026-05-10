@@ -594,6 +594,11 @@ const server = http.createServer(async (req, res) => {
       return await handleChat(body, res);
     }
 
+    if (req.method === "POST" && url.pathname === "/api/chat-title") {
+      const body = await readJson(req);
+      return await handleChatTitle(body, res);
+    }
+
     if (req.method === "POST" && url.pathname === "/api/asr") {
       const body = await readJson(req);
       return await handleAsr(body, res);
@@ -1580,6 +1585,105 @@ async function handleImageSearch(body, res) {
     limit: Math.max(1, Math.min(Number(body?.limit) || 8, 12))
   });
   return sendJson(res, 200, result);
+}
+
+async function handleChatTitle(body, res) {
+  const message = cleanString(body?.message, 2400);
+  const lang = body?.language === "en" ? "en" : "zh";
+  if (!message) {
+    return sendJson(res, 400, { error: "message is required" });
+  }
+
+  const fallback = fallbackChatTitle(message, lang);
+  if (isDemoRole(runtimeConfigs.chat)) {
+    return sendJson(res, 200, {
+      provider: "demo",
+      model: runtimeConfigs.chat.model,
+      title: fallback
+    });
+  }
+
+  try {
+    const title = await generateChatTitle(message, lang);
+    return sendJson(res, 200, {
+      provider: "api",
+      model: runtimeConfigs.chat.model,
+      title: title || fallback
+    });
+  } catch (error) {
+    console.warn("[handleChatTitle] title generation failed:", error.message);
+    return sendJson(res, 200, {
+      provider: "fallback",
+      model: runtimeConfigs.chat.model,
+      title: fallback
+    });
+  }
+}
+
+async function generateChatTitle(message, lang = "zh") {
+  const zh = lang !== "en";
+  const instructions = zh
+    ? "你是织境 ThoughtGrid 的会话命名助手。请根据用户第一次对话意图，总结一个自然、具体、便于回看历史的画布标题。只返回标题本身，不要解释、不要引号、不要 Markdown。标题 3 到 18 个中文字符，避免直接照抄用户开头。"
+    : "You name ThoughtGrid chat/canvas sessions. Summarize the user's first message into a natural, specific title for history browsing. Return only the title, no quotes, no Markdown, no explanation. Use 3 to 8 words and avoid copying the opening words verbatim.";
+  const userPrompt = zh
+    ? `用户第一次对话：${message}\n\n请输出会话标题。`
+    : `First user message: ${message}\n\nReturn the session title.`;
+
+  let text = "";
+  if (isDashScopeQwenConfig(runtimeConfigs.chat)) {
+    const payload = applyRequestOptions({
+      model: runtimeConfigs.chat.model,
+      instructions,
+      input: [{ role: "user", content: userPrompt }]
+    }, runtimeConfigs.chat);
+    applyReasoningMode(payload, runtimeConfigs.chat, "no-thinking");
+    const raw = await qwenResponsesRequest(runtimeConfigs.chat, payload);
+    text = collectChatContent(responsesToChatCompletion(raw, runtimeConfigs.chat));
+  } else {
+    const payload = {
+      messages: [
+        { role: "system", content: instructions },
+        { role: "user", content: userPrompt }
+      ]
+    };
+    applyReasoningMode(payload, runtimeConfigs.chat, "no-thinking");
+    const response = await chatCompletions(runtimeConfigs.chat, payload, { timeoutMs: 15000 });
+    text = collectChatContent(response);
+  }
+  return normalizeGeneratedChatTitle(text, fallbackChatTitle(message, lang), lang);
+}
+
+function normalizeGeneratedChatTitle(value, fallback = "", lang = "zh") {
+  let title = String(value || "").trim();
+  try {
+    const parsed = JSON.parse(title);
+    title = String(parsed?.title || parsed?.name || title).trim();
+  } catch {}
+  title = title
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .replace(/^(标题|会话标题|title|session title)\s*[:：-]\s*/i, "")
+    .replace(/[《》「」“”"']/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!title) title = fallback;
+  const max = lang === "en" ? 56 : 24;
+  title = title.replace(/[。.!?？；;，,]+$/g, "").slice(0, max).trim();
+  return title || fallback || (lang === "en" ? "New session" : "新会话");
+}
+
+function fallbackChatTitle(message, lang = "zh") {
+  let title = String(message || "")
+    .replace(/^[\s/]+/, "")
+    .replace(/^(请|帮我|麻烦你|请你|能不能|可以帮我|please|help me|can you)\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!title) return lang === "en" ? "New session" : "新会话";
+  if (lang === "en") {
+    const words = title.split(" ").filter(Boolean).slice(0, 7).join(" ");
+    return words.length > 56 ? `${words.slice(0, 53)}...` : words;
+  }
+  return title.length > 18 ? `${title.slice(0, 18)}…` : title;
 }
 
 async function handleChat(body, res) {
