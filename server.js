@@ -24,6 +24,7 @@ import { classifyContent, getFallbackTaskType, resolveTaskType, routeContent } f
 import { ensureMediaGenerationActions } from "./src/lib/chatActionGuard.js";
 import { ensureCommittedCanvasActions } from "./src/lib/canvasActionReliability.js";
 import { finalizeCanvasActions as runCanvasActionPipeline } from "./src/lib/canvasActionPipeline.js";
+import { extractInlineCanvasActionsFromReply, removeInlineCanvasActionBlocks } from "./src/lib/inlineCanvasActions.js";
 import { extractResponsesReasoningDelta, extractResponsesTextDelta } from "./src/lib/responsesStreamParser.js";
 import {
   CANVAS_ACTION_REGISTRY,
@@ -1941,10 +1942,12 @@ async function handleChat(body, res) {
 
   const references = extractResponseReferences(response);
   const rawReply = collectChatContent(response);
+  const inlineActions = extractInlineCanvasActionsFromReply(rawReply, { allowedTypes: CANVAS_ACTION_TYPES });
+  const visibleRawReply = inlineActions.length ? removeInlineCanvasActionBlocks(rawReply, { allowedTypes: CANVAS_ACTION_TYPES }) : rawReply;
   const thinkingContent = thinkingMode === "thinking" ? sanitizeReasoningContent(collectReasoningContent(response), rawReply) : "";
-  const reply = visibleChatReplyOrEmpty(normalizeCitationMarkers(stripReasoningEchoFromResponseText(rawReply, thinkingContent).trim(), references));
+  const reply = visibleChatReplyOrEmpty(normalizeCitationMarkers(stripReasoningEchoFromResponseText(visibleRawReply, thinkingContent).trim(), references));
   const actionPipeline = runCanvasActionPipeline({
-    rawActions: extractToolCallActions(response),
+    rawActions: [...extractToolCallActions(response), ...inlineActions],
     message,
     reply,
     response,
@@ -2186,10 +2189,12 @@ async function ingestChatDocumentAttachments(sessionId, attachments) {
 function buildChatResultFromResponse({ response, message, thinkingMode, agentMode, lang, streamedReasoning = "", webSearchEnabled = false, selectedContext = null, canvas = {}, analysis = {} }) {
   const references = extractResponseReferences(response);
   const rawReply = collectChatContent(response);
+  const inlineActions = extractInlineCanvasActionsFromReply(rawReply, { allowedTypes: CANVAS_ACTION_TYPES });
+  const visibleRawReply = inlineActions.length ? removeInlineCanvasActionBlocks(rawReply, { allowedTypes: CANVAS_ACTION_TYPES }) : rawReply;
   const thinkingContent = thinkingMode === "thinking" ? sanitizeReasoningContent(streamedReasoning || collectReasoningContent(response), rawReply) : "";
-  const reply = visibleChatReplyOrEmpty(normalizeCitationMarkers(stripReasoningEchoFromResponseText(rawReply, thinkingContent).trim(), references));
+  const reply = visibleChatReplyOrEmpty(normalizeCitationMarkers(stripReasoningEchoFromResponseText(visibleRawReply, thinkingContent).trim(), references));
   const actionPipeline = runCanvasActionPipeline({
-    rawActions: extractToolCallActions(response),
+    rawActions: [...extractToolCallActions(response), ...inlineActions],
     message,
     reply,
     response,
