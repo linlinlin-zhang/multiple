@@ -555,6 +555,8 @@ const i18n = {
     "research.timeout": "模型响应超时，请稍后重试",
     "common.yes": "是",
     "common.no": "否",
+    "dialog.cancel": "取消",
+    "dialog.confirm": "确认",
     "link.deleteTitle": "删除连线",
     "link.deleteMessage": "是否删除从「{from}」到「{to}」的连线？",
     "link.deleted": "连线已删除",
@@ -1060,6 +1062,8 @@ const i18n = {
     "research.timeout": "Model response timed out. Please try again.",
     "common.yes": "Yes",
     "common.no": "No",
+    "dialog.cancel": "Cancel",
+    "dialog.confirm": "Confirm",
     "link.deleteTitle": "Delete Link",
     "link.deleteMessage": "Delete the link from \"{from}\" to \"{to}\"?",
     "link.deleted": "Link deleted",
@@ -4596,14 +4600,13 @@ function normalizeChatMarkdownText(segment) {
   text = text.replace(/([。！？!?；;：:])\s*((?:[-*+]|\d+[.)])[ \t]+(?=\S))/g, "$1\n\n$2");
   text = text.replace(/([^\n])([ \t]+)((?:[-*+]|\d+[.)])[ \t]+(?=\S))/g, "$1\n$3");
   text = text.split("\n").map(repairInlineMarkdownTableLine).join("\n");
+  text = text.replace(/([^\n])\n(\|[^\n]*\|\n\|[ \t:|.\-]+\|)/g, "$1\n\n$2");
   return text.replace(/\n{3,}/g, "\n\n");
 }
 
 function repairInlineMarkdownTableLine(line) {
   if (!line.includes("|") || !/\|\s*:?-{3,}:?\s*\|/.test(line)) return line;
-  const firstPipe = line.indexOf("|");
-  const prefix = line.slice(0, firstPipe).trimEnd();
-  const cells = line.slice(firstPipe).split("|").map((cell) => cell.trim()).filter(Boolean);
+  const cells = line.split("|").map((cell) => cell.trim()).filter(Boolean);
   const separatorStart = cells.findIndex(isMarkdownTableSeparatorCell);
   if (separatorStart <= 0) return line;
   let columnCount = 0;
@@ -4611,6 +4614,7 @@ function repairInlineMarkdownTableLine(line) {
   if (columnCount < 2) return line;
   const header = cells.slice(separatorStart - columnCount, separatorStart);
   if (header.length !== columnCount) return line;
+  const prefix = cells.slice(0, separatorStart - columnCount).join(" | ");
   const rows = [
     formatMarkdownTableRow(header),
     formatMarkdownTableRow(cells.slice(separatorStart, separatorStart + columnCount).map(normalizeMarkdownTableSeparator))
@@ -4644,6 +4648,26 @@ function formatMarkdownTableRow(cells) {
   return `| ${cells.map((cell) => String(cell || "").trim() || " ").join(" | ")} |`;
 }
 
+function sanitizeMarkdownHtml(rawHtml) {
+  const sanitizer = globalThis.DOMPurify;
+  const config = {
+    ALLOWED_TAGS: [
+      "p", "h1", "h2", "h3", "h4", "h5", "h6",
+      "ul", "ol", "li", "strong", "em", "del", "code", "pre",
+      "blockquote", "table", "thead", "tbody", "tr", "th", "td",
+      "a", "br", "hr", "div", "span", "input"
+    ],
+    ALLOWED_ATTR: ["href", "target", "rel", "class", "align", "type", "checked", "disabled"],
+    ALLOW_DATA_ATTR: false
+  };
+  if (sanitizer?.sanitize) {
+    try {
+      return sanitizer.sanitize(rawHtml, config);
+    } catch {}
+  }
+  return String(rawHtml || "");
+}
+
 function renderMarkdownToHtml(markdown) {
   if (!markdown) return "";
   const normalizedMarkdown = normalizeChatMarkdown(markdown);
@@ -4657,16 +4681,7 @@ function renderMarkdownToHtml(markdown) {
   } catch {
     rawHtml = simpleMarkdownToHtml(normalizedMarkdown || markdown);
   }
-  return DOMPurify.sanitize(rawHtml, {
-    ALLOWED_TAGS: [
-      "p", "h1", "h2", "h3", "h4", "h5", "h6",
-      "ul", "ol", "li", "strong", "em", "del", "code", "pre",
-      "blockquote", "table", "thead", "tbody", "tr", "th", "td",
-      "a", "br", "hr", "div", "span", "input"
-    ],
-    ALLOWED_ATTR: ["href", "target", "rel", "class", "align", "type", "checked", "disabled"],
-    ALLOW_DATA_ATTR: false
-  });
+  return sanitizeMarkdownHtml(rawHtml);
 }
 
 function addCopyButtons(container) {
@@ -8309,7 +8324,7 @@ async function runSubagentAction(action) {
         text: agentActionMarkdown({ title, role, skill, prompt, deliverable, successCriteria, priority, dependencies, status: currentLang === "en" ? "done" : "已完成", result: reply })
       };
       const descEl = node.element.querySelector(".option-description");
-      if (descEl) descEl.textContent = node.option.description;
+      setElementTextOrHidden(descEl, displayOptionSummary(node.option));
       renderRichNodeContent(node.element, node.option);
     }
     if (button) {
@@ -8351,7 +8366,7 @@ async function runSubagentAction(action) {
         text: agentActionMarkdown({ title, role, skill, prompt, deliverable, successCriteria, priority, dependencies, status: currentLang === "en" ? "failed" : "失败", result: message })
       };
       const descEl = node.element.querySelector(".option-description");
-      if (descEl) descEl.textContent = node.option.description;
+      setElementTextOrHidden(descEl, displayOptionSummary(node.option));
       renderRichNodeContent(node.element, node.option);
     }
     if (button) {
@@ -8677,12 +8692,86 @@ function configureOptionPrimaryButton(button, option) {
   button.textContent = nodeType && nodeType !== "image" ? t("option.viewContent") : (isVideo ? t("option.generateVideo") : t("option.generate"));
 }
 
+function comparableSummaryText(value) {
+  return String(value || "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/[#*_`~>\[\](){}"'“”‘’《》「」]/g, " ")
+    .replace(/[|/\\\-—–·•.,，。！？!?；;：:\s]+/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function isRedundantCardSummary(title, summary) {
+  const a = comparableSummaryText(title);
+  const b = comparableSummaryText(summary);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  return b.length <= a.length + 4 && (a.includes(b) || b.includes(a));
+}
+
+function firstUsefulSummary(title, values = [], limit = 220) {
+  for (const value of values) {
+    const text = String(value || "").replace(/\s+/g, " ").trim();
+    if (text && !isRedundantCardSummary(title, text)) return text.slice(0, limit);
+  }
+  return "";
+}
+
+function deriveOptionSummary(option = {}) {
+  const title = option.title || "";
+  const nodeType = String(option.nodeType || "").toLowerCase();
+  const c = option.content && typeof option.content === "object" ? option.content : {};
+  if (nodeType === "comparison") {
+    const items = Array.isArray(c.items) ? c.items : [];
+    const names = items.map((item) => String(item?.title || item?.name || item?.option || "").trim()).filter(Boolean);
+    const count = items.length ? (currentLang === "en" ? `${items.length} compared items` : `共 ${items.length} 项对比`) : "";
+    return firstUsefulSummary(title, [
+      [count, names.length ? names.slice(0, 4).join("、") : ""].filter(Boolean).join("："),
+      c.recommendation,
+      c.summary
+    ], 180);
+  }
+  if (nodeType === "table") {
+    const rows = Array.isArray(c.rows) ? c.rows : [];
+    const columns = Array.isArray(c.columns) ? c.columns : [];
+    return firstUsefulSummary(title, [c.caption, rows.length ? (currentLang === "en" ? `${rows.length} rows · ${columns.length || "multiple"} columns` : `${rows.length} 行 · ${columns.length || "多"} 列`) : ""], 160);
+  }
+  if (nodeType === "timeline") {
+    const items = Array.isArray(c.items) ? c.items : [];
+    const names = items.map((item) => String(item?.title || item?.name || item || "").trim()).filter(Boolean);
+    return firstUsefulSummary(title, [items.length ? `${currentLang === "en" ? `${items.length} timeline items` : `共 ${items.length} 个节点`}：${names.slice(0, 3).join("、")}` : "", c.summary], 180);
+  }
+  if (nodeType === "metric") {
+    const metrics = Array.isArray(c.metrics) ? c.metrics : [];
+    const names = metrics.map((metric) => `${metric?.label || metric?.name || ""}${metric?.value || metric?.current ? ` ${metric.value || metric.current}` : ""}`.trim()).filter(Boolean);
+    return firstUsefulSummary(title, [c.summary, names.slice(0, 3).join("；")], 180);
+  }
+  if (nodeType === "note") return firstUsefulSummary(title, [c.summary, c.text, c.body, option.prompt], 220);
+  if (nodeType === "plan") return firstUsefulSummary(title, [c.summary, ...(Array.isArray(c.steps) ? c.steps.map((step) => step?.description || step?.desc || step?.title || step) : []), option.prompt], 220);
+  if (nodeType === "todo") return firstUsefulSummary(title, [c.summary, ...(Array.isArray(c.items) ? c.items.map((item) => item?.text || item?.label || item) : []), option.prompt], 220);
+  return firstUsefulSummary(title, [option.summary, option.prompt], 220);
+}
+
+function displayOptionSummary(option = {}) {
+  const title = option.title || "";
+  const raw = String(option.description || option.summary || "").replace(/\s+/g, " ").trim();
+  if (raw && !isRedundantCardSummary(title, raw)) return raw;
+  return deriveOptionSummary(option);
+}
+
+function setElementTextOrHidden(element, text) {
+  if (!element) return;
+  const value = String(text || "").trim();
+  element.textContent = value;
+  element.hidden = !value;
+}
+
 function setupOptionCardElement(element, option, taskType = "general") {
   prepareOptionForCanvas(option, taskType);
   applyTaskTypeBadge(element, taskTypeForOption(option, taskType));
   element.querySelector(".option-tone").textContent = optionEyebrow(option, option.nodeType || "image");
   element.querySelector(".option-title").textContent = option.title || t("generated.result");
-  element.querySelector(".option-description").textContent = option.description || "";
+  setElementTextOrHidden(element.querySelector(".option-description"), displayOptionSummary(option));
   renderRichNodeContent(element, option);
   element.dataset.nodeType = option.nodeType || "image";
 }
@@ -8921,7 +9010,7 @@ function renderComparisonCard(content = {}, compact = false) {
   const items = Array.isArray(content.items) ? content.items : [];
   const wrap = document.createElement("div");
   wrap.className = compact ? "rich-comparison option-comparison-card" : "rich-comparison";
-  items.slice(0, compact ? 3 : 6).forEach((item) => {
+  items.slice(0, compact ? 4 : 8).forEach((item) => {
     const card = document.createElement("div");
     card.className = "rich-comparison-item";
     const title = document.createElement("strong");
@@ -8930,9 +9019,9 @@ function renderComparisonCard(content = {}, compact = false) {
     const pros = Array.isArray(item?.pros) ? item.pros : [];
     const cons = Array.isArray(item?.cons) ? item.cons : [];
     const detail = String(item?.summary || item?.description || item?.notes || "").trim();
-    if (detail) {
+    if (detail && !isRedundantCardSummary(title.textContent, detail)) {
       const p = document.createElement("p");
-      p.textContent = detail.slice(0, compact ? 140 : 360);
+      p.textContent = detail.slice(0, compact ? 88 : 360);
       card.appendChild(p);
     }
     if (!compact && (pros.length || cons.length)) {
@@ -11333,8 +11422,8 @@ function turnIntoGeneratedVideoNode(element, option, videoUrl, mimeType = "video
 
   const desc = document.createElement("p");
   desc.className = "generated-description";
-  desc.textContent = option.description || "";
-  element.appendChild(desc);
+  desc.textContent = displayOptionSummary(option);
+  if (desc.textContent) element.appendChild(desc);
 
   const actions = document.createElement("div");
   actions.className = "generated-actions";
@@ -11387,8 +11476,8 @@ function turnIntoGeneratedNode(element, option, imageDataUrl) {
 
   const desc = document.createElement("p");
   desc.className = "generated-description";
-  desc.textContent = option.description || "";
-  element.appendChild(desc);
+  desc.textContent = displayOptionSummary(option);
+  if (desc.textContent) element.appendChild(desc);
 
   const actions = document.createElement("div");
   actions.className = "generated-actions";
@@ -11576,7 +11665,7 @@ function turnIntoRichNode(element, option) {
   makeTitleEditable(nodeId, title);
   const summary = document.createElement("p");
   summary.className = "rich-summary";
-  summary.textContent = option.description || "";
+  summary.textContent = displayOptionSummary(option);
   if (summary.textContent) content.appendChild(summary);
 
   // Type-specific body
@@ -16282,7 +16371,7 @@ function handleLiveResearchCanvasEvent(eventData = {}, pendingMessage = null) {
       if (node?.option) {
         node.option.description = `${node.option.description || ""} ${delta}`.trim().slice(-360);
         node.option.prompt = `${node.option.prompt || ""}\n${delta}`.trim().slice(-1600);
-        node.element.querySelector(".option-description").textContent = node.option.description;
+        setElementTextOrHidden(node.element.querySelector(".option-description"), displayOptionSummary(node.option));
       }
     }
   }
@@ -17880,11 +17969,12 @@ function renderDocumentUnderstandingOptions(directions) {
     element.style.top = `${position.y}px`;
     element.style.setProperty("--tilt", `${position.tilt}deg`);
 
+    const displayDir = { ...dir, directionType: dir.type };
     const typeLabel = getDirectionTypeLabel(dir.type);
     const typeIcon = getDirectionTypeIcon(dir.type);
     element.querySelector(".option-tone").textContent = `${typeIcon} ${typeLabel}`;
     element.querySelector(".option-title").textContent = dir.title || t("generated.result");
-    element.querySelector(".option-description").textContent = dir.description || "";
+    setElementTextOrHidden(element.querySelector(".option-description"), displayOptionSummary(displayDir));
 
     const titleEl = element.querySelector(".option-title");
     if (titleEl) makeTitleEditable(id, titleEl);
@@ -17899,7 +17989,7 @@ function renderDocumentUnderstandingOptions(directions) {
       y: position.y,
       width: 318,
       height: element.offsetHeight,
-      option: { ...dir, directionType: dir.type }
+      option: displayDir
     });
     state.links.push({ from: "analysis", to: id, kind: "option" });
     makeDraggable(element, id);

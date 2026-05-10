@@ -7016,10 +7016,26 @@ html[data-theme="dark"] .rich-table td {
 
 .option-table-card,
 .option-timeline-card,
-.option-comparison-card,
 .option-metric-card,
 .option-quote-card {
   max-height: 170px;
+  overflow: hidden;
+}
+
+.option-comparison-card {
+  max-height: none;
+  overflow: visible;
+}
+
+.option-comparison-card .rich-comparison-item {
+  padding: 8px 9px;
+}
+
+.option-comparison-card .rich-comparison-item p {
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
