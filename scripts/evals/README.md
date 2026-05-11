@@ -32,3 +32,28 @@ RUN_MODEL_SMOKE_EVALS=1 CANVAS_ACTION_SMOKE_TRIALS=3 CANVAS_ACTION_SMOKE_ENDPOIN
 ```
 
 Capability smoke evals are intentionally non-blocking by default because model behavior is non-deterministic and depends on local provider configuration.
+
+## Chat system evals
+
+- File: `chat-system-eval.jsonl`
+- Stress file: `chat-system-stress-eval.jsonl`
+- MiMo live file: `chat-system-mimo-live-40.jsonl`
+- Runner: `node scripts/run-chat-system-eval.js`
+- Package scripts: `npm run eval:chat-system`, `npm run eval:chat-system:stress`, `npm run eval:chat-system:mimo`
+- Purpose: exercise `/api/chat` end to end, including request construction, selected context, attachments, streaming, action extraction, policy traces, and frontend-facing action payloads.
+- Default: skipped unless `RUN_CHAT_SYSTEM_EVALS=1` is set.
+- Repeated trials: set `CHAT_SYSTEM_EVAL_TRIALS=3` to report pass@1, pass rate, and action-type consistency.
+
+Example:
+
+```bash
+RUN_CHAT_SYSTEM_EVALS=1 CHAT_SYSTEM_EVAL_TRIALS=3 npm run eval:chat-system:mimo
+```
+
+## Controller model tool evals
+
+- File: `controller-model-tool-eval.jsonl`
+- Runner: `node scripts/run-controller-model-tool-eval.js`
+- Package script: `npm run eval:controller-models`
+- Purpose: compare raw OpenAI-compatible tool-call selection across configured controller candidates.
+- Default: skipped unless `RUN_CONTROLLER_MODEL_EVALS=1` is set.

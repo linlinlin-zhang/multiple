@@ -70,7 +70,8 @@ function rejectedReasons(trace, type) {
     { thinkingMode: "no-thinking" }
   );
   assert.deepEqual(result.actions.map((action) => action.type), ["delete_node"]);
-  assert.equal(rejectedReasons(trace, "create_note").includes("after_stop_condition"), true);
+  assert.equal(rejectedReasons(trace, "create_note").includes("not_allowed_for_intent"), true);
+  assert.equal(trace.loop.stoppedBy.type, "delete_node");
 }
 
 {
@@ -115,7 +116,7 @@ function rejectedReasons(trace, type) {
   );
   assert.deepEqual(result.actions.map((action) => action.type), ["create_note"]);
   assert.equal(rejectedReasons(trace, "generate_image").includes("not_allowed_for_intent"), true);
-  assert.equal(trace.taskType, "analysis");
+  assert.equal(trace.taskType, "visual_critique");
 }
 
 {

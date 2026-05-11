@@ -66,6 +66,8 @@ const CHAT_SYSTEM_PROMPT_VERSION = "chat-system-v1";
 const CANVAS_TOOL_SCHEMA_VERSION = "canvas-action-tool-schema-v1";
 const CANVAS_POLICY_VERSION = "canvas-action-policy-v1";
 const CANVAS_FALLBACK_VERSION = "canvas-action-fallback-v1";
+const MIMO_DEFAULT_BASE_URL = "https://api.xiaomimimo.com/v1";
+const MIMO_DEFAULT_MODEL = "mimo-v2.5-pro";
 const IMAGE_SEARCH_MODEL = process.env.IMAGE_SEARCH_MODEL || "qwen3.5-plus";
 const ANALYSIS_CANVAS_CARD_MIN = 5;
 const ANALYSIS_CANVAS_CARD_MAX = 8;
@@ -81,28 +83,33 @@ const prisma = new PrismaClient();
 
 let runtimeConfigs = {
   chat: buildModelConfig("CHAT", {
-    provider: "dashscope-qwen",
-    model: "qwen3.6-plus",
-    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    apiKeyEnv: ["DASHSCOPE_API_KEY", "CHAT_API_KEY"],
+    provider: "openai-compatible",
+    model: MIMO_DEFAULT_MODEL,
+    baseUrl: MIMO_DEFAULT_BASE_URL,
+    preferApiKeyEnv: true,
+    apiKeyEnv: ["MIMO_API_KEY", "CHAT_API_KEY", "CONTROLLER_MODEL_CANDIDATE_MIMO_API_KEY"],
     options: {
       max_tokens: 65536,
-      enableWebSearch: true,
-      enableWebExtractor: true,
-      enableCodeInterpreter: true,
+      enableWebSearch: false,
+      enableWebExtractor: false,
+      enableCodeInterpreter: false,
       enableCanvasTools: true,
-      enablePreviousResponse: true,
+      enablePreviousResponse: false,
+      enableThinkingParam: true,
       showActionPolicyTrace: false
     }
   }),
   analysis: buildModelConfig("ANALYSIS", {
-    provider: "dashscope-qwen",
-    model: "qwen3.6-plus",
-    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    apiKeyEnv: ["DASHSCOPE_API_KEY", "ANALYSIS_API_KEY"],
+    provider: "openai-compatible",
+    model: MIMO_DEFAULT_MODEL,
+    baseUrl: MIMO_DEFAULT_BASE_URL,
+    preferApiKeyEnv: true,
+    apiKeyEnv: ["MIMO_API_KEY", "ANALYSIS_API_KEY", "CONTROLLER_MODEL_CANDIDATE_MIMO_API_KEY"],
     options: {
-      enableWebSearch: true,
-      jsonObjectResponse: false
+      max_tokens: 65536,
+      enableWebSearch: false,
+      jsonObjectResponse: true,
+      enableThinkingParam: true
     }
   }),
   image: buildModelConfig("IMAGE", {
@@ -904,29 +911,34 @@ async function refreshConfigs() {
     );
 
     runtimeConfigs.chat = buildModelConfig("CHAT", {
-      provider: "dashscope-qwen",
-      model: "qwen3.6-plus",
-      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      apiKeyEnv: ["DASHSCOPE_API_KEY", "CHAT_API_KEY"],
+      provider: "openai-compatible",
+      model: MIMO_DEFAULT_MODEL,
+      baseUrl: MIMO_DEFAULT_BASE_URL,
+      preferApiKeyEnv: true,
+      apiKeyEnv: ["MIMO_API_KEY", "CHAT_API_KEY", "CONTROLLER_MODEL_CANDIDATE_MIMO_API_KEY"],
       options: {
         max_tokens: 65536,
-        enableWebSearch: true,
-        enableWebExtractor: true,
-        enableCodeInterpreter: true,
+        enableWebSearch: false,
+        enableWebExtractor: false,
+        enableCodeInterpreter: false,
         enableCanvasTools: true,
-        enablePreviousResponse: true,
+        enablePreviousResponse: false,
+        enableThinkingParam: true,
         showActionPolicyTrace: false
       }
     }, dbMap.chat);
 
     runtimeConfigs.analysis = buildModelConfig("ANALYSIS", {
-      provider: "dashscope-qwen",
-      model: "qwen3.6-plus",
-      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-      apiKeyEnv: ["DASHSCOPE_API_KEY", "ANALYSIS_API_KEY"],
+      provider: "openai-compatible",
+      model: MIMO_DEFAULT_MODEL,
+      baseUrl: MIMO_DEFAULT_BASE_URL,
+      preferApiKeyEnv: true,
+      apiKeyEnv: ["MIMO_API_KEY", "ANALYSIS_API_KEY", "CONTROLLER_MODEL_CANDIDATE_MIMO_API_KEY"],
       options: {
-        enableWebSearch: true,
-        jsonObjectResponse: false
+        max_tokens: 65536,
+        enableWebSearch: false,
+        jsonObjectResponse: true,
+        enableThinkingParam: true
       }
     }, dbMap.analysis);
 
@@ -1012,10 +1024,12 @@ function buildModelConfig(role, defaults, dbSettings = null) {
   const envBaseUrl = process.env[`${role}_API_BASE_URL`] || "";
   const envModel = process.env[`${role}_MODEL`] || "";
   const ignoreLegacyEnv = isLegacyEnvDefault(role, { provider: envProvider, endpoint: envBaseUrl, model: envModel });
+  const defaultApiKey = firstEnv(defaults.apiKeyEnv || []);
   const apiKey =
     (effectiveDbSettings?.apiKey ?? "") ||
+    (defaults.preferApiKeyEnv ? defaultApiKey : "") ||
     process.env[`${role}_API_KEY`] ||
-    firstEnv(defaults.apiKeyEnv || []) ||
+    (!defaults.preferApiKeyEnv ? defaultApiKey : "") ||
     "";
   const baseUrl = (
     (effectiveDbSettings?.endpoint || "").replace(/\/+$/, "") ||
@@ -1043,12 +1057,22 @@ function buildModelConfig(role, defaults, dbSettings = null) {
   return { role: role.toLowerCase(), provider: roleProvider, apiKey, baseUrl, model, temperature, options };
 }
 
+function buildImageSearchConfig() {
+  return buildModelConfig("IMAGE_SEARCH", {
+    provider: "dashscope-qwen",
+    model: IMAGE_SEARCH_MODEL,
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    apiKeyEnv: ["IMAGE_SEARCH_API_KEY", "DASHSCOPE_API_KEY"]
+  });
+}
+
 function inferProviderFromEndpoint(endpoint, fallback) {
   const normalized = String(endpoint || "").toLowerCase();
   if (normalized.includes("/api/v1/services/aigc/multimodal-generation/generation")) return "dashscope-qwen-image";
   if (normalized.includes("/api/v1/services/aigc/video-generation/video-synthesis")) return "dashscope-happyhorse-video";
   if (normalized.includes("/api/v1/services/aigc/text-generation/generation")) return "dashscope-deep-research";
   if (normalized.includes("dashscope.aliyuncs.com")) return "dashscope-qwen";
+  if (normalized.includes("xiaomimimo.com")) return "openai-compatible";
   return fallback;
 }
 
@@ -1059,10 +1083,12 @@ function isLegacyEnvDefault(role, envSettings) {
   const provider = String(envSettings.provider || "").toLowerCase();
   return (
     role === "CHAT" &&
-    (provider === "kimi" || endpoint === "https://api.moonshot.cn/v1" || model === "kimi-k2.6")
+    (provider === "kimi" || endpoint === "https://api.moonshot.cn/v1" || model === "kimi-k2.6" ||
+      (provider === "dashscope-qwen" && endpoint === "https://dashscope.aliyuncs.com/compatible-mode/v1" && model === "qwen3.6-plus"))
   ) || (
     role === "ANALYSIS" &&
-    (provider === "kimi" || endpoint === "https://api.moonshot.cn/v1" || model === "kimi-k2.6")
+    (provider === "kimi" || endpoint === "https://api.moonshot.cn/v1" || model === "kimi-k2.6" ||
+      (provider === "dashscope-qwen" && endpoint === "https://dashscope.aliyuncs.com/compatible-mode/v1" && model === "qwen3.6-plus"))
   ) || (
     role === "IMAGE" &&
     (provider === "tencent-tokenhub-image" || endpoint === "https://tokenhub.tencentmaas.com/v1/api/image" || model === "hy-image-v3.0")
@@ -1076,6 +1102,14 @@ function isLegacyDefault(role, dbSettings) {
   if (!dbSettings) return false;
   const endpoint = String(dbSettings.endpoint || "").replace(/\/+$/, "");
   const model = String(dbSettings.model || "");
+  if (
+    (role === "CHAT" || role === "ANALYSIS") &&
+    !dbSettings.apiKey &&
+    endpoint === "https://dashscope.aliyuncs.com/compatible-mode/v1" &&
+    model === "qwen3.6-plus"
+  ) {
+    return true;
+  }
   if (
     role === "IMAGE" &&
     endpoint === "https://tokenhub.tencentmaas.com/v1/api/image" &&
@@ -1162,7 +1196,8 @@ function normalizeModelOptions(role, value) {
       top_p: cleanOptionalNumber(raw.top_p, 0.01, 1),
       max_tokens: cleanOptionalInteger(raw.max_tokens, 1, 200000),
       enableWebSearch: cleanBoolean(raw.enableWebSearch, true),
-      jsonObjectResponse: cleanBoolean(raw.jsonObjectResponse, false)
+      jsonObjectResponse: cleanBoolean(raw.jsonObjectResponse, false),
+      enableThinkingParam: cleanBoolean(raw.enableThinkingParam, false)
     });
   }
   if (role === "chat") {
@@ -1174,6 +1209,7 @@ function normalizeModelOptions(role, value) {
       enableCodeInterpreter: cleanBoolean(raw.enableCodeInterpreter, true),
       enableCanvasTools: cleanBoolean(raw.enableCanvasTools, true),
       enablePreviousResponse: cleanBoolean(raw.enablePreviousResponse, true),
+      enableThinkingParam: cleanBoolean(raw.enableThinkingParam, false),
       showActionPolicyTrace: cleanBoolean(raw.showActionPolicyTrace, false)
     });
   }
@@ -1288,6 +1324,8 @@ function applyReasoningMode(payload, config, thinkingMode) {
     payload.reasoning = { effort: thinkingMode === "thinking" ? "high" : "none", exclude: thinkingMode !== "thinking" };
   } else if (isKimiChatConfig(config)) {
     payload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
+  } else if (isMiMoChatConfig(config) && config.options?.enableThinkingParam !== false) {
+    payload.thinking = { type: thinkingMode === "thinking" ? "enabled" : "disabled" };
   } else if (isDashScopeQwenConfig(config)) {
     payload.enable_thinking = thinkingMode === "thinking";
   }
@@ -1299,6 +1337,13 @@ function isKimiChatConfig(config) {
   const baseUrl = String(config?.baseUrl || "").toLowerCase();
   const model = String(config?.model || "").toLowerCase();
   return provider === "kimi" || baseUrl.includes("moonshot") || model.startsWith("kimi-");
+}
+
+function isMiMoChatConfig(config) {
+  const provider = String(config?.provider || "").toLowerCase();
+  const baseUrl = String(config?.baseUrl || "").toLowerCase();
+  const model = String(config?.model || "").toLowerCase();
+  return provider.includes("mimo") || baseUrl.includes("xiaomimimo.com") || model.includes("mimo");
 }
 
 function shouldUseQwenResponsesTransport(config) {
@@ -1348,7 +1393,7 @@ function applyWebSearchMode(payload, config, enabled = true, options = {}) {
 }
 
 function applyJsonObjectResponseMode(payload, config, enabled = true) {
-  if (enabled && isDashScopeQwenConfig(config)) {
+  if (enabled && (isDashScopeQwenConfig(config) || isMiMoChatConfig(config) || config?.provider === "openai-compatible")) {
     payload.response_format = { type: "json_object" };
   }
   return payload;
@@ -1663,14 +1708,16 @@ async function handleImageSearch(body, res) {
   const query = typeof body?.query === "string" ? body.query.trim().slice(0, 500) : "";
   const imageDataUrl = normalizeDataUrl(body?.imageDataUrl);
   const lang = body?.language === "en" ? "en" : "zh";
+  const searchConfig = buildImageSearchConfig();
   if (!query && !imageDataUrl) {
     return sendJson(res, 400, { error: "query or imageDataUrl is required" });
   }
-  if (isDemoRole(runtimeConfigs.chat) || !isDashScopeQwenConfig(runtimeConfigs.chat)) {
+  if (isDemoRole(searchConfig) || !isDashScopeQwenConfig(searchConfig)) {
     return sendJson(res, 200, buildDemoImageSearchResults(query, lang));
   }
 
   const result = await runQwenImageSearch({
+    config: searchConfig,
     query,
     imageDataUrl,
     lang,
@@ -6635,7 +6682,7 @@ function buildDeepResearchEventCards(events, lang) {
   }));
 }
 
-async function runQwenImageSearch({ query, imageDataUrl, lang, limit }) {
+async function runQwenImageSearch({ config = buildImageSearchConfig(), query, imageDataUrl, lang, limit }) {
   const basePrompt = query || (lang === "en" ? "Find visually similar images and useful visual references." : "搜索相似图片和可参考的视觉素材。");
   const prompt = lang === "en"
     ? `${basePrompt}\n\nUse online image search and return concrete image results with title, thumbnail/image URL, source URL, and short description.`
@@ -6643,7 +6690,7 @@ async function runQwenImageSearch({ query, imageDataUrl, lang, limit }) {
   const content = [{ type: "input_text", text: prompt }];
   if (imageDataUrl) content.push({ type: "input_image", image_url: imageDataUrl });
   const basePayload = {
-    model: IMAGE_SEARCH_MODEL,
+    model: config.model,
     input: imageDataUrl ? [{ role: "user", content }] : prompt
   };
   let bestResult = null;
@@ -6659,7 +6706,7 @@ async function runQwenImageSearch({ query, imageDataUrl, lang, limit }) {
           tools: [{ type: toolType }]
         };
         if (toolChoice) payload.tool_choice = toolChoice;
-        const responseJson = await qwenResponsesRequest(runtimeConfigs.chat, payload);
+        const responseJson = await qwenResponsesRequest(config, payload);
         const summary = extractResponsesText(responseJson);
         const references = dedupeReferences([
           ...extractReferencesFromObject(responseJson),
@@ -6694,7 +6741,7 @@ async function runQwenImageSearch({ query, imageDataUrl, lang, limit }) {
 
   return {
     provider: "api",
-    model: IMAGE_SEARCH_MODEL,
+    model: config.model,
     query: basePrompt,
     summary,
     results
@@ -7260,6 +7307,18 @@ function buildDemoImageSearchResults(query, lang = "zh") {
   };
 }
 
+function modelRequestHeaders(config, extra = {}) {
+  const headers = {
+    Authorization: `Bearer ${config.apiKey}`,
+    "Content-Type": "application/json",
+    ...extra
+  };
+  if (isMiMoChatConfig(config)) {
+    headers["api-key"] = config.apiKey;
+  }
+  return headers;
+}
+
 async function chatCompletions(config, payload, options = {}) {
   const requestPayload = applyRequestOptions({
     model: config.model,
@@ -7276,10 +7335,7 @@ async function chatCompletions(config, payload, options = {}) {
   try {
     response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Content-Type": "application/json"
-      },
+      headers: modelRequestHeaders(config),
       body: JSON.stringify(requestPayload),
       signal: controller.signal
     });
@@ -7338,10 +7394,7 @@ async function streamChatCompletions(config, payload, options = {}) {
   try {
     response = await fetch(`${config.baseUrl}/chat/completions`, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.apiKey}`,
-        "Content-Type": "application/json"
-      },
+      headers: modelRequestHeaders(config),
       body: JSON.stringify(requestPayload),
       signal: controller.signal
     });

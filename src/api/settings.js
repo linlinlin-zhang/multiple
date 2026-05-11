@@ -1,9 +1,12 @@
 import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
+const MIMO_DEFAULT_ENDPOINT = "https://api.xiaomimimo.com/v1";
+const MIMO_DEFAULT_MODEL = "mimo-v2.5-pro";
+
 const DEFAULTS = {
-  analysis: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: { enableWebSearch: true, jsonObjectResponse: false } },
-  chat: { endpoint: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen3.6-plus", apiKey: "", temperature: 0.7, options: { enableWebSearch: true, enableWebExtractor: true, enableCodeInterpreter: true, enableCanvasTools: true, enablePreviousResponse: true, showActionPolicyTrace: false } },
+  analysis: { endpoint: MIMO_DEFAULT_ENDPOINT, model: MIMO_DEFAULT_MODEL, apiKey: "", temperature: 0.7, options: { max_tokens: 65536, enableWebSearch: false, jsonObjectResponse: true, enableThinkingParam: true } },
+  chat: { endpoint: MIMO_DEFAULT_ENDPOINT, model: MIMO_DEFAULT_MODEL, apiKey: "", temperature: 0.7, options: { max_tokens: 65536, enableWebSearch: false, enableWebExtractor: false, enableCodeInterpreter: false, enableCanvasTools: true, enablePreviousResponse: false, enableThinkingParam: true, showActionPolicyTrace: false } },
   image: {
     endpoint: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
     model: "qwen-image-2.0-pro",
@@ -132,15 +135,15 @@ function isLegacyDefault(role, settings) {
   }
   if (
     role === "chat" &&
-    endpoint === "https://api.moonshot.cn/v1" &&
-    model === "kimi-k2.6"
+    ((endpoint === "https://api.moonshot.cn/v1" && model === "kimi-k2.6") ||
+      (!settings.apiKey && endpoint === "https://dashscope.aliyuncs.com/compatible-mode/v1" && model === "qwen3.6-plus"))
   ) {
     return true;
   }
   if (
     role === "analysis" &&
-    endpoint === "https://api.moonshot.cn/v1" &&
-    model === "kimi-k2.6"
+    ((endpoint === "https://api.moonshot.cn/v1" && model === "kimi-k2.6") ||
+      (!settings.apiKey && endpoint === "https://dashscope.aliyuncs.com/compatible-mode/v1" && model === "qwen3.6-plus"))
   ) {
     return true;
   }
@@ -202,7 +205,8 @@ function normalizeOptions(role, value) {
       top_p: cleanOptionalNumber(merged.top_p, 0.01, 1),
       max_tokens: cleanOptionalInteger(merged.max_tokens, 1, 200000),
       enableWebSearch: cleanBoolean(merged.enableWebSearch, true),
-      jsonObjectResponse: cleanBoolean(merged.jsonObjectResponse, false)
+      jsonObjectResponse: cleanBoolean(merged.jsonObjectResponse, false),
+      enableThinkingParam: cleanBoolean(merged.enableThinkingParam, false)
     });
   }
 
@@ -215,6 +219,7 @@ function normalizeOptions(role, value) {
       enableCodeInterpreter: cleanBoolean(merged.enableCodeInterpreter, true),
       enableCanvasTools: cleanBoolean(merged.enableCanvasTools, true),
       enablePreviousResponse: cleanBoolean(merged.enablePreviousResponse, true),
+      enableThinkingParam: cleanBoolean(merged.enableThinkingParam, false),
       showActionPolicyTrace: cleanBoolean(merged.showActionPolicyTrace, false)
     });
   }

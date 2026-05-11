@@ -1,12 +1,12 @@
 # Harness Engineering Improvement Plan for ThoughtGrid
 
-**Date:** 2026-05-10  
-**Scope:** ThoughtGrid / 织境 AI canvas workbench  
+**Date:** 2026-05-11
+**Scope:** ThoughtGrid / 织境 AI canvas workbench
 **Status:** Research-backed improvement backlog; implementation in progress
 
 ## 0. Implementation Progress
 
-Updated: 2026-05-10
+Updated: 2026-05-11
 
 Completed:
 
@@ -27,6 +27,8 @@ Completed:
 - **HE-P1-10 rich plan mode:** `create_plan` now supports backward-compatible rich execution-plan fields, frontend plan cards render those sections, and regression fixtures distinguish simple concise plans from complex rich plans.
 - **HE-P1-11 mechanical action consistency checks:** Added the contract test to `npm run test:guards` so registry, model-visible action types, frontend executors, rich card types, and result fields stay aligned.
 - **HE-P2-01 developer action trace viewer:** The debug action trace toggle now renders policy, canonical trace, repair events, harness hashes, context budget tiers, and copyable JSON under assistant messages.
+- **HE-P2-03 MiMo controller adaptation:** Switched chat, analysis, and settings defaults to MiMo-compatible OpenAI chat-completions, added MiMo detection/thinking/JSON-mode/header handling, and decoupled image search into an independent DashScope Responses role.
+- **HE-P2-04 expanded live eval ergonomics:** Added chat-system/controller-model package scripts, repeated-trial chat eval reporting, and a 40-case MiMo live scenario file covering negative, visual, multi-file, planning, data/code, web/source, media, workspace, history, and agent behaviors.
 
 Partial:
 
@@ -34,7 +36,7 @@ Partial:
 
 Latest pushed baseline:
 
-- `0484c6d Add canvas action harness regression foundation`
+- `c99c732 Improve MiMo canvas action stress coverage`
 
 ---
 

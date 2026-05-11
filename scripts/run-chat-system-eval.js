@@ -13,6 +13,7 @@ const reportPath = path.join(artifactDir, "chat-system-eval-report.json");
 const endpoint = process.env.CHAT_SYSTEM_EVAL_ENDPOINT || "http://127.0.0.1:3000/api/chat";
 const shouldRun = process.env.RUN_CHAT_SYSTEM_EVALS === "1";
 const maxFixtures = Math.max(0, Math.min(Number(process.env.CHAT_SYSTEM_EVAL_MAX_FIXTURES) || 0, 100));
+const trials = Math.max(1, Math.min(Number(process.env.CHAT_SYSTEM_EVAL_TRIALS) || 1, 10));
 const fixtureIdFilter = new Set(String(process.env.CHAT_SYSTEM_EVAL_IDS || "")
   .split(",")
   .map((item) => item.trim())
@@ -176,7 +177,7 @@ async function postChat(payload) {
   }
 }
 
-async function runFixture(fixture) {
+async function runFixture(fixture, trial) {
   const startedAt = Date.now();
   const payload = {
     message: fixture.message,
@@ -203,6 +204,7 @@ async function runFixture(fixture) {
   const evaluated = response.ok ? evaluateResult(data, fixture.expected || {}) : { actions: [], actual: [], failures: [`HTTP ${response.status}`] };
   return {
     id: fixture.id,
+    trial,
     category: fixture.category,
     status: response.status,
     ok: response.ok,
@@ -217,37 +219,76 @@ async function runFixture(fixture) {
   };
 }
 
+function actionSignature(result) {
+  return (result.actionTypes || []).slice().sort().join("+") || "<none>";
+}
+
+function summarizeByFixture(results, fixtures) {
+  return fixtures.map((fixture) => {
+    const runs = results.filter((item) => item.id === fixture.id);
+    const signatures = runs.map(actionSignature);
+    const signatureCounts = new Map();
+    for (const signature of signatures) {
+      signatureCounts.set(signature, (signatureCounts.get(signature) || 0) + 1);
+    }
+    const mostCommonSignatureCount = Math.max(0, ...signatureCounts.values());
+    return {
+      id: fixture.id,
+      category: fixture.category,
+      runs: runs.length,
+      passAt1: runs[0] ? runs[0].failures.length === 0 : false,
+      passed: runs.filter((item) => !item.failures.length).length,
+      failed: runs.filter((item) => item.failures.length).length,
+      consistency: runs.length ? mostCommonSignatureCount / runs.length : 0,
+      signatures: Object.fromEntries(signatureCounts)
+    };
+  });
+}
+
 const allFixtures = readJsonl(fixturePath);
 const filteredFixtures = fixtureIdFilter.size
   ? allFixtures.filter((fixture) => fixtureIdFilter.has(fixture.id))
   : allFixtures;
 const fixtures = maxFixtures > 0 ? filteredFixtures.slice(0, maxFixtures) : filteredFixtures;
 if (!shouldRun) {
-  console.log(`[chat-system] eval skipped (${fixtures.length} fixture(s)). Set RUN_CHAT_SYSTEM_EVALS=1 to call ${endpoint}.`);
+  console.log(`[chat-system] eval skipped (${fixtures.length} fixture(s), ${trials} trial(s)). Set RUN_CHAT_SYSTEM_EVALS=1 to call ${endpoint}.`);
   process.exit(0);
 }
 
 const results = [];
 for (const fixture of fixtures) {
-  console.log(`[chat-system] running ${fixture.id}`);
-  results.push(await runFixture(fixture));
+  for (let trial = 1; trial <= trials; trial += 1) {
+    console.log(`[chat-system] running ${fixture.id} trial ${trial}/${trials}`);
+    results.push(await runFixture(fixture, trial));
+  }
 }
 const failures = results.filter((item) => item.failures.length);
+const perFixture = summarizeByFixture(results, fixtures);
+const passAt1Count = perFixture.filter((item) => item.passAt1).length;
+const averageConsistency = perFixture.length
+  ? perFixture.reduce((sum, item) => sum + item.consistency, 0) / perFixture.length
+  : 0;
 fs.mkdirSync(artifactDir, { recursive: true });
 fs.writeFileSync(reportPath, `${JSON.stringify({
   createdAt: new Date().toISOString(),
   endpoint,
   fixturePath,
+  totalFixtures: fixtures.length,
+  trials,
   total: results.length,
   passed: results.length - failures.length,
   failed: failures.length,
   passRate: results.length ? (results.length - failures.length) / results.length : 0,
+  passAt1: perFixture.length ? passAt1Count / perFixture.length : 0,
+  averageConsistency,
   averageLatencyMs: results.length ? Math.round(results.reduce((sum, item) => sum + item.latencyMs, 0) / results.length) : 0,
+  perFixture,
   results
 }, null, 2)}\n`);
 
 console.log(`[chat-system] report: ${reportPath}`);
 console.log(`[chat-system] ${results.length - failures.length}/${results.length} passed`);
+console.log(`[chat-system] pass@1=${passAt1Count}/${perFixture.length} consistency=${averageConsistency.toFixed(2)}`);
 for (const failure of failures.slice(0, 8)) {
   console.log(`[chat-system] FAIL ${failure.id}: ${failure.failures.join("; ")} actions=[${failure.actionTypes.join(",")}] taskType=${failure.taskType}`);
 }

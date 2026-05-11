@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { CANVAS_ACTION_TYPES } from "../src/prompts/shared.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, "..");
@@ -16,29 +17,7 @@ const timeoutMs = Math.max(10000, Math.min(Number(process.env.CONTROLLER_MODEL_E
 const maxFixtures = Math.max(0, Math.min(Number(process.env.CONTROLLER_MODEL_EVAL_MAX_FIXTURES) || 0, 100));
 
 const CANDIDATE_PREFIXES = ["BASELINE", "MIMO", "KIMI", "DEEPSEEK"];
-const ACTION_TYPES = [
-  "create_note",
-  "create_plan",
-  "create_todo",
-  "create_table",
-  "create_timeline",
-  "create_comparison",
-  "create_metric",
-  "create_quote",
-  "create_code",
-  "create_web_card",
-  "create_link",
-  "web_search",
-  "image_search",
-  "text_image_search",
-  "reverse_image_search",
-  "generate_image",
-  "generate_video",
-  "arrange_canvas",
-  "auto_layout",
-  "tidy_canvas",
-  "delete_node"
-];
+const ACTION_TYPES = CANVAS_ACTION_TYPES;
 
 loadDotEnv(path.join(projectRoot, ".env"));
 
@@ -85,13 +64,19 @@ function parseOptions(raw) {
 
 function candidateFromPrefix(prefix) {
   const root = `CONTROLLER_MODEL_CANDIDATE_${prefix}`;
-  const provider = process.env[`${root}_PROVIDER`] || "openai-compatible";
-  const baseUrl = normalizeOpenAiCompatibleBaseUrl(process.env[`${root}_API_BASE_URL`] || "");
-  const rawModel = process.env[`${root}_MODEL`] || "";
+  const provider = process.env[`${root}_PROVIDER`] || (prefix === "BASELINE" ? (process.env.CHAT_PROVIDER || "openai-compatible") : "openai-compatible");
+  const baseUrl = normalizeOpenAiCompatibleBaseUrl(
+    process.env[`${root}_API_BASE_URL`] ||
+    (prefix === "BASELINE" ? process.env.CHAT_API_BASE_URL : "") ||
+    (prefix === "MIMO" ? "https://api.xiaomimimo.com/v1" : "")
+  );
+  const rawModel = process.env[`${root}_MODEL`] || (prefix === "BASELINE" ? process.env.CHAT_MODEL : "") || (prefix === "MIMO" ? "mimo-v2.5-pro" : "");
   const model = rawModel === "MiMo-V2.5-Pro" ? "mimo-v2.5-pro" : rawModel;
   const explicitKey = process.env[`${root}_API_KEY`] || "";
   const apiKey = explicitKey
-    || (prefix === "BASELINE" || provider === "dashscope-qwen" ? (process.env.CHAT_API_KEY || process.env.DASHSCOPE_API_KEY || "") : "");
+    || (prefix === "MIMO" ? (process.env.MIMO_API_KEY || process.env.CHAT_API_KEY || "") : "")
+    || (prefix === "BASELINE" ? (process.env.MIMO_API_KEY || process.env.CHAT_API_KEY || process.env.DASHSCOPE_API_KEY || "") : "")
+    || (provider === "dashscope-qwen" ? (process.env.CHAT_API_KEY || process.env.DASHSCOPE_API_KEY || "") : "");
   return {
     id: prefix.toLowerCase(),
     provider,
@@ -176,22 +161,32 @@ function requestBody(candidate, fixture) {
     max_tokens: Number(options.max_tokens) || 4096,
     temperature: /kimi/i.test(candidate.provider) || /moonshot/i.test(candidate.baseUrl) ? 0.6 : 0.2
   };
-  if (/kimi/i.test(candidate.provider) || /moonshot/i.test(candidate.baseUrl)) {
+  if (/mimo/i.test(candidate.model) || /xiaomimimo\.com/i.test(candidate.baseUrl)) {
+    body.thinking = { type: "disabled" };
+  } else if (/kimi/i.test(candidate.provider) || /moonshot/i.test(candidate.baseUrl)) {
     body.thinking = { type: "disabled" };
   }
   return body;
 }
 
-async function postJson(url, apiKey, body) {
+function requestHeaders(candidate) {
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${candidate.apiKey}`
+  };
+  if (/mimo/i.test(candidate.model) || /xiaomimimo\.com/i.test(candidate.baseUrl)) {
+    headers["api-key"] = candidate.apiKey;
+  }
+  return headers;
+}
+
+async function postJson(url, candidate, body) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`
-      },
+      headers: requestHeaders(candidate),
       body: JSON.stringify(body),
       signal: controller.signal
     });
@@ -257,7 +252,7 @@ async function runOne(candidate, fixture) {
   const startedAt = Date.now();
   const url = `${candidate.baseUrl}/chat/completions`;
   const body = requestBody(candidate, fixture);
-  const response = await postJson(url, candidate.apiKey, body);
+  const response = await postJson(url, candidate, body);
   const actions = response.ok ? parseToolActions(response.data) : [];
   const { actual, failures } = response.ok ? evaluate(actions, fixture.expected || {}) : { actual: [], failures: [`HTTP ${response.status}`] };
   const message = response.data?.choices?.[0]?.message || {};
