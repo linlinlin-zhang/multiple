@@ -5772,7 +5772,7 @@ async function analyzeSource(mode = "analyze") {
     await submitChatMessage(currentLang === "en"
       ? "Please analyze this uploaded video. Summarize the key scenes, visible details, temporal structure, and create 5-8 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards."
       : "请分析这个上传视频，总结关键画面、可见细节、时间结构，并创建 5 到 8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。", {
-        forcedThinkingMode: mode === "explore" ? "thinking" : state.thinkingMode
+        forcedThinkingMode: mode === "explore" ? "thinking" : "no-thinking"
       });
     return;
   }
@@ -5787,14 +5787,14 @@ async function analyzeSource(mode = "analyze") {
       data = await postJson("/api/analyze", {
         imageDataUrl: sourceImageDataUrl,
         fileName: state.fileName,
-        thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode,
+        thinkingMode: mode === "explore" ? "thinking" : "no-thinking",
         sessionId: currentSessionId || ""
       }, {
         timeoutMs: 150000,
         timeoutMessage: t("research.timeout")
       });
     } else if (state.sourceType === "url") {
-      data = await postJson("/api/analyze-url", { url: state.sourceUrl, thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode, sessionId: currentSessionId || "" }, {
+      data = await postJson("/api/analyze-url", { url: state.sourceUrl, thinkingMode: mode === "explore" ? "thinking" : "no-thinking", sessionId: currentSessionId || "" }, {
         timeoutMs: 150000,
         timeoutMessage: t("research.timeout")
       });
@@ -5803,7 +5803,7 @@ async function analyzeSource(mode = "analyze") {
         text: state.sourceText,
         dataUrl: state.sourceDataUrl,
         fileName: state.fileName,
-        thinkingMode: mode === "explore" ? "thinking" : state.thinkingMode,
+        thinkingMode: mode === "explore" ? "thinking" : "no-thinking",
         sessionId: currentSessionId || ""
       }, {
         timeoutMs: 150000,
@@ -5815,7 +5815,9 @@ async function analyzeSource(mode = "analyze") {
     renderOptions(data.options || [], data.taskType || "general");
     scheduleGeneratedArrange({ delay: 120, duration: 520 });
     state.latestAnalysis = data;
-    setStatus(t("status.ready"), "ready");
+    setStatus(data.warningCode === "analysis_fallback"
+      ? (currentLang === "en" ? "Analysis completed with fallback cards." : "分析完成（已使用降级卡片）。")
+      : t("status.ready"), "ready");
     autoSave();
   } catch (error) {
     setStatus(error.message || "Analysis failed", "error");
@@ -10191,7 +10193,7 @@ async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
     await submitChatMessage(useExplore
       ? (currentLang === "en" ? "Please deeply explore this video source card and create 6-10 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请深入探索这张视频源卡片，并创建 6 到 10 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。")
       : (currentLang === "en" ? "Please analyze this video source card, summarize the key moments, and create 5-8 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请分析这张视频源卡片，总结关键片段，并创建 5 到 8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。"), {
-        forcedThinkingMode: useExplore ? "thinking" : state.thinkingMode
+        forcedThinkingMode: useExplore ? "thinking" : "no-thinking"
       });
     return;
   }
@@ -10205,7 +10207,7 @@ async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
         text: sourceCard.sourceText || "",
         dataUrl: sourceCard.sourceDataUrl || "",
         fileName: sourceCard.fileName || sourceCard.title || "source-card",
-        thinkingMode: useExplore ? "thinking" : state.thinkingMode,
+        thinkingMode: useExplore ? "thinking" : "no-thinking",
         sessionId: currentSessionId || ""
       }, {
         timeoutMs: useExplore ? 180000 : 150000,
@@ -10215,7 +10217,7 @@ async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
       data = await postJson(useExplore ? "/api/analyze-explore" : "/api/analyze-url", {
         url: sourceCard.sourceUrl,
         fileName: sourceCard.fileName || sourceCard.title || "source-card",
-        thinkingMode: useExplore ? "thinking" : state.thinkingMode,
+        thinkingMode: useExplore ? "thinking" : "no-thinking",
         sessionId: currentSessionId || ""
       }, {
         timeoutMs: useExplore ? 180000 : 150000,
@@ -10226,7 +10228,7 @@ async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
       data = await postJson(useExplore ? "/api/analyze-explore" : "/api/analyze", {
         imageDataUrl,
         fileName: sourceCard.fileName || sourceCard.title || "source-card",
-        thinkingMode: useExplore ? "thinking" : state.thinkingMode,
+        thinkingMode: useExplore ? "thinking" : "no-thinking",
         sessionId: currentSessionId || ""
       }, {
         timeoutMs: useExplore ? 180000 : 150000,
@@ -10251,7 +10253,9 @@ async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
     }
     if (data.summary) sourceCard.summary = data.summary;
     if (data.sourceHash) sourceCard.sourceDataUrlHash = data.sourceHash;
-    setStatus(useExplore ? t("research.exploreComplete") : t("status.ready"), "ready");
+    setStatus(data.warningCode === "analysis_fallback"
+      ? (currentLang === "en" ? "Analysis completed with fallback cards." : "分析完成（已使用降级卡片）。")
+      : (useExplore ? t("research.exploreComplete") : t("status.ready")), "ready");
     autoSave();
   } catch (error) {
     setStatus(error.message || t("status.error"), "error");

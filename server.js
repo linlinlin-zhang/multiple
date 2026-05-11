@@ -52,10 +52,11 @@ const VIDEO_SUBMIT_TIMEOUT_MS = Number(process.env.VIDEO_SUBMIT_TIMEOUT_MS || 60
 const VIDEO_DOWNLOAD_TIMEOUT_MS = Number(process.env.VIDEO_DOWNLOAD_TIMEOUT_MS || 180000);
 const MAX_BODY_BYTES = 150 * 1024 * 1024;
 const CHAT_COMPLETION_TIMEOUT_MS = Number(process.env.CHAT_COMPLETION_TIMEOUT_MS || 120000);
+const ANALYSIS_FAST_TIMEOUT_MS = Number(process.env.ANALYSIS_FAST_TIMEOUT_MS || 90000);
 const CHAT_STREAM_IDLE_TIMEOUT_MS = Number(process.env.CHAT_STREAM_IDLE_TIMEOUT_MS || process.env.CHAT_STREAM_TIMEOUT_MS || 240000);
 const DEEP_RESEARCH_TIMEOUT_MS = Number(process.env.DEEP_RESEARCH_TIMEOUT_MS || 600000);
-const EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.EXPLORE_THINKING_TIMEOUT_MS || 240000);
-const EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.EXPLORE_FALLBACK_TIMEOUT_MS || 150000);
+const EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.EXPLORE_THINKING_TIMEOUT_MS || 90000);
+const EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.EXPLORE_FALLBACK_TIMEOUT_MS || 45000);
 const CHAT_ATTACHMENT_MAX_CHARS = 32000;
 const CHAT_ATTACHMENT_MAX_COUNT = 8;
 const CHAT_IMAGE_INPUT_MAX_COUNT = 8;
@@ -4548,6 +4549,7 @@ async function handleAnalyze(body, res) {
   const prompt = buildAnalysisPrompt(lang, taskType, body?.contentType || "image");
 
   const analysisPayload = {
+    max_tokens: 4096,
     messages: [
       {
         role: "user",
@@ -4562,14 +4564,25 @@ async function handleAnalyze(body, res) {
   applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
   applyAnalysisJsonObjectResponseMode(analysisPayload);
 
-  const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
-  const text = collectChatContent(response);
-  const parsed = parseJsonFromText(text);
-  const normalized = normalizeAnalysis(parsed, body?.fileName);
-  normalized.provider = "api";
-  normalized.model = response?.model || runtimeConfigs.analysis.model;
-  normalized.taskType = taskType;
-  return sendJson(res, 200, normalized);
+  try {
+    const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload, { timeoutMs: ANALYSIS_FAST_TIMEOUT_MS });
+    const text = collectChatContent(response);
+    const parsed = parseJsonFromText(text);
+    const normalized = normalizeAnalysis(parsed, body?.fileName);
+    normalized.provider = "api";
+    normalized.model = response?.model || runtimeConfigs.analysis.model;
+    normalized.taskType = taskType;
+    return sendJson(res, 200, normalized);
+  } catch (error) {
+    console.error("[handleAnalyze] error:", error);
+    const fallback = buildDemoAnalysis(body?.fileName || "source image");
+    fallback.provider = "fallback";
+    fallback.model = runtimeConfigs.analysis.model;
+    fallback.taskType = taskType;
+    fallback.warningCode = "analysis_fallback";
+    fallback.warning = error.message || "Analysis model failed; returned fallback cards.";
+    return sendJson(res, 200, fallback);
+  }
 }
 
 function isValidPublicUrl(urlString) {
@@ -4689,6 +4702,14 @@ async function handleAnalyzeExplore(body, res) {
   console.log(`[route] ${taskType} (confidence: ${confidence}, fallback: ${wasFallback})`);
 
   const prompt = buildExplorePrompt(lang, taskType, contentType);
+  const fallbackExplore = () => {
+    const fallback = buildDemoExplore(fileName || url || "source");
+    fallback.provider = "fallback";
+    fallback.model = runtimeConfigs.analysis.model;
+    fallback.taskType = taskType;
+    fallback.warningCode = "explore_fallback";
+    return fallback;
+  };
 
   let content;
   let pageText = "";
@@ -4783,7 +4804,9 @@ async function handleAnalyzeExplore(body, res) {
       }
     }
     console.error("[handleAnalyzeExplore] error:", error);
-    return sendJson(res, 500, { error: "Explore analysis failed", message: error.message });
+    const fallback = fallbackExplore();
+    fallback.warning = error.message || "Explore analysis failed; returned fallback cards.";
+    return sendJson(res, 200, fallback);
   }
 }
 
@@ -4836,7 +4859,7 @@ async function handleAnalyzeUrl(body, res) {
   applyAnalysisJsonObjectResponseMode(analysisPayload);
 
   try {
-    const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
+    const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload, { timeoutMs: ANALYSIS_FAST_TIMEOUT_MS });
     const text = collectChatContent(response);
     const parsed = parseJsonFromText(text);
     const normalized = normalizeAnalysis(parsed, domain);
@@ -4861,7 +4884,14 @@ async function handleAnalyzeUrl(body, res) {
     return sendJson(res, 200, normalized);
   } catch (error) {
     console.error("[handleAnalyzeUrl] error:", error);
-    return sendJson(res, 500, { error: "URL analysis failed", message: error.message });
+    const fallback = buildDemoAnalysis(domain);
+    fallback.provider = "fallback";
+    fallback.model = runtimeConfigs.analysis.model;
+    fallback.taskType = taskType;
+    fallback.domain = domain;
+    fallback.warningCode = "analysis_fallback";
+    fallback.warning = error.message || "URL analysis failed; returned fallback cards.";
+    return sendJson(res, 200, fallback);
   }
 }
 
@@ -4932,29 +4962,41 @@ async function handleAnalyzeText(body, res) {
   applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
   applyAnalysisJsonObjectResponseMode(analysisPayload);
 
-  const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload);
-  const text = collectChatContent(response);
-  const parsed = parseJsonFromText(text);
-  const normalized = normalizeAnalysis(parsed, safeFileName);
-  normalized.provider = "api";
-  normalized.model = response?.model || runtimeConfigs.analysis.model;
-  normalized.taskType = taskType;
-  if (storedHash) normalized.sourceHash = storedHash;
+  try {
+    const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload, { timeoutMs: ANALYSIS_FAST_TIMEOUT_MS });
+    const text = collectChatContent(response);
+    const parsed = parseJsonFromText(text);
+    const normalized = normalizeAnalysis(parsed, safeFileName);
+    normalized.provider = "api";
+    normalized.model = response?.model || runtimeConfigs.analysis.model;
+    normalized.taskType = taskType;
+    if (storedHash) normalized.sourceHash = storedHash;
 
-  // Fire-and-forget: ingest the extracted text into the session pool so
-  // future chat turns can recall this document without resending it.
-  if (sessionId && isEmbeddingConfigured()) {
-    ingestText({
-      sessionId,
-      kind: CONTEXT_KINDS.FILE,
-      text: extractedText,
-      sourceId: storedHash || `file:${safeFileName}`,
-      sourceMeta: { fileName: safeFileName, hash: storedHash || null },
-      replace: true
-    }).catch((e) => console.warn("[handleAnalyzeText] ingest failed:", e.message));
+    // Fire-and-forget: ingest the extracted text into the session pool so
+    // future chat turns can recall this document without resending it.
+    if (sessionId && isEmbeddingConfigured()) {
+      ingestText({
+        sessionId,
+        kind: CONTEXT_KINDS.FILE,
+        text: extractedText,
+        sourceId: storedHash || `file:${safeFileName}`,
+        sourceMeta: { fileName: safeFileName, hash: storedHash || null },
+        replace: true
+      }).catch((e) => console.warn("[handleAnalyzeText] ingest failed:", e.message));
+    }
+
+    return sendJson(res, 200, normalized);
+  } catch (error) {
+    console.error("[handleAnalyzeText] error:", error);
+    const fallback = buildDemoAnalysis(safeFileName);
+    fallback.provider = "fallback";
+    fallback.model = runtimeConfigs.analysis.model;
+    fallback.taskType = taskType;
+    fallback.warningCode = "analysis_fallback";
+    fallback.warning = error.message || "Text analysis failed; returned fallback cards.";
+    if (storedHash) fallback.sourceHash = storedHash;
+    return sendJson(res, 200, fallback);
   }
-
-  return sendJson(res, 200, normalized);
 }
 
 function extensionFromFileName(fileName) {

@@ -146,8 +146,7 @@ export async function classifyContent({ content, contentType, fileName, lang, co
       { role: 'system', content: prompt.system },
       { role: 'user', content: prompt.user }
     ],
-    temperature: 0.3,
-    max_tokens: 256
+    max_tokens: 512
   };
 
   const response = await callChatCompletion(config, payload, 30000);
@@ -178,7 +177,10 @@ export function getFallbackTaskType({ contentType, fileName }) {
   const ct = String(contentType || '').toLowerCase();
   const fn = String(fileName || '').toLowerCase();
 
-  if (ct.startsWith('image/')) return { taskType: 'image_generation' };
+  if (ct === 'image' || ct.startsWith('image/')) return { taskType: 'image_generation' };
+  if (ct === 'video') return { taskType: 'content' };
+  if (ct === 'text') return { taskType: 'research' };
+  if (ct === 'url') return { taskType: 'research' };
   if (ct === 'application/pdf') return { taskType: 'research' };
   if (ct.startsWith('text/')) return { taskType: 'research' };
   if (ct.startsWith('application/vnd.')) return { taskType: 'research' };
@@ -231,6 +233,16 @@ export function getPromptForTaskType(taskType, lang, contentType = '') {
 }
 
 export async function routeContent({ content, contentType, fileName, lang, config }) {
+  const fallback = getFallbackTaskType({ contentType, fileName });
+  const ct = String(contentType || '').toLowerCase();
+  if (ct === 'image' || ct.startsWith('image/') || String(content || '').startsWith('data:image/')) {
+    return {
+      taskType: fallback.taskType || 'image_generation',
+      confidence: 0,
+      wasFallback: true,
+      rationale: 'Image content uses fallback routing'
+    };
+  }
   let classification;
   if (config && config.apiKey) {
     try {
@@ -242,6 +254,5 @@ export async function routeContent({ content, contentType, fileName, lang, confi
   } else {
     classification = { taskType: 'general', confidence: 0, rationale: 'No config provided' };
   }
-  const fallback = getFallbackTaskType({ contentType, fileName });
   return resolveTaskType(classification, fallback);
 }
