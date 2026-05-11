@@ -16,7 +16,7 @@ const CHINESE_NUMERAL_COUNTS = new Map([
 ]);
 
 const DIRECTION_WORD_RE = /(方向|方案|概念方向|视觉概念|创意概念|风格方向|directions?|options?|concepts?|visual concepts?)/i;
-const DIRECTION_CREATE_RE = /(生成|创建|新建|做|产出|给我|帮我|发散|展开|拆出|列出|设计|generate|create|make|produce|brainstorm|develop|propose|give me)/i;
+const DIRECTION_CREATE_RE = /(生成|创建|新建|做|整理|产出|给我|帮我|发散|展开|拆出|列出|设计|generate|create|make|produce|brainstorm|develop|propose|give me)/i;
 const DIRECTION_EXPLAIN_ONLY_RE = /(怎么|如何|流程|教程|说明|解释|原理|为什么|how to|explain|tutorial|guide).{0,24}(方向|方案|direction|option|concept)/i;
 const DIRECTION_CARD_RE = /(方向|方案|概念|direction|option|concept).{0,16}(卡片|节点|card|node)|(?:卡片|节点|card|node).{0,16}(方向|方案|概念|direction|option|concept)/i;
 const DIRECTION_CONTEXT_RE = /(方向|概念方向|视觉概念|创意概念|风格方向|成图方向|视觉|创意|风格|directions?|concepts?|visual concepts?)/i;
@@ -40,7 +40,7 @@ export function ensureCommittedCanvasActions({
   const wantsDirections = shouldCreateDirectionActions(requestText, replyText);
 
   if (normalized.length > 0) {
-    if (wantsDirections && !hasConcreteDirectionAction(normalized)) {
+    if (wantsDirections) {
       const directionActions = buildDirectionFallbackActions({
         message: requestText,
         reply: replyText,
@@ -48,7 +48,18 @@ export function ensureCommittedCanvasActions({
         lang,
         maxActions
       });
-      if (directionActions.length) return mergePrimaryActions(directionActions, normalized, maxActions);
+      if (!hasConcreteDirectionAction(normalized)) {
+        if (directionActions.length) return mergePrimaryActions(directionActions, normalized, maxActions);
+      } else {
+        const repairedDirections = repairDirectionActions({
+          actions: normalized,
+          fallbackActions: directionActions,
+          message: requestText,
+          reply: replyText,
+          maxActions
+        });
+        if (repairedDirections) return mergePrimaryActions(repairedDirections, normalized, maxActions);
+      }
     }
     return normalized;
   }
@@ -75,6 +86,88 @@ export function ensureCommittedCanvasActions({
 
 function hasConcreteDirectionAction(actions = []) {
   return actions.some((action) => String(action?.type || action?.name || "") === "create_direction");
+}
+
+function repairDirectionActions({
+  actions = [],
+  fallbackActions = [],
+  message = "",
+  reply = "",
+  maxActions = 8
+} = {}) {
+  const max = clampPositiveNumber(maxActions, 8);
+  const requestedCount = requestedDirectionCount(message, reply, max);
+  const existingDirections = actions.filter((action) => String(action?.type || action?.name || "") === "create_direction");
+  if (!existingDirections.length) return null;
+
+  const usableDirections = existingDirections
+    .filter((action) => hasUsefulDirectionContent(action, message, reply))
+    .map((action) => normalizeExistingDirectionAction(action));
+  const targetCount = Math.max(1, Math.min(max, requestedCount || usableDirections.length || fallbackActions.length));
+  if (usableDirections.length >= targetCount && existingDirections.length >= targetCount) return null;
+
+  const repaired = dedupeDirectionActions([...usableDirections, ...fallbackActions]).slice(0, targetCount);
+  if (repaired.length >= Math.min(targetCount, existingDirections.length) && repaired.length > usableDirections.length) return repaired;
+  if (!usableDirections.length && repaired.length) return repaired;
+  return null;
+}
+
+function hasUsefulDirectionContent(action = {}, message = "", reply = "") {
+  const title = normalizeText(action.title || action.nodeName || "");
+  const description = normalizeText(action.description || action.prompt || action.content?.text || action.content?.description || "");
+  const combined = normalizeText(`${title} ${description}`);
+  if (!combined) return false;
+  const request = normalizeComparableText(message);
+  const answer = normalizeComparableText(reply);
+  const titleKey = normalizeComparableText(title);
+  const bodyKey = normalizeComparableText(description);
+  if (titleKey && (titleKey === request || titleKey === answer || request.includes(titleKey) && titleKey.length > 18)) return false;
+  if (bodyKey && (bodyKey === request || bodyKey === answer)) return false;
+  if (/^(方向|方案|概念|direction|option|concept)\s*[0-9一二两三四五六七八九十]*$/i.test(title) && description.length < 12) return false;
+  if (title.length >= 4 && !isMechanicalDirectionTitle(title)) return true;
+  return looksVisual(combined) || description.length >= 16;
+}
+
+function isMechanicalDirectionTitle(title = "") {
+  const text = normalizeText(title);
+  if (!text) return true;
+  if (/^(方向|方案|概念|direction|option|concept)\s*[0-9一二两三四五六七八九十]*$/i.test(text)) return true;
+  if ((text.match(/方向|方案|概念|卡片|节点|direction|option|concept|card|node/gi) || []).length >= 2 && text.length > 18) return true;
+  return false;
+}
+
+function normalizeExistingDirectionAction(action = {}) {
+  const title = normalizeText(action.title || action.nodeName || "");
+  const description = normalizeText(action.description || action.prompt || action.content?.description || action.content?.text || "");
+  const prompt = normalizeText(action.prompt || description || title);
+  return {
+    ...action,
+    type: "create_direction",
+    title: title.slice(0, 120),
+    description: description.slice(0, 700),
+    prompt: prompt.slice(0, 1600),
+    mode: action.mode || "direction",
+    nodeType: action.nodeType || inferDirectionNodeType(`${title}\n${description}\n${prompt}`)
+  };
+}
+
+function dedupeDirectionActions(actions = []) {
+  const seen = new Set();
+  const result = [];
+  for (const action of actions) {
+    if (!action || String(action.type || action.name || "") !== "create_direction") continue;
+    const key = normalizeComparableText(`${action.title || ""} ${action.prompt || action.description || ""}`).slice(0, 180);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push(action);
+  }
+  return result;
+}
+
+function normalizeComparableText(value = "") {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[#*_`~>|"'“”‘’\s，。！？、；：:;,.!?()[\]{}-]+/g, "");
 }
 
 function mergePrimaryActions(primary = [], secondary = [], maxActions = 8) {

@@ -103,6 +103,25 @@ import {
 
 {
   const actions = ensureCommittedCanvasActions({
+    message: "基于当前分支约束，整理 4 个首页视觉方向卡片。",
+    reply: "# 基于当前分支约束，整理 4 个首页视觉方向卡片。\n\n基于当前分支约束，整理 4 个首页视觉方向卡片。",
+    actions: [
+      { type: "create_direction", title: "基于当前分支约束，整理 4 个首页视觉方向卡片。" },
+      { type: "create_direction", title: "基于当前分支约束，整理 4 个首页视觉方向卡片。" },
+      { type: "create_direction", title: "基于当前分支约束，整理 4 个首页视觉方向卡片。" },
+      { type: "create_direction", title: "基于当前分支约束，整理 4 个首页视觉方向卡片。" }
+    ],
+    lang: "zh",
+    maxActions: 8
+  });
+  assert.equal(actions.length, 4);
+  assert.equal(actions.every((action) => action.type === "create_direction"), true);
+  assert.equal(actions.some((action) => action.title.includes("首页视觉方向卡片")), false);
+  assert.equal(actions.every((action) => action.description && action.prompt), true);
+}
+
+{
+  const actions = ensureCommittedCanvasActions({
     message: "请整理到画布上",
     reply: "我会把这些内容创建成卡片放到画布上。",
     actions: [],

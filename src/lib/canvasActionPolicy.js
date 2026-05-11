@@ -165,7 +165,7 @@ function detect(message) {
   const directionContext = directionCardRequest || /(方向|概念方向|视觉概念|创意概念|风格方向|成图方向|视觉|创意|风格|directions?|concepts?|visual concepts?)/i.test(text);
   const directionRequest = !genericNonVisualPlan && !negatedDirectionCardRequest && directionContext
     && /(方向|方案|概念方向|视觉概念|创意概念|风格方向|directions?|options?|concepts?|visual concepts?)/i.test(text)
-    && /(生成|创建|新建|做|产出|给我|帮我|发散|展开|拆出|列出|设计|组合|generate|create|make|produce|brainstorm|develop|propose|give me)/i.test(text);
+    && /(生成|创建|新建|做|整理|产出|给我|帮我|发散|展开|拆出|列出|设计|组合|generate|create|make|produce|brainstorm|develop|propose|give me)/i.test(text);
   const mediaFromExistingDirection = /(?:根据|基于|按照|用|把|从|选择|选中|current|selected|use|from|based on).{0,24}(方向|方案|概念|direction|option|concept).{0,32}(成图|出图|生成.{0,10}(图片|图像|图|视觉|海报)|generate\s+(?:image|picture|visual))|(?:方向|方案|概念|direction|option|concept).{0,32}(生成.{0,10}(图片|图像|图|视觉|海报)|成图|出图|generate\s+(?:image|picture|visual))/i.test(text);
   const mediaGeneration = !workspaceAction
     && !deferredMediaGeneration
@@ -295,6 +295,7 @@ function allowedActionTypesForIntent(intent) {
     if (intent.research) addMany(allowed, RESEARCH_SYNTHESIS_TYPES);
     if (intent.dataCode) addMany(allowed, DATA_CODE_TYPES);
     if (intent.writing) addMany(allowed, WRITING_TYPES);
+    if (intent.directAnalysis) addMany(allowed, COMPARISON_TYPES);
   }
   if ((intent.directionRequest || intent.directionCardRequest) && !intent.mediaGeneration) addMany(allowed, DIRECTION_TYPES);
   if (intent.mediaSearch) addMany(allowed, MEDIA_SEARCH_TYPES);

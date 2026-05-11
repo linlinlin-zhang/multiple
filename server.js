@@ -22,7 +22,7 @@ import { AGENT_SKILL_IDS, agentSkillToolFlags, normalizeAgentSkill, normalizeAge
 import { ingestText, ingestSnippet, retrieveContext, formatContextForPrompt, isEmbeddingConfigured, CONTEXT_KINDS } from "./src/lib/rag/index.js";
 import { classifyContent, getFallbackTaskType, resolveTaskType, routeContent } from "./src/lib/taskRouter.js";
 import { ensureMediaGenerationActions } from "./src/lib/chatActionGuard.js";
-import { ensureCommittedCanvasActions } from "./src/lib/canvasActionReliability.js";
+import { ensureCommittedCanvasActions, shouldCreateDirectionActions } from "./src/lib/canvasActionReliability.js";
 import { compactPipelineActionTypes, finalizeCanvasActions as runCanvasActionPipeline } from "./src/lib/canvasActionPipeline.js";
 import { extractInlineCanvasActionsFromReply, removeInlineCanvasActionBlocks } from "./src/lib/inlineCanvasActions.js";
 import { extractResponsesReasoningDelta, extractResponsesTextDelta } from "./src/lib/responsesStreamParser.js";
@@ -5510,11 +5510,15 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
   const requestText = String(message || "").normalize("NFKC");
   const combinedText = requestText + " " + String(reply || "").normalize("NFKC");
   const intent = classifyChatIntent(requestText);
+  const url = extractFirstUrl(requestText);
+  const directionIntent = intent.taskType === "direction_generation" || shouldCreateDirectionActions(requestText, reply);
+  const hasDirectionAction = normalized.some((action) => action?.type === "create_direction");
+  if (directionIntent && hasDirectionAction) return normalized;
   if (intent.taskType === "workspace") {
     const workspaceFallback = buildWorkspaceFallbackAction(requestText);
     if (workspaceFallback && !normalized.some((action) => action?.type === workspaceFallback.type)) return [workspaceFallback];
   }
-  if ((intent.taskType === "writing" || intent.summaryRequest) && !normalized.some((action) => ["create_note", "create_table", "create_todo"].includes(action?.type))) {
+  if (!directionIntent && (intent.taskType === "writing" || intent.summaryRequest) && !normalized.some((action) => ["create_note", "create_table", "create_todo"].includes(action?.type))) {
     return [{
       type: "create_note",
       title: requestText.slice(0, 48),
@@ -5528,6 +5532,18 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
       title: requestText.slice(0, 48),
       content: buildFallbackActionContent(type, requestText.slice(0, 48), requestText)
     }];
+  }
+  if (intent.webResearch && url && !normalized.some((action) => ["create_web_card", "create_link", "create_note", "web_search"].includes(action?.type))) {
+    return [
+      {
+        type: "create_web_card",
+        title: readableWebTitle(url, deriveSearchQueryClean(requestText) || url).slice(0, 80),
+        description: String(reply || requestText).slice(0, 420),
+        url,
+        query: deriveSearchQueryClean(requestText) || requestText.slice(0, 180)
+      },
+      ...normalized.filter((action) => action?.type !== "generate_image").slice(0, 3)
+    ];
   }
   const wantsArtifact = !intent.noCanvas && !intent.trivial && (
     intent.explicitCanvas ||
@@ -5556,7 +5572,6 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
   if (!wantsArtifact) return normalized;
   const fallbackTypes = fallbackActionTypesForRequest(requestText, matchedTypes);
   const title = requestText.slice(0, 48);
-  const url = extractFirstUrl(requestText);
   for (const actionType of fallbackTypes.slice(0, 4)) {
     const safeType = (actionType === "create_web_card" || actionType === "create_link") && !url ? "create_note" : actionType;
     const action = {
@@ -5659,7 +5674,7 @@ function isWorkspaceLayoutRequest(text) {
 
 function isDirectionRequest(text) {
   return /(方向|方案|概念方向|视觉概念|direction|option|concept)/i.test(String(text || ""))
-    && /(生成|创建|新建|做|产出|发散|展开|generate|create|make|produce|brainstorm)/i.test(String(text || ""));
+    && /(生成|创建|新建|做|整理|产出|发散|展开|拆出|列出|设计|组合|generate|create|make|produce|brainstorm|develop|propose)/i.test(String(text || ""));
 }
 
 function isVisualCritiqueRequest(text) {

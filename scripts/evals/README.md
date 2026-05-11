@@ -12,7 +12,7 @@ ThoughtGrid keeps canvas-action evals separated by purpose.
 - Default: blocking; included in `npm run test:guards`.
 - Network/model calls: none.
 
-The complex corpus contains 106 deterministic cases and also checks deep action fields, array lengths, required/forbidden text patterns, and canonical trace stages. It targets failures such as incomplete multi-photo comparison items, mechanical titles, visible markdown residue, leaked planning text, false workspace routing, and direction-vs-generation confusion.
+The complex corpus contains 107 deterministic cases and also checks deep action fields, array lengths, required/forbidden text patterns, and canonical trace stages. It targets failures such as incomplete multi-photo comparison items, mechanical titles, visible markdown residue, leaked planning text, false workspace routing, mechanical direction-card repair, and direction-vs-generation confusion.
 
 ## Capability smoke evals
 

@@ -2,7 +2,8 @@ const IMAGE_GENERATION_ACTION = "generate_image";
 const VIDEO_GENERATION_ACTION = "generate_video";
 
 const IMAGE_SEARCH_RE = /(找|搜|搜索|检索|查找|参考图|图片参考|视觉参考|灵感图|素材图|similar|reference|search|look\s*up|find).{0,16}(图|图片|图像|照片|image|photo|picture|visual|reference)|(?:image|photo|picture|visual)\s+(?:search|reference)/i;
-const IMAGE_GENERATE_RE = /(成图|出图|生成(?:一张|这张|这些|几个|多张)?(?:图|图片|图像|照片|视觉|海报|插图|概念图|卡片)?|生成.*(?:成图|图片|图像|视觉|海报|插图|概念图)|画(?:一张|这张|这些)?(?:图|图片|图像|画面)?|绘制|渲染|做(?:一张|几张|这些)?.*(?:图|图片|图像|视觉|海报|插图|概念图)|make\s+(?:an?\s+)?image|generate\s+(?:an?\s+)?(?:image|picture|visual|illustration|render|concept)|draw\s+(?:an?\s+)?(?:image|picture|illustration)|render\s+(?:an?\s+)?(?:image|picture|visual))/i;
+const IMAGE_GENERATE_RE = /(成图|出图|生成(?:一张|这张|这些|几个|多张|一个)?[^，。！？.!?]{0,24}(?:图|图片|图像|照片|视觉|海报|插图|概念图|画面|变体|版本)|生成.*(?:成图|图片|图像|视觉|海报|插图|概念图|变体)|画(?:一张|这张|这些)?(?:图|图片|图像|画面)|绘制|渲染|做(?:一张|几张|这些)?.*(?:图|图片|图像|视觉|海报|插图|概念图)|make\s+(?:an?\s+)?image|generate\s+(?:an?\s+)?(?:image|picture|visual|illustration|render|concept)|draw\s+(?:an?\s+)?(?:image|picture|illustration)|render\s+(?:an?\s+)?(?:image|picture|visual))/i;
+const SELECTED_DIRECTION_GENERATE_RE = /(?:生成|制作|做).{0,12}(?:这个|当前|选中|所选).{0,8}(?:方向|方案|概念)|(?:这个|当前|选中|所选).{0,8}(?:方向|方案|概念).{0,12}(?:生成|成图|出图)/i;
 const VIDEO_GENERATE_RE = /(生成|制作|做|创作).{0,12}(视频|动画|短片|动态镜头|动图|video|animation|clip|motion)|(?:generate|make|create)\s+(?:a\s+)?(?:video|animation|clip|motion)/i;
 const MEDIA_NEGATION_RE = /(不要|不用|无需|别|不需要).{0,12}(成图|出图|生成图|图片|图像|视频|动画|image|video|picture|visual)|(?:no|without|do\s+not|don't)\s+(?:generate|make|create)?.{0,16}(image|video|picture|visual)/i;
 const PROMPT_ONLY_RE = /(提示词|prompt).{0,12}(怎么写|优化|润色|改写|模板|结构|参考|建议|分析)|(写|生成|输出|给).{0,10}(图片|图像|image|picture).{0,10}(提示词|prompt)|(?:write|improve|revise|optimi[sz]e).{0,18}(image\s+)?prompt|(?:image|picture)\s+generation\s+prompt/i;
@@ -33,7 +34,7 @@ export function isDirectImageGenerationRequest(message = "") {
   if ((PROMPT_ONLY_RE.test(text) || EXPLAIN_ONLY_RE.test(text)) && !/(直接|现在|马上|同时|并|然后).{0,10}(成图|出图|生成(?:图|图片|图像)?|画|渲染|make|generate|draw|render)/i.test(text)) {
     return false;
   }
-  return IMAGE_GENERATE_RE.test(text);
+  return IMAGE_GENERATE_RE.test(text) || SELECTED_DIRECTION_GENERATE_RE.test(text);
 }
 
 export function isDirectVideoGenerationRequest(message = "") {

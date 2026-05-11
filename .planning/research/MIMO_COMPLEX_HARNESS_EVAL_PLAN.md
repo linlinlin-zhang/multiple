@@ -178,14 +178,22 @@ Current progress:
 - Steps 1-5 are complete.
 - Step 7 initial 40-case corpus is complete.
 - Step 8 local validation is complete for syntax checks, skipped-by-default eval scripts, `npm run test:guards`, and `npm test`.
-- Step 6 is complete: the deterministic complex set now contains 106 cases, exceeding the 100-case target.
-- Steps 9-10 remain open.
+- Step 6 is complete: the deterministic complex set now contains 107 cases, exceeding the 100-case target.
+- Step 9 is partially complete: MiMo live evals ran against the 40-case suite and emitted structured reports under `scripts/evals/artifacts/`.
+- Step 10 remains open.
 
 Step 4/5 implementation notes:
 
 - `scripts/test-canvas-action-regression.js` now supports `actionFields`, `minArrayLength`, `exactArrayLength`, `textIncludes`, `textExcludes`, `requiredTextPatterns`, `forbiddenTextPatterns`, and `trace` checks.
-- `scripts/evals/canvas-action-complex-regression.jsonl` now contains 106 complex deterministic fixtures, including four-photo completeness, single-photo non-comparison, direction-vs-generation routing, markdown residue guards, source-research stop conditions, workspace negation, media open-world budgets, code/data artifacts, web/source workflows, agent stops, and multi-turn/history cases.
+- `scripts/evals/canvas-action-complex-regression.jsonl` now contains 107 complex deterministic fixtures, including four-photo completeness, single-photo non-comparison, direction-vs-generation routing, mechanical direction-card repair, markdown residue guards, source-research stop conditions, workspace negation, media open-world budgets, code/data artifacts, web/source workflows, agent stops, and multi-turn/history cases.
 - `npm run test:guards` now includes the complex deterministic corpus.
+
+Step 9 live-eval notes:
+
+- Targeted MiMo rerun for the previous critical failures passed: `mimo.files.multi_text_matrix` and `mimo.history.branch_context` both recovered.
+- Full MiMo pass 1: `38/40`, with residual failures in URL reference-card fallback and workspace arrange fallback. A targeted rerun of those two cases passed.
+- Full MiMo pass 2: `36/40`, with live-model volatility around moodboard synthesis vs image generation, planning timeline fallback, existing-reference table typing, and workspace arrange sometimes degrading to a single move action.
+- Current decision: pause further patching here. Treat these as residual live-model robustness risks to revisit with broader policy/fallback design, not one-off fixes.
 
 ## 7. Open Risks
 

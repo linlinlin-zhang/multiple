@@ -74,8 +74,18 @@ const visualCanvas = {
 {
   assert.equal(isDirectImageGenerationRequest("帮我搜一些哥特法师参考图"), false);
   assert.equal(isDirectImageGenerationRequest("帮我写一个图片生成 prompt"), false);
+  assert.equal(isDirectImageGenerationRequest("画布上卡片太乱了，帮我自动整理布局，尽量按来源、分析、方案分组，不要删除任何节点。"), false);
   assert.equal(isDirectImageGenerationRequest("帮我把这个方向直接成图"), true);
   assert.equal(isDirectVideoGenerationRequest("基于这张图生成一段 5 秒动画"), true);
+}
+
+{
+  const actions = ensureMediaGenerationActions({
+    message: "画布上卡片太乱了，帮我自动整理布局，尽量按来源、分析、方案分组，不要删除任何节点。",
+    actions: [{ type: "auto_layout" }],
+    lang: "zh"
+  });
+  assert.deepEqual(actions, [{ type: "auto_layout" }]);
 }
 
 {
