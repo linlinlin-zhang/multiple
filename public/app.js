@@ -4649,6 +4649,9 @@ function normalizeChatMarkdown(markdown) {
 
 function normalizeChatMarkdownText(segment) {
   let text = String(segment || "").replace(/[ \t]+$/gm, "");
+  text = text.replace(/(^|\n)[ \t]*\\(#{1,6})[ \t]*(?=[^\s#])/g, "$1$2 ");
+  text = text.replace(/([。！？!?；;：:])\s*\\(#{1,6})[ \t]*(?=[^\s#])/g, "$1\n\n$2 ");
+  text = text.replace(/\|[ \t]*\\(#{1,6})[ \t]*(?=[^\s#])/g, "|\n\n$1 ");
   text = text.replace(/([^\n])([ \t]*)(```|~~~)/g, "$1\n\n$3");
   text = text.replace(/([^\n])[ \t]+(-{3,}|\*{3,}|_{3,})[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "$1\n\n$2\n\n$3 ");
   text = text.replace(/(^|\n)(-{3,}|\*{3,}|_{3,})[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "$1$2\n\n$3 ");
@@ -7327,6 +7330,18 @@ function scheduleAutoCollapseActionBatch(nodeIds = [], parentNodeId = "", option
   }, delay);
 }
 
+function scheduleAutoHideNodeContent(nodeId, options = {}) {
+  const id = String(nodeId || "").trim();
+  if (!id) return;
+  const delay = Number.isFinite(options.delay) ? Math.max(0, options.delay) : 720;
+  window.setTimeout(() => {
+    if (!state.nodes.has(id)) return;
+    state.contentHidden.add(id);
+    applyCollapseState();
+    if (options.save !== false) autoSave();
+  }, delay);
+}
+
 function actionTopicTitle(action = {}, context = {}) {
   const explicit = String(action.topicTitle || context.topicTitle || "").trim();
   if (explicit) return explicit.slice(0, 48);
@@ -7461,6 +7476,9 @@ async function applyVoiceActions(value, context = {}) {
   }
   if (pendingAgents.length) await Promise.all(pendingAgents);
   if (creationCount > 0) scheduleGeneratedArrange({ delay: 180, duration: 500 });
+  if (topicNodeId && !hadTopicNode && creationCount > 0) {
+    scheduleAutoHideNodeContent(topicNodeId, { delay: 900 });
+  }
   if (creationCount > 1 && !batchHadFailure) {
     scheduleAutoCollapseActionBatch(Array.from(batchNodeIds), batchParentId, { delay: 820 });
   }
