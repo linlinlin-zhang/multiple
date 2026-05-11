@@ -8962,6 +8962,12 @@ function setupOptionCardElement(element, option, taskType = "general") {
   element.dataset.nodeType = option.nodeType || "image";
 }
 
+function removeReferenceBadge(element) {
+  if (!element) return;
+  const existing = element.querySelector(".reference-badge");
+  existing?.remove();
+}
+
 function normalizeOptionContent(option) {
   const nodeType = String(option?.nodeType || "").toLowerCase();
   const current = option?.content && typeof option.content === "object" ? option.content : {};
@@ -9528,13 +9534,7 @@ function createOptionNode(option, parentNodeId, taskType = "general") {
   const button = element.querySelector(".generate-button");
   configureOptionPrimaryButton(button, option);
   button.addEventListener("click", () => generateOption(id, option));
-  if (option.references?.length) {
-    const badge = document.createElement("span");
-    badge.className = "reference-badge";
-    badge.textContent = `${option.references.length}`;
-    badge.title = `${option.references.length} reference${option.references.length > 1 ? "s" : ""}`;
-    element.appendChild(badge);
-  }
+  removeReferenceBadge(element);
 
   board.appendChild(element);
   const placement = findNonOverlappingPosition(newX, newY, {
@@ -11416,13 +11416,7 @@ function renderStandaloneOptions(options, parentNodeId, taskType = "general") {
     const button = element.querySelector(".generate-button");
     configureOptionPrimaryButton(button, option);
     button.addEventListener("click", () => generateOption(id, option));
-    if (option.references?.length) {
-      const badge = document.createElement("span");
-      badge.className = "reference-badge";
-      badge.textContent = `${option.references.length}`;
-      badge.title = `${option.references.length} reference${option.references.length > 1 ? "s" : ""}`;
-      element.appendChild(badge);
-    }
+    removeReferenceBadge(element);
 
     board.appendChild(element);
     const placement = findNonOverlappingPosition(newX, newY, {
@@ -11477,13 +11471,7 @@ function renderExploreOptions(options, references, taskType = "general") {
     button.addEventListener("click", () => generateOption(id, option));
 
     // Add reference badge if references exist
-    if (references.length > 0) {
-      const badge = document.createElement("span");
-      badge.className = "reference-badge";
-      badge.textContent = `${references.length}`;
-      badge.title = `${references.length} reference${references.length > 1 ? 's' : ''}`;
-      element.appendChild(badge);
-    }
+    removeReferenceBadge(element);
 
     board.appendChild(element);
     registerNode(id, element, {
@@ -11972,13 +11960,7 @@ function restoreOptionNode(element, option) {
     button.addEventListener("click", () => generateOption(nodeId, option));
   }
 
-  if (option.references?.length) {
-    const badge = document.createElement("span");
-    badge.className = "reference-badge";
-    badge.textContent = `${option.references.length}`;
-    badge.title = `${option.references.length} reference${option.references.length > 1 ? "s" : ""}`;
-    element.appendChild(badge);
-  }
+  removeReferenceBadge(element);
 
   if (node) {
     const wasGenerated = Boolean(node.generated);
@@ -17636,13 +17618,7 @@ async function loadSession(sessionId) {
       button.addEventListener("click", () => generateOption(nodeId, option));
 
       // Restore reference badge if references exist
-      if (option.references && option.references.length > 0) {
-        const badge = document.createElement("span");
-        badge.className = "reference-badge";
-        badge.textContent = `${option.references.length}`;
-        badge.title = `${option.references.length} reference${option.references.length > 1 ? 's' : ''}`;
-        element.appendChild(badge);
-      }
+      removeReferenceBadge(element);
 
       board.appendChild(element);
       registerNode(nodeId, element, {
