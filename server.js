@@ -915,7 +915,7 @@ async function refreshConfigs() {
       model: MIMO_DEFAULT_MODEL,
       baseUrl: MIMO_DEFAULT_BASE_URL,
       preferApiKeyEnv: true,
-      apiKeyEnv: ["MIMO_API_KEY", "CHAT_API_KEY", "CONTROLLER_MODEL_CANDIDATE_MIMO_API_KEY"],
+      apiKeyEnv: ["CHAT_API_KEY", "MIMO_API_KEY", "CONTROLLER_MODEL_CANDIDATE_MIMO_API_KEY"],
       options: {
         max_tokens: 65536,
         enableWebSearch: false,
@@ -933,7 +933,7 @@ async function refreshConfigs() {
       model: MIMO_DEFAULT_MODEL,
       baseUrl: MIMO_DEFAULT_BASE_URL,
       preferApiKeyEnv: true,
-      apiKeyEnv: ["MIMO_API_KEY", "ANALYSIS_API_KEY", "CONTROLLER_MODEL_CANDIDATE_MIMO_API_KEY"],
+      apiKeyEnv: ["ANALYSIS_API_KEY", "MIMO_API_KEY", "CONTROLLER_MODEL_CANDIDATE_MIMO_API_KEY"],
       options: {
         max_tokens: 65536,
         enableWebSearch: false,
@@ -1023,7 +1023,12 @@ function buildModelConfig(role, defaults, dbSettings = null) {
   const envProvider = process.env[`${role}_PROVIDER`] || "";
   const envBaseUrl = process.env[`${role}_API_BASE_URL`] || "";
   const envModel = process.env[`${role}_MODEL`] || "";
-  const ignoreLegacyEnv = isLegacyEnvDefault(role, { provider: envProvider, endpoint: envBaseUrl, model: envModel });
+  const ignoreLegacyEnv = isLegacyEnvDefault(role, {
+    provider: envProvider,
+    endpoint: envBaseUrl,
+    model: envModel,
+    apiKey: process.env[`${role}_API_KEY`] || ""
+  });
   const defaultApiKey = firstEnv(defaults.apiKeyEnv || []);
   const apiKey =
     (effectiveDbSettings?.apiKey ?? "") ||
@@ -1078,6 +1083,7 @@ function inferProviderFromEndpoint(endpoint, fallback) {
 
 function isLegacyEnvDefault(role, envSettings) {
   if (!envSettings) return false;
+  if (envSettings.apiKey) return false;
   const endpoint = String(envSettings.endpoint || "").replace(/\/+$/, "");
   const model = String(envSettings.model || "");
   const provider = String(envSettings.provider || "").toLowerCase();
@@ -1102,6 +1108,14 @@ function isLegacyDefault(role, dbSettings) {
   if (!dbSettings) return false;
   const endpoint = String(dbSettings.endpoint || "").replace(/\/+$/, "");
   const model = String(dbSettings.model || "");
+  if (
+    (role === "CHAT" || role === "ANALYSIS") &&
+    !dbSettings.apiKey &&
+    endpoint === MIMO_DEFAULT_BASE_URL &&
+    model === MIMO_DEFAULT_MODEL
+  ) {
+    return true;
+  }
   if (
     (role === "CHAT" || role === "ANALYSIS") &&
     !dbSettings.apiKey &&
