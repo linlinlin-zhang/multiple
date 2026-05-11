@@ -5,11 +5,14 @@ ThoughtGrid keeps canvas-action evals separated by purpose.
 ## Regression evals
 
 - File: `canvas-action-regression.jsonl`
+- Complex file: `canvas-action-complex-regression.jsonl`
 - Runner: `node scripts/test-canvas-action-regression.js`
-- Package script: `npm run test:canvas-actions`
+- Package scripts: `npm run test:canvas-actions`, `npm run test:canvas-actions:complex`
 - Purpose: deterministic pipeline and policy regression checks.
 - Default: blocking; included in `npm run test:guards`.
 - Network/model calls: none.
+
+The complex corpus also checks deep action fields, array lengths, required/forbidden text patterns, and canonical trace stages. It targets failures such as incomplete multi-photo comparison items, mechanical titles, visible markdown residue, and leaked planning text.
 
 ## Capability smoke evals
 

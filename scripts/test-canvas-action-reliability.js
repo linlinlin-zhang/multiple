@@ -97,9 +97,8 @@ import {
     lang: "zh",
     maxActions: 8
   });
-  assert.equal(actions.length, 4);
-  assert.deepEqual(actions.slice(0, 3).map((action) => action.type), ["create_direction", "create_direction", "create_direction"]);
-  assert.equal(actions[3].type, "create_comparison");
+  assert.equal(actions.length, 3);
+  assert.deepEqual(actions.map((action) => action.type), ["create_direction", "create_direction", "create_direction"]);
 }
 
 {

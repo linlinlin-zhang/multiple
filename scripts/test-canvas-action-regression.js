@@ -156,13 +156,70 @@ function hasIntersection(actual, expected) {
 }
 
 function hasOwnPath(value, pathExpression) {
+  return getPath(value, pathExpression).exists;
+}
+
+function getPath(value, pathExpression) {
   const parts = String(pathExpression || "").split(".").filter(Boolean);
   let current = value;
   for (const part of parts) {
-    if (!current || typeof current !== "object" || !(part in current)) return false;
+    if (!current || typeof current !== "object" || !(part in current)) return { exists: false, value: undefined };
     current = current[part];
   }
-  return true;
+  return { exists: true, value: current };
+}
+
+function flattenText(value) {
+  const chunks = [];
+  const walk = (item) => {
+    if (item === null || item === undefined) return;
+    if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+      chunks.push(String(item));
+      return;
+    }
+    if (Array.isArray(item)) {
+      item.forEach(walk);
+      return;
+    }
+    if (typeof item === "object") {
+      Object.values(item).forEach(walk);
+    }
+  };
+  walk(value);
+  return chunks.join("\n");
+}
+
+function regexFromPattern(pattern) {
+  if (pattern instanceof RegExp) return pattern;
+  const text = String(pattern || "");
+  const match = text.match(/^\/([\s\S]*)\/([a-z]*)$/i);
+  if (match) return new RegExp(match[1], match[2]);
+  return new RegExp(text, "i");
+}
+
+function textMatchesAny(text, patterns = []) {
+  return patterns
+    .map(regexFromPattern)
+    .filter((regex) => regex.test(text))
+    .map((regex) => regex.toString());
+}
+
+function actionsByType(actions, type) {
+  return actions.filter((action) => action?.type === type);
+}
+
+function actionUserFacingText(actions) {
+  return flattenText((actions || []).map((action) => ({
+    title: action?.title,
+    description: action?.description,
+    prompt: action?.prompt,
+    query: action?.query,
+    url: action?.url,
+    role: action?.role,
+    deliverable: action?.deliverable,
+    successCriteria: action?.successCriteria,
+    content: action?.content
+  })));
 }
 
 function assertFixture(fixture) {
@@ -221,12 +278,89 @@ function assertFixture(fixture) {
       if (missing.length) failures.push(`${type} missing content fields [${missing.join(", ")}]`);
     }
   }
+  if (expected.actionFields && typeof expected.actionFields === "object") {
+    for (const [type, fields] of Object.entries(expected.actionFields)) {
+      const action = result.actions.find((item) => item?.type === type);
+      if (!action) {
+        failures.push(`missing ${type} action for action field checks`);
+        continue;
+      }
+      const missing = fields.filter((field) => !getPath(action, field).exists);
+      if (missing.length) failures.push(`${type} missing action fields [${missing.join(", ")}]`);
+    }
+  }
   if (expected.absentContentFields && typeof expected.absentContentFields === "object") {
     for (const [type, fields] of Object.entries(expected.absentContentFields)) {
       const action = result.actions.find((item) => item?.type === type);
       if (!action) continue;
       const present = fields.filter((field) => hasOwnPath(action.content, field));
       if (present.length) failures.push(`${type} should not include content fields [${present.join(", ")}]`);
+    }
+  }
+  if (expected.minArrayLength && typeof expected.minArrayLength === "object") {
+    for (const [type, checks] of Object.entries(expected.minArrayLength)) {
+      const action = result.actions.find((item) => item?.type === type);
+      if (!action) {
+        failures.push(`missing ${type} action for array length checks`);
+        continue;
+      }
+      for (const [pathExpression, minLength] of Object.entries(checks || {})) {
+        const resolved = getPath(action, pathExpression);
+        const actualLength = Array.isArray(resolved.value) ? resolved.value.length : -1;
+        if (actualLength < minLength) failures.push(`${type}.${pathExpression} expected length >= ${minLength}, got ${actualLength}`);
+      }
+    }
+  }
+  if (expected.exactArrayLength && typeof expected.exactArrayLength === "object") {
+    for (const [type, checks] of Object.entries(expected.exactArrayLength)) {
+      const action = result.actions.find((item) => item?.type === type);
+      if (!action) {
+        failures.push(`missing ${type} action for exact array length checks`);
+        continue;
+      }
+      for (const [pathExpression, exactLength] of Object.entries(checks || {})) {
+        const resolved = getPath(action, pathExpression);
+        const actualLength = Array.isArray(resolved.value) ? resolved.value.length : -1;
+        if (actualLength !== exactLength) failures.push(`${type}.${pathExpression} expected length ${exactLength}, got ${actualLength}`);
+      }
+    }
+  }
+  if (expected.textIncludes && typeof expected.textIncludes === "object") {
+    for (const [type, snippets] of Object.entries(expected.textIncludes)) {
+      const text = actionUserFacingText(actionsByType(result.actions, type));
+      const missing = (snippets || []).filter((snippet) => !text.includes(String(snippet)));
+      if (missing.length) failures.push(`${type} text missing snippets [${missing.join(", ")}]`);
+    }
+  }
+  if (expected.textExcludes && typeof expected.textExcludes === "object") {
+    for (const [type, patterns] of Object.entries(expected.textExcludes)) {
+      const text = actionUserFacingText(actionsByType(result.actions, type));
+      const matched = textMatchesAny(text, patterns || []);
+      if (matched.length) failures.push(`${type} text matched forbidden patterns [${matched.join(", ")}]`);
+    }
+  }
+  if (Array.isArray(expected.requiredTextPatterns) && expected.requiredTextPatterns.length) {
+    const text = flattenText({ actions: result.actions, reply: fixture.mockReply || fixture.reply || "" });
+    const missing = expected.requiredTextPatterns
+      .map(regexFromPattern)
+      .filter((regex) => !regex.test(text))
+      .map((regex) => regex.toString());
+    if (missing.length) failures.push(`missing required text patterns [${missing.join(", ")}]`);
+  }
+  if (Array.isArray(expected.forbiddenTextPatterns) && expected.forbiddenTextPatterns.length) {
+    const text = flattenText({ actions: result.actions, reply: fixture.mockReply || fixture.reply || "" });
+    const matched = textMatchesAny(text, expected.forbiddenTextPatterns);
+    if (matched.length) failures.push(`matched forbidden text patterns [${matched.join(", ")}]`);
+  }
+  if (expected.trace && typeof expected.trace === "object") {
+    if (Array.isArray(expected.trace.finalActionTypes)) {
+      const missing = expected.trace.finalActionTypes.filter((type) => !(result.trace?.finalActionTypes || []).includes(type));
+      if (missing.length) failures.push(`trace missing final action types [${missing.join(", ")}]`);
+    }
+    if (Array.isArray(expected.trace.stageNames)) {
+      const stageNames = (result.trace?.pipelineStages || []).map((stage) => stage.name);
+      const missing = expected.trace.stageNames.filter((name) => !stageNames.includes(name));
+      if (missing.length) failures.push(`trace missing stage names [${missing.join(", ")}]`);
     }
   }
 
@@ -237,6 +371,7 @@ function assertFixture(fixture) {
       message: fixture.message,
       failures,
       actualActionTypes: actual,
+      actions: result.actions,
       actionPolicy: result.actionPolicy,
       trace: result.trace
     };

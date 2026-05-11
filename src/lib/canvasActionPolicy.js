@@ -128,7 +128,7 @@ export function isNoCanvasRequest(message) {
 
 function isTrivialChatRequest(message) {
   const text = normalizeIntentText(message);
-  return !text || (text.length <= 18 && /^(你好|您好|嗨|hello|hi|hey|谢谢|多谢|ok|好的|收到|在吗|help|帮助)[。！!?.\s]*$/i.test(text));
+  return !text || (text.length <= 24 && /^(你好|您好|嗨|hello|hi|hey|谢谢|谢谢你|多谢|ok|好的|收到|在吗|help|帮助)(?:[,，。！!?.\s]*(谢谢|谢谢你|多谢|好的|收到))*[。！!?.\s]*$/i.test(text));
 }
 
 function detect(message) {
@@ -152,7 +152,8 @@ function detect(message) {
     /((整理|排列|排版).{0,12}(画布布局|布局|节点)|布局|重叠|arrange|layout|tidy)/i.test(text)
       && /(画布|布局|重叠|节点|canvas|layout|overlap|node)/i.test(text)
   );
-  const deleteAction = /(删除|移除|删掉|delete|remove)/i.test(text) && /(卡片|节点|选中|这个|当前|card|node|selected|current)/i.test(text);
+  const negatedDeleteAction = /(不要|不需要|无需|别|不用|禁止|no|without|do\s+not|don't|dont).{0,18}(删除|移除|删掉|delete|remove)/i.test(text);
+  const deleteAction = !negatedDeleteAction && /(删除|移除|删掉|delete|remove)/i.test(text) && /(卡片|节点|选中|这个|当前|card|node|selected|current)/i.test(text);
   const sourceResearch = !workspaceAction && (/(研究|深入研究|探索|分析).{0,16}(当前|选中|源|素材|来源|卡片|节点|source|card|node)|(?:analy[sz]e|explore|research).{0,16}(?:selected|current|source|card|node)|打开.{0,8}(引用|参考资料|references)|open\s+references/i.test(text));
   const directionCardRequest = !workspaceAction && (/(方向|方案|概念|direction|option|concept).{0,16}(卡片|节点|card|node)|(?:卡片|节点|card|node).{0,16}(方向|方案|概念|direction|option|concept)/i.test(text));
   const directionContext = directionCardRequest || /(方向|概念方向|视觉概念|创意概念|风格方向|成图方向|视觉|创意|风格|directions?|concepts?|visual concepts?)/i.test(text);
