@@ -4349,6 +4349,21 @@ function actionDisplayTitle(action = {}) {
   return label === labelKey ? (type || (currentLang === "en" ? "canvas action" : "画布动作")) : label;
 }
 
+function renderChatActionCall(action = {}) {
+  const type = String(action.type || action.name || "");
+  if (!type) return null;
+  const card = document.createElement("div");
+  card.className = "chat-action-feedback chat-action-call";
+  const icon = ACTION_FEEDBACK_ICONS[type] || "⚡";
+  const title = actionDisplayTitle(action);
+  card.innerHTML = `
+    <span class="chat-action-icon">${escapeHtml(icon)}</span>
+    <span class="chat-action-label">${escapeHtml(currentLang === "en" ? "Tool call" : "工具调用")}</span>
+    <span class="chat-action-title">${escapeHtml(title)}</span>
+  `;
+  return card;
+}
+
 function formatActionProgressNote({ done = 0, total = 0, action = null } = {}) {
   if (!total) return "";
   const visibleStep = Math.min(total, Math.max(1, Number(done) || 1));
@@ -4647,8 +4662,16 @@ function normalizeChatMarkdown(markdown) {
   }).join("").trim();
 }
 
+function normalizeChatHeadingMarker(marker) {
+  const value = String(marker || "").replace(/\\/g, "").replace(/＃/g, "#").replace(/(?:&#35;|&num;)/gi, "#");
+  return "#".repeat(Math.min(6, Math.max(1, value.length)));
+}
+
 function normalizeChatMarkdownText(segment) {
   let text = String(segment || "").replace(/[ \t]+$/gm, "");
+  text = text.replace(/(^|\n)[ \t]*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))[ \t]*(?=[^\s#＃])/gi, (match, prefix, marker) => `${prefix}${normalizeChatHeadingMarker(marker)} `);
+  text = text.replace(/([。！？!?；;：:])\s*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))[ \t]*(?=[^\s#＃])/gi, (match, prefix, marker) => `${prefix}\n\n${normalizeChatHeadingMarker(marker)} `);
+  text = text.replace(/\|[ \t]*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))[ \t]*(?=[^\s#＃])/gi, (match, marker) => `|\n\n${normalizeChatHeadingMarker(marker)} `);
   text = text.replace(/(^|\n)[ \t]*\\(#{1,6})[ \t]*(?=[^\s#])/g, "$1$2 ");
   text = text.replace(/([。！？!?；;：:])\s*\\(#{1,6})[ \t]*(?=[^\s#])/g, "$1\n\n$2 ");
   text = text.replace(/\|[ \t]*\\(#{1,6})[ \t]*(?=[^\s#])/g, "|\n\n$1 ");
@@ -4746,7 +4769,14 @@ function renderMarkdownToHtml(markdown) {
   } catch {
     rawHtml = simpleMarkdownToHtml(normalizedMarkdown || markdown);
   }
-  return sanitizeMarkdownHtml(rawHtml);
+  return repairRenderedMarkdownHeadings(sanitizeMarkdownHtml(rawHtml));
+}
+
+function repairRenderedMarkdownHeadings(html) {
+  return String(html || "").replace(/<p>\s*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))\s+([^<][\s\S]*?)<\/p>/gi, (match, marker, text) => {
+    const level = normalizeChatHeadingMarker(marker).length;
+    return `<h${level}>${text.trim()}</h${level}>`;
+  });
 }
 
 function addCopyButtons(container) {
@@ -5443,8 +5473,6 @@ async function handlePrimarySourceFile(file) {
 
       clearOptions();
       state.latestAnalysis = null;
-      resetChatThreads();
-      renderChatMessages();
       state.collapsed.clear();
       state.contentHidden.clear();
       analysisNode.classList.add("hidden");
@@ -5491,8 +5519,6 @@ async function handlePrimarySourceFile(file) {
       clearOptions();
       state.latestAnalysis = null;
       state.fileUnderstanding = null;
-      resetChatThreads();
-      renderChatMessages();
       state.collapsed.clear();
       state.contentHidden.clear();
       analysisNode.classList.add("hidden");
@@ -5551,8 +5577,6 @@ async function handlePrimarySourceFile(file) {
       clearOptions();
       state.latestAnalysis = null;
       state.fileUnderstanding = null;
-      resetChatThreads();
-      renderChatMessages();
       state.collapsed.clear();
       state.contentHidden.clear();
       analysisNode.classList.add("hidden");
@@ -5590,8 +5614,7 @@ function canResearchNode(nodeId) {
       node.sourceCard.sourceUrl
     );
   }
-  // Option nodes (not yet generated) can be researched
-  if (node.option && !node.generated) return true;
+  if (node.option) return true;
   return false;
 }
 
@@ -5624,6 +5647,10 @@ function handleAnalyze(mode = "analyze") {
     analyzeStandaloneSourceCard(state.selectedNodeId, { mode });
     return;
   }
+  if (selectedNode?.option && state.selectedNodeId !== "analysis") {
+    researchNodeFromAction({ nodeId: state.selectedNodeId, mode });
+    return;
+  }
   analyzeSource(mode);
 }
 
@@ -5636,6 +5663,10 @@ function handleExplore() {
   const selectedNode = state.selectedNodeId ? state.nodes.get(state.selectedNodeId) : null;
   if (selectedNode?.sourceCard) {
     analyzeStandaloneSourceCard(state.selectedNodeId, { mode: "explore" });
+    return;
+  }
+  if (selectedNode?.option && state.selectedNodeId !== "analysis") {
+    researchNodeFromAction({ nodeId: state.selectedNodeId, mode: "explore" });
     return;
   }
   exploreSource();
@@ -6084,14 +6115,16 @@ async function handleChatSubmit(event) {
 async function submitChatMessage(message, options = {}) {
   const text = String(message || "").trim();
   if (!text) return;
+  const modelText = String(options.modelMessage || text).trim();
+  const visibleText = String(options.displayMessage || text).trim();
   if (chatOperationBusy) return;
   const subagentsEnabled = Boolean(options.subagentsEnabled ?? state.subagentsEnabled);
-  const inferredAgentMode = subagentsEnabled && shouldUseClientAgentMode(text);
+  const inferredAgentMode = subagentsEnabled && shouldUseClientAgentMode(modelText);
   const agentMode = Boolean(options.agentMode || inferredAgentMode);
   const effectiveThinkingMode = options.forcedThinkingMode || (agentMode ? "no-thinking" : state.thinkingMode);
   const selectedNodeId = options.selectedNodeId || state.selectedNodeId;
   const selectedNodeIds = orderedSelectedNodeIds(selectedNodeId);
-  const visualEvaluationRequest = isVisualEvaluationChatRequest(text);
+  const visualEvaluationRequest = isVisualEvaluationChatRequest(modelText);
   const chatAttachment = pendingChatAttachment;
   const attachmentImageDataUrl = chatAttachment?.kind === "image" ? chatAttachment.dataUrl : "";
   const attachmentVideoDataUrl = chatAttachment?.kind === "video" ? chatAttachment.dataUrl : "";
@@ -6104,7 +6137,7 @@ async function submitChatMessage(message, options = {}) {
   chatInput.value = "";
   clearChatAttachmentPreview();
   updateChatPrimaryButtonMode();
-  updateActiveChatThreadTitle(text);
+  updateActiveChatThreadTitle(visibleText);
   const userAttachments = attachmentImageDataUrl ? [{
     type: "image",
     name: chatAttachment?.fileName || "",
@@ -6125,7 +6158,10 @@ async function submitChatMessage(message, options = {}) {
     size: chatAttachment.size || 0,
     text: chatAttachment.text || ""
   }] : []));
-  appendChatMessage("user", text, { attachments: userAttachments });
+  appendChatMessage("user", visibleText, {
+    attachments: userAttachments,
+    actions: options.displayActions || options.userActions || []
+  });
   const pendingAssistant = appendChatMessage("assistant", "", {
     pending: true,
     thinkingRequested: effectiveThinkingMode === "thinking"
@@ -6157,7 +6193,7 @@ async function submitChatMessage(message, options = {}) {
       ? options.selectedContext
       : (visualEvaluationRequest && !selectedNodeIds.some(isChatMediaNode) ? null : buildSelectedNodesContext(selectedNodeId));
     const analysisForChat = visualEvaluationRequest && !selectedNodeIds.some(isChatMediaNode) ? null : state.latestAnalysis;
-    const canvasContext = options.canvasContext || buildTaskScopedCanvasContext(text, selectedNodeId);
+    const canvasContext = options.canvasContext || buildTaskScopedCanvasContext(modelText, selectedNodeId);
 
     let systemContext = t("chat.systemContext");
     if (visualEvaluationRequest) {
@@ -6187,7 +6223,7 @@ async function submitChatMessage(message, options = {}) {
     }
 
     const chatPayload = {
-      message: text,
+      message: modelText,
       imageDataUrl: imageDataUrls[0] || "",
       imageDataUrls,
       videoDataUrl: sourceVideoDataUrl,
@@ -6230,7 +6266,7 @@ async function submitChatMessage(message, options = {}) {
       : (data?.actions || data?.action);
     const actionList = filterChatActionsForIntent(
       dedupeCanvasActions(Array.isArray(returnedActions) ? returnedActions : (returnedActions ? [returnedActions] : [])),
-      text,
+      modelText,
       { thinkingMode: effectiveThinkingMode }
     );
     assistantMeta.actions = actionList;
@@ -6244,7 +6280,7 @@ async function submitChatMessage(message, options = {}) {
       actionResults = await applyVoiceActions(actionList, {
         imageDataUrl: attachmentImageDataUrl || imageDataUrls[0] || "",
         videoDataUrl: sourceVideoDataUrl,
-        message: text,
+        message: modelText,
         ...(options.actionContext || {}),
         onProgress(progress) {
           updateChatMessage(pendingAssistant, {
@@ -8270,12 +8306,8 @@ async function researchNodeFromAction(action) {
     await exploreSource();
     return;
   }
-  if (node.option?.references?.length) {
-    openReferenceModal(nodeId);
-    return;
-  }
   const prompt = action.prompt || action.query || getNodeSummary(node) || getNodeTitle(node);
-  await startDeepThink(prompt, { appendUser: false });
+  await startDeepThink(prompt, { appendUser: false, newThread: false });
 }
 
 function openReferencesFromAction(action) {
@@ -10607,11 +10639,12 @@ function appendChatMessage(role, content, metadata = {}) {
   const thinkingTrace = normalizeChatThinkingTrace(metadata.thinkingTrace || metadata.trace);
   const thinkingContent = sanitizeChatThinkingContent(metadata.thinkingContent || metadata.reasoningContent || metadata.reasoning, normalizedContent);
   const pending = Boolean(metadata.pending);
+  const actionParentNodeId = metadata.branchNodeId ?? state.selectedNodeId ?? null;
   const message = {
     role: role === "assistant" ? "assistant" : "user",
     content: normalizedContent,
     attachments: normalizeChatAttachments(metadata.attachments),
-    branchNodeId: state.selectedNodeId,
+    branchNodeId: actionParentNodeId,
     thinkingTrace,
     thinkingContent,
     thinkingRequested: Boolean(pending || thinkingContent || thinkingTrace.length || (metadata.thinkingRequested && !normalizedContent)),
@@ -11084,6 +11117,12 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       rendered.cursor = cursor;
       text.appendChild(cursor);
       line.appendChild(text);
+    }
+    if (message.role === "user" && message.actions?.length) {
+      message.actions.forEach((action) => {
+        const card = renderChatActionCall(action);
+        if (card) line.appendChild(card);
+      });
     }
     if (message.attachments?.length) {
       line.appendChild(renderChatAttachments(message.attachments));
@@ -13117,6 +13156,15 @@ function buildBlueprintChatGenerationMessage(junctionId, extraText = "") {
   ].filter(Boolean).join("\n\n");
 }
 
+function buildBlueprintVisibleGenerationMessage(extraText = "") {
+  const userText = String(extraText || "").trim();
+  const title = currentLang === "en" ? "Tool call: generate image from current blueprint" : "工具调用：基于当前蓝图成图";
+  const body = currentLang === "en"
+    ? "Generate an image using the current multi-card blueprint and attached references."
+    : "使用当前多卡片蓝图和附带参考执行成图。";
+  return userText ? `${title}\n${body}\n${userText}` : `${title}\n${body}`;
+}
+
 function ensureBlueprintGenerateImageAction(actions, junctionId, prompt, imageDataUrls = []) {
   const list = Array.isArray(actions) ? [...actions] : (actions ? [actions] : []);
   if (list.some((action) => String(action?.type || action?.name || "") === "generate_image")) return Array.isArray(actions) ? list : list[0];
@@ -13148,12 +13196,19 @@ async function submitBlueprintGeneration(event) {
     const imageDataUrls = await getBlueprintReferenceImageDataUrls(junctionId, 6);
     const blueprintAttachments = await buildBlueprintDocumentAttachmentPayload(junctionId);
     const chatMessage = buildBlueprintChatGenerationMessage(junctionId, extraText);
-    await submitChatMessage(chatMessage, {
+    const visibleChatMessage = buildBlueprintVisibleGenerationMessage(extraText);
+    await submitChatMessage(visibleChatMessage, {
+      modelMessage: chatMessage,
       selectedNodeId: junctionId,
       forcedThinkingMode: "thinking",
       imageDataUrls,
       preferredMediaNodeIds: state.junctions.get(junctionId)?.connectedCardIds || [],
       chatAttachments: blueprintAttachments,
+      displayActions: [{
+        type: "generate_image",
+        title: currentLang === "en" ? "Blueprint image" : "蓝图生成图",
+        description: currentLang === "en" ? "Generated from the current multi-card blueprint." : "基于当前多节点聚合蓝图生成。"
+      }],
       extraSystemContext: [
         currentLang === "en"
           ? "Blueprint generation mode: the user clicked Send in the blueprint modal. The assistant must analyze the blueprint in chat and call generate_image for a real image result."

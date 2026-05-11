@@ -1419,18 +1419,41 @@ function applyAnalysisJsonObjectResponseMode(payload) {
 
 function applyRequestOptions(payload, config) {
   const options = config?.options || {};
-  if (payload.temperature === undefined && isKimiChatConfig(config)) {
-    payload.temperature = 0.6;
-  } else if (payload.temperature === undefined && typeof config?.temperature === "number") {
-    payload.temperature = config.temperature;
-  }
-  if (payload.top_p === undefined && typeof options.top_p === "number") {
-    payload.top_p = options.top_p;
-  }
   if (payload.max_tokens === undefined && Number.isInteger(options.max_tokens)) {
     payload.max_tokens = options.max_tokens;
   }
+  if (isKimiChatConfig(config)) {
+    applyKimiRequestOptions(payload, config);
+  } else {
+    if (payload.temperature === undefined && typeof config?.temperature === "number") {
+      payload.temperature = config.temperature;
+    }
+    if (payload.top_p === undefined && typeof options.top_p === "number") {
+      payload.top_p = options.top_p;
+    }
+  }
   return payload;
+}
+
+function applyKimiRequestOptions(payload, config) {
+  if (isKimiFixedTemperatureConfig(config)) {
+    delete payload.temperature;
+  } else if (payload.temperature === undefined && typeof config?.temperature === "number") {
+    payload.temperature = Math.min(1, Math.max(0, config.temperature));
+  }
+  delete payload.top_p;
+  delete payload.n;
+  delete payload.presence_penalty;
+  delete payload.frequency_penalty;
+  if (payload.tool_choice && !["auto", "none"].includes(payload.tool_choice)) {
+    payload.tool_choice = "auto";
+  }
+  return payload;
+}
+
+function isKimiFixedTemperatureConfig(config) {
+  const model = String(config?.model || "").toLowerCase();
+  return model.includes("kimi-k2.6") || model.includes("kimi-k2.5") || model.includes("kimi-k2-thinking");
 }
 
 function applyChatQualityRequestOptions(payload, config, message, options = {}) {
@@ -4380,12 +4403,11 @@ async function handleChatStream({ payload, message, thinkingMode, agentMode, lan
   try {
     let response;
     let streamedReasoningText = "";
-    let thinkingNoticeSent = false;
     const handleReasoningDelta = (delta) => {
-      streamedReasoningText += String(delta || "");
-      if (thinkingMode !== "thinking" || thinkingNoticeSent) return;
-      thinkingNoticeSent = true;
-      writeSse(res, "thinking", { delta: lang === "en" ? "Thinking..." : "正在梳理思路..." });
+      const text = String(delta || "");
+      if (!text) return;
+      streamedReasoningText += text;
+      if (thinkingMode === "thinking") writeSse(res, "thinking", { delta: text });
     };
     try {
       response = await (transport === "chat-completions" ? streamChatCompletions : streamQwenResponses)(runtimeConfigs.chat, payload, {
