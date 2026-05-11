@@ -29,8 +29,8 @@ Completed:
 - **HE-P2-01 developer action trace viewer:** The debug action trace toggle now renders policy, canonical trace, repair events, harness hashes, context budget tiers, and copyable JSON under assistant messages.
 - **HE-P2-03 MiMo controller adaptation:** Switched chat, analysis, and settings defaults to MiMo-compatible OpenAI chat-completions, added MiMo detection/thinking/JSON-mode/header handling, and decoupled image search into an independent DashScope Responses role.
 - **HE-P2-04 expanded live eval ergonomics:** Added chat-system/controller-model package scripts, repeated-trial chat eval reporting, and a 40-case MiMo live scenario file covering negative, visual, multi-file, planning, data/code, web/source, media, workspace, history, and agent behaviors.
-- **HE-P2-05 complex deterministic regression layer:** Extended the deterministic canvas action runner with deep action-field checks, array-length assertions, required/forbidden text patterns, and trace-stage checks; added the first 31 complex fixtures to `scripts/evals/canvas-action-complex-regression.jsonl` and wired them into `npm run test:guards`.
-- **HE-P2-06 direction/delete reliability hardening:** Tightened direction fallback so existing-direction image generation remains `generate_image`, erroneous comparison cards are not kept beside recovered direction cards, and negated delete requests do not authorize `delete_node`.
+- **HE-P2-05 complex deterministic regression layer:** Extended the deterministic canvas action runner with deep action-field checks, array-length assertions, required/forbidden text patterns, and trace-stage checks; expanded `scripts/evals/canvas-action-complex-regression.jsonl` to 106 fixtures and wired it into `npm run test:guards`.
+- **HE-P2-06 intent reliability hardening:** Tightened direction fallback so existing-direction image generation remains `generate_image`, erroneous comparison cards are not kept beside recovered direction cards, negated delete/search/direction requests do not authorize those actions, and product/code phrases like `产品定位` / `移动平均` no longer trigger workspace routing.
 
 Partial:
 

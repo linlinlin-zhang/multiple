@@ -123,7 +123,7 @@ export function normalizeIntentText(message) {
 }
 
 export function isNoCanvasRequest(message) {
-  return /((不要|不需要)[^,，。！？.!?；;：:]{0,18}((创建|新建|新增|建立|保存).{0,8}(卡片|节点)|生成.{0,8}(卡片|节点)|画布|卡片)|只要文字|纯文字|直接回答|别建卡|别创建|no\s+canvas|no\s+cards?|text\s+only|answer\s+only)/i.test(normalizeIntentText(message));
+  return /((不要|不需要|无需|别|不用)[^,，。！？.!?；;：:]{0,18}((创建|新建|新增|建立|保存).{0,8}(卡片|节点)|生成.{0,8}(卡片|节点)|画布|卡片)|只要文字|只用文字|纯文字|直接回答|别建卡|别创建|no\s+canvas|no\s+cards?|text\s+only|answer\s+only)/i.test(normalizeIntentText(message));
 }
 
 function isTrivialChatRequest(message) {
@@ -133,20 +133,24 @@ function isTrivialChatRequest(message) {
 
 function detect(message) {
   const text = normalizeIntentText(message);
-  const deferredMediaGeneration = /(先.*(分析|评价|评估|讨论|看看|方案|建议).{0,24}(不要|别|不用|无需|暂时不|先不).{0,16}(生成|出图|成图|绘制|渲染|视频|动画)|(?:不要|别|不用|无需|暂时不|先不).{0,12}(直接|马上|现在)?[^，。！？.!?]{0,12}(生成|出图|成图|绘制|渲染|视频|动画|image|video|visual)|只(?:分析|评价|评估|讨论|看看|给方案|给建议)|先(?:分析|评价|评估|讨论|看看|给方案|给建议)|(?:do\s+not|don't|dont|without|no).{0,16}(generate|make|create|render).{0,16}(image|video|visual|picture)|(?:analy[sz]e|discuss|review).{0,16}first|analysis\s+only)/i.test(text);
+  const deferredMediaGeneration = /(先.*(分析|评价|评估|讨论|看看|方案|建议).{0,24}(不要|别|不用|无需|暂时不|先不).{0,16}(生成|出图|成图|绘制|渲染|视频|动画|改图)|(?:不要|别|不用|无需|暂时不|先不).{0,12}(直接|马上|现在)?[^，。！？.!?]{0,12}(生成|出图|成图|绘制|渲染|视频|动画|改图|image|video|visual)|只(?:分析|评价|评估|讨论|看看|给方案|给建议)|先(?:分析|评价|评估|讨论|看看|给方案|给建议)|(?:do\s+not|don't|dont|without|no).{0,16}(generate|make|create|render).{0,16}(image|video|visual|picture)|(?:analy[sz]e|discuss|review).{0,16}first|analysis\s+only)/i.test(text);
   const hasUrl = /https?:\/\/[^\s)）\]】"'<>]+/i.test(text);
   const webResearch = /((搜索|查找|检索|搜|找|联网查|查一下|查找一下|帮我找|找一下).{0,24}(资料|来源|引用|论文|文献|案例|新闻|信息|数据|参考|reference|source|sources|citation|paper|news|case|data))|((最新|官方|实时|新闻|current|latest|official|recent).{0,18}(资料|来源|引用|论文|文献|案例|新闻|信息|数据|reference|source|sources|citation|paper|news|case|data))|web\s*search|search\s+(?:the\s+)?web|find\s+(?:current|latest|official|sources|references)/i.test(text)
     || (hasUrl && /(网页|网址|链接|url|参考|来源|引用|总结|保存成|卡片|web|link|reference|source|citation|summari[sz]e|save)/i.test(text));
-  const visualSubject = /(照片|图片|图像|画面|摄影|拍得|构图|曝光|色彩|光线|清晰|焦点|镜头|取景|这张图|这幅图|这张海报|这幅海报|photo|picture|image|shot|photograph|composition|exposure|lighting|color|focus|framing)/i.test(text);
+  const visualSubject = /(照片|图片|图像|画面|摄影|拍得|构图|曝光|色彩|光线|清晰|焦点|镜头|取景|这张图|这幅图|这张海报|这幅海报|logo|标志|photo|picture|image|shot|photograph|composition|exposure|lighting|color|focus|framing)/i.test(text);
   const multiVisualContext = /(几张|多张|两张|三张|四张|五张|这些|这几张|一组|多个|多图|两幅|三幅|四幅|photos|pictures|images|shots|A\s*\/\s*B|1\s*(和|与|vs|,|，|、)\s*2)/i.test(text);
-  const visualComparison = visualSubject && (/(哪张|哪一张|哪个(?:更|最)|更好|最好|比较好|哪.*好|拍得更好|拍得最好|优劣|排序|排名|best|better|which|pick|choose|rank)/i.test(text)
+  const negatedComparison = /(不要|别|不用|无需|no|without|do\s+not|don't|dont).{0,16}(多图)?(对比|比较|comparison|compare)/i.test(text);
+  const visualComparison = visualSubject && !negatedComparison && (/(哪张|哪一张|哪个(?:更|最)|更好|最好|比较好|哪.*好|拍得更好|拍得最好|优劣|排序|排名|best|better|which|pick|choose|rank)/i.test(text)
+    || (multiVisualContext && /(评分|打分|评分仪表|score|rating)/i.test(text))
     || (/(对比|比较|compare|comparison)/i.test(text) && multiVisualContext));
-  const visualEvaluation = visualSubject && (visualComparison || /(好看|评价|点评|分析一下|分析|看看|评估|建议|诊断|对比|比较|compare|comparison|evaluate|critique|review|recommend|diagnose)/i.test(text));
-  const directAnalysis = /(分析|对比|比较|评估|评价|点评|判断|选择|推荐|优缺点|analysis|compare|comparison|evaluate|critique|judge|recommend|choose|pick)/i.test(text);
+  const visualEvaluation = visualSubject && (visualComparison || /(好看|评价|点评|分析一下|分析|看看|评估|建议|诊断|评分|打分|对比|比较|compare|comparison|evaluate|critique|review|recommend|diagnose|score|rating)/i.test(text));
+  const directAnalysis = /(分析|对比|比较|评估|评价|点评|判断|选择|推荐|优缺点|评分|打分|analysis|compare|comparison|evaluate|critique|judge|recommend|choose|pick|score|rating)/i.test(text);
   const explicitCanvas = /(画布|卡片|节点|创建|新建|新增|加一张|建一张|生成.{0,8}(卡片|节点)|保存成.{0,8}(卡片|节点)|放到画布|整理到画布|做成.{0,8}(卡片|表格|清单|时间线)|canvas|card|node|create|add\s+(?:a\s+)?card|save\s+(?:it\s+)?as\s+(?:a\s+)?card|put\s+(?:it\s+)?on\s+(?:the\s+)?canvas)/i.test(text);
   const structuredDeliverable = /(做|制定|生成|创建|整理|输出|列|写一份|给我一份|帮我做|make|create|build|generate|draft|produce|turn\s+.*\s+into).{0,18}(计划|规划|清单|待办|表格|时间线|路线图|报告|提纲|矩阵|对比表|checklist|todo|table|timeline|roadmap|report|outline|matrix|comparison)/i.test(text);
+  const negatedSearchAction = /(不要|别|不用|无需|不需要).{0,8}搜索/i.test(text);
   const workspaceAction = (
-    /(放大|缩小|重置.{0,6}视图|默认缩放|聚焦|定位|移动|删除|移除|打开历史|打开设置|保存会话|新建对话|导出|zoom|focus|pan|move|delete|remove|reset view|open history|open settings|save session|new chat|export)/i.test(text)
+    (/(放大|缩小|重置.{0,6}视图|默认缩放|聚焦|定位到|定位当前|定位这|定位选中|选中(?!的)|选择.{0,8}(卡片|节点|源卡片)|移动(?!平均)|平移|删除|移除|打开历史|打开设置|保存.{0,8}会话|新建对话|导出|分组|取消分组|zoom|focus|pan|move|delete|remove|reset view|open history|open settings|save session|new chat|export)/i.test(text)
+      || (!negatedSearchAction && /搜索.{0,12}(卡片|节点)/i.test(text)))
       && /(画布|卡片|节点|视图|会话|历史|设置|canvas|card|node|view|session|history|settings)/i.test(text)
   ) || (
     /((整理|排列|排版).{0,12}(画布布局|布局|节点)|布局|重叠|arrange|layout|tidy)/i.test(text)
@@ -154,10 +158,12 @@ function detect(message) {
   );
   const negatedDeleteAction = /(不要|不需要|无需|别|不用|禁止|no|without|do\s+not|don't|dont).{0,18}(删除|移除|删掉|delete|remove)/i.test(text);
   const deleteAction = !negatedDeleteAction && /(删除|移除|删掉|delete|remove)/i.test(text) && /(卡片|节点|选中|这个|当前|card|node|selected|current)/i.test(text);
-  const sourceResearch = !workspaceAction && (/(研究|深入研究|探索|分析).{0,16}(当前|选中|源|素材|来源|卡片|节点|source|card|node)|(?:analy[sz]e|explore|research).{0,16}(?:selected|current|source|card|node)|打开.{0,8}(引用|参考资料|references)|open\s+references/i.test(text));
-  const directionCardRequest = !workspaceAction && (/(方向|方案|概念|direction|option|concept).{0,16}(卡片|节点|card|node)|(?:卡片|节点|card|node).{0,16}(方向|方案|概念|direction|option|concept)/i.test(text));
+  const genericNonVisualPlan = /((发布|实施|执行|迁移|产品|研究|调研).{0,8}方案|方案.{0,8}(执行|发布|实施|迁移|落地))/i.test(text) && !/(视觉|风格|创意|成图|海报|主视觉|方向|visual|style|concept)/i.test(text);
+  const sourceResearch = !workspaceAction && !/(研究计划|调研计划|访谈研究计划|计划卡片)/i.test(text) && (/(研究|深入研究|探索|分析).{0,16}(当前|选中|源|素材|来源|卡片|节点|source|card|node)|(?:analy[sz]e|explore|research).{0,16}(?:selected|current|source|card|node)|打开.{0,8}(引用|参考资料|references)|open\s+references/i.test(text));
+  const negatedDirectionCardRequest = /(不要|别|不用|无需|不需要|no|without|do\s+not|don't|dont).{0,18}(先)?(做|创建|生成)?[^，。！？.!?]{0,12}(方向|方向卡|方向卡片|direction|concept)/i.test(text);
+  const directionCardRequest = !workspaceAction && !genericNonVisualPlan && !negatedDirectionCardRequest && (/(方向|方案|概念|direction|option|concept).{0,16}(卡片|节点|card|node)|(?:卡片|节点|card|node).{0,16}(方向|方案|概念|direction|option|concept)/i.test(text));
   const directionContext = directionCardRequest || /(方向|概念方向|视觉概念|创意概念|风格方向|成图方向|视觉|创意|风格|directions?|concepts?|visual concepts?)/i.test(text);
-  const directionRequest = directionContext
+  const directionRequest = !genericNonVisualPlan && !negatedDirectionCardRequest && directionContext
     && /(方向|方案|概念方向|视觉概念|创意概念|风格方向|directions?|options?|concepts?|visual concepts?)/i.test(text)
     && /(生成|创建|新建|做|产出|给我|帮我|发散|展开|拆出|列出|设计|组合|generate|create|make|produce|brainstorm|develop|propose|give me)/i.test(text);
   const mediaFromExistingDirection = /(?:根据|基于|按照|用|把|从|选择|选中|current|selected|use|from|based on).{0,24}(方向|方案|概念|direction|option|concept).{0,32}(成图|出图|生成.{0,10}(图片|图像|图|视觉|海报)|generate\s+(?:image|picture|visual))|(?:方向|方案|概念|direction|option|concept).{0,32}(生成.{0,10}(图片|图像|图|视觉|海报)|成图|出图|generate\s+(?:image|picture|visual))/i.test(text);
@@ -170,7 +176,7 @@ function detect(message) {
   const explicitMediaSearch = /(搜图|找图|以图搜图|图片搜索|相似图片|参考图|视觉参考图|视觉参考|image search|visual reference search|reverse image search)/i.test(text);
   const negatedImageGeneration = /(不要|不需要|无需|别|不用|no|without|do\s+not|don't|dont).{0,16}(生成|出图|成图|绘制|渲染|create|generate|make)?[^，。！？.!?]{0,12}(图片|图像|照片|图|image|picture|photo)/i.test(text);
   const mediaSearch = mediaSearchRaw && (!negatedImageGeneration || explicitMediaSearch);
-  const planning = /(计划|规划|方案|步骤|流程|路线图|日程|行程|旅行|旅游|攻略|安排|执行|落地|时间线|里程碑|筹备|预算|roadmap|workflow|schedule|itinerary|travel|trip|plan|milestone|implementation|timeline|budget)/i.test(text);
+  const planning = /(计划|规划|方案|步骤|流程|路线图|日程|行程|旅行|旅游|攻略|安排|执行|落地|实施|待办|优先级|时间线|里程碑|筹备|预算|roadmap|workflow|schedule|itinerary|travel|trip|plan|milestone|implementation|timeline|budget)/i.test(text);
   const research = /(研究|资料|论文|文献|来源|引用|最新|官方|新闻|调研|research|source|citation|latest|official|news|literature)/i.test(text);
   const dataCode = /(代码|程序|bug|python|javascript|数据|表格|csv|图表|指标|前端|后端|白屏|控制台|环境变量|source\s*map|console|network|code|debug|data|table|chart|metric|benchmark)/i.test(text);
   const writing = /(写作|文案|文章|报告|提纲|润色|创意|故事|脚本|品牌宣言|宣言|开场白|邮件正文|writing|copy|article|report|outline|draft|revise|creative|story|script|manifesto|email body)/i.test(text);
@@ -194,6 +200,7 @@ function detect(message) {
     deferredMediaGeneration,
     directionRequest,
     directionCardRequest,
+    negatedDirectionCardRequest,
     mediaFromExistingDirection,
     mediaGeneration,
     mediaSearch,
@@ -291,7 +298,10 @@ function allowedActionTypesForIntent(intent) {
   }
   if ((intent.directionRequest || intent.directionCardRequest) && !intent.mediaGeneration) addMany(allowed, DIRECTION_TYPES);
   if (intent.mediaSearch) addMany(allowed, MEDIA_SEARCH_TYPES);
-  if (intent.mediaGeneration) addMany(allowed, MEDIA_GENERATION_TYPES);
+  if (intent.mediaGeneration) {
+    if (intent.negatedDirectionCardRequest) addMany(allowed, ["generate_image", "generate_video", "create_note"]);
+    else addMany(allowed, MEDIA_GENERATION_TYPES);
+  }
   if (intent.webResearch) addMany(allowed, WEB_RESEARCH_TYPES);
   if (intent.sourceResearch) addMany(allowed, SOURCE_RESEARCH_TYPES);
   if (intent.workspaceAction || intent.agentMode) addMany(allowed, WORKSPACE_TYPES);

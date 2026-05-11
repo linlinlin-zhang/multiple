@@ -178,13 +178,13 @@ Current progress:
 - Steps 1-5 are complete.
 - Step 7 initial 40-case corpus is complete.
 - Step 8 local validation is complete for syntax checks, skipped-by-default eval scripts, `npm run test:guards`, and `npm test`.
-- Step 6 remains open: expand the deterministic complex set from 31 to the full 100-case target.
+- Step 6 is complete: the deterministic complex set now contains 106 cases, exceeding the 100-case target.
 - Steps 9-10 remain open.
 
 Step 4/5 implementation notes:
 
 - `scripts/test-canvas-action-regression.js` now supports `actionFields`, `minArrayLength`, `exactArrayLength`, `textIncludes`, `textExcludes`, `requiredTextPatterns`, `forbiddenTextPatterns`, and `trace` checks.
-- `scripts/evals/canvas-action-complex-regression.jsonl` adds the first 31 complex deterministic fixtures, including four-photo completeness, single-photo non-comparison, direction-vs-generation routing, markdown residue guards, source-research stop conditions, workspace negation, and media open-world budgets.
+- `scripts/evals/canvas-action-complex-regression.jsonl` now contains 106 complex deterministic fixtures, including four-photo completeness, single-photo non-comparison, direction-vs-generation routing, markdown residue guards, source-research stop conditions, workspace negation, media open-world budgets, code/data artifacts, web/source workflows, agent stops, and multi-turn/history cases.
 - `npm run test:guards` now includes the complex deterministic corpus.
 
 ## 7. Open Risks
