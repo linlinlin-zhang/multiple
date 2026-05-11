@@ -4667,6 +4667,26 @@ function normalizeChatHeadingMarker(marker) {
   return "#".repeat(Math.min(6, Math.max(1, value.length)));
 }
 
+const CHAT_MARKDOWN_SECTION_LABEL_RE = /^(总评|总体评价|整体印象|核心判断|结论|小结|构图|光影|主体与尺度|主体|尺度|色彩与影调|色彩|影调|技术质量|可提升的空间|提升空间|改进建议|后期建议|推荐方向|下一步|Overall|Summary|Composition|Lighting|Subject|Scale|Color|Tone|Technical quality|Improvements|Suggestions|Next steps)([：:][^\s。！？!?；;\n]{0,32})?(?:\s+(.+))?$/i;
+
+function normalizeChatSectionHeadings(text) {
+  return String(text || "").split("\n").map((line) => {
+    if (/^\s{0,3}(#{1,6}|[-*+]|\d+[.)]|>|```|~~~)\s/.test(line)) return line;
+    const match = line.trim().match(CHAT_MARKDOWN_SECTION_LABEL_RE);
+    if (!match) return line;
+    const heading = `${match[1]}${match[2] || ""}`.trim();
+    const body = String(match[3] || "").trim();
+    return body ? `## ${heading}\n\n${body}` : `## ${heading}`;
+  }).join("\n");
+}
+
+function normalizeChatLooseLabelLines(text) {
+  return String(text || "").replace(/(^|\n)(?!\s{0,3}(?:#{1,6}|[-*+]|\d+[.)]|>|```|~~~)\s)([^\n：:]{2,22}(?:建议|问题|风险|优势|不足|亮点|原因|步骤|方法|要点|区域|边缘|空间|方向|策略|结论|提醒|注意|Suggestion|Risk|Issue|Reason|Step|Method|Note|Tip)[^\n：:]{0,8})[：:]\s*([^\n]{10,})/gi, (match, prefix, label, body) => {
+    if (/[是为]$/.test(label.trim())) return match;
+    return `${prefix}- **${label.trim()}：** ${body.trim()}`;
+  });
+}
+
 function normalizeChatMarkdownText(segment) {
   let text = String(segment || "").replace(/[ \t]+$/gm, "");
   text = text.replace(/(^|\n)[ \t]*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))[ \t]*(?=[^\s#＃])/gi, (match, prefix, marker) => `${prefix}${normalizeChatHeadingMarker(marker)} `);
@@ -4687,6 +4707,8 @@ function normalizeChatMarkdownText(segment) {
   text = text.replace(/\*\*([^*\n]{1,48})\n\*\*/g, "**$1**\n");
   text = text.replace(/([。！？!?；;：:])\s*((?:[-*+]|\d+[.)])[ \t]+(?=\S))/g, "$1\n\n$2");
   text = text.replace(/([^\n])([ \t]+)((?:[-*+]|\d+[.)])[ \t]+(?=\S))/g, "$1\n$3");
+  text = normalizeChatSectionHeadings(text);
+  text = normalizeChatLooseLabelLines(text);
   text = text.split("\n").map(repairInlineMarkdownTableLine).join("\n");
   text = text.replace(/([^\n])\n(\|[^\n]*\|\n\|[ \t:|.\-]+\|)/g, "$1\n\n$2");
   return text.replace(/\n{3,}/g, "\n\n");
@@ -7186,9 +7208,15 @@ function isExplicitCanvasOrMediaChatRequest(message) {
   return /(画布|卡片|节点|创建|新建|新增|保存成|放到画布|整理到画布|计划|规划|清单|待办|表格|时间线|报告|提纲|搜图|找图|参考图|成图|出图|生成.{0,10}(图|图片|图像|视频|动画)|canvas|card|node|create|save.*card|checklist|table|timeline|report|image search|generate.*(?:image|video))/i.test(text);
 }
 
+function isNoCanvasChatRequest(message) {
+  const text = String(message || "").normalize("NFKC");
+  return /((不要|不需要|无需|别|不用)[^,，。！？.!?；;：:]{0,18}((创建|新建|新增|建立|保存).{0,8}(卡片|节点)|生成.{0,8}(卡片|节点)|画布|卡片)|只要文字|只用文字|纯文字|直接回答|别建卡|别创建|no\s+canvas|no\s+cards?|text\s+only|answer\s+only)/i.test(text);
+}
+
 function filterChatActionsForIntent(actions, message, { thinkingMode = "no-thinking" } = {}) {
   const list = Array.isArray(actions) ? actions : [];
   if (!list.length) return list;
+  if (isNoCanvasChatRequest(message)) return [];
   const sourceResearchTypes = new Set(["analyze_source", "explore_source", "research_source", "research_node", "open_references"]);
   const visualEvaluation = isVisualEvaluationChatRequest(message);
   const explicitResearch = isExplicitSourceResearchChatRequest(message);
@@ -13166,9 +13194,10 @@ function buildBlueprintVisibleGenerationMessage(extraText = "") {
 }
 
 function ensureBlueprintGenerateImageAction(actions, junctionId, prompt, imageDataUrls = []) {
-  const list = Array.isArray(actions) ? [...actions] : (actions ? [actions] : []);
-  if (list.some((action) => String(action?.type || action?.name || "") === "generate_image")) return Array.isArray(actions) ? list : list[0];
-  list.push({
+  const list = Array.isArray(actions) ? actions : (actions ? [actions] : []);
+  const existing = list.find((action) => String(action?.type || action?.name || "") === "generate_image");
+  return [{
+    ...(existing && typeof existing === "object" ? existing : {}),
     type: "generate_image",
     parentNodeId: junctionId,
     title: currentLang === "en" ? "Blueprint image" : "蓝图生成图",
@@ -13176,8 +13205,7 @@ function ensureBlueprintGenerateImageAction(actions, junctionId, prompt, imageDa
     prompt,
     mode: currentLang === "en" ? "blueprint" : "蓝图",
     imageDataUrl: imageDataUrls[0] || ""
-  });
-  return list;
+  }];
 }
 
 async function submitBlueprintGeneration(event) {

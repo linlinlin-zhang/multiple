@@ -182,7 +182,7 @@ function detect(message) {
   const writing = /(写作|文案|文章|报告|提纲|润色|创意|故事|脚本|品牌宣言|宣言|开场白|邮件正文|writing|copy|article|report|outline|draft|revise|creative|story|script|manifesto|email body)/i.test(text);
   const summaryRequest = /(总结|摘要|归纳|整理).{0,16}(卡片|节点|情绪板|moodboard|summary|note)|(?:卡片|节点|情绪板|moodboard|summary|note).{0,16}(总结|摘要|归纳|整理)/i.test(text);
   const positiveCardSave = /(保存成|保存一个|保存一张|保存为|保存.{0,8}(结论|建议|评价|摘要|总结)?|做成|整理成).{0,16}(卡片|节点|card|node)/i.test(text);
-  const noCanvas = isNoCanvasRequest(text) && !positiveCardSave && !workspaceAction && !deleteAction && !mediaGeneration && !mediaSearch && !sourceResearch && !webResearch && !visualEvaluation;
+  const noCanvas = isNoCanvasRequest(text) && !positiveCardSave && !workspaceAction && !deleteAction && !mediaGeneration && !mediaSearch && !sourceResearch && !webResearch;
   const autoCanvasCandidate = !noCanvas
     && !isTrivialChatRequest(text)
     && (visualEvaluation || directAnalysis || planning || research || dataCode || writing || (text.length >= 28 && /(帮我|请|分析|总结|整理|解释|写|列|给我|如何|怎么|为什么|建议|方案|思路|review|analy[sz]e|summari[sz]e|explain|compare|suggest|recommend|draft|write|plan)/i.test(text)));
