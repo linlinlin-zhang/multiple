@@ -44,10 +44,34 @@ function hasIntersection(actual, expected) {
   return expected.some((type) => actual.includes(type));
 }
 
+function collectRejectedReasons(data) {
+  const reasons = [];
+  const direct = data?.actionPolicy?.rejected || data?.trace?.rejected || [];
+  if (Array.isArray(direct)) {
+    for (const item of direct) {
+      const reason = typeof item === "string" ? item : item?.reason;
+      if (reason) reasons.push(reason);
+    }
+  }
+  const stages = data?.actionTrace?.pipelineStages || data?.trace?.pipelineStages || [];
+  if (Array.isArray(stages)) {
+    for (const stage of stages) {
+      for (const item of Array.isArray(stage?.rejected) ? stage.rejected : []) {
+        if (item?.reason) reasons.push(item.reason);
+      }
+    }
+  }
+  return Array.from(new Set(reasons));
+}
+
 function evaluateResult(data, expected = {}) {
   const actions = Array.isArray(data.actions) ? data.actions : [];
   const actual = typeList(actions);
   const failures = [];
+  if (Array.isArray(expected.all)) {
+    const missing = expected.all.filter((type) => !actual.includes(type));
+    if (missing.length) failures.push(`expected all of [${expected.all.join(", ")}], missing [${missing.join(", ")}]`);
+  }
   if (Array.isArray(expected.any) && expected.any.length && !hasIntersection(actual, expected.any)) {
     failures.push(`expected any of [${expected.any.join(", ")}], got [${actual.join(", ")}]`);
   }
@@ -71,7 +95,59 @@ function evaluateResult(data, expected = {}) {
     const taskType = data.actionPolicy?.taskType || data.actionTrace?.intent?.taskType || data.trace?.intent?.taskType || "";
     if (taskType !== expected.taskType) failures.push(`expected taskType ${expected.taskType}, got ${taskType || "<empty>"}`);
   }
+  if (Array.isArray(expected.taskTypeOneOf) && expected.taskTypeOneOf.length) {
+    const taskType = data.actionPolicy?.taskType || data.actionTrace?.intent?.taskType || data.trace?.intent?.taskType || "";
+    if (!expected.taskTypeOneOf.includes(taskType)) failures.push(`expected taskType one of [${expected.taskTypeOneOf.join(", ")}], got ${taskType || "<empty>"}`);
+  }
+  if (Array.isArray(expected.rejectedReasons) && expected.rejectedReasons.length) {
+    const rejectedReasons = collectRejectedReasons(data);
+    const missingReasons = expected.rejectedReasons.filter((reason) => !rejectedReasons.includes(reason));
+    if (missingReasons.length) failures.push(`expected rejected reasons [${missingReasons.join(", ")}], got [${rejectedReasons.join(", ")}]`);
+  }
+  if (Array.isArray(expected.replyIncludes) && expected.replyIncludes.length) {
+    const reply = String(data.reply || data.message || data.rawText || "");
+    const missing = expected.replyIncludes.filter((value) => !reply.includes(value));
+    if (missing.length) failures.push(`expected reply to include [${missing.join(", ")}]`);
+  }
   return { actions, actual, failures };
+}
+
+function parseSseFinal(text) {
+  let currentEvent = "message";
+  let currentData = [];
+  let finalPayload = null;
+  let reply = "";
+  let errorPayload = null;
+  const flush = () => {
+    if (!currentData.length) return;
+    const raw = currentData.join("\n");
+    let parsed = {};
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = { rawText: raw };
+    }
+    if (currentEvent === "reply") reply += String(parsed.delta || "");
+    if (currentEvent === "final") finalPayload = parsed;
+    if (currentEvent === "error") errorPayload = parsed;
+    currentEvent = "message";
+    currentData = [];
+  };
+  for (const line of String(text || "").split(/\r?\n/)) {
+    if (!line.trim()) {
+      flush();
+      continue;
+    }
+    if (line.startsWith("event:")) {
+      currentEvent = line.slice(6).trim() || "message";
+    } else if (line.startsWith("data:")) {
+      currentData.push(line.slice(5).trimStart());
+    }
+  }
+  flush();
+  if (finalPayload) return { ...finalPayload, streamedReply: reply || finalPayload.reply || "" };
+  if (errorPayload) return { ...errorPayload, reply, streamError: errorPayload.error || "stream error" };
+  return { rawText: text, reply };
 }
 
 async function postChat(payload) {
@@ -85,6 +161,9 @@ async function postChat(payload) {
       signal: controller.signal
     });
     const text = await response.text();
+    if (payload.stream === true) {
+      return { response, data: parseSseFinal(text) };
+    }
     let data = {};
     try {
       data = text ? JSON.parse(text) : {};
@@ -106,9 +185,20 @@ async function runFixture(fixture) {
     selectedContext: fixture.selectedContext || null,
     canvas: fixture.canvas || { nodes: [], links: [] },
     analysis: fixture.analysis || {},
-    messages: [],
-    stream: false
+    messages: fixture.messages || [],
+    stream: fixture.stream === true,
+    systemContext: fixture.systemContext || "",
+    chatAttachments: fixture.chatAttachments || fixture.attachments || []
   };
+  if (fixture.imageDataUrl) payload.imageDataUrl = fixture.imageDataUrl;
+  if (Array.isArray(fixture.imageDataUrls)) payload.imageDataUrls = fixture.imageDataUrls;
+  if (fixture.videoDataUrl) payload.videoDataUrl = fixture.videoDataUrl;
+  if (fixture.sessionId) payload.sessionId = fixture.sessionId;
+  if (fixture.previousResponseId) payload.previousResponseId = fixture.previousResponseId;
+  if (fixture.agentSkill) payload.agentSkill = fixture.agentSkill;
+  if (fixture.agentMode === true) payload.agentMode = true;
+  if (fixture.subagentsEnabled === true) payload.subagentsEnabled = true;
+  Object.assign(payload, fixture.payload && typeof fixture.payload === "object" ? fixture.payload : {});
   const { response, data } = await postChat(payload);
   const evaluated = response.ok ? evaluateResult(data, fixture.expected || {}) : { actions: [], actual: [], failures: [`HTTP ${response.status}`] };
   return {

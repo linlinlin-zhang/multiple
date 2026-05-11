@@ -3231,6 +3231,11 @@ function repairCanvasAction(action, message, reply = "", lang = "zh", context = 
     .join("\n\n");
 
   if (action.type === "delete_node" && !action.nodeId && !action.nodeName && !action.target) {
+    const selectedNodeId = context?.selectedContext?.nodeId || context?.selectedContext?.id || "";
+    if (selectedNodeId) {
+      recordCanvasActionRepair(context, { type: action.type, reason: "filled_delete_target_from_selection", field: "nodeId", from: "missing", to: "selectedContext.nodeId" });
+      return { ...action, nodeId: selectedNodeId };
+    }
     recordCanvasActionRepair(context, { type: action.type, reason: "dropped_unrecoverable_action", field: "nodeId", from: "missing", to: "required" });
     return null;
   }
@@ -5443,9 +5448,12 @@ const FALLBACK_KEYWORDS = {
   create_metric: /指标|KPI|数据看板|度量|metric|kpi|dashboard|benchmark/i,
   create_quote: /引用|摘录|金句|原文|quote|excerpt|citation/i,
   arrange_canvas: /整理.{0,12}(画布|布局)|排列.{0,12}(画布|布局)|避免?重叠|不?要重叠|arrange|layout|tidy|overlap/i,
+  move_node: /移动|往左|往右|往上|往下|move/i,
+  focus_node: /聚焦|定位到|focus/i,
+  delete_node: /删除|移除|删掉|delete|remove/i,
   zoom_in: /放大|zoom in|enlarge/i,
   zoom_out: /缩小|zoom out|shrink/i,
-  reset_view: /重置视图|reset view|恢复默认视图/i
+  reset_view: /重置视图|reset[_ ]view|恢复默认视图/i
 };
 
 function ensureChatFallbackActionsClean(message, actions, reply = "") {
@@ -5455,6 +5463,25 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
   const requestText = String(message || "").normalize("NFKC");
   const combinedText = requestText + " " + String(reply || "").normalize("NFKC");
   const intent = classifyChatIntent(requestText);
+  if (intent.taskType === "workspace") {
+    const workspaceFallback = buildWorkspaceFallbackAction(requestText);
+    if (workspaceFallback && !normalized.some((action) => action?.type === workspaceFallback.type)) return [workspaceFallback];
+  }
+  if ((intent.taskType === "writing" || intent.summaryRequest) && !normalized.some((action) => ["create_note", "create_table", "create_todo"].includes(action?.type))) {
+    return [{
+      type: "create_note",
+      title: requestText.slice(0, 48),
+      content: buildFallbackActionContent("create_note", requestText.slice(0, 48), requestText)
+    }];
+  }
+  if (intent.taskType === "planning" && !normalized.some((action) => ["create_plan", "create_timeline", "create_todo", "create_table"].includes(action?.type))) {
+    const type = /(时间线|timeline)/i.test(requestText) ? "create_timeline" : "create_plan";
+    return [{
+      type,
+      title: requestText.slice(0, 48),
+      content: buildFallbackActionContent(type, requestText.slice(0, 48), requestText)
+    }];
+  }
   const wantsArtifact = !intent.noCanvas && !intent.trivial && (
     intent.explicitCanvas ||
     intent.structuredDeliverable ||
@@ -5468,11 +5495,16 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
 
   for (const [actionType, regex] of Object.entries(FALLBACK_KEYWORDS)) {
     if (regex.test(combinedText)) {
-      if (isViewOnlyFallbackAction(actionType)) return [{ type: actionType }];
+      if (isWorkspaceFallbackAction(actionType) && intent.taskType === "workspace") return [{ type: actionType }];
       if (!wantsArtifact) break;
       matchedTypes.push(actionType);
     }
   }
+  if (/agent|代理|子\s*agent|subagent/i.test(requestText) && !normalized.some((action) => action?.type === "create_agent")) {
+    return [buildAgentFallbackAction(requestText), ...normalized.filter((action) => action?.type !== "generate_image").slice(0, 3)];
+  }
+  if (intent.mediaSearch && !normalized.some((action) => ["image_search", "reverse_image_search", "text_image_search"].includes(action?.type))) return [buildMediaSearchFallbackAction(requestText)];
+  if (intent.mediaGeneration && !normalized.some((action) => ["generate_image", "generate_video"].includes(action?.type))) return [buildMediaGenerationFallbackAction(requestText)];
   if (fallbackOnlyAfterRejection && !shouldRecoverFromRejectedActions(requestText, normalized)) return normalized;
   if (!wantsArtifact) return normalized;
   const fallbackTypes = fallbackActionTypesForRequest(requestText, matchedTypes);
@@ -5503,6 +5535,7 @@ function shouldRecoverFromRejectedActions(text, actions) {
 
 function fallbackActionTypesForRequest(text, matchedTypes = []) {
   const primary = matchedTypes.find((type) => !isViewOnlyFallbackAction(type));
+  if (isVisualCritiqueRequest(text)) return uniqueActionTypes([primary && primary !== "create_direction" ? primary : "create_note", "create_metric"]);
   if (isWorkspaceLayoutRequest(text)) return uniqueActionTypes([primary || "arrange_canvas"]);
   if (extractFirstUrl(text) && /(网页|网址|链接|url|参考|来源|引用|总结|保存成|卡片|web|link|reference|source|citation|summari[sz]e|save)/i.test(String(text || ""))) return uniqueActionTypes([primary || "create_web_card"]);
   if (isDirectionRequest(text)) return uniqueActionTypes([primary || "create_direction"]);
@@ -5526,6 +5559,52 @@ function isViewOnlyFallbackAction(actionType) {
   return ["zoom_in", "zoom_out", "reset_view"].includes(actionType);
 }
 
+function isWorkspaceFallbackAction(actionType) {
+  return ["arrange_canvas", "move_node", "focus_node", "delete_node", "zoom_in", "zoom_out", "reset_view"].includes(actionType);
+}
+
+function buildMediaSearchFallbackAction(text) {
+  const requestText = String(text || "");
+  const type = /(反向|相似|以图|reverse)/i.test(requestText) ? "reverse_image_search" : "image_search";
+  return {
+    type,
+    title: requestText.slice(0, 48),
+    query: requestText.slice(0, 180)
+  };
+}
+
+function buildMediaGenerationFallbackAction(text) {
+  const requestText = String(text || "");
+  const type = /(视频|动画|短片|动态镜头|video|animation|clip)/i.test(requestText) ? "generate_video" : "generate_image";
+  return {
+    type,
+    title: requestText.slice(0, 48),
+    prompt: requestText.slice(0, 1200)
+  };
+}
+
+function buildAgentFallbackAction(text) {
+  const requestText = String(text || "");
+  return {
+    type: "create_agent",
+    title: requestText.slice(0, 48),
+    description: requestText,
+    prompt: requestText
+  };
+}
+
+function buildWorkspaceFallbackAction(text) {
+  const requestText = String(text || "");
+  if (isWorkspaceLayoutRequest(requestText)) return { type: "arrange_canvas" };
+  if (/(删除|移除|删掉|delete|remove)/i.test(requestText) && !/(不要|不准|别|无需|do\s+not|don't|dont|without).{0,12}(删除|移除|删掉|delete|remove)/i.test(requestText)) return { type: "delete_node", target: "selected" };
+  if (/(重置.{0,8}视图|默认缩放|reset[_ ]?view)/i.test(requestText)) return { type: "reset_view" };
+  if (/(聚焦|定位到|focus)/i.test(requestText)) return { type: "focus_node" };
+  if (/(放大|zoom in|enlarge)/i.test(requestText)) return { type: "zoom_in" };
+  if (/(缩小|zoom out|shrink)/i.test(requestText)) return { type: "zoom_out" };
+  if (/(移动|往左|往右|往上|往下|move)/i.test(requestText)) return { type: "move_node" };
+  return null;
+}
+
 function isWorkspaceLayoutRequest(text) {
   return /(整理|排列|排版|布局|重叠|arrange|layout|tidy|overlap)/i.test(String(text || ""))
     && /(画布|布局|重叠|节点|canvas|layout|overlap|node)/i.test(String(text || ""));
@@ -5534,6 +5613,12 @@ function isWorkspaceLayoutRequest(text) {
 function isDirectionRequest(text) {
   return /(方向|方案|概念方向|视觉概念|direction|option|concept)/i.test(String(text || ""))
     && /(生成|创建|新建|做|产出|发散|展开|generate|create|make|produce|brainstorm)/i.test(String(text || ""));
+}
+
+function isVisualCritiqueRequest(text) {
+  return /(照片|图片|图像|画面|摄影|这张图|这幅图|这张海报|这幅海报|photo|picture|image|shot|visual)/i.test(String(text || ""))
+    && /(点评|评价|评估|打分|建议|诊断|可行性|critique|review|evaluate|score|recommendation|feasibility)/i.test(String(text || ""))
+    && !/(几张|多张|两张|三张|哪张|哪个更|最好|更好|比较|对比|compare|comparison|rank|best|better)/i.test(String(text || ""));
 }
 
 function buildFallbackActionContent(actionType, title, text) {

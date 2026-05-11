@@ -27,8 +27,9 @@ function normalizeInlineCanvasAction(value, allowedTypes) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const type = stringOr(value.type || value.action || value.actionType || value.name, "").trim();
   if (!allowedTypes.includes(type)) return null;
-  const { action, actionType, name, ...rest } = value;
-  return { ...rest, type };
+  const { action, actionType, name, params, ...rest } = value;
+  const flattenedParams = params && typeof params === "object" && !Array.isArray(params) ? params : {};
+  return { ...flattenedParams, ...rest, type };
 }
 
 function collectInlineCanvasActionCandidates(value, allowedTypes, actions = []) {
@@ -50,6 +51,21 @@ function collectInlineCanvasActionCandidates(value, allowedTypes, actions = []) 
   return actions;
 }
 
+function collectTaggedParameterActions(text, allowedTypes) {
+  const actions = [];
+  String(text || "").replace(/<function\s*=\s*["']?canvas_action["']?[\s\S]*?<\/function>/gi, (block) => {
+    const values = {};
+    block.replace(/<parameter\s*=\s*["']?([^>"'\s]+)["']?\s*>([\s\S]*?)<\/parameter>/gi, (_match, key, value) => {
+      values[String(key || "").trim()] = String(value || "").trim();
+      return "";
+    });
+    const action = normalizeInlineCanvasAction(values, allowedTypes);
+    if (action) actions.push(action);
+    return "";
+  });
+  return actions;
+}
+
 export function extractInlineCanvasActionsFromReply(reply, { allowedTypes = [] } = {}) {
   const text = String(reply || "");
   if (!text || !allowedTypes.length) return [];
@@ -59,10 +75,14 @@ export function extractInlineCanvasActionsFromReply(reply, { allowedTypes = [] }
     blocks.push(body);
     return "";
   });
+  text.replace(/<canvas_action[^>]*>([\s\S]*?)<\/canvas_action>/gi, (_match, body) => {
+    blocks.push(body);
+    return "";
+  });
   const trimmed = text.trim();
   if (/^[\[{]/.test(trimmed)) blocks.push(trimmed);
 
-  const actions = [];
+  const actions = collectTaggedParameterActions(text, allowedTypes);
   for (const block of blocks) {
     const parsed = parseToolArguments(block);
     if (!parsed) continue;
@@ -82,5 +102,9 @@ export function removeInlineCanvasActionBlocks(reply, { allowedTypes = [] } = {}
   if (!text) return "";
   return text.replace(/```(?:json|javascript|js)?\s*([\s\S]*?)```/gi, (match, body) => (
     extractInlineCanvasActionsFromReply(body, { allowedTypes }).length ? "" : match
-  )).replace(/\n{3,}/g, "\n\n").trim();
+  )).replace(/<canvas_action[^>]*>[\s\S]*?<\/canvas_action>/gi, "")
+    .replace(/<function\s*=\s*["']?canvas_action["']?[\s\S]*?<\/function>/gi, "")
+    .replace(/<tool_call>\s*<\/tool_call>/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
