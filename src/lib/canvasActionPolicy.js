@@ -133,7 +133,8 @@ function isTrivialChatRequest(message) {
 
 function detect(message) {
   const text = normalizeIntentText(message);
-  const deferredMediaGeneration = /(先.*(分析|评价|评估|讨论|看看|方案|建议).{0,24}(不要|别|不用|无需|暂时不|先不).{0,16}(生成|出图|成图|绘制|渲染|视频|动画|改图)|(?:不要|别|不用|无需|暂时不|先不).{0,12}(直接|马上|现在)?[^，。！？.!?]{0,12}(生成|出图|成图|绘制|渲染|视频|动画|改图|image|video|visual)|只(?:分析|评价|评估|讨论|看看|给方案|给建议)|先(?:分析|评价|评估|讨论|看看|给方案|给建议)|(?:do\s+not|don't|dont|without|no).{0,16}(generate|make|create|render).{0,16}(image|video|visual|picture)|(?:analy[sz]e|discuss|review).{0,16}first|analysis\s+only)/i.test(text);
+  const explicitMediaGenerationAfterAnalysis = /(?:然后|并且|同时|接着|再|之后|随后|必须|真正|实际|actually|then|and|also|must).{0,48}(生成|出图|成图|绘制|渲染|视频|动画|改图|generate|make|create|render).{0,24}(图|图片|图像|视觉|海报|视频|动画|image|picture|visual|video|animation)|canvas_action\s+type\s*=\s*generate_image|\bgenerate_image\b/i.test(text);
+  const deferredMediaGeneration = !explicitMediaGenerationAfterAnalysis && /(先.*(分析|评价|评估|讨论|看看|方案|建议).{0,24}(不要|别|不用|无需|暂时不|先不).{0,16}(生成|出图|成图|绘制|渲染|视频|动画|改图)|(?:不要|别|不用|无需|暂时不|先不).{0,12}(直接|马上|现在)?[^，。！？.!?]{0,12}(生成|出图|成图|绘制|渲染|视频|动画|改图|image|video|visual)|只(?:分析|评价|评估|讨论|看看|给方案|给建议)|先(?:分析|评价|评估|讨论|看看|给方案|给建议)|(?:do\s+not|don't|dont|without|no).{0,16}(generate|make|create|render).{0,16}(image|video|visual|picture)|(?:analy[sz]e|discuss|review).{0,16}first|analysis\s+only)/i.test(text);
   const hasUrl = /https?:\/\/[^\s)）\]】"'<>]+/i.test(text);
   const webResearch = /((搜索|查找|检索|搜|找|联网查|查一下|查找一下|帮我找|找一下).{0,24}(资料|来源|引用|论文|文献|案例|新闻|信息|数据|参考|reference|source|sources|citation|paper|news|case|data))|((最新|官方|实时|新闻|current|latest|official|recent).{0,18}(资料|来源|引用|论文|文献|案例|新闻|信息|数据|reference|source|sources|citation|paper|news|case|data))|web\s*search|search\s+(?:the\s+)?web|find\s+(?:current|latest|official|sources|references)/i.test(text)
     || (hasUrl && /(网页|网址|链接|url|参考|来源|引用|总结|保存成|卡片|web|link|reference|source|citation|summari[sz]e|save)/i.test(text));

@@ -8204,18 +8204,18 @@ async function generateImageFromAction(action) {
     target = nodeId ? state.nodes.get(nodeId) : null;
   }
 
-  const shouldCreateChildFromParent = !explicitTargetId
-    && parentNodeId
+  const targetIsGenerationOption = isGenerationOptionNode(target);
+  const generationParentNodeId = parentNodeId || (!targetIsGenerationOption && target?.id ? target.id : "");
+  const shouldCreateChildFromParent = generationParentNodeId
     && hasPromptText
-    && !isGenerationOptionNode(target)
-    && (parentNodeId !== state.selectedNodeId || Number(action?.batchSize) > 1);
+    && !targetIsGenerationOption;
   if (shouldCreateChildFromParent) {
-    const reusableNodeId = findReusableGenerationTarget(action, parentNodeId);
+    const reusableNodeId = findReusableGenerationTarget(action, generationParentNodeId);
     if (reusableNodeId) {
       nodeId = reusableNodeId;
       target = state.nodes.get(nodeId);
     } else {
-      referenceNodeId = parentNodeId;
+      referenceNodeId = generationParentNodeId;
       if (!actionReference && referenceNodeId) {
         try {
           actionReference = await getImageDataUrlForNode(referenceNodeId);
@@ -8223,7 +8223,7 @@ async function generateImageFromAction(action) {
           actionReference = "";
         }
       }
-      nodeId = createDirectionFromAction({ ...action, parentNodeId });
+      nodeId = createDirectionFromAction({ ...action, parentNodeId: generationParentNodeId });
       target = nodeId ? state.nodes.get(nodeId) : null;
     }
   }

@@ -1408,7 +1408,7 @@ function applyWebSearchMode(payload, config, enabled = true, options = {}) {
 }
 
 function applyJsonObjectResponseMode(payload, config, enabled = true) {
-  if (enabled && (isDashScopeQwenConfig(config) || isMiMoChatConfig(config) || config?.provider === "openai-compatible")) {
+  if (enabled && (isDashScopeQwenConfig(config) || isMiMoChatConfig(config) || isKimiChatConfig(config) || config?.provider === "openai-compatible")) {
     payload.response_format = { type: "json_object" };
   }
   return payload;
@@ -4565,10 +4565,10 @@ async function handleAnalyze(body, res) {
   applyAnalysisJsonObjectResponseMode(analysisPayload);
 
   try {
-    const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload, { timeoutMs: ANALYSIS_FAST_TIMEOUT_MS });
-    const text = collectChatContent(response);
-    const parsed = parseJsonFromText(text);
+    const response = await callAnalysisCompletion(analysisPayload, { timeoutMs: ANALYSIS_FAST_TIMEOUT_MS });
+    const { parsed, repaired } = await parseAnalysisResponseJson(response, { lang, includeReferences: false });
     const normalized = normalizeAnalysis(parsed, body?.fileName);
+    if (repaired) normalized.warningCode = "analysis_json_repaired";
     normalized.provider = "api";
     normalized.model = response?.model || runtimeConfigs.analysis.model;
     normalized.taskType = taskType;
@@ -4766,12 +4766,12 @@ async function handleAnalyzeExplore(body, res) {
   };
 
   try {
-    const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload, {
+    const response = await callAnalysisCompletion(analysisPayload, {
       timeoutMs: thinkingMode === "thinking" ? EXPLORE_THINKING_TIMEOUT_MS : CHAT_COMPLETION_TIMEOUT_MS
     });
-    const text = collectChatContent(response);
-    const parsed = parseJsonFromText(text);
+    const { parsed, repaired } = await parseAnalysisResponseJson(response, { lang, includeReferences: true });
     const normalized = normalizeExplore(parsed, fileName);
+    if (repaired) normalized.warningCode = "explore_json_repaired";
     normalized.provider = "api";
     normalized.model = response?.model || runtimeConfigs.analysis.model;
     normalized.taskType = taskType;
@@ -4787,12 +4787,12 @@ async function handleAnalyzeExplore(body, res) {
           Boolean(url)
         );
         applyAnalysisJsonObjectResponseMode(fallbackPayload);
-        const response = await chatCompletions(runtimeConfigs.analysis, fallbackPayload, {
+        const response = await callAnalysisCompletion(fallbackPayload, {
           timeoutMs: EXPLORE_FALLBACK_TIMEOUT_MS
         });
-        const text = collectChatContent(response);
-        const parsed = parseJsonFromText(text);
+        const { parsed, repaired } = await parseAnalysisResponseJson(response, { lang, includeReferences: true, timeoutMs: EXPLORE_FALLBACK_TIMEOUT_MS });
         const normalized = normalizeExplore(parsed, fileName);
+        if (repaired) normalized.warningCode = "explore_json_repaired";
         normalized.provider = "api";
         normalized.model = response?.model || runtimeConfigs.analysis.model;
         normalized.warningCode = "explore_fallback";
@@ -4859,10 +4859,10 @@ async function handleAnalyzeUrl(body, res) {
   applyAnalysisJsonObjectResponseMode(analysisPayload);
 
   try {
-    const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload, { timeoutMs: ANALYSIS_FAST_TIMEOUT_MS });
-    const text = collectChatContent(response);
-    const parsed = parseJsonFromText(text);
+    const response = await callAnalysisCompletion(analysisPayload, { timeoutMs: ANALYSIS_FAST_TIMEOUT_MS });
+    const { parsed, repaired } = await parseAnalysisResponseJson(response, { lang, includeReferences: false });
     const normalized = normalizeAnalysis(parsed, domain);
+    if (repaired) normalized.warningCode = "analysis_json_repaired";
     normalized.provider = "api";
     normalized.model = response?.model || runtimeConfigs.analysis.model;
     normalized.taskType = taskType;
@@ -4963,10 +4963,10 @@ async function handleAnalyzeText(body, res) {
   applyAnalysisJsonObjectResponseMode(analysisPayload);
 
   try {
-    const response = await chatCompletions(runtimeConfigs.analysis, analysisPayload, { timeoutMs: ANALYSIS_FAST_TIMEOUT_MS });
-    const text = collectChatContent(response);
-    const parsed = parseJsonFromText(text);
+    const response = await callAnalysisCompletion(analysisPayload, { timeoutMs: ANALYSIS_FAST_TIMEOUT_MS });
+    const { parsed, repaired } = await parseAnalysisResponseJson(response, { lang, includeReferences: false });
     const normalized = normalizeAnalysis(parsed, safeFileName);
+    if (repaired) normalized.warningCode = "analysis_json_repaired";
     normalized.provider = "api";
     normalized.model = response?.model || runtimeConfigs.analysis.model;
     normalized.taskType = taskType;
@@ -7457,6 +7457,19 @@ async function chatCompletions(config, payload, options = {}) {
   return json;
 }
 
+async function callAnalysisCompletion(payload, options = {}) {
+  try {
+    return await chatCompletions(runtimeConfigs.analysis, payload, options);
+  } catch (error) {
+    if (!payload?.response_format || !/response_format|json_object|unsupported|invalid/i.test(String(error?.message || ""))) {
+      throw error;
+    }
+    const fallbackPayload = { ...payload };
+    delete fallbackPayload.response_format;
+    return chatCompletions(runtimeConfigs.analysis, fallbackPayload, options);
+  }
+}
+
 function writeSse(res, event, data) {
   res.write(`event: ${event}\n`);
   res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -8170,19 +8183,131 @@ function delay(ms) {
 }
 
 function parseJsonFromText(text) {
-  if (!text) {
+  const raw = String(text || "").trim();
+  if (!raw) {
     throw new Error("The analysis model returned empty text.");
   }
 
-  try {
-    return JSON.parse(text);
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (!match) {
-      throw new Error("Could not parse analysis JSON from model output.");
-    }
-    return JSON.parse(match[0]);
+  for (const candidate of jsonTextCandidates(raw)) {
+    const parsed = tryParseJsonCandidate(candidate);
+    if (parsed !== undefined) return parsed;
   }
+  throw new Error("Could not parse analysis JSON from model output.");
+}
+
+function jsonTextCandidates(text) {
+  const normalized = String(text || "").replace(/^\uFEFF/, "").trim();
+  const candidates = [normalized];
+  const fencePattern = /```(?:json)?\s*([\s\S]*?)```/gi;
+  let fence;
+  while ((fence = fencePattern.exec(normalized))) {
+    candidates.push(fence[1]);
+  }
+  candidates.push(...extractBalancedJsonSubstrings(normalized));
+  const first = normalized.indexOf("{");
+  const last = normalized.lastIndexOf("}");
+  if (first >= 0 && last > first) candidates.push(normalized.slice(first, last + 1));
+  return Array.from(new Set(candidates.map((item) => String(item || "").trim()).filter(Boolean)));
+}
+
+function tryParseJsonCandidate(candidate) {
+  const cleaned = cleanJsonCandidate(candidate);
+  const variants = [String(candidate || "").trim(), cleaned];
+  for (const variant of variants) {
+    if (!variant) continue;
+    try {
+      return JSON.parse(variant);
+    } catch {
+    }
+  }
+  return undefined;
+}
+
+function cleanJsonCandidate(candidate) {
+  return String(candidate || "")
+    .trim()
+    .replace(/^```(?:json)?/i, "")
+    .replace(/```$/i, "")
+    .replace(/[\u201C\u201D]/g, "\"")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/,\s*([}\]])/g, "$1")
+    .trim();
+}
+
+function extractBalancedJsonSubstrings(text) {
+  const results = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const ch = text[index];
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (ch === "\\") {
+        escape = true;
+      } else if (ch === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === "\"") {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0) start = index;
+      depth += 1;
+    } else if (ch === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start >= 0) {
+        results.push(text.slice(start, index + 1));
+        start = -1;
+      }
+    }
+  }
+  return results;
+}
+
+async function parseAnalysisResponseJson(response, { lang = "zh", includeReferences = false, timeoutMs = 30000 } = {}) {
+  const text = collectChatContent(response);
+  try {
+    return { parsed: parseJsonFromText(text), repaired: false, rawText: text };
+  } catch (parseError) {
+    const repairedText = await repairAnalysisJsonText(text, { lang, includeReferences, timeoutMs });
+    try {
+      return { parsed: parseJsonFromText(repairedText), repaired: true, rawText: text };
+    } catch (repairError) {
+      repairError.message = repairError.message + "; initial parse failed: " + parseError.message;
+      throw repairError;
+    }
+  }
+}
+
+async function repairAnalysisJsonText(text, { lang = "zh", includeReferences = false, timeoutMs = 30000 } = {}) {
+  const isEn = lang === "en";
+  const schema = includeReferences
+    ? '{"title":"...","summary":"...","detectedSubjects":["..."],"moodKeywords":["..."],"options":[{"id":"...","title":"...","description":"...","prompt":"...","tone":"...","layoutHint":"...","purpose":"visual|exploration|plan|research|content|tool","nodeType":"image|note|plan|todo|weather|map|link|code|table|timeline|comparison|metric|quote","content":{}}],"references":[{"title":"...","url":"https://example.com","description":"...","type":"web|doc|image"}]}'
+    : '{"title":"...","summary":"...","detectedSubjects":["..."],"moodKeywords":["..."],"options":[{"id":"...","title":"...","description":"...","prompt":"...","tone":"...","layoutHint":"...","purpose":"visual|exploration|plan|research|content|tool","nodeType":"image|note|plan|todo|weather|map|link|code|table|timeline|comparison|metric|quote","content":{}}]}';
+  const payload = {
+    max_tokens: includeReferences ? 8192 : 6144,
+    temperature: 0,
+    messages: [
+      {
+        role: "system",
+        content: "Repair malformed analysis output into one valid JSON object. Preserve the original meaning and concrete observations. Return JSON only."
+      },
+      {
+        role: "user",
+        content: "Required schema:\n" + schema + "\n\nMalformed model output:\n" + String(text || "").slice(0, 24000)
+      }
+    ]
+  };
+  applyReasoningMode(payload, runtimeConfigs.analysis, "no-thinking");
+  applyAnalysisJsonObjectResponseMode(payload);
+  const response = await callAnalysisCompletion(payload, { timeoutMs });
+  return collectChatContent(response);
 }
 
 function normalizeAnalysis(value, fileName = "source image") {

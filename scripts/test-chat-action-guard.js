@@ -204,4 +204,17 @@ const visualCanvas = {
   assert.equal(actions.every((action) => action.type === "generate_image"), true);
 }
 
+{
+  const actions = ensureMediaGenerationActions({
+    message: "请先分析这个多节点聚合蓝图，在对话区简要说明视觉综合思路，然后必须调用 canvas_action type=generate_image 真正执行成图。请把蓝图关系、卡片摘要、文档上下文和参考图片都作为一等上下文使用。目标父节点 ID：junction-1778515519686。",
+    actions: [{ type: "create_note", title: "视觉综合思路" }],
+    reply: "我会综合蓝图关系与参考图。",
+    lang: "zh",
+    maxActions: 12
+  });
+  assert.equal(isDirectImageGenerationRequest("请先分析这个多节点聚合蓝图，然后必须调用 canvas_action type=generate_image 真正执行成图。"), true);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].type, "generate_image");
+}
+
 console.log("[test] chat action guard: PASS");

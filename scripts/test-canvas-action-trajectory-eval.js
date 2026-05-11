@@ -121,6 +121,20 @@ function rejectedReasons(trace, type) {
 
 {
   const { result, trace } = evaluateTrajectory(
+    "analysis then explicit blueprint generation allows image generation",
+    "请先分析这个多节点聚合蓝图，在对话区简要说明视觉综合思路，然后必须调用 canvas_action type=generate_image 真正执行成图。",
+    [
+      { type: "generate_image", prompt: "蓝图综合成图", parentNodeId: "junction-1778515519686" },
+      { type: "create_note", title: "视觉综合思路", content: { text: "先分析，再成图。" } }
+    ],
+    { thinkingMode: "thinking" }
+  );
+  assert.equal(trace.taskType, "media_generation");
+  assert.deepEqual(result.actions.map((action) => action.type), ["generate_image", "create_note"]);
+}
+
+{
+  const { result, trace } = evaluateTrajectory(
     "explicit four-image generation allows distinct outputs",
     "请生成4张不同风格的海报图片",
     [

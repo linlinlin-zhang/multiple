@@ -453,7 +453,15 @@ function looksVisual(value = "") {
 
 function wantsMultipleGenerations(message = "") {
   const text = normalizeText(message);
-  return MULTI_DIRECTION_RE.test(text) || (DIRECTION_WORD_RE.test(text) && /(\d+|[一二两三四五六七八九十])\s*(个|张|种|款|条|份)?/.test(text));
+  if (isSingleBlueprintGenerationRequest(text)) return false;
+  return MULTI_DIRECTION_RE.test(text) || (DIRECTION_WORD_RE.test(text) && /(\d+|[一二两三四五六七八九十])\s*(个|张|种|款|条|份)/.test(text));
+}
+
+function isSingleBlueprintGenerationRequest(message = "") {
+  const text = normalizeText(message);
+  return /(蓝图|blueprint)/i.test(text)
+    && /(成图|出图|生成.{0,16}(图|图片|图像|视觉|海报)|canvas_action\s+type\s*=\s*generate_image|\bgenerate_image\b|generate.{0,16}(image|picture|visual))/i.test(text)
+    && !/(每个|分别|全部|所有|多张|几张|批量|each|all|every|multiple|batch)/i.test(text);
 }
 
 function requestedGenerationCount(message = "", reply = "") {
