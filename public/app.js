@@ -4890,7 +4890,7 @@ function renderMarkdownToHtml(markdown) {
 }
 
 function repairRenderedMarkdownHeadings(html) {
-  const repaired = String(html || "").replace(/<p>\s*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))\s+([^<][\s\S]*?)<\/p>/gi, (match, marker, text) => {
+  const repaired = String(html || "").replace(/<p>\s*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))(?:\s|&nbsp;)+([\s\S]*?)<\/p>/gi, (match, marker, text) => {
     const level = normalizeChatHeadingMarker(marker).length;
     return `<h${level}>${text.trim()}</h${level}>`;
   });
@@ -4898,7 +4898,7 @@ function repairRenderedMarkdownHeadings(html) {
 }
 
 function stripRenderedHeadingMarkerPrefixes(html) {
-  return String(html || "").replace(/<h([1-6])([^>]*)>\s*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))\s+([\s\S]*?)<\/h\1>/gi, (match, level, attrs, marker, text) => {
+  return String(html || "").replace(/<h([1-6])([^>]*)>(?:\s|&nbsp;)*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))(?:\s|&nbsp;)*([\s\S]*?)<\/h\1>/gi, (match, level, attrs, marker, text) => {
     return `<h${level}${attrs}>${String(text || "").trim()}</h${level}>`;
   });
 }
@@ -4933,9 +4933,7 @@ function isInjectedHeadingAnchor(node) {
 function stripHeadingMarkerFromElement(heading) {
   if (!heading) return false;
   let changed = false;
-  let guard = 0;
-  while (heading.firstChild && guard < 8) {
-    guard += 1;
+  while (heading.firstChild) {
     const first = heading.firstChild;
     if (first.nodeType === Node.TEXT_NODE) {
       if (!String(first.nodeValue || "").trim() && first.nextSibling) {
@@ -4945,13 +4943,22 @@ function stripHeadingMarkerFromElement(heading) {
       }
       const didStrip = stripHeadingMarkerFromTextNode(first);
       changed = didStrip || changed;
-      if (!didStrip) break;
-      continue;
+      break;
     }
     if (isInjectedHeadingAnchor(first)) {
       first.remove();
       changed = true;
       continue;
+    }
+    if (first.nodeType === Node.ELEMENT_NODE) {
+      const walker = first.ownerDocument?.createTreeWalker?.(first, NodeFilter.SHOW_TEXT);
+      const textNode = walker ? walker.nextNode() : null;
+      if (textNode && stripHeadingMarkerFromTextNode(textNode)) {
+        if (!textNode.nodeValue && first.childNodes.length <= 1) {
+          first.remove();
+        }
+        changed = true;
+      }
     }
     break;
   }

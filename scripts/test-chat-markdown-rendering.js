@@ -123,4 +123,28 @@ assert.equal(
   "escaped markers inside rendered headings should be stripped"
 );
 
+assert.equal(
+  repairRenderedMarkdownHeadings("<p># <strong>光线与影调</strong>：高对比</p>"),
+  "<h1><strong>光线与影调</strong>：高对比</h1>",
+  "paragraph headings with inline HTML tags should be repaired"
+);
+
+assert.equal(
+  repairRenderedMarkdownHeadings("<p>#&nbsp;光线与影调</p>"),
+  "<h1>光线与影调</h1>",
+  "paragraph headings with nbsp entity should be repaired"
+);
+
+assert.equal(
+  stripRenderedHeadingMarkerPrefixes("<h2>#&nbsp;光线与影调</h2>"),
+  "<h2>光线与影调</h2>",
+  "rendered headings with nbsp entity should not retain visible markers"
+);
+
+assert.equal(
+  stripRenderedHeadingMarkerPrefixes("<h2>#光线与影调</h2>"),
+  "<h2>光线与影调</h2>",
+  "rendered headings without space after marker should still be stripped"
+);
+
 console.log("[test] chat markdown rendering: PASS");
