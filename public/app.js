@@ -7877,7 +7877,7 @@ function getNodeSummary(node) {
     const c = node.option.content || {};
     if (nt === "note") return c.text || node.option.description || "";
     if (nt === "plan") return (c.steps || []).map((s, i) => `${i + 1}. ${s.title || s}`).join("; ");
-    if (nt === "todo") return (c.items || []).map((it) => `[${it.done ? "x" : " "}] ${it.text || it}`).join("; ");
+    if (nt === "todo") return (c.items || []).map((it) => `[${it.done ? "x" : " "}] ${typeof it.text === "string" ? it.text : (typeof it === "string" ? it : "")}`).join("; ");
     if (nt === "weather") return `${c.location || ""} ${c.temp || ""} ${c.forecast || ""}`;
     if (nt === "map") return c.address || `${c.lat || ""},${c.lng || ""}`;
     if (nt === "link") return c.title || c.url || node.option.description || "";
@@ -8178,7 +8178,7 @@ function actionContentText(action = {}) {
     return String(content.text || content.body || content.summary || content.caption || content.context);
   }
   if (Array.isArray(content.steps)) return content.steps.map((step) => step?.title || step?.description || step).filter(Boolean).join("\n");
-  if (Array.isArray(content.items)) return content.items.map((item) => item?.title || item?.text || item?.description || item).filter(Boolean).join("\n");
+  if (Array.isArray(content.items)) return content.items.map((item) => { const raw = item?.title || item?.text || item?.description || item; return typeof raw === "string" ? raw : (typeof item === "string" ? item : ""); }).filter(Boolean).join("\n");
   if (Array.isArray(content.events)) return content.events.map((item) => item?.title || item?.name || item?.description || item).filter(Boolean).join("\n");
   if (Array.isArray(content.options)) return content.options.map((item) => item?.title || item?.name || item?.summary || item?.description || item).filter(Boolean).join("\n");
   if (Array.isArray(content.rows)) return content.rows.map(tableRowSearchText).filter(Boolean).join("\n");
@@ -9220,7 +9220,7 @@ function deriveOptionSummary(option = {}) {
     ...(Array.isArray(c.steps) ? c.steps.map((step) => step?.description || step?.desc || step?.title || step) : []),
     option.prompt
   ], 220);
-  if (nodeType === "todo") return firstUsefulSummary(title, [c.summary, ...(Array.isArray(c.items) ? c.items.map((item) => item?.text || item?.label || item) : []), option.prompt], 220);
+  if (nodeType === "todo") return firstUsefulSummary(title, [c.summary, ...(Array.isArray(c.items) ? c.items.map((item) => { const raw = item?.text || item?.label || item; return typeof raw === "string" ? raw : (typeof item === "string" ? item : ""); }) : []), option.prompt], 220);
   return firstUsefulSummary(title, [option.summary, option.prompt], 220);
 }
 
@@ -9384,6 +9384,27 @@ function normalizeOptionContent(option) {
         };
       }).filter((item) => typeof item === "string" ? item : (item.title || item.description || item.status || item.owner || item.priority));
     });
+    option.content = next;
+    return next;
+  }
+  if (nodeType === "todo") {
+    const items = Array.isArray(current.items) ? current.items : (Array.isArray(current.steps) ? current.steps : []);
+    const next = {
+      ...current,
+      items: items.slice(0, 16).map((item, index) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) {
+          const text = plainCardText(item, 220);
+          return { text: text || `${currentLang === "en" ? "Task" : "任务"} ${index + 1}`, done: false };
+        }
+        const raw = item.text || item.title || item.label || item.description || item.name || item;
+        const text = plainCardText(typeof raw === "string" ? raw : (typeof item === "string" ? item : ""), 220);
+        return {
+          ...item,
+          text: text || `${currentLang === "en" ? "Task" : "任务"} ${index + 1}`,
+          done: Boolean(item.done)
+        };
+      }).filter((item) => item.text && item.text.length >= 1)
+    };
     option.content = next;
     return next;
   }
@@ -9710,7 +9731,8 @@ function renderRichNodeContent(element, option) {
     ul.className = "option-todo-items";
     c.items.forEach((item, index) => {
       const li = document.createElement("li");
-      const text = (item && (item.text || item.label)) || (typeof item === "string" ? item : "");
+      const raw = item && (item.text || item.label || item);
+      const text = typeof raw === "string" ? raw : (typeof item === "string" ? item : "");
       const done = Boolean(item && item.done);
       const cb = document.createElement("input");
       cb.type = "checkbox";
@@ -12415,7 +12437,8 @@ function turnIntoRichNode(element, option) {
         });
         const span = document.createElement("span");
         span.className = "rich-todo-text";
-        span.textContent = String(item.text || item).slice(0, 120);
+        const rawText = item && (item.text || item);
+        span.textContent = String(typeof rawText === "string" ? rawText : (typeof item === "string" ? item : "")).slice(0, 120);
         if (item.done) li.classList.add("rich-todo-done");
         li.append(checkbox, span);
         ul.appendChild(li);
@@ -12529,7 +12552,7 @@ function turnIntoRichNode(element, option) {
       case "link": text = option.content?.url || ""; break;
       case "note": text = option.content?.text || option.description || ""; break;
       case "plan": text = (option.content?.steps || []).map((s, i) => `${i + 1}. ${s.title || s}`).join("\n"); break;
-      case "todo": text = (option.content?.items || []).map((it) => `- [${it.done ? "x" : " "}] ${it.text || it}`).join("\n"); break;
+      case "todo": text = (option.content?.items || []).map((it) => `- [${it.done ? "x" : " "}] ${typeof it.text === "string" ? it.text : (typeof it === "string" ? it : "")}`).join("\n"); break;
       case "table": {
         const columns = option.content?.columns || inferTableColumns(option.content?.rows || []);
         text = [
