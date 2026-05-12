@@ -5460,7 +5460,7 @@ const VIDEO_MIME_TYPES = {
 };
 const VIDEO_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
 const VIDEO_TARGET_LONG_EDGE = 1280;
-const VIDEO_TARGET_BITRATE = 1500000;
+const VIDEO_TARGET_BITRATE = 1200000;
 const VIDEO_CAPTURE_FPS = 24;
 
 function sourceDocumentExtension(fileName = "") {
@@ -5935,9 +5935,13 @@ async function exploreSource() {
   if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) return;
   if (state.sourceType === "url" && !state.sourceUrl) return;
   if (state.sourceType === "video") {
-    await submitChatMessage(currentLang === "en"
-      ? "Please deeply explore this uploaded video, summarize important moments, and create 6-10 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards."
-      : "请深入探索这个上传视频，总结重要片段，并创建 6 到 10 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。", { forcedThinkingMode: "thinking" });
+    await submitChatMessage(currentLang === "en" ? "Explore video" : "探索视频", {
+      modelMessage: currentLang === "en"
+        ? "Please deeply explore this uploaded video, summarize important moments, and create 6-10 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards."
+        : "请深入探索这个上传视频，总结重要片段，并创建 6 到 10 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。",
+      forcedThinkingMode: "thinking",
+      displayActions: [{ type: "explore_source" }]
+    });
     return;
   }
 
@@ -6001,11 +6005,17 @@ async function analyzeSource(mode = "analyze") {
   if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) return;
   if (state.sourceType === "url" && !state.sourceUrl) return;
   if (state.sourceType === "video") {
-    await submitChatMessage(currentLang === "en"
-      ? "Please analyze this uploaded video. Summarize the key scenes, visible details, temporal structure, and create 5-8 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards."
-      : "请分析这个上传视频，总结关键画面、可见细节、时间结构，并创建 5 到 8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。", {
-        forcedThinkingMode: mode === "explore" ? "thinking" : "no-thinking"
-      });
+    await submitChatMessage(currentLang === "en" ? (mode === "explore" ? "Explore video" : "Analyze video") : (mode === "explore" ? "探索视频" : "分析视频"), {
+      modelMessage: currentLang === "en"
+        ? (mode === "explore"
+          ? "Please deeply explore this uploaded video, summarize important moments, and create 6-10 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards."
+          : "Please analyze this uploaded video. Summarize the key scenes, visible details, temporal structure, and create 5-8 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards.")
+        : (mode === "explore"
+          ? "请深入探索这个上传视频，总结重要片段，并创建 6 到 10 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。"
+          : "请分析这个上传视频，总结关键画面、可见细节、时间结构，并创建 5 到 8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。"),
+      forcedThinkingMode: mode === "explore" ? "thinking" : "no-thinking",
+      displayActions: [{ type: mode === "explore" ? "explore_source" : "analyze_source" }]
+    });
     return;
   }
 
@@ -6022,12 +6032,12 @@ async function analyzeSource(mode = "analyze") {
         thinkingMode: mode === "explore" ? "thinking" : "no-thinking",
         sessionId: currentSessionId || ""
       }, {
-        timeoutMs: 150000,
+        timeoutMs: mode === "explore" ? 180000 : 150000,
         timeoutMessage: t("research.timeout")
       });
     } else if (state.sourceType === "url") {
       data = await postJson("/api/analyze-url", { url: state.sourceUrl, thinkingMode: mode === "explore" ? "thinking" : "no-thinking", sessionId: currentSessionId || "" }, {
-        timeoutMs: 150000,
+        timeoutMs: mode === "explore" ? 180000 : 150000,
         timeoutMessage: t("research.timeout")
       });
     } else {
@@ -6038,7 +6048,7 @@ async function analyzeSource(mode = "analyze") {
         thinkingMode: mode === "explore" ? "thinking" : "no-thinking",
         sessionId: currentSessionId || ""
       }, {
-        timeoutMs: 150000,
+        timeoutMs: mode === "explore" ? 180000 : 150000,
         timeoutMessage: t("research.timeout")
       });
     }
@@ -10432,11 +10442,13 @@ async function analyzeStandaloneSourceCard(nodeId, { mode = "analyze" } = {}) {
   forceSelectNode(nodeId);
   const useExplore = mode === "explore";
   if (sourceCard.sourceType === "video") {
-    await submitChatMessage(useExplore
-      ? (currentLang === "en" ? "Please deeply explore this video source card and create 6-10 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请深入探索这张视频源卡片，并创建 6 到 10 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。")
-      : (currentLang === "en" ? "Please analyze this video source card, summarize the key moments, and create 5-8 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请分析这张视频源卡片，总结关键片段，并创建 5 到 8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。"), {
-        forcedThinkingMode: useExplore ? "thinking" : "no-thinking"
-      });
+    await submitChatMessage(currentLang === "en" ? (useExplore ? "Explore video" : "Analyze video") : (useExplore ? "探索视频" : "分析视频"), {
+      modelMessage: useExplore
+        ? (currentLang === "en" ? "Please deeply explore this video source card and create 6-10 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请深入探索这张视频源卡片，并创建 6 到 10 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。")
+        : (currentLang === "en" ? "Please analyze this video source card, summarize the key moments, and create 5-8 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请分析这张视频源卡片，总结关键片段，并创建 5 到 8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。"),
+      forcedThinkingMode: useExplore ? "thinking" : "no-thinking",
+      displayActions: [{ type: useExplore ? "explore_source" : "analyze_source" }]
+    });
     return;
   }
   setStatus(useExplore ? t("research.exploring") : t("status.busy"), "busy");
@@ -12603,33 +12615,65 @@ function getImageNodeInfo(nodeId) {
     };
   }
   if (nodeId === "source") {
-    if (state.sourceType !== "image" || !state.sourceImage) return null;
-    return {
-      nodeId,
-      isSource: true,
-      node: state.nodes.get("source"),
-      imageUrl: sourcePreview?.src || state.sourceImage,
-      title: state.fileName || sourceName?.textContent || "Source image",
-      explanation: state.latestAnalysis?.summary || "",
-      prompt: state.latestAnalysis?.summary || "",
-      imageHash: state.sourceImageHash || null
-    };
+    if (state.sourceType === "image" && state.sourceImage) {
+      return {
+        nodeId,
+        isSource: true,
+        node: state.nodes.get("source"),
+        imageUrl: sourcePreview?.src || state.sourceImage,
+        title: state.fileName || sourceName?.textContent || "Source image",
+        explanation: state.latestAnalysis?.summary || "",
+        prompt: state.latestAnalysis?.summary || "",
+        imageHash: state.sourceImageHash || null
+      };
+    }
+    if (state.sourceType === "video" && (state.sourceVideo || state.sourceVideoHash)) {
+      return {
+        nodeId,
+        isSource: true,
+        isVideo: true,
+        node: state.nodes.get("source"),
+        imageUrl: "",
+        videoUrl: state.sourceVideo || sourceVideoPreviewRef(state.sourceVideoHash),
+        title: state.fileName || sourceName?.textContent || "Source video",
+        explanation: state.latestAnalysis?.summary || "",
+        prompt: state.latestAnalysis?.summary || "",
+        imageHash: null
+      };
+    }
+    return null;
   }
 
   const node = state.nodes.get(nodeId);
   if (node?.sourceCard) {
     const imageUrl = sourceCardReferenceImageUrl(node.sourceCard);
-    if (!imageUrl) return null;
-    return {
-      nodeId,
-      isSource: true,
-      node,
-      imageUrl,
-      title: node.sourceCard.title || node.sourceCard.fileName || "Source card",
-      explanation: node.sourceCard.summary || "",
-      prompt: node.sourceCard.summary || "",
-      imageHash: node.sourceCard.imageHash || null
-    };
+    if (imageUrl) {
+      return {
+        nodeId,
+        isSource: true,
+        node,
+        imageUrl,
+        title: node.sourceCard.title || node.sourceCard.fileName || "Source card",
+        explanation: node.sourceCard.summary || "",
+        prompt: node.sourceCard.summary || "",
+        imageHash: node.sourceCard.imageHash || null
+      };
+    }
+    if (node.sourceCard.sourceType === "video" && (node.sourceCard.sourceVideoUrl || node.sourceCard.sourceVideoHash || node.sourceCard.videoUrl || node.sourceCard.videoHash)) {
+      return {
+        nodeId,
+        isSource: true,
+        isVideo: true,
+        node,
+        imageUrl: "",
+        videoUrl: sourceCardDisplayVideoUrl(node.sourceCard),
+        title: node.sourceCard.title || node.sourceCard.fileName || "Source card",
+        explanation: node.sourceCard.summary || "",
+        prompt: node.sourceCard.summary || "",
+        imageHash: null
+      };
+    }
+    return null;
   }
   if (!node?.generated) return null;
   const img = node.element.querySelector(".generated-image");
@@ -12933,12 +12977,39 @@ function openImageViewer(nodeId, { editing = false } = {}) {
   if (!info || !imageViewerModal) return;
 
   currentViewerNodeId = nodeId;
-  viewerImage.src = info.imageUrl;
-  viewerImage.alt = info.title || t("generated.result");
+
+  if (info.isVideo) {
+    viewerImage.style.display = "none";
+    if (viewerMaskCanvas) viewerMaskCanvas.style.display = "none";
+    let videoEl = imageViewerModal.querySelector(".viewer-video");
+    if (!videoEl) {
+      videoEl = document.createElement("video");
+      videoEl.className = "viewer-video";
+      videoEl.controls = true;
+      videoEl.muted = true;
+      videoEl.playsInline = true;
+      viewerImage.parentNode.insertBefore(videoEl, viewerImage);
+    }
+    videoEl.style.display = "";
+    videoEl.src = info.videoUrl;
+  } else {
+    viewerImage.style.display = "";
+    if (viewerMaskCanvas) viewerMaskCanvas.style.display = "";
+    const videoEl = imageViewerModal.querySelector(".viewer-video");
+    if (videoEl) videoEl.style.display = "none";
+    viewerImage.src = info.imageUrl;
+    viewerImage.alt = info.title || t("generated.result");
+  }
+
   viewerTitle.textContent = info.title || "";
   viewerExplanation.textContent = info.explanation || "";
 
-  if (viewerRegenerate) viewerRegenerate.classList.toggle("hidden", info.isSource);
+  if (viewerRegenerate) viewerRegenerate.classList.toggle("hidden", info.isSource || info.isVideo);
+  if (viewerBrushTool) viewerBrushTool.classList.toggle("hidden", info.isVideo);
+  if (viewerClearMask) viewerClearMask.classList.toggle("hidden", true);
+  if (viewerAspectButton) viewerAspectButton.classList.toggle("hidden", info.isVideo);
+  if (viewerMaskCanvas) viewerMaskCanvas.classList.toggle("hidden", info.isVideo);
+
   if (viewerPromptInput) viewerPromptInput.value = "";
   resetViewerEditControls();
   setViewerEditPanelVisible(editing);
@@ -12948,14 +13019,19 @@ function openImageViewer(nodeId, { editing = false } = {}) {
     shareBtn.onclick = () => openImageShareModal(nodeId);
   }
 
-  populateViewerThumbnails(nodeId);
+  if (!info.isVideo) {
+    populateViewerThumbnails(nodeId);
+  } else if (viewerThumbnailStrip) {
+    viewerThumbnailStrip.innerHTML = "";
+  }
 
   imageViewerModal.classList.remove("hidden");
   document.body.style.overflow = "hidden";
-  requestAnimationFrame(syncViewerMaskCanvas);
-
-  viewerImage.addEventListener("touchstart", handleViewerTouchStart, { passive: true });
-  viewerImage.addEventListener("touchend", handleViewerTouchEnd, { passive: true });
+  if (!info.isVideo) {
+    requestAnimationFrame(syncViewerMaskCanvas);
+    viewerImage.addEventListener("touchstart", handleViewerTouchStart, { passive: true });
+    viewerImage.addEventListener("touchend", handleViewerTouchEnd, { passive: true });
+  }
 
   if (editing) viewerPromptInput?.focus();
   else imageViewerModal.querySelector("#closeImageViewer")?.focus();
@@ -12965,6 +13041,11 @@ function closeImageViewer() {
   resetViewerEditControls();
   imageViewerModal.classList.add("hidden");
   viewerImage.src = "";
+  const videoEl = imageViewerModal.querySelector(".viewer-video");
+  if (videoEl) {
+    videoEl.pause();
+    videoEl.src = "";
+  }
   document.body.style.overflow = "";
   currentViewerNodeId = null;
   viewerImage.removeEventListener("touchstart", handleViewerTouchStart);
@@ -12977,6 +13058,12 @@ async function submitViewerImageEdit(prompt) {
   if (!info) return;
   if (info.isTourDemo) {
     showSelectionToast(t("viewer.demoOnly"));
+    return;
+  }
+  if (info.isVideo) {
+    closeImageViewer();
+    const videoDataUrl = await getSourceVideoDataUrl(currentViewerNodeId === "source" ? null : currentViewerNodeId);
+    await submitChatMessage(prompt, { videoDataUrl, forcedThinkingMode: "thinking" });
     return;
   }
   if (viewerEditState.brushActive && !viewerEditState.hasMask) {
@@ -13033,11 +13120,30 @@ function openImageShareModal(nodeId) {
 
   currentShareNodeId = nodeId;
   const cachedUrl = imageShareLinks.get(nodeId) || "";
-  if (sharePreviewImage) {
-    sharePreviewImage.src = info.imageUrl;
-    sharePreviewImage.alt = info.title || "Shared image";
+
+  let videoEl = imageShareModal.querySelector(".share-preview-video");
+  if (info.isVideo) {
+    if (sharePreviewImage) sharePreviewImage.style.display = "none";
+    if (!videoEl) {
+      videoEl = document.createElement("video");
+      videoEl.className = "share-preview-video";
+      videoEl.controls = true;
+      videoEl.muted = true;
+      videoEl.playsInline = true;
+      sharePreviewImage?.parentNode?.insertBefore(videoEl, sharePreviewImage);
+    }
+    videoEl.style.display = "";
+    videoEl.src = info.videoUrl;
+  } else {
+    if (sharePreviewImage) {
+      sharePreviewImage.style.display = "";
+      sharePreviewImage.src = info.imageUrl;
+      sharePreviewImage.alt = info.title || "Shared image";
+    }
+    if (videoEl) videoEl.style.display = "none";
   }
-  if (shareTitle) shareTitle.textContent = info.title || "分享图片";
+
+  if (shareTitle) shareTitle.textContent = info.title || (info.isVideo ? "分享视频" : "分享图片");
   if (shareNameInput) shareNameInput.value = suggestImageFileName(info);
   if (shareLinkInput) shareLinkInput.value = cachedUrl;
   setShareCopyButtonBusy(!cachedUrl);
@@ -13061,6 +13167,11 @@ function openImageShareModal(nodeId) {
 function closeImageShareModal() {
   imageShareModal?.classList.add("hidden");
   if (sharePreviewImage) sharePreviewImage.src = "";
+  const videoEl = imageShareModal?.querySelector(".share-preview-video");
+  if (videoEl) {
+    videoEl.pause();
+    videoEl.src = "";
+  }
   currentShareNodeId = null;
   if (imageViewerModal?.classList.contains("hidden")) {
     document.body.style.overflow = "";
@@ -13078,6 +13189,14 @@ async function ensureImageShareLink(nodeId) {
     const url = window.location.origin + WORKBENCH_TOUR_DEMO_IMAGE_URL;
     imageShareLinks.set(nodeId, url);
     return url;
+  }
+  const info = getImageNodeInfo(nodeId);
+  if (info?.isVideo) {
+    const url = info.videoUrl;
+    if (url) {
+      imageShareLinks.set(nodeId, url);
+      return url;
+    }
   }
   if (imageShareLinks.has(nodeId)) return imageShareLinks.get(nodeId);
   if (imageShareLinkPromises.has(nodeId)) return imageShareLinkPromises.get(nodeId);
@@ -13155,8 +13274,8 @@ async function copyTextToClipboard(text, inputEl = null) {
 
 function suggestImageFileName(info) {
   const raw = info?.title || info?.node?.option?.title || state.fileName || "thoughtgrid-image";
-  const name = sanitizeFileName(raw).replace(/\.(png|jpe?g|webp|gif)$/i, "");
-  const ext = getImageFileExtension(info?.imageUrl || raw) || "png";
+  const name = sanitizeFileName(raw).replace(/\.(png|jpe?g|webp|gif|mp4|webm|mov|m4v)$/i, "");
+  const ext = getImageFileExtension(info?.imageUrl || info?.videoUrl || raw) || (info?.isVideo ? "mp4" : "png");
   return `${name || "thoughtgrid-image"}.${ext}`;
 }
 
@@ -13170,13 +13289,15 @@ function sanitizeFileName(value) {
 
 function getImageFileExtension(value) {
   const clean = String(value || "").split("?")[0].toLowerCase();
-  const match = /\.(png|jpe?g|webp|gif)$/.exec(clean);
+  const match = /\.(png|jpe?g|webp|gif|mp4|webm|mov|m4v)$/.exec(clean);
   if (!match) return "";
-  return match[1] === "jpeg" ? "jpg" : match[1];
+  if (match[1] === "jpeg") return "jpg";
+  if (match[1] === "mov") return "mp4";
+  return match[1];
 }
 
 function renameImageNode(nodeId, value) {
-  const clean = sanitizeFileName(value).replace(/\.(png|jpe?g|webp|gif)$/i, "");
+  const clean = sanitizeFileName(value).replace(/\.(png|jpe?g|webp|gif|mp4|webm|mov|m4v)$/i, "");
   if (!clean) return;
   if (nodeId === "source") {
     const ext = getImageFileExtension(state.fileName) || getImageFileExtension(sharePreviewImage?.src) || "png";
@@ -13195,7 +13316,7 @@ function renameImageNode(nodeId, value) {
   const titleEl = node.element.querySelector("h3, .option-title");
   if (titleEl) titleEl.textContent = clean;
   if (shareTitle) shareTitle.textContent = clean;
-  if (shareNameInput && !/\.(png|jpe?g|webp|gif)$/i.test(shareNameInput.value)) {
+  if (shareNameInput && !/\.(png|jpe?g|webp|gif|mp4|webm|mov|m4v)$/i.test(shareNameInput.value)) {
     shareNameInput.value = `${clean}.png`;
   }
   autoSave();
@@ -13203,15 +13324,16 @@ function renameImageNode(nodeId, value) {
 
 async function downloadImageNode(nodeId, requestedName = "") {
   const info = getImageNodeInfo(nodeId);
-  if (!info?.imageUrl) return;
+  if (!info?.imageUrl && !info?.videoUrl) return;
+  const url = info.imageUrl || info.videoUrl;
   const fileName = sanitizeFileName(requestedName || suggestImageFileName(info));
   try {
-    if (info.imageUrl.startsWith("data:")) {
-      downloadImage(info.imageUrl, fileName);
+    if (url.startsWith("data:")) {
+      downloadImage(url, fileName);
       return;
     }
-    const sep = info.imageUrl.includes("?") ? "&" : "?";
-    const res = await fetch(`${info.imageUrl}${sep}download=1`);
+    const sep = url.includes("?") ? "&" : "?";
+    const res = await fetch(`${url}${sep}download=1`);
     if (!res.ok) throw new Error("Fetch failed");
     const blob = await res.blob();
     const blobUrl = URL.createObjectURL(blob);
@@ -13219,7 +13341,7 @@ async function downloadImageNode(nodeId, requestedName = "") {
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
   } catch (err) {
     console.error("Download failed:", err);
-    downloadImage(info.imageUrl, fileName);
+    downloadImage(url, fileName);
   }
 }
 

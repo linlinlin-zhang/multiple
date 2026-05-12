@@ -1503,6 +1503,16 @@ body.chat-sidebar-closed .canvas-history-nav {
   pointer-events: none;
 }
 
+.has-video-preview .image-card-actions {
+  left: auto;
+  right: 14px;
+  bottom: 74px;
+  flex-direction: column;
+  gap: 8px;
+  width: auto;
+  align-items: flex-end;
+}
+
 .image-card-action {
   width: 48px;
   height: 48px;
@@ -4642,7 +4652,8 @@ html[data-theme="dark"] .chat-generate-button:disabled {
   display: block;
 }
 
-.viewer-image {
+.viewer-image,
+.viewer-video {
   position: absolute;
   left: 108px;
   right: 7.5vw;
@@ -4651,7 +4662,7 @@ html[data-theme="dark"] .chat-generate-button:disabled {
   height: calc(100vh - 236px);
   max-height: none;
   object-fit: contain;
-  background: #ffffff;
+  background: #000;
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.12);
 }
 
@@ -5122,7 +5133,8 @@ html[data-theme="dark"] .share-button:hover {
   letter-spacing: 0;
 }
 
-.share-preview-image {
+.share-preview-image,
+.share-preview-video {
   display: block;
   width: 100%;
   max-height: 320px;
