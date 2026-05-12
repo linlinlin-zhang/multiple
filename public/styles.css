@@ -1634,6 +1634,11 @@ body.chat-sidebar-closed .canvas-history-nav {
   flex: 0 0 auto;
 }
 
+.source-node.hide-research-actions .research-dropdown-wrapper,
+.source-node.hide-research-actions .source-card-research-actions {
+  display: none;
+}
+
 .node-resize-handle {
   position: absolute;
   z-index: 9;
@@ -1642,8 +1647,13 @@ body.chat-sidebar-closed .canvas-history-nav {
 }
 
 .node:hover .node-resize-handle,
-.node.resizing .node-resize-handle {
+.node.resizing .node-resize-handle,
+.node.rotating .node-resize-handle {
   opacity: 1;
+}
+
+.node.rotating {
+  transition: none !important;
 }
 
 .node-resize-n,
@@ -1688,7 +1698,8 @@ body.chat-sidebar-closed .canvas-history-nav {
 .node-resize-nw:hover,
 .node-resize-se:hover,
 .node-resize-sw:hover,
-.node.resizing .node-resize-handle {
+.node.resizing .node-resize-handle,
+.node.rotating .node-resize-handle {
   background: rgba(0, 112, 204, 0.22);
 }
 
@@ -3587,6 +3598,66 @@ html[data-theme="dark"] .chat-scroll-bottom {
   background: var(--paper);
   color: var(--body);
   cursor: pointer;
+}
+
+.file-import-progress-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 275;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.file-import-progress-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(5px);
+}
+
+.file-import-progress-content {
+  position: relative;
+  width: min(420px, 100%);
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  background: var(--paper);
+  box-shadow: var(--shadow-16);
+  z-index: 1;
+}
+
+.file-import-progress-content h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.file-import-progress-text {
+  min-height: 20px;
+  margin: 0 0 14px;
+  color: var(--body);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.file-import-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 112, 204, 0.12);
+}
+
+.file-import-progress-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ps-blue);
+  transition: width 160ms ease;
 }
 
 .chat-attach-button {

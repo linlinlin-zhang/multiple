@@ -811,6 +811,10 @@ const i18n = {
     "file.unsupported": "不支持的文件类型。请上传图片、视频或文档。",
     "file.batchLimited": "一次最多导入 {max} 个文件，已导入前 {count} 个。",
     "file.batchImported": "已导入 {count} 个文件。",
+    "file.importProgressTitle": "正在导入文件",
+    "file.importProgressCurrent": "正在导入 {current}/{total}：{name}",
+    "file.importProgressComplete": "导入完成",
+    "file.importProgressPreparing": "准备导入...",
     "canvas.blankReused": "当前已是未使用的新画布。",
     "file.readError": "文件读取失败：",
     "material.searchPlaceholder": "搜索素材库素材...",
@@ -1288,6 +1292,10 @@ const i18n = {
     "file.unsupported": "Unsupported file type. Please upload an image, video, or document.",
     "file.batchLimited": "You can import up to {max} files at once; imported the first {count}.",
     "file.batchImported": "Imported {count} files.",
+    "file.importProgressTitle": "Importing files",
+    "file.importProgressCurrent": "Importing {current}/{total}: {name}",
+    "file.importProgressComplete": "Import complete",
+    "file.importProgressPreparing": "Preparing import...",
     "canvas.blankReused": "This is already an unused new canvas.",
     "file.readError": "File read failed: ",
     "image.error": "Image read failed",
@@ -2757,7 +2765,56 @@ function setSourceCardPanelMode(nodeId, mode = "file") {
   element.querySelector(".url-input-panel")?.classList.toggle("hidden", activeMode !== "url");
   element.querySelector(".source-text-panel")?.classList.toggle("hidden", activeMode !== "text");
   element.classList.toggle("is-text-mode", activeMode === "text");
+  element.classList.toggle("is-url-mode", activeMode === "url");
   ensureSourceTextToolbar(nodeId, element);
+  syncSourceCardResearchActions(nodeId, activeMode);
+}
+
+function sourceCardResearchShouldHide(nodeId, activeMode = "") {
+  const element = sourceElementForNode(nodeId);
+  const mode = activeMode || element?.querySelector(".source-tab.active")?.dataset.tab || "file";
+  if (mode === "text" || mode === "url") return true;
+  if (nodeId === "source") return state.sourceTextMode === "manual" || state.sourceType === "url";
+  const sourceCard = state.nodes.get(nodeId)?.sourceCard;
+  return Boolean(sourceCard?.sourceTextMode === "manual" || sourceCard?.sourceType === "url");
+}
+
+function sourceCardResearchHasContent(nodeId) {
+  if (nodeId === "source") {
+    if (state.sourceType === "image") return Boolean(state.sourceImage);
+    if (state.sourceType === "video") return Boolean(state.sourceVideo || state.sourceVideoHash);
+    if (state.sourceType === "text") return Boolean(state.sourceText || state.sourceDataUrl || state.sourceDataUrlHash);
+    return false;
+  }
+  const sourceCard = state.nodes.get(nodeId)?.sourceCard;
+  if (!sourceCard) return false;
+  if (sourceCard.sourceType === "image") return Boolean(sourceCard.imageUrl || sourceCard.imageHash);
+  if (sourceCard.sourceType === "video") return Boolean(sourceCard.sourceVideoUrl || sourceCard.sourceVideoHash);
+  if (sourceCard.sourceType === "text") return Boolean(sourceCard.sourceText || sourceCard.sourceDataUrl || sourceCard.sourceDataUrlHash);
+  return Boolean(
+    sourceCard.imageUrl ||
+    sourceCard.imageHash ||
+    sourceCard.sourceVideoUrl ||
+    sourceCard.sourceVideoHash ||
+    sourceCard.sourceText ||
+    sourceCard.sourceDataUrl ||
+    sourceCard.sourceDataUrlHash
+  );
+}
+
+function syncSourceCardResearchActions(nodeId, activeMode = "") {
+  const element = sourceElementForNode(nodeId);
+  if (!element) return;
+  const hidden = sourceCardResearchShouldHide(nodeId, activeMode);
+  const disabled = hidden || !sourceCardResearchHasContent(nodeId);
+  element.classList.toggle("hide-research-actions", hidden);
+  if (nodeId === "source") {
+    const wrapper = element.querySelector(".research-dropdown-wrapper");
+    wrapper?.classList.toggle("hidden", hidden);
+    if (researchButton) researchButton.disabled = disabled;
+    return;
+  }
+  setSourceCardResearchActionsDisabled(element, disabled);
 }
 
 function syncSourceTextCardUi(nodeId, { mode = "" } = {}) {
@@ -5416,6 +5473,46 @@ function notifySourceImportLimit(total, count) {
   }
 }
 
+function createFileImportProgress(total) {
+  const modal = document.createElement("div");
+  modal.className = "file-import-progress-modal";
+  modal.setAttribute("role", "dialog");
+  modal.setAttribute("aria-modal", "true");
+  modal.innerHTML = `
+    <div class="file-import-progress-backdrop"></div>
+    <div class="file-import-progress-content">
+      <h3>${escapeHtml(t("file.importProgressTitle"))}</h3>
+      <p class="file-import-progress-text">${escapeHtml(t("file.importProgressPreparing"))}</p>
+      <div class="file-import-progress-track"><span></span></div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  const text = modal.querySelector(".file-import-progress-text");
+  const bar = modal.querySelector(".file-import-progress-track span");
+  const update = (current, name = "") => {
+    const safeTotal = Math.max(1, Number(total) || 1);
+    const rawCurrent = Number(current) || 0;
+    const safeCurrent = clamp(rawCurrent, 0, safeTotal);
+    if (text) {
+      text.textContent = rawCurrent > safeTotal
+        ? t("file.importProgressComplete")
+        : t("file.importProgressCurrent", { current: safeCurrent, total: safeTotal, name: name || t("file.importProgressPreparing") });
+    }
+    if (bar) bar.style.width = `${Math.round((safeCurrent / safeTotal) * 100)}%`;
+  };
+  update(0);
+  return {
+    update,
+    close() {
+      modal.remove();
+    }
+  };
+}
+
+function updateFileImportProgress(progress, current, total, file) {
+  progress?.update(current, file?.name || t("file.importProgressPreparing"));
+}
+
 function renderSourceDocumentPreviewFromState() {
   if (state.sourceType !== "text" || !state.fileName) return;
   renderDocumentPreview(
@@ -5450,13 +5547,20 @@ async function handleFile(event) {
     return;
   }
   if (files.length < selection.files.length) showToast(t("file.unsupported"));
-  await handlePrimarySourceFile(files[0]);
-  for (let index = 1; index < files.length; index += 1) {
-    await createStandaloneSourceCardFromFile(files[index], { anchorNodeId: "source", index: index - 1 });
-  }
-  if (files.length > 1) {
-    showToast(t("file.batchImported", { count: files.length }));
-    autoSave();
+  const progress = files.length > 1 ? createFileImportProgress(files.length) : null;
+  try {
+    updateFileImportProgress(progress, 1, files.length, files[0]);
+    await handlePrimarySourceFile(files[0]);
+    for (let index = 1; index < files.length; index += 1) {
+      updateFileImportProgress(progress, index + 1, files.length, files[index]);
+      await createStandaloneSourceCardFromFile(files[index], { anchorNodeId: "source", index: index - 1 });
+    }
+    if (files.length > 1) {
+      showToast(t("file.batchImported", { count: files.length }));
+      autoSave();
+    }
+  } finally {
+    progress?.close();
   }
 }
 
@@ -5623,18 +5727,10 @@ function canResearchNode(nodeId) {
   const node = state.nodes.get(nodeId);
   if (!node) return false;
   // Only source and analysis nodes can be researched
-  if (nodeId === "source" || nodeId === "analysis") return true;
+  if (nodeId === "source") return !sourceCardResearchShouldHide("source") && sourceCardResearchHasContent("source");
+  if (nodeId === "analysis") return true;
   if (node.sourceCard) {
-    return Boolean(
-      node.sourceCard.imageUrl ||
-      node.sourceCard.imageHash ||
-      node.sourceCard.sourceVideoUrl ||
-      node.sourceCard.sourceVideoHash ||
-      node.sourceCard.sourceText ||
-      node.sourceCard.sourceDataUrl ||
-      node.sourceCard.sourceDataUrlHash ||
-      node.sourceCard.sourceUrl
-    );
+    return !sourceCardResearchShouldHide(nodeId) && sourceCardResearchHasContent(nodeId);
   }
   if (node.option) return true;
   return false;
@@ -9967,11 +10063,18 @@ function createStandaloneSourceCard({ id, title, x, y, imageUrl = "", imageHash 
       return;
     }
     if (files.length < selection.files.length) showToast(t("file.unsupported"));
-    await handleStandaloneSourceFile(nodeId, files[0]);
-    for (let index = 1; index < files.length; index += 1) {
-      await createStandaloneSourceCardFromFile(files[index], { anchorNodeId: nodeId, index: index - 1 });
+    const progress = files.length > 1 ? createFileImportProgress(files.length) : null;
+    try {
+      updateFileImportProgress(progress, 1, files.length, files[0]);
+      await handleStandaloneSourceFile(nodeId, files[0]);
+      for (let index = 1; index < files.length; index += 1) {
+        updateFileImportProgress(progress, index + 1, files.length, files[index]);
+        await createStandaloneSourceCardFromFile(files[index], { anchorNodeId: nodeId, index: index - 1 });
+      }
+      if (files.length > 1) showToast(t("file.batchImported", { count: files.length }));
+    } finally {
+      progress?.close();
     }
-    if (files.length > 1) showToast(t("file.batchImported", { count: files.length }));
   });
   wireSourceCardTabs(nodeId, element);
   textInputEl.addEventListener("input", () => {
@@ -10098,7 +10201,8 @@ async function handleStandaloneSourceFile(nodeId, file) {
         sourceText: "",
         sourceTextMode: "",
         sourceDataUrl: "",
-        sourceDataUrlHash: ""
+        sourceDataUrlHash: "",
+        sourceUrl: ""
       };
       if (img) {
         img.src = imageUrl;
@@ -10126,7 +10230,8 @@ async function handleStandaloneSourceFile(nodeId, file) {
         sourceText: "",
         sourceTextMode: "",
         sourceDataUrl: "",
-        sourceDataUrlHash: ""
+        sourceDataUrlHash: "",
+        sourceUrl: ""
       };
       if (img) {
         img.src = "";
@@ -10157,7 +10262,8 @@ async function handleStandaloneSourceFile(nodeId, file) {
         sourceText: text,
         sourceTextMode: "",
         sourceDataUrl: isPlainText ? "" : dataUrl,
-        sourceDataUrlHash: stored?.hash || ""
+        sourceDataUrlHash: stored?.hash || "",
+        sourceUrl: ""
       };
       if (img) {
         img.src = "";
@@ -14591,17 +14697,21 @@ function startNodeRotate(event, id) {
     x: rect.left + rect.width / 2,
     y: rect.top + rect.height / 2
   };
-  const startAngle = Math.atan2(event.clientY - center.y, event.clientX - center.x) * 180 / Math.PI;
-  const startRotation = normalizeRotation(node.rotation);
+  let lastAngle = Math.atan2(event.clientY - center.y, event.clientX - center.x) * 180 / Math.PI;
+  let currentRotation = Number.isFinite(Number(node.rotation)) ? Number(node.rotation) : 0;
 
   function move(moveEvent) {
     const currentAngle = Math.atan2(moveEvent.clientY - center.y, moveEvent.clientX - center.x) * 180 / Math.PI;
-    node.rotation = normalizeRotation(startRotation + currentAngle - startAngle);
+    currentRotation += shortestAngleDelta(lastAngle, currentAngle);
+    lastAngle = currentAngle;
+    node.rotation = currentRotation;
     applyNodeRotation(node);
     drawLinks();
   }
 
   function up() {
+    node.rotation = normalizeRotation(currentRotation);
+    applyNodeRotation(node);
     element.classList.remove("rotating");
     window.removeEventListener("pointermove", move);
     window.removeEventListener("pointerup", up);
@@ -14614,6 +14724,13 @@ function startNodeRotate(event, id) {
   window.addEventListener("pointerup", up, { once: true });
 }
 
+function shortestAngleDelta(from, to) {
+  let delta = to - from;
+  while (delta > 180) delta -= 360;
+  while (delta < -180) delta += 360;
+  return delta;
+}
+
 function normalizeRotation(value) {
   const raw = Number(value);
   if (!Number.isFinite(raw)) return 0;
@@ -14622,7 +14739,8 @@ function normalizeRotation(value) {
 
 function applyNodeRotation(node) {
   if (!node?.element) return;
-  node.element.style.setProperty("--node-rotation", `${normalizeRotation(node.rotation)}deg`);
+  const rotation = Number(node.rotation);
+  node.element.style.setProperty("--node-rotation", `${Number.isFinite(rotation) ? rotation : 0}deg`);
 }
 
 function restoreExistingNodeLayout(id, record) {
@@ -15702,7 +15820,13 @@ function handleAttachClick() {
   input.onchange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    await handleAttachment(file);
+    const progress = createFileImportProgress(1);
+    try {
+      updateFileImportProgress(progress, 1, 1, file);
+      await handleAttachment(file);
+    } finally {
+      progress?.close();
+    }
   };
   input.click();
 }
