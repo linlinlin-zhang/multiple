@@ -4725,6 +4725,53 @@ function normalizeChatHeadingMarker(marker) {
 }
 
 const CHAT_MARKDOWN_SECTION_LABEL_RE = /^(总评|总体评价|整体印象|核心判断|结论|小结|构图|光影|主体与尺度|主体|尺度|色彩与影调|色彩|影调|技术质量|可提升的空间|提升空间|改进建议|后期建议|推荐方向|下一步|Overall|Summary|Composition|Lighting|Subject|Scale|Color|Tone|Technical quality|Improvements|Suggestions|Next steps)([：:][^\s。！？!?；;\n]{0,32})?(?:\s+(.+))?$/i;
+const CHAT_MARKDOWN_HEADING_MARKER_RE = String.raw`(?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6})`;
+const CHAT_MARKDOWN_HEADING_SPACE_RE = String.raw`[ \t\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]*`;
+
+function stripChatMarkdownHeadingPrefixArtifacts(text) {
+  return String(text || "").replace(/(^|\n)[ \t\u00a0\u200b\u200c\u200d\u2060\ufeff]+(?=(?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6})[ \t\u00a0]*\S)/gi, "$1");
+}
+
+function stripDuplicateChatHeadingMarkers(text) {
+  const marker = CHAT_MARKDOWN_HEADING_MARKER_RE;
+  const spaces = CHAT_MARKDOWN_HEADING_SPACE_RE;
+  const leadingMarkerRe = new RegExp(`^${marker}${spaces}(?=\\S)`, "i");
+  let value = String(text || "").trim();
+  let previous = "";
+  while (value && value !== previous) {
+    previous = value;
+    value = value.replace(leadingMarkerRe, "").trimStart();
+  }
+  return value;
+}
+
+function normalizeChatMarkdownHeadingLine(line) {
+  const marker = CHAT_MARKDOWN_HEADING_MARKER_RE;
+  const spaces = CHAT_MARKDOWN_HEADING_SPACE_RE;
+  const headingRe = new RegExp(`^([ \\t]{0,3})(${marker})${spaces}(.*)$`, "i");
+  const match = String(line || "").match(headingRe);
+  if (!match) return line;
+  const body = stripDuplicateChatHeadingMarkers(match[3]);
+  if (!body) return line;
+  return `${match[1]}${normalizeChatHeadingMarker(match[2])} ${body}`;
+}
+
+function normalizeChatMarkdownHeadings(text) {
+  const marker = CHAT_MARKDOWN_HEADING_MARKER_RE;
+  const spaces = CHAT_MARKDOWN_HEADING_SPACE_RE;
+  const brokenHeadingRe = new RegExp(`([。！？!?；;：:])\\s*(${marker})${spaces}(?=\\S)`, "gi");
+  const tableHeadingRe = new RegExp(`\\|[ \\t]*(${marker})${spaces}(?=\\S)`, "gi");
+  let value = String(text || "").replace(brokenHeadingRe, (match, prefix, headingMarker) => {
+    return `${prefix}\n\n${normalizeChatHeadingMarker(headingMarker)} `;
+  });
+  value = value.replace(tableHeadingRe, (match, headingMarker) => {
+    return `|\n\n${normalizeChatHeadingMarker(headingMarker)} `;
+  });
+  return value.split("\n").map((line) => {
+    if (/^\s{0,3}(?:[-*+]|\d+[.)]|>|```|~~~)\s/.test(line)) return line;
+    return normalizeChatMarkdownHeadingLine(line);
+  }).join("\n");
+}
 
 function normalizeChatSectionHeadings(text) {
   return String(text || "").split("\n").map((line) => {
@@ -4746,20 +4793,11 @@ function normalizeChatLooseLabelLines(text) {
 
 function normalizeChatMarkdownText(segment) {
   let text = String(segment || "").replace(/[ \t]+$/gm, "");
-  text = text.replace(/(^|\n)[ \t]*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))[ \t]*(?=[^\s#＃])/gi, (match, prefix, marker) => `${prefix}${normalizeChatHeadingMarker(marker)} `);
-  text = text.replace(/([。！？!?；;：:])\s*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))[ \t]*(?=[^\s#＃])/gi, (match, prefix, marker) => `${prefix}\n\n${normalizeChatHeadingMarker(marker)} `);
-  text = text.replace(/\|[ \t]*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))[ \t]*(?=[^\s#＃])/gi, (match, marker) => `|\n\n${normalizeChatHeadingMarker(marker)} `);
-  text = text.replace(/(^|\n)[ \t]*\\(#{1,6})[ \t]*(?=[^\s#])/g, "$1$2 ");
-  text = text.replace(/([。！？!?；;：:])\s*\\(#{1,6})[ \t]*(?=[^\s#])/g, "$1\n\n$2 ");
-  text = text.replace(/\|[ \t]*\\(#{1,6})[ \t]*(?=[^\s#])/g, "|\n\n$1 ");
+  text = stripChatMarkdownHeadingPrefixArtifacts(text);
+  text = normalizeChatMarkdownHeadings(text);
   text = text.replace(/([^\n])([ \t]*)(```|~~~)/g, "$1\n\n$3");
-  text = text.replace(/([^\n])[ \t]+(-{3,}|\*{3,}|_{3,})[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "$1\n\n$2\n\n$3 ");
-  text = text.replace(/(^|\n)(-{3,}|\*{3,}|_{3,})[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "$1$2\n\n$3 ");
-  text = text.replace(/([^\n])[ \t]+(#{1,6})[ \t]+(?=[^\s#])/g, "$1\n\n$2 ");
-  text = text.replace(/([。！？!?；;：:])\s*(#{1,6})[ \t]*(?=[^\s#])/g, "$1\n\n$2 ");
-  text = text.replace(/([^\n])\s*(#{1,6})(?=\S)/g, "$1\n\n$2 ");
-  text = text.replace(/\|[ \t]*(#{1,6})[ \t]*(?=[^\s#])/g, "|\n\n$1 ");
-  text = text.replace(/(^|\n)(#{1,6})[ \t]*(?=[^\s#])/g, "$1$2 ");
+  text = text.replace(/([^\n])[ \t]+(-{3,}|\*{3,}|_{3,})[ \t]*(#{1,6})[ \t]+(?=\S)/g, "$1\n\n$2\n\n$3 ");
+  text = text.replace(/(^|\n)(-{3,}|\*{3,}|_{3,})[ \t]*(#{1,6})[ \t]+(?=\S)/g, "$1$2\n\n$3 ");
   text = text.replace(/([^\n])\s*(\*\*(?:优势|优点|不足|缺点|风险|小结|结论|类型|整体风格|视觉风格特征|色彩风格|构图风格|光影处理|推荐|建议|适合)[:：]?\*\*)/g, "$1\n\n$2");
   text = text.replace(/\*\*([^*\n]{1,48})\n\*\*/g, "**$1**\n");
   text = text.replace(/([。！？!?；;：:])\s*((?:[-*+]|\d+[.)])[ \t]+(?=\S))/g, "$1\n\n$2");
@@ -4852,10 +4890,101 @@ function renderMarkdownToHtml(markdown) {
 }
 
 function repairRenderedMarkdownHeadings(html) {
-  return String(html || "").replace(/<p>\s*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))\s+([^<][\s\S]*?)<\/p>/gi, (match, marker, text) => {
+  const repaired = String(html || "").replace(/<p>\s*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))\s+([^<][\s\S]*?)<\/p>/gi, (match, marker, text) => {
     const level = normalizeChatHeadingMarker(marker).length;
     return `<h${level}>${text.trim()}</h${level}>`;
   });
+  return stripRenderedHeadingMarkerPrefixes(repaired);
+}
+
+function stripRenderedHeadingMarkerPrefixes(html) {
+  return String(html || "").replace(/<h([1-6])([^>]*)>\s*((?:\\+)?(?:#{1,6}|＃{1,6}|(?:(?:&#35;|&num;)){1,6}))\s+([\s\S]*?)<\/h\1>/gi, (match, level, attrs, marker, text) => {
+    return `<h${level}${attrs}>${String(text || "").trim()}</h${level}>`;
+  });
+}
+
+const chatMarkdownHeadingObservers = new WeakMap();
+
+function stripHeadingMarkerFromTextNode(node) {
+  if (!node || node.nodeType !== Node.TEXT_NODE) return false;
+  const markerRe = /^([\s\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]*)(?:\\+)?[#＃]{1,6}[\s\u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]+/u;
+  let value = node.nodeValue || "";
+  let changed = false;
+  while (markerRe.test(value)) {
+    value = value.replace(markerRe, "");
+    changed = true;
+  }
+  if (!changed) return false;
+  if (value) {
+    node.nodeValue = value;
+  } else {
+    node.remove();
+  }
+  return true;
+}
+
+function isInjectedHeadingAnchor(node) {
+  if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+  const text = String(node.textContent || "").replace(/\s+/g, "");
+  if (!/^(?:#|＃){1,6}$/.test(text)) return false;
+  return node.matches?.("a, span, button, [aria-hidden='true'], .anchor, .header-anchor, .heading-anchor") || false;
+}
+
+function stripHeadingMarkerFromElement(heading) {
+  if (!heading) return false;
+  let changed = false;
+  let guard = 0;
+  while (heading.firstChild && guard < 8) {
+    guard += 1;
+    const first = heading.firstChild;
+    if (first.nodeType === Node.TEXT_NODE) {
+      if (!String(first.nodeValue || "").trim() && first.nextSibling) {
+        first.remove();
+        changed = true;
+        continue;
+      }
+      const didStrip = stripHeadingMarkerFromTextNode(first);
+      changed = didStrip || changed;
+      if (!didStrip) break;
+      continue;
+    }
+    if (isInjectedHeadingAnchor(first)) {
+      first.remove();
+      changed = true;
+      continue;
+    }
+    break;
+  }
+  return changed;
+}
+
+function normalizeRenderedMarkdownHeadings(container) {
+  if (!container?.querySelectorAll) return;
+  const headings = container.querySelectorAll("h1, h2, h3, h4, h5, h6");
+  headings.forEach(stripHeadingMarkerFromElement);
+}
+
+function observeChatMarkdownHeadingMutations(container) {
+  if (!container || typeof MutationObserver === "undefined" || chatMarkdownHeadingObservers.has(container)) return;
+  const observer = new MutationObserver(() => {
+    if (container.dataset.normalizingHeadings === "true") return;
+    container.dataset.normalizingHeadings = "true";
+    try {
+      normalizeRenderedMarkdownHeadings(container);
+    } finally {
+      delete container.dataset.normalizingHeadings;
+    }
+  });
+  observer.observe(container, { childList: true, subtree: true, characterData: true });
+  chatMarkdownHeadingObservers.set(container, observer);
+}
+
+function renderChatMarkdownInto(element, markdown, references = []) {
+  if (!element) return;
+  element.innerHTML = renderMarkdownToHtml(applyCitationLinks(markdown, references));
+  normalizeRenderedMarkdownHeadings(element);
+  observeChatMarkdownHeadingMutations(element);
+  addCopyButtons(element);
 }
 
 function addCopyButtons(container) {
@@ -10907,8 +11036,7 @@ function updateRenderedChatMessage(message, updates = {}) {
   if ("content" in updates) {
     if (!rendered.text) return false;
     if (message.role === "assistant") {
-      rendered.text.innerHTML = renderMarkdownToHtml(applyCitationLinks(message.content, message.references));
-      addCopyButtons(rendered.text);
+      renderChatMarkdownInto(rendered.text, message.content, message.references);
     } else {
       rendered.text.textContent = message.content;
     }
@@ -11234,8 +11362,7 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
       text.className = "chat-text markdown-body";
       rendered.text = text;
       if (message.role === "assistant") {
-        text.innerHTML = renderMarkdownToHtml(applyCitationLinks(message.content, message.references));
-        addCopyButtons(text);
+        renderChatMarkdownInto(text, message.content, message.references);
       } else {
         text.textContent = message.content;
       }

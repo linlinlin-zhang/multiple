@@ -9161,6 +9161,11 @@ function staticCacheHeaders(relativePath) {
       "Timing-Allow-Origin": "*"
     };
   }
+  if (/^(?:app\.js|styles\.css)$/i.test(normalized)) {
+    return {
+      "Cache-Control": "no-cache"
+    };
+  }
   if (/\.(?:css|js|mjs|png|jpe?g|webp|gif|svg|ico|woff2?)$/i.test(normalized)) {
     return {
       "Cache-Control": "public, max-age=604800"
