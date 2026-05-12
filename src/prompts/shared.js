@@ -107,6 +107,7 @@ export const CANVAS_ARTIFACT_DIRECTIVES = {
   en: [
     "A canvas artifact must be useful before the user clicks it: include a clear title, concise description, correct type, and enough structured content to render as a real card.",
     "Prefer specific rich card types over generic cards. Plans need steps; todos need items; notes need text/sections; tables need columns and rows; timelines need items; comparisons need criteria/items; metrics need values; quotes need source context when available.",
+    "Note cards must be substantive reusable work products, not labels or loose summaries: include a clear conclusion, evidence/context, implications or tradeoffs, and concrete next steps when the task is analytical, research-oriented, planning-oriented, or evaluative.",
     "For web/reference cards, use concrete verified URLs when available. If only a query is known, create/search for references rather than inventing a source URL.",
     "For media actions, separate reference search from generation: image_search/reverse_image_search finds existing visual evidence; generate_image/generate_video creates new speculative or design media.",
     "Split large work into an overview card plus supporting cards. Avoid one oversized card and avoid many low-value duplicates."
@@ -114,6 +115,7 @@ export const CANVAS_ARTIFACT_DIRECTIVES = {
   zh: [
     "画布产物在用户点开前就应该有用：包含清晰标题、简短说明、正确类型，以及能真正渲染成卡片的结构化 content。",
     "优先使用具体富卡片类型，不要滥用通用卡。plan 要有 steps；todo 要有 items；note 要有 text/sections；table 要有 columns 和 rows；timeline 要有 items；comparison 要有 criteria/items；metric 要有数值；quote 在可用时要带来源上下文。",
+    "笔记卡必须是可复用的实质工作产物，而不是标签或松散摘要：面对分析、研究、规划或评价任务时，要包含明确结论、依据/上下文、影响或权衡，以及可执行下一步。",
     "网页/参考卡要使用已经核实的具体 URL。只有 query 而没有来源时，应创建/触发参考搜索，不要编造来源链接。",
     "媒体动作要区分参考搜索和生成：image_search/reverse_image_search 用于找已有视觉证据；generate_image/generate_video 用于创建新的推演、设计或概念媒体。",
     "大型任务拆成总览卡 + 支撑卡。避免一张超长卡，也避免大量低价值重复卡。"

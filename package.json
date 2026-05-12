@@ -16,6 +16,7 @@
     "eval:canvas-actions:smoke": "node scripts/run-canvas-action-capability-smoke.js",
     "eval:chat-system": "node scripts/run-chat-system-eval.js",
     "eval:chat-system:stress": "node scripts/run-chat-system-eval.js scripts/evals/chat-system-stress-eval.jsonl",
+    "eval:chat-system:quality": "node scripts/run-chat-system-eval.js scripts/evals/chat-system-quality-60.jsonl",
     "eval:chat-system:mimo": "node scripts/run-chat-system-eval.js scripts/evals/chat-system-mimo-live-40.jsonl",
     "eval:controller-models": "node scripts/run-controller-model-tool-eval.js",
     "test:db": "node scripts/test-db.js",

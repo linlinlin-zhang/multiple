@@ -160,16 +160,20 @@ function detect(message) {
   const negatedDeleteAction = /(不要|不需要|无需|别|不用|禁止|no|without|do\s+not|don't|dont).{0,18}(删除|移除|删掉|delete|remove)/i.test(text);
   const deleteAction = !negatedDeleteAction && /(删除|移除|删掉|delete|remove)/i.test(text) && /(卡片|节点|选中|这个|当前|card|node|selected|current)/i.test(text);
   const genericNonVisualPlan = /((发布|实施|执行|迁移|产品|研究|调研).{0,8}方案|方案.{0,8}(执行|发布|实施|迁移|落地))/i.test(text) && !/(视觉|风格|创意|成图|海报|主视觉|方向|visual|style|concept)/i.test(text);
+  const planningIntentForDirectionGuard = /(计划|规划|学习路径|路线图|日程|时间线|里程碑|执行|实施|待办|预算|roadmap|learning path|schedule|timeline|milestone|implementation|todo|budget)/i.test(text);
   const sourceResearch = !workspaceAction && !/(研究计划|调研计划|访谈研究计划|计划卡片)/i.test(text) && (/(研究|深入研究|探索|分析).{0,16}(当前|选中|源|素材|来源|卡片|节点|source|card|node)|(?:analy[sz]e|explore|research).{0,16}(?:selected|current|source|card|node)|打开.{0,8}(引用|参考资料|references)|open\s+references/i.test(text));
   const negatedDirectionCardRequest = /(不要|别|不用|无需|不需要|no|without|do\s+not|don't|dont).{0,18}(先)?(做|创建|生成)?[^，。！？.!?]{0,12}(方向|方向卡|方向卡片|direction|concept)/i.test(text);
   const directionCardRequest = !workspaceAction && !genericNonVisualPlan && !negatedDirectionCardRequest && (/(方向|方案|概念|direction|option|concept).{0,16}(卡片|节点|card|node)|(?:卡片|节点|card|node).{0,16}(方向|方案|概念|direction|option|concept)/i.test(text));
-  const directionContext = directionCardRequest || /(方向|概念方向|视觉概念|创意概念|风格方向|成图方向|视觉|创意|风格|directions?|concepts?|visual concepts?)/i.test(text);
+  const directionContext = directionCardRequest || (!planningIntentForDirectionGuard && /(方向|概念方向|视觉概念|创意概念|风格方向|成图方向|视觉|创意|风格|directions?|concepts?|visual concepts?)/i.test(text));
   const directionRequest = !genericNonVisualPlan && !negatedDirectionCardRequest && directionContext
     && /(方向|方案|概念方向|视觉概念|创意概念|风格方向|directions?|options?|concepts?|visual concepts?)/i.test(text)
     && /(生成|创建|新建|做|整理|产出|给我|帮我|发散|展开|拆出|列出|设计|组合|generate|create|make|produce|brainstorm|develop|propose|give me)/i.test(text);
   const mediaFromExistingDirection = /(?:根据|基于|按照|用|把|从|选择|选中|current|selected|use|from|based on).{0,24}(方向|方案|概念|direction|option|concept).{0,32}(成图|出图|生成.{0,10}(图片|图像|图|视觉|海报)|generate\s+(?:image|picture|visual))|(?:方向|方案|概念|direction|option|concept).{0,32}(生成.{0,10}(图片|图像|图|视觉|海报)|成图|出图|generate\s+(?:image|picture|visual))/i.test(text);
+  const nonMediaGraphOrCanvas = /(画布|会话图|路线图|流程图|架构图|知识图谱|思维导图|canvas|roadmap|diagram|graph)/i.test(text)
+    && !/(图片|图像|照片|海报|主视觉|插画|成图|出图|渲染|image|picture|photo|poster|visual|render)/i.test(text);
   const mediaGeneration = !workspaceAction
     && !deferredMediaGeneration
+    && !nonMediaGraphOrCanvas
     && (!directionCardRequest || mediaFromExistingDirection)
     && (!(directionRequest && !mediaFromExistingDirection))
     && /(成图|出图|生成.{0,32}(图|图片|图像|视觉|主视觉|海报|插画)|画.{0,8}(图|图片|画面)|绘制|渲染|改图|变体|生成.{0,10}(视频|动画|短片|动态镜头)|制作.{0,10}(视频|动画|短片)|generate.{0,16}(image|picture|visual|video|animation|clip)|draw.{0,12}(image|picture)|render.{0,12}(image|picture|visual)|make.{0,12}(video|animation|clip))/i.test(text);

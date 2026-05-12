@@ -51,7 +51,7 @@ const VIDEO_POLL_ATTEMPTS = Number(process.env.VIDEO_POLL_ATTEMPTS || 30);
 const VIDEO_SUBMIT_TIMEOUT_MS = Number(process.env.VIDEO_SUBMIT_TIMEOUT_MS || 60000);
 const VIDEO_DOWNLOAD_TIMEOUT_MS = Number(process.env.VIDEO_DOWNLOAD_TIMEOUT_MS || 180000);
 const MAX_BODY_BYTES = 150 * 1024 * 1024;
-const CHAT_COMPLETION_TIMEOUT_MS = Number(process.env.CHAT_COMPLETION_TIMEOUT_MS || 120000);
+const CHAT_COMPLETION_TIMEOUT_MS = Number(process.env.CHAT_COMPLETION_TIMEOUT_MS || 180000);
 const ANALYSIS_FAST_TIMEOUT_MS = Number(process.env.ANALYSIS_FAST_TIMEOUT_MS || 90000);
 const CHAT_STREAM_IDLE_TIMEOUT_MS = Number(process.env.CHAT_STREAM_IDLE_TIMEOUT_MS || process.env.CHAT_STREAM_TIMEOUT_MS || 240000);
 const DEEP_RESEARCH_TIMEOUT_MS = Number(process.env.DEEP_RESEARCH_TIMEOUT_MS || 600000);
@@ -223,7 +223,7 @@ const CANVAS_ACTION_TOOL_SCHEMA = {
             "Prefer concrete data over placeholders; if you only know a query, use query/search actions rather than inventing URLs.",
             "- create_plan: { summary?: string, goal?: string, context?: string, constraints?: (string|object)[], validation?: (string|object)[], progress?: (string|object)[], decisions?: (string|object)[], risks?: (string|object)[], outcomes?: (string|object)[], assumptions?: string[], steps: [{ title: string, description: string, time?: string, priority?: string, owner?: string, status?: string, validation?: string, tips?: string[] }, ...], tips?: string[], budget?: string } — use concise steps for simple plans; use rich fields for complex project/execution plans that need goals, context, constraints, validation, progress, decisions, risks, and expected outcomes. Keep the plan card an overview; split details into supporting cards when necessary",
             "- create_todo: { items: [{ text: string, done: boolean, priority?: string, rationale?: string }, ...] }",
-            "- create_note: { text: string, sections?: [{ title: string, body: string }] } — the full note body in markdown",
+            "- create_note: { text: string, sections?: [{ title: string, body: string }] } — the full note body in markdown. For analytical/research/planning/evaluation notes, include conclusion, evidence/context, implications/tradeoffs, risks/gaps, and next steps rather than a loose summary",
             "- create_weather: { location: string, temp: string, forecast: string }",
             "- create_map: { address: string, lat?: number, lng?: number }",
             "- create_link/create_web_card: { title: string, url: string, description?: string, source?: string, faviconUrl?: string } — title must be the readable page/site name, not a raw URL; description should summarize what the page is for or why it matters",
@@ -886,9 +886,11 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 405, { error: "Method not allowed" });
   } catch (error) {
     console.error(error);
-    return sendJson(res, 500, {
-      error: "Server error",
-      message: error instanceof Error ? error.message : String(error)
+    const message = error instanceof Error ? error.message : String(error);
+    const isTimeout = /timeout|timed out|abort/i.test(message);
+    return sendJson(res, isTimeout ? 504 : 500, {
+      error: isTimeout ? "Upstream timeout" : "Server error",
+      message
     });
   }
 });
@@ -3017,7 +3019,7 @@ function cloneJson(value) {
 const CANVAS_ACTION_SELECTION_GUIDE = {
   create_plan: "Use for structured steps, itineraries, roadmaps, schedules, implementation plans, and complex project plans.",
   create_todo: "Use for actionable checklists with completion state, priorities, or follow-up tasks.",
-  create_note: "Use for narrative synthesis, summaries, analysis notes, briefs, and reusable text artifacts.",
+  create_note: "Use for narrative synthesis, analysis briefs, substantive research/planning/evaluation notes, and reusable text artifacts with conclusion, evidence, implications, and next steps.",
   create_table: "Use when rows and columns materially improve reuse: datasets, matrices, schedules, resources, or metrics.",
   create_timeline: "Use for chronological milestones, phased roadmaps, history, schedules, and processes.",
   create_comparison: "Use for option tradeoffs, pros/cons, decision matrices, ranked choices, and visual comparisons.",
@@ -3340,6 +3342,16 @@ function repairCanvasAction(action, message, reply = "", lang = "zh", context = 
       prompt: stringOr(action.description || action.title, message).slice(0, 1600)
     };
   }
+  if (action.type === "create_direction") {
+    const prompt = stringOr(action.prompt || action.description, "");
+    if (plainCardText(prompt).length < 100) {
+      recordCanvasActionRepair(context, { type: action.type, reason: "expanded_direction_prompt", field: "prompt", from: "thin_or_missing", to: "message_reply_context" });
+      return {
+        ...action,
+        prompt: [action.title, action.description, reply, message].map((item) => stringOr(item, "")).filter(Boolean).join("\n\n").slice(0, 1600)
+      };
+    }
+  }
 
   if (WEB_REFERENCE_ACTION_TYPES.has(action.type)) {
     return repairWebReferenceAction(action, message, text, lang, context);
@@ -3571,6 +3583,91 @@ function repairWebReferenceAction(action, message, text, lang, context = null) {
   };
 }
 
+function normalizeTodoItems(items = [], sourceText = "", lang = "zh") {
+  const normalized = (Array.isArray(items) ? items : []).map((item, index) => {
+    const text = stringOr(item?.text || item?.title || item?.description || item, "").slice(0, 220);
+    const rationale = stringOr(item?.rationale || item?.description || item?.body || item?.reason, "").slice(0, 260);
+    return {
+      ...(item && typeof item === "object" && !Array.isArray(item) ? item : {}),
+      text,
+      done: Boolean(item?.done),
+      priority: stringOr(item?.priority || item?.impact || "", index < 2 ? (lang === "en" ? "high" : "高") : ""),
+      rationale: rationale || text
+    };
+  }).filter((item) => plainCardText(item.text).length >= 4);
+  const existing = new Set(normalized.map((item) => plainCardText(item.text, 80)));
+  for (const item of genericItemsFromText(sourceText, 10)) {
+    if (normalized.length >= 6) break;
+    const text = plainCardText(item.description || item.title, 220);
+    if (!text || existing.has(plainCardText(text, 80))) continue;
+    existing.add(plainCardText(text, 80));
+    normalized.push({
+      text,
+      done: false,
+      priority: normalized.length < 2 ? (lang === "en" ? "high" : "高") : (lang === "en" ? "medium" : "中"),
+      rationale: plainCardText(item.title, 180) || text
+    });
+  }
+  return normalized;
+}
+
+function normalizeTableRows(columns = [], rows = [], sourceText = "", lang = "zh") {
+  const safeColumns = Array.isArray(columns) && columns.length >= 2
+    ? columns.map((column) => stringOr(column, "")).filter(Boolean).slice(0, 6)
+    : (lang === "en" ? ["Item", "Details", "Evidence / next step"] : ["项目", "细节", "依据/下一步"]);
+  const normalizedRows = (Array.isArray(rows) ? rows : []).map((row) => {
+    if (Array.isArray(row)) {
+      return Object.fromEntries(safeColumns.map((column, index) => [column, stringOr(row[index], "")]));
+    }
+    if (row && typeof row === "object") return { ...row };
+    return { [safeColumns[0]]: stringOr(row, ""), [safeColumns[1]]: stringOr(row, "") };
+  }).filter((row) => plainCardText(row).length >= 6);
+  const existing = new Set(normalizedRows.map((row) => plainCardText(row, 120)));
+  for (const item of genericItemsFromText(sourceText, 10)) {
+    if (normalizedRows.length >= 5) break;
+    const title = plainCardText(item.title, 140);
+    const detail = plainCardText(item.description || item.title, 320);
+    const key = plainCardText(`${title} ${detail}`, 120);
+    if (!detail || existing.has(key)) continue;
+    existing.add(key);
+    normalizedRows.push({
+      [safeColumns[0]]: title || `${normalizedRows.length + 1}`,
+      [safeColumns[1]]: detail,
+      [safeColumns[2] || safeColumns[1]]: detail
+    });
+  }
+  return { columns: safeColumns, rows: normalizedRows };
+}
+
+function normalizeTimelineItems(items = [], sourceText = "", lang = "zh") {
+  const normalized = (Array.isArray(items) ? items : []).map((item, index) => ({
+    ...(item && typeof item === "object" && !Array.isArray(item) ? item : {}),
+    phase: stringOr(item?.time || item?.phase || item?.date, `${index + 1}`),
+    title: stringOr(item?.title || item?.text || item, `${index + 1}`).slice(0, 160),
+    description: stringOr(item?.description || item?.body || item?.detail || item?.text || "", "").slice(0, 420)
+  })).filter((item) => plainCardText(`${item.title} ${item.description}`).length >= 6);
+  const existing = new Set(normalized.map((item) => plainCardText(`${item.title} ${item.description}`, 120)));
+  for (const item of genericItemsFromText(sourceText, 10)) {
+    if (normalized.length >= 5) break;
+    const title = plainCardText(item.title, 160) || `${normalized.length + 1}`;
+    const description = plainCardText(item.description || item.title, 420);
+    const key = plainCardText(`${title} ${description}`, 120);
+    if (!description || existing.has(key)) continue;
+    existing.add(key);
+    normalized.push({
+      phase: `${normalized.length + 1}`,
+      title,
+      description
+    });
+  }
+  if (normalized.length === 1 && plainCardText(normalized[0].description).length < 80) {
+    normalized[0].description = lang === "en"
+      ? `${normalized[0].description} Clarify owner, timing, evidence, and acceptance criteria before execution.`
+      : `${normalized[0].description} 执行前需要补齐负责人、时间、证据来源和验收标准。`;
+  }
+  return normalized;
+}
+
 function normalizeStructuredContentForAction(type, content, fallbackText, action = {}, lang = "zh") {
   const base = content && typeof content === "object" && !Array.isArray(content) ? { ...content } : {};
   if (type === "create_plan") {
@@ -3620,8 +3717,18 @@ function normalizeStructuredContentForAction(type, content, fallbackText, action
       rationale: stringOr(step?.description || step?.time, "")
     }));
   }
+  if (type === "create_todo") {
+    base.items = normalizeTodoItems(base.items, [fallbackText, action.title, action.description].filter(Boolean).join("\n\n"), lang);
+  }
   if (type === "create_note") {
     base.text = stringOr(base.text || base.markdown || base.body || base.description, fallbackText);
+    if (shouldUpgradeNoteContent(base)) {
+      const sections = buildSubstantiveNoteSections(action.title || action.description || "", base.text || fallbackText, lang);
+      base.sections = sections;
+      base.text = noteTextFromSections(sections).slice(0, 8000);
+    } else if (Array.isArray(base.sections) && !base.text) {
+      base.text = noteTextFromSections(base.sections).slice(0, 8000);
+    }
   }
   if (type === "create_code") {
     base.language = stringOr(base.language, "text");
@@ -3643,12 +3750,20 @@ function normalizeStructuredContentForAction(type, content, fallbackText, action
       [columns[1]]: stringOr(item?.description || item?.value || item?.summary || "", "")
     }));
   }
+  if (type === "create_table") {
+    const normalized = normalizeTableRows(base.columns, base.rows, [fallbackText, action.title, action.description].filter(Boolean).join("\n\n"), lang);
+    base.columns = normalized.columns;
+    base.rows = normalized.rows;
+  }
   if (type === "create_timeline" && !Array.isArray(base.items) && Array.isArray(base.steps)) {
     base.items = base.steps.map((step, index) => ({
       phase: stringOr(step?.time || step?.phase, `${index + 1}`),
       title: stringOr(step?.title || step?.text, `${index + 1}`),
       description: stringOr(step?.description || step?.body || step?.text, "")
     }));
+  }
+  if (type === "create_timeline") {
+    base.items = normalizeTimelineItems(base.items, [fallbackText, action.title, action.description].filter(Boolean).join("\n\n"), lang);
   }
   if (type === "create_comparison" && !Array.isArray(base.items) && Array.isArray(base.options)) {
     base.items = base.options.map((option) => ({
@@ -4040,50 +4155,127 @@ function genericItemsFromText(text, limit = 8) {
     .map((part, index) => ({ title: `${index + 1}`, description: part.slice(0, 700) }));
 }
 
+function usefulSentencesFromText(text, limit = 8) {
+  return String(text || "")
+    .normalize("NFKC")
+    .replace(/\r\n?/g, "\n")
+    .split(/(?:\n+|(?<=[。！？.!?；;])\s*)/)
+    .map((part) => plainCardText(part, 700))
+    .filter((part) => part.length >= 10)
+    .slice(0, limit);
+}
+
+function buildSubstantiveNoteSections(title, text, lang = "zh") {
+  const isEn = lang === "en";
+  const body = String(text || title || "").trim();
+  const sentences = usefulSentencesFromText(body, 10);
+  const items = genericItemsFromText(body, 6);
+  const first = sentences[0] || items[0]?.description || items[0]?.title || body.slice(0, 700);
+  const evidence = items.slice(0, 4)
+    .map((item) => {
+      const itemTitle = plainCardText(item.title, 90);
+      const itemBody = plainCardText(item.description || item.title, 260);
+      if (!itemTitle || itemTitle === itemBody) return itemBody;
+      return `- **${itemTitle}**：${itemBody}`;
+    })
+    .filter(Boolean)
+    .join("\n") || sentences.slice(0, 3).map((sentence) => `- ${sentence}`).join("\n");
+  const riskSentences = sentences.filter((sentence) => /(风险|约束|缺口|冲突|成本|不确定|验证|核实|risk|constraint|gap|conflict|cost|uncertain|verify)/i.test(sentence));
+  const nextSeeds = sentences.filter((sentence) => /(下一步|建议|行动|验证|核实|优先|推进|落地|next|action|validate|verify|priorit)/i.test(sentence));
+  const implications = (riskSentences.length ? riskSentences : sentences.slice(1, 4))
+    .slice(0, 3)
+    .map((sentence) => `- ${sentence}`)
+    .join("\n") || (isEn
+      ? "- Clarify assumptions, evidence gaps, dependencies, and tradeoffs before committing resources."
+      : "- 在投入资源前，先澄清假设、证据缺口、依赖关系和关键取舍。");
+  const nextSteps = (nextSeeds.length ? nextSeeds : items.slice(0, 4).map((item) => item.description || item.title))
+    .slice(0, 4)
+    .map((sentence, index) => `- ${plainCardText(sentence, 220) || (isEn ? `Follow-up ${index + 1}` : `后续动作 ${index + 1}`)}`)
+    .join("\n") || (isEn
+      ? "- Turn the key assumptions into owners, deadlines, and acceptance checks.\n- Revisit this note after the next concrete evidence source is available."
+      : "- 把关键假设拆成 owner、截止时间和验收检查。\n- 拿到下一份具体证据后回到这张笔记更新判断。");
+  return isEn
+    ? [
+        { title: "Conclusion", body: first },
+        { title: "Evidence and context", body: evidence },
+        { title: "Implications and risks", body: implications },
+        { title: "Next steps", body: nextSteps }
+      ]
+    : [
+        { title: "结论", body: first },
+        { title: "依据与上下文", body: evidence },
+        { title: "影响、权衡与风险", body: implications },
+        { title: "下一步", body: nextSteps }
+      ];
+}
+
+function noteTextFromSections(sections = []) {
+  return sections
+    .map((section) => {
+      const title = stringOr(section?.title, "");
+      const body = stringOr(section?.body || section?.text || section?.description, "");
+      return [title ? `## ${title}` : "", body].filter(Boolean).join("\n\n");
+    })
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+function shouldUpgradeNoteContent(content = {}) {
+  const text = stringOr(content.text || content.markdown || content.body, "");
+  const sections = Array.isArray(content.sections) ? content.sections : [];
+  const plain = plainCardText([text, noteTextFromSections(sections)].filter(Boolean).join("\n\n"));
+  if (plain.length < 220) return true;
+  if (!sections.length && plain.length < 420) return true;
+  if (sections.length && sections.some((section) => plainCardText(section?.body || section?.text || section?.description || "").length < 40)) return true;
+  if (/(待补充|暂无|无具体|placeholder|tbd|details are available|详细内容已写入画布卡片|从回答中抽取)/i.test(plain)) return true;
+  return false;
+}
+
 function buildGenericNoteAction(message, text, lang) {
-  const items = genericItemsFromText(text, 4);
-  const sections = items.map((item) => ({ title: item.title, body: item.description || item.title }));
+  const sections = buildSubstantiveNoteSections(message, text, lang);
   return {
     type: "create_note",
     title: genericCardTitle(message, lang === "en" ? "notes" : "要点笔记", lang),
-    description: lang === "en" ? "Supporting notes extracted from the answer." : "从回答中抽取的支撑笔记。",
+    description: lang === "en" ? "Reusable brief preserving the key judgment, evidence, risks, and next steps." : "保留关键判断、依据、风险和下一步的可复用简报。",
     content: {
       sections,
-      text: sections.map((section) => `## ${section.title}\n\n${section.body}`).join("\n\n").slice(0, 5000)
+      text: noteTextFromSections(sections).slice(0, 6000)
     }
   };
 }
 
 function buildGenericTodoAction(message, text, lang) {
-  const items = genericItemsFromText(text, 10).map((item) => ({
-    text: String(item.description || item.title).slice(0, 180),
+  const items = ensureFallbackWorkItems(genericItemsFromText(text, 10), text, message, 4, 10).map((item, index) => ({
+    text: String(item.description || item.title).slice(0, 220),
     done: false,
-    rationale: String(item.title || "").slice(0, 160)
+    priority: index < 2 ? (lang === "en" ? "high" : "高") : (lang === "en" ? "medium" : "中"),
+    rationale: String(item.title || "").slice(0, 180)
   })).filter((item) => item.text);
   return {
     type: "create_todo",
     title: genericCardTitle(message, lang === "en" ? "checklist" : "执行清单", lang),
-    description: lang === "en" ? "Follow-up checklist extracted from the answer." : "从回答中抽取的后续执行清单。",
+    description: lang === "en" ? "Operational checklist for turning the result into concrete follow-up work." : "把本轮结论落到后续动作的执行清单。",
     content: { items }
   };
 }
 
 function buildGenericTableAction(message, text, lang) {
-  const columns = lang === "en" ? ["Item", "Details"] : ["项目", "细节"];
-  const rows = genericItemsFromText(text, 8).map((item) => ({
+  const columns = lang === "en" ? ["Item", "Details", "Next step"] : ["项目", "细节", "下一步"];
+  const rows = ensureFallbackWorkItems(genericItemsFromText(text, 8), text, message, 3, 8).map((item) => ({
     [columns[0]]: item.title,
-    [columns[1]]: item.description || item.title
+    [columns[1]]: item.description || item.title,
+    [columns[2]]: item.nextStep || item.description || item.title
   }));
   return {
     type: "create_table",
     title: genericCardTitle(message, lang === "en" ? "table" : "结构化表格", lang),
-    description: lang === "en" ? "Structured table extracted from the answer." : "从回答中抽取的结构化表格。",
+    description: lang === "en" ? "Structured table for comparing facts, constraints, owners, or evidence." : "用于对照事实、约束、负责人或证据的结构化表格。",
     content: { columns, rows }
   };
 }
 
 function buildGenericTimelineAction(message, text, lang) {
-  const items = genericItemsFromText(text, 10).map((item, index) => ({
+  const items = ensureFallbackWorkItems(genericItemsFromText(text, 10), text, message, 3, 10).map((item, index) => ({
     phase: `${index + 1}`,
     title: item.title,
     description: item.description || item.title
@@ -4091,7 +4283,7 @@ function buildGenericTimelineAction(message, text, lang) {
   return {
     type: "create_timeline",
     title: genericCardTitle(message, lang === "en" ? "timeline" : "时间线", lang),
-    description: lang === "en" ? "Sequence/timeline extracted from the answer." : "从回答中抽取的顺序/阶段时间线。",
+    description: lang === "en" ? "Sequential timeline for tracking phases, dependencies, and checkpoints." : "用于追踪阶段、依赖和检查点的顺序时间线。",
     content: { items }
   };
 }
@@ -4104,7 +4296,7 @@ function buildGenericComparisonAction(message, text, lang) {
   return {
     type: "create_comparison",
     title: genericCardTitle(message, lang === "en" ? "comparison" : "对比", lang),
-    description: lang === "en" ? "Comparison card extracted from the answer." : "从回答中抽取的比较/取舍卡。",
+    description: lang === "en" ? "Decision-support comparison card with options, tradeoffs, and recommendation." : "包含选项、取舍和推荐的决策支持对比卡。",
     content: { items }
   };
 }
@@ -4118,7 +4310,7 @@ function buildGenericMetricAction(message, text, lang) {
   return {
     type: "create_metric",
     title: genericCardTitle(message, lang === "en" ? "metrics" : "指标", lang),
-    description: lang === "en" ? "Metric/benchmark card extracted from the answer." : "从回答中抽取的指标/基准卡。",
+    description: lang === "en" ? "Metric card for preserving key values, deltas, and interpretation." : "用于保留关键数值、变化和解释的指标卡。",
     content: { metrics }
   };
 }
@@ -4131,7 +4323,7 @@ function buildGenericQuoteAction(message, text, lang) {
   return {
     type: "create_quote",
     title: genericCardTitle(message, lang === "en" ? "quotes" : "引用摘录", lang),
-    description: lang === "en" ? "Quote/excerpt card extracted from the answer." : "从回答中抽取的引用/摘录卡。",
+    description: lang === "en" ? "Source-backed excerpt card for preserving claims that need evidence." : "用于保留需要证据支撑的观点和摘录的引用卡。",
     content: { quotes }
   };
 }
@@ -4318,6 +4510,9 @@ function automaticCardLimitForIntent(intent, thinkingMode = "no-thinking") {
 
 function ensureAutomaticSmartCardActions(actions, message, reply, lang = "zh", thinkingMode = "no-thinking") {
   const existing = Array.isArray(actions) ? actions : [];
+  if (isExplicitNoteCardRequest(message) && !existing.some((action) => action?.type === "create_note")) {
+    return [buildGenericNoteAction(message, reply || message, lang)];
+  }
   if (existing.length) return existing;
   const intent = classifyChatIntent(message);
   if (!intent.automaticCardMode || intent.noCanvas) return existing;
@@ -5561,7 +5756,7 @@ const FALLBACK_KEYWORDS = {
   create_direction: /方向|方案|概念方向|视觉概念|风格方向|direction|option|concept/i,
   create_plan: /计划|日程|行程|规划|itinerary|schedule|plan/i,
   create_todo: /任务|待办|清单|checklist|todo|task list/i,
-  create_note: /笔记|记录|备忘|建议|可行性|分析卡片|评价卡片|note|jot down|recommendation|feasibility/i,
+  create_note: /笔记|记录|备忘|建议|总结卡片|情绪板|可行性|分析卡片|评价卡片|note|brief|moodboard|jot down|recommendation|feasibility/i,
   create_weather: /天气|气温|forecast|weather/i,
   create_map: /地图|位置|地址|导航|map|location/i,
   create_link: /链接|收藏|书签|link|bookmark/i,
@@ -5597,6 +5792,13 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
     if (workspaceFallback && !normalized.some((action) => action?.type === workspaceFallback.type)) return [workspaceFallback];
   }
   if (!directionIntent && (intent.taskType === "writing" || intent.summaryRequest) && !normalized.some((action) => ["create_note", "create_table", "create_todo"].includes(action?.type))) {
+    return [{
+      type: "create_note",
+      title: requestText.slice(0, 48),
+      content: buildFallbackActionContent("create_note", requestText.slice(0, 48), requestText)
+    }];
+  }
+  if (!directionIntent && isExplicitNoteCardRequest(requestText) && !normalized.some((action) => action?.type === "create_note")) {
     return [{
       type: "create_note",
       title: requestText.slice(0, 48),
@@ -5646,12 +5848,17 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
   }
   if (intent.mediaSearch && !normalized.some((action) => ["image_search", "reverse_image_search", "text_image_search"].includes(action?.type))) return [buildMediaSearchFallbackAction(requestText)];
   if (intent.mediaGeneration && !normalized.some((action) => ["generate_image", "generate_video"].includes(action?.type))) return [buildMediaGenerationFallbackAction(requestText)];
-  if (fallbackOnlyAfterRejection && !shouldRecoverFromRejectedActions(requestText, normalized)) return normalized;
+  const shouldCompleteBundle = fallbackOnlyAfterRejection && wantsArtifact && shouldCompleteRequestedCardBundle(requestText, matchedTypes, normalized);
+  if (fallbackOnlyAfterRejection && !shouldCompleteBundle && !shouldRecoverFromRejectedActions(requestText, normalized)) return normalized;
   if (!wantsArtifact) return normalized;
-  const fallbackTypes = fallbackActionTypesForRequest(requestText, matchedTypes);
+  const fallbackTypes = uniqueActionTypes([
+    ...fallbackActionTypesForRequest(requestText, matchedTypes),
+    ...(shouldCompleteBundle ? matchedTypes.filter((type) => !isWorkspaceFallbackAction(type) && !isViewOnlyFallbackAction(type)) : [])
+  ]);
   const title = requestText.slice(0, 48);
   for (const actionType of fallbackTypes.slice(0, 4)) {
     const safeType = (actionType === "create_web_card" || actionType === "create_link") && !url ? "create_note" : actionType;
+    if (normalized.some((action) => action?.type === safeType)) continue;
     const action = {
       type: safeType,
       title,
@@ -5662,6 +5869,16 @@ function ensureChatFallbackActionsClean(message, actions, reply = "") {
     normalized.push(action);
   }
   return normalized;
+}
+
+function shouldCompleteRequestedCardBundle(text, matchedTypes = [], actions = []) {
+  const requestText = String(text || "");
+  const existingTypes = new Set((Array.isArray(actions) ? actions : []).map((action) => action?.type).filter(Boolean));
+  const requestedTypes = uniqueActionTypes(matchedTypes.filter((type) => !isWorkspaceFallbackAction(type) && !isViewOnlyFallbackAction(type)));
+  const missingTypes = requestedTypes.filter((type) => !existingTypes.has(type));
+  if (missingTypes.length === 0) return false;
+  if (/(卡片包|工作区卡片|报告包|至少|分别|都要|同时|以及|并给|和|、|bundle|pack|at least|separate)/i.test(requestText)) return true;
+  return requestedTypes.length >= 2 && /(创建|生成|整理|做成|保存成|create|generate|build|make)/i.test(requestText);
 }
 
 function shouldRecoverFromRejectedActions(text, actions) {
@@ -5679,12 +5896,18 @@ function fallbackActionTypesForRequest(text, matchedTypes = []) {
   if (isWorkspaceLayoutRequest(text)) return uniqueActionTypes([primary || "arrange_canvas"]);
   if (extractFirstUrl(text) && /(网页|网址|链接|url|参考|来源|引用|总结|保存成|卡片|web|link|reference|source|citation|summari[sz]e|save)/i.test(String(text || ""))) return uniqueActionTypes([primary || "create_web_card"]);
   if (isDirectionRequest(text)) return uniqueActionTypes([primary || "create_direction"]);
+  if (isExplicitNoteCardRequest(text)) return uniqueActionTypes(["create_note", primary, "create_table"]);
   if (isPlanningRequest(text)) return uniqueActionTypes([primary || "create_plan", "create_timeline", "create_todo", "create_table"]);
   if (isComparisonRequest(text)) return uniqueActionTypes([primary || "create_comparison", "create_metric", "create_todo"]);
   if (isResearchRequest(text)) return uniqueActionTypes([primary || "create_note", "create_quote", "create_table"]);
   if (isDataOrCodeRequest(text)) return uniqueActionTypes([primary || "create_table", "create_note", "create_todo"]);
   if (isGeneralMultiCardRequest(text)) return uniqueActionTypes([primary || "create_note", "create_table", "create_todo"]);
   return uniqueActionTypes([primary || "create_note"]);
+}
+
+function isExplicitNoteCardRequest(text) {
+  return /(笔记卡|笔记|总结卡片|情绪板总结|情绪板|简报|brief|note card|note|moodboard)/i.test(String(text || ""))
+    && /(创建|生成|整理|写|保存成|做成|create|generate|draft|write|save|turn)/i.test(String(text || ""));
 }
 
 function uniqueActionTypes(types) {
@@ -5777,12 +6000,22 @@ function buildFallbackActionContent(actionType, title, text) {
     };
   }
   if (actionType === "create_todo") {
-    const items = extractFallbackListItems(body)
-      .slice(0, 12)
-      .map((item) => ({ text: item.description || item.title, done: false }));
+    const items = ensureFallbackWorkItems(extractFallbackListItems(body), body, title, 4, 12)
+      .map((item, index) => ({
+        text: item.description || item.title,
+        done: false,
+        priority: index < 2 ? "高" : "中",
+        rationale: item.title || body.slice(0, 160)
+      }));
     return { items: items.length ? items : [{ text: body.slice(0, 300), done: false }] };
   }
-  if (actionType === "create_note") return { text: body.slice(0, 4000) };
+  if (actionType === "create_note") {
+    const sections = buildSubstantiveNoteSections(title, body, "zh");
+    return {
+      sections,
+      text: noteTextFromSections(sections).slice(0, 6000)
+    };
+  }
   if (actionType === "create_weather") {
     return {
       location: title || body.slice(0, 80),
@@ -5812,14 +6045,18 @@ function buildFallbackActionContent(actionType, title, text) {
     return { language: "text", code: code.slice(0, 6000), explanation: body.slice(0, 1200) };
   }
   if (actionType === "create_table") {
-    const items = genericItemsFromText(body, 8);
+    const items = ensureFallbackWorkItems(genericItemsFromText(body, 8), body, title, 3, 8);
     return {
-      columns: ["Item", "Details"],
-      rows: (items.length ? items : [{ title, description: body.slice(0, 700) }]).map((item) => ({ Item: item.title, Details: item.description || item.title }))
+      columns: ["项目", "细节", "下一步"],
+      rows: (items.length ? items : [{ title, description: body.slice(0, 700) }]).map((item, index) => ({
+        项目: item.title || `${index + 1}`,
+        细节: item.description || item.title,
+        下一步: item.nextStep || item.description || item.title
+      }))
     };
   }
   if (actionType === "create_timeline") {
-    const items = genericItemsFromText(body, 8);
+    const items = ensureFallbackWorkItems(genericItemsFromText(body, 8), body, title, 3, 8);
     return { items: (items.length ? items : [{ title, description: body.slice(0, 700) }]).map((item, index) => ({ phase: `${index + 1}`, title: item.title, description: item.description || item.title })) };
   }
   if (actionType === "create_comparison") {
@@ -5848,6 +6085,44 @@ function extractFallbackListItems(text) {
     });
   }
   return items;
+}
+
+function ensureFallbackWorkItems(items = [], body = "", title = "", minItems = 3, maxItems = 8) {
+  const normalized = (Array.isArray(items) ? items : [])
+    .map((item) => ({
+      title: plainCardText(item?.title || item, 100),
+      description: plainCardText(item?.description || item?.summary || item?.title || item, 520),
+      nextStep: plainCardText(item?.nextStep || item?.action || "", 220)
+    }))
+    .filter((item) => item.title || item.description);
+  const source = plainCardText(`${title || ""} ${body || ""}`, 1200);
+  const fragments = source
+    .split(/[。；;]|(?:,|，|、)(?=(?:并|和|以及|同时|不要|需要|必须|要|风险|验证|索引|边界|下一步|问题|解决方案|差异化|商业模式|材质|色彩|镜头|禁用))/)
+    .map((item) => plainCardText(item, 260))
+    .filter((item) => item.length >= 8);
+  for (const fragment of fragments) {
+    if (normalized.length >= minItems) break;
+    normalized.push({
+      title: fragment.slice(0, 60),
+      description: fragment,
+      nextStep: `围绕「${fragment.slice(0, 32)}」补齐负责人、证据和验收标准。`
+    });
+  }
+  const generic = [
+    ["验证口径", "核对输入数据、边界条件、样例结果和异常分支，避免只保存结论。"],
+    ["风险与依赖", "列出前置依赖、潜在误判、成本约束和需要人工确认的部分。"],
+    ["执行下一步", "把结论拆成可交付动作，明确负责人、截止时间和成功标准。"],
+    ["复盘更新", "执行后回填结果、证据链接和下一轮需要调整的假设。"]
+  ];
+  for (const [genericTitle, description] of generic) {
+    if (normalized.length >= minItems) break;
+    normalized.push({
+      title: genericTitle,
+      description,
+      nextStep: description
+    });
+  }
+  return normalized.slice(0, maxItems);
 }
 
 function normalizeGeneratedMarkdownForExtraction(text) {
