@@ -821,30 +821,74 @@ async function loadSystemSessionFromZip(sessionId) {
   const archivePath = session.viewState?.systemArchivePath;
   if (!archivePath) return null;
   try {
+    console.log(`[loadSystemSessionFromZip] Loading system session from: ${archivePath}`);
     const buffer = await fs.readFile(archivePath);
     const zip = await JSZip.loadAsync(buffer);
     const sessionJson = zip.file("session.json");
-    if (!sessionJson) return null;
+    if (!sessionJson) {
+      console.warn(`[loadSystemSessionFromZip] No session.json found in: ${archivePath}`);
+      return null;
+    }
     const json = JSON.parse(await sessionJson.async("text"));
     const payload = json.session || {};
+    console.log(`[loadSystemSessionFromZip] payload has ${payload.nodes?.length || 0} nodes, ${payload.assets?.length || 0} assets`);
 
     // Restore assets from zip into storage so /api/assets/{hash} works
-    const assets = (payload.assets || []).filter((a) => !a.missing);
+    let assets = (payload.assets || []).filter((a) => !a.missing);
+
+    // Fallback: if session.json has no assets array, scan the zip for asset files
+    // This handles legacy exports that included asset files but not the assets manifest.
+    if (assets.length === 0) {
+      const scannedAssets = [];
+      const assetRegex = /^assets\/(upload|generated)\/[a-f0-9]{2}\/([a-f0-9]{64})\./i;
+      for (const fileName of Object.keys(zip.files)) {
+        const match = assetRegex.exec(fileName);
+        if (match && !zip.files[fileName].dir) {
+          scannedAssets.push({
+            hash: match[2],
+            kind: match[1],
+            mimeType: "",
+            fileSize: 0,
+            fileName: null,
+            path: fileName
+          });
+        }
+      }
+      if (scannedAssets.length > 0) {
+        console.log(`[loadSystemSessionFromZip] Scanned ${scannedAssets.length} assets from zip (legacy format)`);
+        assets = scannedAssets;
+      }
+    }
+
     for (const asset of assets) {
       try {
         const ext = extensionFromAsset(asset, asset.mimeType);
         const kind = normalizeAssetKind(asset.kind);
         const name = safeArchiveName(asset.fileName || asset.hash.slice(0, 12), asset.hash.slice(0, 12));
-        const zipPath = `assets/${kind}/${asset.hash.slice(0, 2)}/${asset.hash}.${name}.${ext}`;
+        const zipPath = asset.path || `assets/${kind}/${asset.hash.slice(0, 2)}/${asset.hash}.${name}.${ext}`;
         const zipFile = zip.file(zipPath);
         if (zipFile) {
           const fileBuffer = await zipFile.async("nodebuffer");
-          await storeFile(fileBuffer, { kind, ext });
+          try {
+            await storeFile(fileBuffer, { kind, ext });
+          } catch (storeError) {
+            if (storeError.message?.includes("Unsupported file extension")) {
+              console.warn(`[loadSystemSessionFromZip] Unsupported ext "${ext}" for ${asset.hash}, falling back to "bin"`);
+              await storeFile(fileBuffer, { kind, ext: "bin" });
+            } else {
+              throw storeError;
+            }
+          }
+        } else {
+          console.warn(`[loadSystemSessionFromZip] Asset not found in zip at path: ${zipPath} (hash=${asset.hash}, name=${asset.fileName || ""})`);
         }
       } catch (assetError) {
         console.warn("[loadSystemSessionFromZip] Failed to restore asset:", asset.hash, assetError.message);
       }
     }
+
+    const restoredCount = assets.length;
+    console.log(`[loadSystemSessionFromZip] Restored ${restoredCount} assets for session ${sessionId}`);
 
     return {
       ...session,
@@ -873,7 +917,7 @@ async function loadSystemSessionFromZip(sessionId) {
         id: a.hash,
         sessionId: session.id,
         hash: a.hash,
-        kind: a.kind,
+        kind: normalizeAssetKind(a.kind),
         mimeType: a.mimeType,
         fileSize: a.fileSize,
         fileName: a.fileName,
