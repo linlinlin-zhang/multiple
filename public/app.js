@@ -18151,6 +18151,7 @@ async function loadSession(sessionId) {
       removeReferenceBadge(element);
 
       board.appendChild(element);
+      const hasGeneratedContent = Boolean(n.data?.imageHash || n.data?.videoHash || n.data?.imageDataUrl || n.data?.videoUrl || n.type === "generated");
       registerNode(nodeId, element, {
         x: n.x || position.x,
         y: n.y || position.y,
@@ -18158,13 +18159,13 @@ async function loadSession(sessionId) {
         height: n.height || element.offsetHeight,
         rotation: n.rotation || n.data?.rotation,
         option,
-        generated: n.type === "generated"
+        generated: hasGeneratedContent
       });
 
       const titleEl = element.querySelector(".option-title, h3");
       if (titleEl) makeTitleEditable(nodeId, titleEl);
 
-      if (n.type === "generated") {
+      if (hasGeneratedContent) {
         if (option.nodeType && option.nodeType !== "image") {
           turnIntoRichNode(element, option);
           const node = state.nodes.get(nodeId);

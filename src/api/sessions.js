@@ -229,13 +229,34 @@ function dbChatMessagesToPayload(messages = []) {
     role: m.role === "assistant" ? "assistant" : "user",
     content: typeof m.content === "string" ? m.content : "",
     thinkingContent: sanitizePersistedThinkingContent(m.thinkingContent || "", m.content || "") || null,
-    references: Array.isArray(m.references) ? m.references : null
-  })).filter((m) => m.content || m.thinkingContent || m.references?.length);
+    thinkingTrace: cloneJsonArray(m.thinkingTrace || m.trace, 24, 64000),
+    attachments: cloneJsonArray(m.attachments, 12, 256000),
+    branchNodeId: typeof m?.branchNodeId === "string" ? m.branchNodeId : null,
+    actions: cloneJsonArray(m.actions, 48, 128000),
+    actionResults: cloneJsonArray(m.actionResults, 48, 96000),
+    actionPolicy: cloneJsonObject(m.actionPolicy, 160000),
+    artifacts: cloneJsonArray(m.artifacts || m.materials || m.cards, 48, 160000),
+    references: Array.isArray(m.references) ? m.references : null,
+    responseId: typeof m?.responseId === "string" ? m.responseId.slice(0, 160) : "",
+    pending: false,
+    createdAt: typeof m?.createdAt === "string" ? m.createdAt : null
+  })).filter((m) => (
+    m.content ||
+    m.attachments.length ||
+    m.thinkingContent ||
+    m.actions.length ||
+    m.actionResults.length ||
+    m.actionPolicy ||
+    m.artifacts.length ||
+    m.references?.length
+  ));
 }
 
 function sessionChatMessagesForPayload(session = {}) {
   const snapshotMessages = session.viewState?.stateSnapshot?.chatMessages;
-  if (Array.isArray(snapshotMessages)) return normalizePersistedChatMessages(snapshotMessages);
+  if (Array.isArray(snapshotMessages) && snapshotMessages.length > 0) {
+    return normalizePersistedChatMessages(snapshotMessages);
+  }
   return dbChatMessagesToPayload(session.chatMessages);
 }
 
@@ -890,6 +911,19 @@ async function loadSystemSessionFromZip(sessionId) {
     const restoredCount = assets.length;
     console.log(`[loadSystemSessionFromZip] Restored ${restoredCount} assets for session ${sessionId}`);
 
+    // Build full chatMessages from the best available source in the zip
+    const zipChatMessages = (() => {
+      const fromSnapshot = payload.viewState?.stateSnapshot?.chatMessages;
+      if (Array.isArray(fromSnapshot) && fromSnapshot.length > 0) {
+        return normalizePersistedChatMessages(fromSnapshot);
+      }
+      const fromSession = payload.chatMessages;
+      if (Array.isArray(fromSession) && fromSession.length > 0) {
+        return normalizePersistedChatMessages(fromSession);
+      }
+      return [];
+    })();
+
     return {
       ...session,
       nodes: (payload.nodes || []).map((n) => ({
@@ -923,14 +957,23 @@ async function loadSystemSessionFromZip(sessionId) {
         fileName: a.fileName,
         createdAt: session.createdAt
       })),
-      chatMessages: (payload.chatMessages || []).map((m, i) => ({
+      chatMessages: zipChatMessages.map((m, i) => ({
         id: `msg-${i}`,
         sessionId: session.id,
         role: m.role,
         content: m.content,
         thinkingContent: m.thinkingContent || null,
+        thinkingTrace: m.thinkingTrace || null,
+        attachments: m.attachments || null,
+        branchNodeId: m.branchNodeId || null,
+        actions: m.actions || null,
+        actionResults: m.actionResults || null,
+        actionPolicy: m.actionPolicy || null,
+        artifacts: m.artifacts || null,
         references: m.references || null,
-        createdAt: session.createdAt
+        responseId: m.responseId || "",
+        pending: false,
+        createdAt: m.createdAt || session.createdAt
       })),
       viewState: payload.viewState || session.viewState
     };
