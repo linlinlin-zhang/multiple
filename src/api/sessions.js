@@ -1050,9 +1050,11 @@ export async function handleExportSession(sessionId, res, options = {}) {
       if (systemSession?.source === "system" && systemSession.viewState?.systemArchivePath) {
         const archiveBuffer = await fs.readFile(systemSession.viewState.systemArchivePath);
         const safeTitle = String(systemSession.title || "session").replace(/[\\/:*?"<>|]+/g, "_").replace(/\s+/g, "_").slice(0, 60) || "session";
+        const asciiSafeTitle = safeTitle.replace(/[^\x20-\x7E]/g, "_");
+        const encodedTitle = encodeURIComponent(`${systemSession.title || "session"}_${sessionId.slice(0, 8)}.zip`);
         res.writeHead(200, {
           "Content-Type": "application/zip",
-          "Content-Disposition": `attachment; filename="${safeTitle}_${sessionId.slice(0, 8)}.zip"`,
+          "Content-Disposition": `attachment; filename="${asciiSafeTitle}_${sessionId.slice(0, 8)}.zip"; filename*=UTF-8''${encodedTitle}`,
           "Cache-Control": "public, max-age=86400",
           "Content-Length": archiveBuffer.length
         });
@@ -1150,10 +1152,11 @@ export async function handleExportSession(sessionId, res, options = {}) {
     });
 
     const safeTitle = safeArchiveName(session.title || "session");
+    const asciiSafeTitle = safeTitle.replace(/[^\x20-\x7E]/g, "_");
     const encodedTitle = encodeURIComponent(`${session.title || "session"}_${sessionId.slice(0, 8)}.zip`);
     res.writeHead(200, {
       "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="${safeTitle}_${sessionId.slice(0, 8)}.zip"; filename*=UTF-8''${encodedTitle}`,
+      "Content-Disposition": `attachment; filename="${asciiSafeTitle}_${sessionId.slice(0, 8)}.zip"; filename*=UTF-8''${encodedTitle}`,
       "Cache-Control": "no-cache"
     });
     res.end(archive);

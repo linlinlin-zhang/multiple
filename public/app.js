@@ -7454,6 +7454,9 @@ function isExplicitCanvasOrMediaChatRequest(message) {
 
 function isNoCanvasChatRequest(message) {
   const text = String(message || "").normalize("NFKC");
+  if (/canvas_action|generate_image|generate_video|必须调用|type\s*=\s*generate/i.test(text)) {
+    return false;
+  }
   return /((不要|不需要|无需|别|不用)[^,，。！？.!?；;：:]{0,18}((创建|新建|新增|建立|保存).{0,8}(卡片|节点)|生成.{0,8}(卡片|节点)|画布|卡片)|只要文字|只用文字|纯文字|直接回答|别建卡|别创建|no\s+canvas|no\s+cards?|text\s+only|answer\s+only)/i.test(text);
 }
 
