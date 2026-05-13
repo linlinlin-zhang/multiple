@@ -5,6 +5,7 @@ import { hashBuffer } from "../lib/storage.js";
 
 const STORAGE_DIR = process.env.STORAGE_PATH || path.join(process.cwd(), "storage");
 const MATERIAL_DIR = path.join(STORAGE_DIR, "material");
+const SYSTEM_MATERIAL_DIR = path.join(process.cwd(), "material");
 
 function sendJson(res, status, data) {
   res.writeHead(status, {
@@ -24,12 +25,30 @@ export async function handleListMaterials(query, res, options = {}) {
     const favoritedOnly = query?.favorited === "1" || query?.favorited === "true";
     const visitorId = options.visitorId || "legacy";
 
-    const where = { visitorId };
-    if (q) {
-      where.fileName = { contains: q, mode: "insensitive" };
-    }
+    let where;
     if (favoritedOnly) {
-      where.favorited = true;
+      // 收藏视图只显示用户自己收藏的上传素材
+      where = { visitorId, source: "user", favorited: true };
+    } else {
+      // 获取该用户已隐藏的系统素材ID
+      const hiddenRecords = await prisma.materialHidden.findMany({
+        where: { visitorId },
+        select: { materialId: true }
+      });
+      const hiddenIds = hiddenRecords.map(h => h.materialId);
+
+      where = {
+        OR: [
+          { visitorId, source: "user" },
+          { source: "system" }
+        ]
+      };
+      if (hiddenIds.length > 0) {
+        where.OR[1].id = { notIn: hiddenIds };
+      }
+      if (q) {
+        where.fileName = { contains: q, mode: "insensitive" };
+      }
     }
 
     let orderBy;
@@ -90,7 +109,8 @@ export async function handleCreateMaterial(body, res, options = {}) {
         mimeType,
         fileSize,
         hash,
-        filePath
+        filePath,
+        source: "user"
       }
     });
 
@@ -132,7 +152,7 @@ export async function handleUpdateMaterial(materialId, body, res, options = {}) 
     }
 
     const existing = await prisma.materialItem.findFirst({
-      where: { id: materialId, visitorId },
+      where: { id: materialId, visitorId, source: "user" },
       select: { id: true }
     });
     if (!existing) {
@@ -161,9 +181,25 @@ export async function handleDeleteMaterial(materialId, res, options = {}) {
     }
 
     const visitorId = options.visitorId || "legacy";
-    const item = await prisma.materialItem.findFirst({ where: { id: materialId, visitorId } });
+    const item = await prisma.materialItem.findUnique({ where: { id: materialId } });
+
     if (!item) {
       return sendJson(res, 404, { error: "Material not found" });
+    }
+
+    // 系统素材：仅对该用户隐藏，不删实际文件
+    if (item.source === "system") {
+      await prisma.materialHidden.upsert({
+        where: { visitorId_materialId: { visitorId, materialId } },
+        update: {},
+        create: { visitorId, materialId }
+      });
+      return sendJson(res, 200, { ok: true });
+    }
+
+    // 用户素材：校验权限后真删除
+    if (item.visitorId !== visitorId) {
+      return sendJson(res, 403, { error: "Not authorized" });
     }
 
     await prisma.materialItem.delete({ where: { id: materialId } });
@@ -212,9 +248,14 @@ export async function handleGetMaterialFile(materialId, res, options = {}) {
       return sendJson(res, 400, { error: "materialId is required" });
     }
 
-    const item = await prisma.materialItem.findFirst({ where: { id: materialId, visitorId: options.visitorId || "legacy" } });
+    const item = await prisma.materialItem.findUnique({ where: { id: materialId } });
     if (!item) {
       return sendJson(res, 404, { error: "Material not found" });
+    }
+
+    // 系统素材对所有用户开放；用户素材需校验归属
+    if (item.source === "user" && item.visitorId !== (options.visitorId || "legacy")) {
+      return sendJson(res, 403, { error: "Not authorized" });
     }
 
     try {
@@ -263,6 +304,19 @@ function extFromMimeType(mimeType) {
   return map[mimeType] || "";
 }
 
+function mimeFromExt(ext) {
+  const map = {
+    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp",
+    gif: "image/gif", svg: "image/svg+xml", pdf: "application/pdf",
+    doc: "application/msword", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ppt: "application/vnd.ms-powerpoint", pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    txt: "text/plain", md: "text/markdown", json: "application/json",
+    mp4: "video/mp4", webm: "video/webm", mov: "video/quicktime",
+    m4v: "video/x-m4v", ogv: "video/ogg"
+  };
+  return map[ext.toLowerCase()];
+}
+
 const SUPPORTED_MATERIAL_MIMES = new Set([
   "application/pdf",
   "application/msword",
@@ -299,12 +353,75 @@ export async function syncToMaterialLibrary({ hash, fileName, mimeType, fileSize
     }
 
     const item = await prisma.materialItem.create({
-      data: { visitorId, fileName, mimeType, fileSize, hash, filePath }
+      data: { visitorId, fileName, mimeType, fileSize, hash, filePath, source: "user" }
     });
 
     return item;
   } catch (error) {
     console.error("[syncToMaterialLibrary]", error);
     return null;
+  }
+}
+
+/**
+ * Scan the project-level material/ directory and register files as system materials.
+ * Safe to call repeatedly: skips files already registered by hash+source.
+ */
+export async function syncSystemMaterials() {
+  try {
+    const dirStat = await fs.stat(SYSTEM_MATERIAL_DIR).catch(() => null);
+    if (!dirStat || !dirStat.isDirectory()) {
+      console.log("[syncSystemMaterials] No material/ directory found, skipping");
+      return;
+    }
+
+    const entries = await fs.readdir(SYSTEM_MATERIAL_DIR, { recursive: true });
+    let registered = 0;
+    let skipped = 0;
+
+    for (const relativePath of entries) {
+      const fullPath = path.join(SYSTEM_MATERIAL_DIR, relativePath);
+      const stat = await fs.stat(fullPath).catch(() => null);
+      if (!stat || !stat.isFile()) continue;
+
+      const fileName = path.basename(relativePath);
+      const ext = path.extname(fileName).slice(1);
+      const mimeType = mimeFromExt(ext) || "application/octet-stream";
+      const buffer = await fs.readFile(fullPath);
+      const hash = hashBuffer(buffer);
+      const fileSize = buffer.length;
+
+      // Skip unsupported types
+      if (!isSupportedMaterialMime(mimeType)) {
+        skipped++;
+        continue;
+      }
+
+      // Dedup by hash+source
+      const existing = await prisma.materialItem.findFirst({
+        where: { hash, source: "system" }
+      });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      await prisma.materialItem.create({
+        data: {
+          visitorId: "__system__",
+          fileName,
+          mimeType,
+          fileSize,
+          hash,
+          filePath: fullPath,
+          source: "system"
+        }
+      });
+      registered++;
+    }
+
+    console.log(`[syncSystemMaterials] Registered ${registered}, skipped ${skipped}`);
+  } catch (error) {
+    console.error("[syncSystemMaterials]", error);
   }
 }

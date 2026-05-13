@@ -119,15 +119,29 @@ model MaterialItem {
   hash      String   // SHA-256 content hash
   filePath  String   // relative path in storage/material/
   favorited Boolean  @default(false)
+  source    String   @default("user") // "user" | "system"
   addedAt   DateTime @default(now())
   updatedAt DateTime @updatedAt
+  hiddenBy  MaterialHidden[]
 
   @@index([hash])
   @@index([fileName])
   @@index([addedAt])
   @@index([favorited])
+  @@index([source])
   @@index([visitorId, addedAt])
   @@index([visitorId, hash])
+}
+
+model MaterialHidden {
+  id         String       @id @default(uuid())
+  visitorId  String
+  materialId String
+  material   MaterialItem @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  hiddenAt   DateTime     @default(now())
+
+  @@unique([visitorId, materialId])
+  @@index([visitorId])
 }
 
 model FileUnderstanding {

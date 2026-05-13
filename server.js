@@ -8,7 +8,7 @@ import { handleStoreAsset, handleGetAsset } from "./src/api/assets.js";
 import { handleCreateShare, handleGetShare, handleCreateImageShare, handleGetImageShare } from "./src/api/share.js";
 import { handleImportSession } from "./src/api/import.js";
 import { handleGetSettings, handleUpdateSettings } from "./src/api/settings.js";
-import { handleListMaterials, handleCreateMaterial, handleUpdateMaterial, handleDeleteMaterial, handleGetMaterialFile } from "./src/api/materials.js";
+import { handleListMaterials, handleCreateMaterial, handleUpdateMaterial, handleDeleteMaterial, handleGetMaterialFile, syncSystemMaterials } from "./src/api/materials.js";
 import { handleCreateFileUnderstanding, handleGetFileUnderstanding } from "./src/api/fileUnderstanding.js";
 import { handleContextIngest, handleContextRetrieve, handleContextStats, handleContextWipe } from "./src/api/context.js";
 import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js";
@@ -902,6 +902,7 @@ server.listen(PORT, HOST, () => {
 
 ensureStorageDirs().catch(console.error);
 refreshConfigs().catch(console.error);
+syncSystemMaterials().catch(console.error);
 
 async function refreshConfigs() {
   try {
