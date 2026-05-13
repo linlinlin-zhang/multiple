@@ -1824,7 +1824,7 @@ async function init() {
       } catch {
         removeStoredItem(STORAGE_KEYS.lastSessionId, sessionStorage);
       }
-    } else {
+    } else if (!localStorage.getItem("hasSeenSystemDemo")) {
       // First-time visitor: auto-load the most recent system session as a demo
       try {
         const historyRes = await fetch("/api/history?limit=5&includeDemo=false");
@@ -1836,6 +1836,7 @@ async function init() {
             const url = new URL(window.location.href);
             url.searchParams.set("session", systemSession.id);
             window.history.replaceState({}, "", url);
+            localStorage.setItem("hasSeenSystemDemo", "1");
           }
         }
       } catch {
