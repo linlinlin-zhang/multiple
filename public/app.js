@@ -18284,6 +18284,13 @@ async function loadSession(sessionId) {
         ? data.viewState.stateSnapshot.chatMessages
         : (Array.isArray(data.chatMessages) ? data.chatMessages : [])
     });
+    // Defensive: imported sessions may carry stale pending flags; clear them
+    // so the UI never shows a stuck "thinking" indicator after load.
+    for (const thread of state.chatThreads) {
+      for (const m of thread.messages) {
+        if (m.pending) m.pending = false;
+      }
+    }
     renderChatMessages();
 
     applyCollapseState();

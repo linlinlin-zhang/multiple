@@ -989,6 +989,16 @@ async function loadSystemSessionFromZip(sessionId) {
             if (m && typeof m === "object") m.pending = false;
           }
         }
+        // Also clear pending in chatThreads (client hydrates from threads first)
+        if (Array.isArray(cloned.chatThreads)) {
+          for (const thread of cloned.chatThreads) {
+            if (Array.isArray(thread?.messages)) {
+              for (const m of thread.messages) {
+                if (m && typeof m === "object") m.pending = false;
+              }
+            }
+          }
+        }
         return cloned;
       })()
     };

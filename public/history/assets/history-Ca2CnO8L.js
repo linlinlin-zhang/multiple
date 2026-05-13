@@ -2821,7 +2821,8 @@ function nodeImageUrl$1(node) {
   if (typeof card === "string" && card) return card;
   const hash = node.data?.imageHash || node.data?.sourceCard?.imageHash;
   if (typeof hash === "string" && /^[a-f0-9]{64}$/i.test(hash)) {
-    return `/api/assets/${hash}?kind=upload`;
+    const kind = node.type === "generated" ? "generated" : "upload";
+    return `/api/assets/${hash}?kind=${kind}`;
   }
   return null;
 }
@@ -2832,7 +2833,8 @@ function nodeVideoUrl$1(node) {
   if (typeof card === "string" && card) return card;
   const hash = node.data?.videoHash || node.data?.sourceVideoHash || node.data?.sourceCard?.sourceVideoHash || node.data?.sourceCard?.videoHash;
   if (typeof hash === "string" && /^[a-f0-9]{64}$/i.test(hash)) {
-    return `/api/assets/${hash}?kind=${node.type === "generated" ? "generated" : "upload"}`;
+    const kind = node.type === "generated" ? "generated" : "upload";
+    return `/api/assets/${hash}?kind=${kind}`;
   }
   return null;
 }
@@ -2853,7 +2855,7 @@ function imageItems(session, t) {
     title: asset.fileName || (asset.kind === "generated" ? t("asset.generatedImage") : t("asset.uploadedFile")),
     summary: `${asset.mimeType} · ${formatBytes$1(asset.fileSize)}`,
     groupLabel: t("history.tabImages"),
-    icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Image, { "code-path": "src/components/cabinet/AssetSidebar.tsx:120:11", size: 16, className: "text-cabinet-blue" })
+    icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Image, { "code-path": "src/components/cabinet/AssetSidebar.tsx:122:11", size: 16, className: "text-cabinet-blue" })
   }));
   const referencedHashes = new Set(session.assets.map((a) => a.hash));
   const fromNodes = session.nodes.filter((node) => {
@@ -2872,7 +2874,7 @@ function imageItems(session, t) {
       title,
       summary: summarizeText(summary),
       groupLabel: t("history.imageRefGroup"),
-      icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Image, { "code-path": "src/components/cabinet/AssetSidebar.tsx:142:15", size: 16, className: "text-cabinet-blue" })
+      icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Image, { "code-path": "src/components/cabinet/AssetSidebar.tsx:144:15", size: 16, className: "text-cabinet-blue" })
     };
   });
   return [...fromAssets, ...fromNodes];
@@ -2883,7 +2885,7 @@ function videoItems(session, t) {
     title: asset.fileName || (asset.kind === "generated" ? t("asset.generatedVideo") : t("asset.video")),
     summary: `${asset.mimeType} · ${formatBytes$1(asset.fileSize)}`,
     groupLabel: t("history.tabVideos"),
-    icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { "code-path": "src/components/cabinet/AssetSidebar.tsx:155:11", size: 16, className: "text-cabinet-blue" })
+    icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { "code-path": "src/components/cabinet/AssetSidebar.tsx:157:11", size: 16, className: "text-cabinet-blue" })
   }));
   const referencedHashes = new Set(session.assets.map((a) => a.hash));
   const fromNodes = session.nodes.filter((node) => {
@@ -2901,7 +2903,7 @@ function videoItems(session, t) {
       title,
       summary: summarizeText(summary),
       groupLabel: t("history.tabVideos"),
-      icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { "code-path": "src/components/cabinet/AssetSidebar.tsx:176:15", size: 16, className: "text-cabinet-blue" })
+      icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { "code-path": "src/components/cabinet/AssetSidebar.tsx:178:15", size: 16, className: "text-cabinet-blue" })
     };
   });
   return [...fromAssets, ...fromNodes];
@@ -2938,7 +2940,7 @@ function webItems(session, t) {
       title: summarizeText(String(title), 60),
       summary: summarizeText(String(description), 90),
       groupLabel: isDeepThink ? t("history.deepThinkGroup") : t("history.tabWeb"),
-      icon: isDeepThink ? /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { "code-path": "src/components/cabinet/AssetSidebar.tsx:216:11", size: 16, className: "text-cabinet-blue" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Earth, { "code-path": "src/components/cabinet/AssetSidebar.tsx:217:11", size: 16, className: "text-cabinet-blue" })
+      icon: isDeepThink ? /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { "code-path": "src/components/cabinet/AssetSidebar.tsx:218:11", size: 16, className: "text-cabinet-blue" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Earth, { "code-path": "src/components/cabinet/AssetSidebar.tsx:219:11", size: 16, className: "text-cabinet-blue" })
     });
   }
   return items;
@@ -2949,14 +2951,14 @@ function documentItems(session, t) {
     title: asset.fileName || t("asset.document"),
     summary: `${asset.mimeType} · ${formatBytes$1(asset.fileSize)}`,
     groupLabel: t("asset.files"),
-    icon: /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { "code-path": "src/components/cabinet/AssetSidebar.tsx:229:11", size: 16, className: "text-cabinet-blue" })
+    icon: /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { "code-path": "src/components/cabinet/AssetSidebar.tsx:231:11", size: 16, className: "text-cabinet-blue" })
   }));
   const textSources = session.nodes.filter((node) => node.type === "source" && node.data?.sourceType === "text").map((node) => ({
     id: node.id,
     title: node.data?.fileName || t("asset.document"),
     summary: summarizeText(String(node.data?.sourceText || t("asset.document"))),
     groupLabel: t("history.textSources"),
-    icon: /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { "code-path": "src/components/cabinet/AssetSidebar.tsx:239:13", size: 16, className: "text-cabinet-blue" })
+    icon: /* @__PURE__ */ jsxRuntimeExports.jsx(FileText, { "code-path": "src/components/cabinet/AssetSidebar.tsx:241:13", size: 16, className: "text-cabinet-blue" })
   }));
   const deepThinkNotes = session.nodes.filter((node) => {
     if (node.type !== "option") return false;
@@ -2968,7 +2970,7 @@ function documentItems(session, t) {
     title: String(node.data?.option?.title || node.data?.title || t("history.deepThinkGroup")),
     summary: summarizeText(String(node.data?.option?.description || node.data?.description || "")),
     groupLabel: t("history.deepThinkGroup"),
-    icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { "code-path": "src/components/cabinet/AssetSidebar.tsx:254:13", size: 16, className: "text-cabinet-blue" })
+    icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { "code-path": "src/components/cabinet/AssetSidebar.tsx:256:13", size: 16, className: "text-cabinet-blue" })
   }));
   return [...files, ...textSources, ...deepThinkNotes];
 }
@@ -2978,7 +2980,7 @@ function chatItems(session, t) {
     title: msg.role === "user" ? t("detail.you") : t("detail.ai"),
     summary: summarizeText(msg.content),
     groupLabel: t("share.chatRecord"),
-    icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { "code-path": "src/components/cabinet/AssetSidebar.tsx:266:11", size: 16, className: "text-cabinet-blue" })
+    icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageSquare, { "code-path": "src/components/cabinet/AssetSidebar.tsx:268:11", size: 16, className: "text-cabinet-blue" })
   }));
 }
 function buildOutputItems(session, outputKind, t) {
@@ -2995,7 +2997,7 @@ function AssetSidebar({ session, outputKind, selectedAssetId, onSelectAsset }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     Sidebar,
     {
-      "code-path": "src/components/cabinet/AssetSidebar.tsx:288:5",
+      "code-path": "src/components/cabinet/AssetSidebar.tsx:290:5",
       title: t("history.outputContents"),
       items,
       selectedId: selectedAssetId,
@@ -3662,6 +3664,10 @@ function nodeImageUrl(node) {
   const card = node.data?.sourceCard?.imageUrl;
   if (typeof card === "string" && card) return card;
   const hash = node.data?.imageHash || node.data?.sourceCard?.imageHash;
+  if (typeof hash === "string" && /^[a-f0-9]{64}$/i.test(hash)) {
+    const kind = node.type === "generated" ? "generated" : "upload";
+    return `/api/assets/${hash}?kind=${kind}`;
+  }
   return typeof hash === "string" && hash ? hash : null;
 }
 function nodeVideoUrl(node) {
@@ -3670,6 +3676,10 @@ function nodeVideoUrl(node) {
   const card = node.data?.sourceCard?.sourceVideoUrl || node.data?.sourceCard?.videoUrl;
   if (typeof card === "string" && card) return card;
   const hash = node.data?.videoHash || node.data?.sourceVideoHash || node.data?.sourceCard?.sourceVideoHash || node.data?.sourceCard?.videoHash;
+  if (typeof hash === "string" && /^[a-f0-9]{64}$/i.test(hash)) {
+    const kind = node.type === "generated" ? "generated" : "upload";
+    return `/api/assets/${hash}?kind=${kind}`;
+  }
   return typeof hash === "string" && hash ? hash : null;
 }
 function nodeWebUrl(node) {
@@ -3747,46 +3757,46 @@ function HistoryPage({ sessionId, outputKind }) {
   const selectedAssetId = isOutputIdForKind(session, outputKind, selectedAssetIdIntent) ? selectedAssetIdIntent : firstOutputId;
   const showBlueprint = Boolean(session && selectedAssetId && selectedAssetId === firstOutputId);
   if (loading && !session) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(SkeletonHistoryPage, { "code-path": "src/components/cabinet/HistoryPage.tsx:164:12" });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(SkeletonHistoryPage, { "code-path": "src/components/cabinet/HistoryPage.tsx:172:12" });
   }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:168:5", className: "flex h-full flex-col md:flex-row relative", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:176:5", className: "flex h-full flex-col md:flex-row relative", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       "button",
       {
-        "code-path": "src/components/cabinet/HistoryPage.tsx:169:7",
+        "code-path": "src/components/cabinet/HistoryPage.tsx:177:7",
         onClick: () => setSidebarOpen(true),
         className: "md:hidden absolute top-4 left-4 z-30 w-10 h-10 flex items-center justify-center rounded-full bg-cabinet-paper border border-cabinet-border shadow-[0_8px_16px_rgba(0,0,0,0.08)]",
         "aria-label": t("history.openOutputs"),
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Menu, { "code-path": "src/components/cabinet/HistoryPage.tsx:174:9", size: 18, className: "text-cabinet-ink" })
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Menu, { "code-path": "src/components/cabinet/HistoryPage.tsx:182:9", size: 18, className: "text-cabinet-ink" })
       }
     ),
-    sidebarOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:178:9", className: "md:hidden fixed inset-0 z-50 flex", children: [
+    sidebarOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:186:9", className: "md:hidden fixed inset-0 z-50 flex", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "div",
         {
-          "code-path": "src/components/cabinet/HistoryPage.tsx:179:11",
+          "code-path": "src/components/cabinet/HistoryPage.tsx:187:11",
           className: "fixed inset-0 bg-black/20",
           onClick: () => setSidebarOpen(false)
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:183:11", className: "relative w-[300px] bg-cabinet-paper h-full shadow-lg", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:184:13", className: "flex items-center justify-between px-4 py-3 border-b border-cabinet-border", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:185:15", className: "text-sm font-medium text-cabinet-ink", children: t("history.outputContents") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:191:11", className: "relative w-[300px] bg-cabinet-paper h-full shadow-lg", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:192:13", className: "flex items-center justify-between px-4 py-3 border-b border-cabinet-border", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:193:15", className: "text-sm font-medium text-cabinet-ink", children: t("history.outputContents") }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {
-              "code-path": "src/components/cabinet/HistoryPage.tsx:186:15",
+              "code-path": "src/components/cabinet/HistoryPage.tsx:194:15",
               onClick: () => setSidebarOpen(false),
               className: "w-8 h-8 flex items-center justify-center rounded hover:bg-cabinet-itemBg",
               "aria-label": t("cabinet.closeSidebar"),
-              children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { "code-path": "src/components/cabinet/HistoryPage.tsx:191:17", size: 18, className: "text-cabinet-ink" })
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { "code-path": "src/components/cabinet/HistoryPage.tsx:199:17", size: 18, className: "text-cabinet-ink" })
             }
           )
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           AssetSidebar,
           {
-            "code-path": "src/components/cabinet/HistoryPage.tsx:194:13",
+            "code-path": "src/components/cabinet/HistoryPage.tsx:202:13",
             session,
             outputKind,
             selectedAssetId,
@@ -3798,47 +3808,47 @@ function HistoryPage({ sessionId, outputKind }) {
         )
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:207:7", className: "hidden md:flex w-[300px] min-w-[300px] bg-cabinet-paper border-r border-cabinet-border flex-col h-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:215:7", className: "hidden md:flex w-[300px] min-w-[300px] bg-cabinet-paper border-r border-cabinet-border flex-col h-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
       AssetSidebar,
       {
-        "code-path": "src/components/cabinet/HistoryPage.tsx:208:9",
+        "code-path": "src/components/cabinet/HistoryPage.tsx:216:9",
         session,
         outputKind,
         selectedAssetId,
         onSelectAsset: setSelectedAssetIdIntent
       }
     ) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:216:7", className: "flex-1 flex flex-col h-full overflow-y-auto cabinet-scrollbar bg-cabinet-paper", children: [
-      error && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:218:11", className: "px-5 md:px-9 py-3 bg-cabinet-paper border-b border-cabinet-border flex items-center justify-between flex-shrink-0 sticky top-0 z-10", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:219:13", className: "text-sm text-[#d53b00]", children: error }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:224:7", className: "flex-1 flex flex-col h-full overflow-y-auto cabinet-scrollbar bg-cabinet-paper", children: [
+      error && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:226:11", className: "px-5 md:px-9 py-3 bg-cabinet-paper border-b border-cabinet-border flex items-center justify-between flex-shrink-0 sticky top-0 z-10", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:227:13", className: "text-sm text-[#d53b00]", children: error }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
           {
-            "code-path": "src/components/cabinet/HistoryPage.tsx:220:13",
+            "code-path": "src/components/cabinet/HistoryPage.tsx:228:13",
             onClick: refetch,
             className: "text-sm text-cabinet-blue font-medium hover:underline",
             children: t("history.retry")
           }
         )
       ] }),
-      session && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:230:11", className: "px-5 md:px-9 pt-7 pb-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:231:13", className: "flex items-start justify-between gap-4", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:232:15", className: "min-w-0", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:233:17", className: "text-[13px] text-cabinet-inkMuted mb-3", children: [
+      session && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:238:11", className: "px-5 md:px-9 pt-7 pb-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:239:13", className: "flex items-start justify-between gap-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:240:15", className: "min-w-0", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:241:17", className: "text-[13px] text-cabinet-inkMuted mb-3", children: [
             t("history.lastEdited"),
             " ",
             new Date(session.updatedAt || session.createdAt).toLocaleString()
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { "code-path": "src/components/cabinet/HistoryPage.tsx:236:17", className: "text-2xl md:text-[34px] font-medium text-cabinet-ink leading-tight tracking-[0] truncate", children: session.title || t("session.unnamed") }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:239:17", className: "flex items-center gap-3 mt-3 text-[13px] md:text-[14px] text-cabinet-inkMuted flex-wrap", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:240:19", children: new Date(session.createdAt).toLocaleString() }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:241:19", children: "·" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:242:19", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { "code-path": "src/components/cabinet/HistoryPage.tsx:244:17", className: "text-2xl md:text-[34px] font-medium text-cabinet-ink leading-tight tracking-[0] truncate", children: session.title || t("session.unnamed") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:247:17", className: "flex items-center gap-3 mt-3 text-[13px] md:text-[14px] text-cabinet-inkMuted flex-wrap", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:248:19", children: new Date(session.createdAt).toLocaleString() }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:249:19", children: "·" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:250:19", children: [
               nodeCount,
               " ",
               t("history.nodeCount")
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:243:19", children: "·" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:244:19", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:251:19", children: "·" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { "code-path": "src/components/cabinet/HistoryPage.tsx:252:19", children: [
               assetCount,
               " ",
               t("history.assetCount")
@@ -3848,18 +3858,18 @@ function HistoryPage({ sessionId, outputKind }) {
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "a",
           {
-            "code-path": "src/components/cabinet/HistoryPage.tsx:247:15",
+            "code-path": "src/components/cabinet/HistoryPage.tsx:255:15",
             href: `/app.html?session=${session.id}`,
             className: "inline-flex items-center px-5 py-2 bg-cabinet-blue text-cabinet-paper text-sm font-medium rounded-full hover:bg-cabinet-cyan transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cabinet-blue focus-visible:ring-offset-2 flex-shrink-0",
             children: t("cabinet.openInCanvas")
           }
         )
       ] }) }),
-      showBlueprint && session && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:258:11", className: "px-5 md:px-9 py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:259:13", className: "h-[180px] md:h-[245px] rounded-[24px] overflow-hidden bg-cabinet-bg", children: /* @__PURE__ */ jsxRuntimeExports.jsx(NodeGraphThumbnail, { "code-path": "src/components/cabinet/HistoryPage.tsx:260:15", nodes: session.nodes, links: session.links }) }) }),
+      showBlueprint && session && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:266:11", className: "px-5 md:px-9 py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "code-path": "src/components/cabinet/HistoryPage.tsx:267:13", className: "h-[180px] md:h-[245px] rounded-[24px] overflow-hidden bg-cabinet-bg", children: /* @__PURE__ */ jsxRuntimeExports.jsx(NodeGraphThumbnail, { "code-path": "src/components/cabinet/HistoryPage.tsx:268:15", nodes: session.nodes, links: session.links }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         AssetDetailPane,
         {
-          "code-path": "src/components/cabinet/HistoryPage.tsx:265:9",
+          "code-path": "src/components/cabinet/HistoryPage.tsx:273:9",
           session,
           selectedAssetId,
           emptyMessage: t("history.noOutputsInFolder")
