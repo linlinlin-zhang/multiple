@@ -12126,6 +12126,7 @@ function turnIntoGeneratedVideoNode(element, option, videoUrl, mimeType = "video
   video.preload = "metadata";
   if (mimeType) video.type = mimeType;
   videoWrap.appendChild(video);
+  attachImageCardActions(videoWrap, nodeId);
   element.appendChild(videoWrap);
 
   const eyebrow = document.createElement("p");
