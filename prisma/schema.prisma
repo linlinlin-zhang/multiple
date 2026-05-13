@@ -14,6 +14,7 @@ model Session {
   visitorId String   @default("legacy")
   title     String   @default("未命名会话")
   isDemo    Boolean  @default(false)
+  source    String   @default("user") // "user" | "system"
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   nodes     Node[]
@@ -22,8 +23,10 @@ model Session {
   chatMessages ChatMessage[]
   shareTokens ShareToken[]
   viewState Json?    // { x, y, scale }
+  hiddenBy  SessionHidden[]
 
   @@index([visitorId, updatedAt])
+  @@index([source])
 }
 
 model Node {
@@ -94,6 +97,17 @@ model ShareToken {
 
   @@index([token])
   @@index([sessionId])
+}
+
+model SessionHidden {
+  id        String   @id @default(uuid())
+  visitorId String
+  sessionId String
+  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  hiddenAt  DateTime @default(now())
+
+  @@unique([visitorId, sessionId])
+  @@index([visitorId])
 }
 
 model Settings {

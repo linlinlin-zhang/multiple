@@ -661,7 +661,10 @@ async function collectMaterialUrlAssets(value, records, visitorId) {
   const items = await prisma.materialItem.findMany({
     where: {
       id: { in: Array.from(materialIds) },
-      visitorId: visitorId || "legacy"
+      OR: [
+        { visitorId: visitorId || "legacy" },
+        { source: "system" }
+      ]
     }
   });
   const replacements = new Map();
@@ -812,13 +815,75 @@ export async function handleCreateSession(body, res, options = {}) {
 /**
  * GET /api/sessions/:id
  */
+async function loadSystemSessionFromZip(sessionId) {
+  const session = await prisma.session.findUnique({ where: { id: sessionId } });
+  if (!session || session.source !== "system") return null;
+  const archivePath = session.viewState?.systemArchivePath;
+  if (!archivePath) return null;
+  try {
+    const buffer = await fs.readFile(archivePath);
+    const zip = await JSZip.loadAsync(buffer);
+    const sessionJson = zip.file("session.json");
+    if (!sessionJson) return null;
+    const json = JSON.parse(await sessionJson.async("text"));
+    const payload = json.session || {};
+    return {
+      ...session,
+      nodes: (payload.nodes || []).map((n) => ({
+        id: n.nodeId,
+        sessionId: session.id,
+        nodeId: n.nodeId,
+        type: n.type,
+        x: n.x,
+        y: n.y,
+        width: n.width,
+        height: n.height,
+        data: n.data,
+        collapsed: n.collapsed,
+        createdAt: session.createdAt
+      })),
+      links: (payload.links || []).map((l) => ({
+        id: `${l.fromNodeId}-${l.toNodeId}`,
+        sessionId: session.id,
+        fromNodeId: l.fromNodeId,
+        toNodeId: l.toNodeId,
+        kind: l.kind,
+        createdAt: session.createdAt
+      })),
+      assets: (payload.assets || []).filter((a) => !a.missing).map((a) => ({
+        id: a.hash,
+        sessionId: session.id,
+        hash: a.hash,
+        kind: a.kind,
+        mimeType: a.mimeType,
+        fileSize: a.fileSize,
+        fileName: a.fileName,
+        createdAt: session.createdAt
+      })),
+      chatMessages: (payload.chatMessages || []).map((m, i) => ({
+        id: `msg-${i}`,
+        sessionId: session.id,
+        role: m.role,
+        content: m.content,
+        thinkingContent: m.thinkingContent || null,
+        references: m.references || null,
+        createdAt: session.createdAt
+      })),
+      viewState: payload.viewState || session.viewState
+    };
+  } catch (e) {
+    console.error("[loadSystemSessionFromZip]", e);
+    return null;
+  }
+}
+
 export async function handleGetSession(sessionId, res, options = {}) {
   try {
     if (!sessionId || typeof sessionId !== "string") {
       return sendJson(res, 400, { error: "sessionId is required" });
     }
 
-    const session = await prisma.session.findFirst({
+    let session = await prisma.session.findFirst({
       where: { id: sessionId, visitorId: options.visitorId || "legacy" },
       include: {
         nodes: true,
@@ -827,6 +892,11 @@ export async function handleGetSession(sessionId, res, options = {}) {
         chatMessages: { orderBy: { createdAt: "asc" } }
       }
     });
+
+    // 如果是系统会话，从 zip 加载
+    if (!session) {
+      session = await loadSystemSessionFromZip(sessionId);
+    }
 
     if (!session) {
       return sendJson(res, 404, { error: "Session not found" });
@@ -964,7 +1034,7 @@ export async function handleExportSession(sessionId, res, options = {}) {
       return sendJson(res, 400, { error: "sessionId is required" });
     }
 
-    const session = await prisma.session.findFirst({
+    let session = await prisma.session.findFirst({
       where: { id: sessionId, visitorId: options.visitorId || "legacy" },
       include: {
         nodes: true,
@@ -973,6 +1043,23 @@ export async function handleExportSession(sessionId, res, options = {}) {
         chatMessages: { orderBy: { createdAt: "asc" } }
       }
     });
+
+    // 系统会话直接返回 zip 文件
+    if (!session) {
+      const systemSession = await prisma.session.findUnique({ where: { id: sessionId } });
+      if (systemSession?.source === "system" && systemSession.viewState?.systemArchivePath) {
+        const archiveBuffer = await fs.readFile(systemSession.viewState.systemArchivePath);
+        const safeTitle = String(systemSession.title || "session").replace(/[\\/:*?"<>|]+/g, "_").replace(/\s+/g, "_").slice(0, 60) || "session";
+        res.writeHead(200, {
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${safeTitle}_${sessionId.slice(0, 8)}.zip"`,
+          "Cache-Control": "public, max-age=86400",
+          "Content-Length": archiveBuffer.length
+        });
+        res.end(archiveBuffer);
+        return;
+      }
+    }
 
     if (!session) {
       return sendJson(res, 404, { error: "Session not found" });

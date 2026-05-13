@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleCreateSession, handleGetSession, handleUpdateSession, handleExportSession } from "./src/api/sessions.js";
-import { handleListHistory, handleRenameSession, handleDeleteSession } from "./src/api/history.js";
+import { handleListHistory, handleRenameSession, handleDeleteSession, syncSystemHistory } from "./src/api/history.js";
 import { handleStoreAsset, handleGetAsset } from "./src/api/assets.js";
 import { handleCreateShare, handleGetShare, handleCreateImageShare, handleGetImageShare } from "./src/api/share.js";
 import { handleImportSession } from "./src/api/import.js";
@@ -903,6 +903,7 @@ server.listen(PORT, HOST, () => {
 ensureStorageDirs().catch(console.error);
 refreshConfigs().catch(console.error);
 syncSystemMaterials().catch(console.error);
+syncSystemHistory().catch(console.error);
 
 async function refreshConfigs() {
   try {
@@ -5361,7 +5362,14 @@ async function storeGeneratedImage(imageReference) {
     return null;
   }
 
-  const response = await fetch(imageReference);
+  const downloadController = new AbortController();
+  const downloadTimeout = setTimeout(() => downloadController.abort(), 60000);
+  let response;
+  try {
+    response = await fetch(imageReference, { signal: downloadController.signal });
+  } finally {
+    clearTimeout(downloadTimeout);
+  }
   if (!response.ok) {
     throw new Error(`Failed to download generated image ${response.status}: ${response.statusText}`);
   }
@@ -8267,7 +8275,7 @@ async function generateDashScopeQwenImage(prompt, imageUrl, imageDataUrl, reques
     content.push({ image: maskDataUrl });
   }
   const finalPrompt = maskDataUrl ? buildMaskedEditPrompt(prompt) : String(prompt || "");
-  content.push({ text: finalPrompt.slice(0, 800) });
+  content.push({ text: finalPrompt.slice(0, 4000) });
 
   const parameters = dropUndefined({
     size: cleanSize(requestOptions.size) || cleanSize(options.size) || "2048*2048",
@@ -8291,14 +8299,22 @@ async function generateDashScopeQwenImage(prompt, imageUrl, imageDataUrl, reques
     parameters
   };
 
-  const response = await fetch(dashScopeQwenImageEndpoint(runtimeConfigs.image), {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${runtimeConfigs.image.apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
+  const imageController = new AbortController();
+  const imageTimeout = setTimeout(() => imageController.abort(), 120000);
+  let response;
+  try {
+    response = await fetch(dashScopeQwenImageEndpoint(runtimeConfigs.image), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${runtimeConfigs.image.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: imageController.signal
+    });
+  } finally {
+    clearTimeout(imageTimeout);
+  }
 
   const text = await response.text();
   let json;
