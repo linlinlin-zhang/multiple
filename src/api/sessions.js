@@ -827,6 +827,25 @@ async function loadSystemSessionFromZip(sessionId) {
     if (!sessionJson) return null;
     const json = JSON.parse(await sessionJson.async("text"));
     const payload = json.session || {};
+
+    // Restore assets from zip into storage so /api/assets/{hash} works
+    const assets = (payload.assets || []).filter((a) => !a.missing);
+    for (const asset of assets) {
+      try {
+        const ext = extensionFromAsset(asset, asset.mimeType);
+        const kind = normalizeAssetKind(asset.kind);
+        const name = safeArchiveName(asset.fileName || asset.hash.slice(0, 12), asset.hash.slice(0, 12));
+        const zipPath = `assets/${kind}/${asset.hash.slice(0, 2)}/${asset.hash}.${name}.${ext}`;
+        const zipFile = zip.file(zipPath);
+        if (zipFile) {
+          const fileBuffer = await zipFile.async("nodebuffer");
+          await storeFile(fileBuffer, { kind, ext });
+        }
+      } catch (assetError) {
+        console.warn("[loadSystemSessionFromZip] Failed to restore asset:", asset.hash, assetError.message);
+      }
+    }
+
     return {
       ...session,
       nodes: (payload.nodes || []).map((n) => ({
@@ -850,7 +869,7 @@ async function loadSystemSessionFromZip(sessionId) {
         kind: l.kind,
         createdAt: session.createdAt
       })),
-      assets: (payload.assets || []).filter((a) => !a.missing).map((a) => ({
+      assets: assets.map((a) => ({
         id: a.hash,
         sessionId: session.id,
         hash: a.hash,

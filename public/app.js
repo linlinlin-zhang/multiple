@@ -1824,6 +1824,23 @@ async function init() {
       } catch {
         removeStoredItem(STORAGE_KEYS.lastSessionId, sessionStorage);
       }
+    } else {
+      // First-time visitor: auto-load the most recent system session as a demo
+      try {
+        const historyRes = await fetch("/api/history?limit=5&includeDemo=false");
+        if (historyRes.ok) {
+          const historyData = await historyRes.json();
+          const systemSession = historyData.sessions?.find((s) => s.source === "system");
+          if (systemSession) {
+            await loadSession(systemSession.id);
+            const url = new URL(window.location.href);
+            url.searchParams.set("session", systemSession.id);
+            window.history.replaceState({}, "", url);
+          }
+        }
+      } catch {
+        // Ignore: first-time visitors may see an empty workbench if no system sessions exist
+      }
     }
   }
   window.setTimeout(maybeStartWorkbenchTour, 360);
