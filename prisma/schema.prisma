@@ -10,87 +10,87 @@ datasource db {
 }
 
 model Session {
-  id           String        @id @default(uuid())
-  title        String        @default("未命名会话")
-  isDemo       Boolean       @default(false)
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  viewState    Json?
-  visitorId    String        @default("legacy")
-  assets       Asset[]
+  id        String   @id @default(uuid())
+  visitorId String   @default("legacy")
+  title     String   @default("未命名会话")
+  isDemo    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  nodes     Node[]
+  links     Link[]
+  assets    Asset[]
   chatMessages ChatMessage[]
-  links        Link[]
-  nodes        Node[]
-  shareTokens  ShareToken[]
+  shareTokens ShareToken[]
+  viewState Json?    // { x, y, scale }
 
   @@index([visitorId, updatedAt])
 }
 
 model Node {
-  id        String   @id @default(uuid())
+  id        String  @id @default(uuid())
   sessionId String
-  nodeId    String
-  type      String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  nodeId    String  // client-side node id: "source", "analysis", "option-evidence-board", etc.
+  type      String  // "source" | "analysis" | "option" | "generated"
   x         Float
   y         Float
   width     Float
   height    Float
-  data      Json?
-  collapsed Boolean  @default(false)
+  data      Json?   // flexible per-node payload: option object, generated image hash, etc.
+  collapsed Boolean @default(false)
   createdAt DateTime @default(now())
-  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
 }
 
 model Link {
-  id         String   @id @default(uuid())
-  sessionId  String
-  fromNodeId String
-  toNodeId   String
-  kind       String
-  createdAt  DateTime @default(now())
-  session    Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id        String  @id @default(uuid())
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  fromNodeId String // client-side node id
+  toNodeId   String // client-side node id
+  kind       String // "analysis" | "option" | "generated"
+  createdAt DateTime @default(now())
 
   @@index([sessionId])
 }
 
 model Asset {
-  id        String   @id @default(uuid())
+  id        String  @id @default(uuid())
   sessionId String
-  hash      String
-  kind      String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  hash      String  // SHA-256 content hash
+  kind      String  // "upload" | "generated"
   mimeType  String
   fileSize  Int
   fileName  String?
   createdAt DateTime @default(now())
-  session   Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
   @@index([hash])
 }
 
 model ChatMessage {
-  id              String   @id @default(uuid())
-  sessionId       String
-  role            String
-  content         String
-  createdAt       DateTime @default(now())
-  thinkingContent String?
-  references      Json?
-  session         Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  id        String  @id @default(uuid())
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String  // "user" | "assistant"
+  content   String
+  thinkingContent String? // assistant chain-of-thought trace
+  references Json?  // [{ title, url, description, type }]
+  createdAt DateTime @default(now())
 
   @@index([sessionId])
 }
 
 model ShareToken {
-  id           String    @id @default(uuid())
+  id           String   @id @default(uuid())
   sessionId    String
-  token        String    @unique @default(uuid())
-  createdAt    DateTime  @default(now())
+  session      Session  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  token        String   @unique @default(uuid())
+  createdAt    DateTime @default(now())
   expiresAt    DateTime?
-  snapshotData Json?
-  session      Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  snapshotData Json?    // immutable frozen session state
 
   @@index([token])
   @@index([sessionId])
@@ -98,53 +98,64 @@ model ShareToken {
 
 model Settings {
   id          String   @id @default(uuid())
-  role        String   @unique
+  role        String   @unique // "analysis" | "chat" | "image" | "global"
   endpoint    String   @default("")
   model       String   @default("")
   apiKey      String   @default("")
   temperature Float    @default(0.7)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  options     Json     @default("{}")
   theme       String   @default("light")
   language    String   @default("zh")
-  options     Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model MaterialItem {
-  id             String           @id @default(uuid())
-  fileName       String
-  mimeType       String
-  fileSize       Int
-  hash           String
-  filePath       String
-  addedAt        DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
-  favorited      Boolean          @default(false)
-  visitorId      String           @default("legacy")
-  source         String           @default("user")
-  MaterialHidden MaterialHidden[]
+  id        String   @id @default(uuid())
+  visitorId String   @default("legacy")
+  fileName  String
+  mimeType  String
+  fileSize  Int
+  hash      String   // SHA-256 content hash
+  filePath  String   // relative path in storage/material/
+  favorited Boolean  @default(false)
+  source    String   @default("user") // "user" | "system"
+  addedAt   DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  hiddenBy  MaterialHidden[]
 
   @@index([hash])
   @@index([fileName])
   @@index([addedAt])
   @@index([favorited])
+  @@index([source])
   @@index([visitorId, addedAt])
   @@index([visitorId, hash])
-  @@index([source])
+}
+
+model MaterialHidden {
+  id         String       @id @default(uuid())
+  visitorId  String
+  materialId String
+  material   MaterialItem @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  hiddenAt   DateTime     @default(now())
+
+  @@unique([visitorId, materialId])
+  @@index([visitorId])
 }
 
 model FileUnderstanding {
   id                   String   @id @default(uuid())
-  hash                 String   @unique
+  hash                 String   @unique // SHA-256 content hash
   fileName             String
   mimeType             String
   summary              String   @default("")
   abstract             String   @default("")
-  structure            Json?
-  keyMaterials         Json?
-  actionableDirections Json?
+  structure            Json?    // { totalPages, outline, sections }
+  keyMaterials         Json?    // { images, tables, charts }
+  actionableDirections Json?    // [{ type, title, description, rationale }]
   isScanned            Boolean  @default(false)
-  metadata             Json?
+  metadata             Json?    // { title, author }
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
@@ -155,29 +166,18 @@ model FileUnderstanding {
 /// embedding column is `vector(1024)` managed via raw SQL — Prisma marks it Unsupported.
 /// Source kinds: "file" | "web" | "card" | "chat" | "generated" | "analysis" | "note"
 model ContextChunk {
-  id         String                 @id @default(uuid())
-  sessionId  String
-  kind       String
-  sourceId   String?
-  sourceMeta Json?
-  chunkIndex Int                    @default(0)
-  content    String
-  tokens     Int                    @default(0)
-  embedding  Unsupported("vector")?
-  createdAt  DateTime               @default(now())
+  id          String   @id @default(uuid())
+  sessionId   String
+  kind        String
+  sourceId    String?  // FK-like reference to Node/Asset/ChatMessage etc., free-form
+  sourceMeta  Json?    // { fileName, page, url, nodeId, hash, role, ... }
+  chunkIndex  Int      @default(0)
+  content     String
+  tokens      Int      @default(0)
+  embedding   Unsupported("vector(1024)")?
+  createdAt   DateTime @default(now())
 
   @@index([sessionId])
   @@index([sessionId, kind])
   @@index([sourceId])
-}
-
-model MaterialHidden {
-  id           String       @id
-  visitorId    String
-  materialId   String
-  hiddenAt     DateTime     @default(now())
-  MaterialItem MaterialItem @relation(fields: [materialId], references: [id], onDelete: Cascade)
-
-  @@unique([visitorId, materialId])
-  @@index([visitorId])
 }

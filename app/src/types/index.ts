@@ -149,6 +149,7 @@ export interface MaterialItem {
   hash: string;
   filePath: string;
   favorited: boolean;
+  source: "user" | "system";
   addedAt: string;
   updatedAt: string;
 }
