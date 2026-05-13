@@ -16,6 +16,9 @@ function sendJson(res, status, data) {
 
 /**
  * GET /api/materials?q=keyword&sort=date|added|name|size&favorited=1
+ *
+ * Returns both user-uploaded materials and system materials.
+ * System materials (source='system') appear in everyone's library but can be hidden per-user via MaterialHidden.
  */
 export async function handleListMaterials(query, res, options = {}) {
   try {
@@ -40,12 +43,35 @@ export async function handleListMaterials(query, res, options = {}) {
       default:     orderBy = { addedAt: "desc" }; break;
     }
 
-    const [items, total] = await Promise.all([
+    const [userItems, userTotal] = await Promise.all([
       prisma.materialItem.findMany({ where, orderBy }),
       prisma.materialItem.count({ where })
     ]);
 
-    return sendJson(res, 200, { ok: true, items, total });
+    const systemWhere = { source: "system" };
+    if (q) {
+      systemWhere.fileName = { contains: q, mode: "insensitive" };
+    }
+
+    const hiddenIds = (await prisma.materialHidden.findMany({
+      where: { visitorId },
+      select: { materialId: true }
+    })).map(h => h.materialId);
+
+    const systemItemsQuery = { ...systemWhere };
+    if (hiddenIds.length > 0) {
+      systemItemsQuery.id = { notIn: hiddenIds };
+    }
+
+    const systemItems = await prisma.materialItem.findMany({
+      where: systemItemsQuery,
+      orderBy
+    });
+
+    const allItems = [...userItems, ...systemItems];
+    const total = userTotal + systemItems.length;
+
+    return sendJson(res, 200, { ok: true, items: allItems, total });
   } catch (error) {
     console.error("[handleListMaterials]", error);
     return sendJson(res, 500, { error: error.message || "Failed to list materials" });
@@ -90,7 +116,8 @@ export async function handleCreateMaterial(body, res, options = {}) {
         mimeType,
         fileSize,
         hash,
-        filePath
+        filePath,
+        source: "user"
       }
     });
 
@@ -153,6 +180,9 @@ export async function handleUpdateMaterial(materialId, body, res, options = {}) 
 
 /**
  * DELETE /api/materials/:id
+ *
+ * For user materials: hard delete (removes DB record and file if no refs remain).
+ * For system materials: soft delete (creates MaterialHidden record for this user only).
  */
 export async function handleDeleteMaterial(materialId, res, options = {}) {
   try {
@@ -162,21 +192,43 @@ export async function handleDeleteMaterial(materialId, res, options = {}) {
 
     const visitorId = options.visitorId || "legacy";
     const item = await prisma.materialItem.findFirst({ where: { id: materialId, visitorId } });
-    if (!item) {
-      return sendJson(res, 404, { error: "Material not found" });
-    }
 
-    await prisma.materialItem.delete({ where: { id: materialId } });
-    const remainingRefs = await prisma.materialItem.count({ where: { filePath: item.filePath } });
-    if (remainingRefs === 0 && item.filePath.startsWith(MATERIAL_DIR)) {
-      try {
-        await fs.unlink(item.filePath);
-      } catch (unlinkError) {
-        console.warn("[handleDeleteMaterial] file unlink failed:", unlinkError.message);
+    if (item) {
+      await prisma.materialItem.delete({ where: { id: materialId } });
+      const remainingRefs = await prisma.materialItem.count({ where: { filePath: item.filePath } });
+      if (remainingRefs === 0 && item.filePath.startsWith(MATERIAL_DIR)) {
+        try {
+          await fs.unlink(item.filePath);
+        } catch (unlinkError) {
+          console.warn("[handleDeleteMaterial] file unlink failed:", unlinkError.message);
+        }
       }
+      return sendJson(res, 200, { ok: true });
     }
 
-    return sendJson(res, 200, { ok: true });
+    const systemItem = await prisma.materialItem.findFirst({
+      where: { id: materialId, source: "system" }
+    });
+
+    if (systemItem) {
+      await prisma.materialHidden.upsert({
+        where: {
+          visitorId_materialId: {
+            visitorId,
+            materialId
+          }
+        },
+        update: {},
+        create: {
+          id: crypto.randomUUID(),
+          visitorId,
+          materialId
+        }
+      });
+      return sendJson(res, 200, { ok: true });
+    }
+
+    return sendJson(res, 404, { error: "Material not found" });
   } catch (error) {
     console.error("[handleDeleteMaterial]", error);
     return sendJson(res, 500, { error: error.message || "Failed to delete material" });
@@ -212,7 +264,27 @@ export async function handleGetMaterialFile(materialId, res, options = {}) {
       return sendJson(res, 400, { error: "materialId is required" });
     }
 
-    const item = await prisma.materialItem.findFirst({ where: { id: materialId, visitorId: options.visitorId || "legacy" } });
+    const visitorId = options.visitorId || "legacy";
+
+    let item = await prisma.materialItem.findFirst({
+      where: { id: materialId, visitorId }
+    });
+
+    if (!item) {
+      item = await prisma.materialItem.findFirst({
+        where: { id: materialId, source: "system" }
+      });
+
+      if (item) {
+        const hidden = await prisma.materialHidden.findFirst({
+          where: { visitorId, materialId }
+        });
+        if (hidden) {
+          return sendJson(res, 404, { error: "Material not found" });
+        }
+      }
+    }
+
     if (!item) {
       return sendJson(res, 404, { error: "Material not found" });
     }
@@ -299,7 +371,7 @@ export async function syncToMaterialLibrary({ hash, fileName, mimeType, fileSize
     }
 
     const item = await prisma.materialItem.create({
-      data: { visitorId, fileName, mimeType, fileSize, hash, filePath }
+      data: { visitorId, fileName, mimeType, fileSize, hash, filePath, source: "user" }
     });
 
     return item;
@@ -307,4 +379,79 @@ export async function syncToMaterialLibrary({ hash, fileName, mimeType, fileSize
     console.error("[syncToMaterialLibrary]", error);
     return null;
   }
+}
+
+/**
+ * Scan the material directory and sync all files into MaterialItem with source='system'.
+ * This makes all files in storage/material/ available to all users.
+ * Idempotent: skips files already in MaterialItem (by hash + source='system').
+ */
+export async function syncSystemMaterials() {
+  try {
+    const entries = await fs.readdir(MATERIAL_DIR, { recursive: true });
+    let synced = 0;
+    let skipped = 0;
+
+    for (const entry of entries) {
+      const fullPath = path.join(MATERIAL_DIR, entry);
+      const stat = await fs.stat(fullPath).catch(() => null);
+      if (!stat || stat.isDirectory()) continue;
+
+      const buffer = await fs.readFile(fullPath);
+      const hash = hashBuffer(buffer);
+
+      const existing = await prisma.materialItem.findFirst({
+        where: { hash, source: "system" }
+      });
+      if (existing) {
+        skipped++;
+        continue;
+      }
+
+      const mimeType = mimeFromExt(path.extname(fullPath).slice(1)) || "application/octet-stream";
+      const fileName = path.basename(fullPath);
+
+      await prisma.materialItem.create({
+        data: {
+          fileName,
+          mimeType,
+          fileSize: stat.size,
+          hash,
+          filePath: fullPath,
+          source: "system",
+          visitorId: "system"
+        }
+      });
+      synced++;
+    }
+
+    console.log(`[syncSystemMaterials] synced=${synced}, skipped=${skipped}`);
+    return { synced, skipped };
+  } catch (error) {
+    console.error("[syncSystemMaterials]", error);
+    return { synced: 0, skipped: 0, error: error.message };
+  }
+}
+
+function mimeFromExt(ext) {
+  const map = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+    gif: "image/gif",
+    svg: "image/svg+xml",
+    pdf: "application/pdf",
+    doc: "application/msword",
+    docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ppt: "application/vnd.ms-powerpoint",
+    pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    txt: "text/plain",
+    mp4: "video/mp4",
+    webm: "video/webm",
+    mov: "video/quicktime",
+    m4v: "video/x-m4v",
+    ogv: "video/ogg"
+  };
+  return map[ext?.toLowerCase()];
 }
