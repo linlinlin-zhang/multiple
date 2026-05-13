@@ -82,7 +82,8 @@ function nodeImageUrl(node: Node): string | null {
   if (typeof card === "string" && card) return card;
   const hash = node.data?.imageHash || node.data?.sourceCard?.imageHash;
   if (typeof hash === "string" && /^[a-f0-9]{64}$/i.test(hash)) {
-    return `/api/assets/${hash}?kind=upload`;
+    const kind = node.type === "generated" ? "generated" : "upload";
+    return `/api/assets/${hash}?kind=${kind}`;
   }
   return null;
 }
@@ -94,7 +95,8 @@ function nodeVideoUrl(node: Node): string | null {
   if (typeof card === "string" && card) return card;
   const hash = node.data?.videoHash || node.data?.sourceVideoHash || node.data?.sourceCard?.sourceVideoHash || node.data?.sourceCard?.videoHash;
   if (typeof hash === "string" && /^[a-f0-9]{64}$/i.test(hash)) {
-    return `/api/assets/${hash}?kind=${node.type === "generated" ? "generated" : "upload"}`;
+    const kind = node.type === "generated" ? "generated" : "upload";
+    return `/api/assets/${hash}?kind=${kind}`;
   }
   return null;
 }

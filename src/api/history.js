@@ -81,8 +81,12 @@ export async function handleListHistory(query, res, options = {}) {
       source: s.source,
       createdAt: s.createdAt,
       updatedAt: s.updatedAt,
-      nodeCount: s._count.nodes,
-      assetCount: s._count.assets
+      nodeCount: s.source === "system"
+        ? (s.viewState?.nodeCount ?? s._count.nodes)
+        : s._count.nodes,
+      assetCount: s.source === "system"
+        ? (s.viewState?.assetCount ?? s._count.assets)
+        : s._count.assets
     }));
 
     return sendJson(res, 200, {
@@ -224,10 +228,19 @@ export async function syncSystemHistory() {
         where: { id: sessionId, source: "system" }
       });
       if (existing) {
-        // 更新元数据
+        // 更新元数据（包括 viewState 中的 nodeCount / assetCount）
         await prisma.session.update({
           where: { id: sessionId },
-          data: { title, updatedAt: new Date() }
+          data: {
+            title,
+            updatedAt: new Date(),
+            viewState: {
+              ...(existing.viewState || {}),
+              systemArchivePath: fullPath,
+              nodeCount,
+              assetCount
+            }
+          }
         });
         skipped++;
         continue;

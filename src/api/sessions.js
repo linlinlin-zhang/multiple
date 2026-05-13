@@ -852,10 +852,12 @@ async function loadSystemSessionFromZip(sessionId) {
     }
     const json = JSON.parse(await sessionJson.async("text"));
     const payload = json.session || {};
-    console.log(`[loadSystemSessionFromZip] payload has ${payload.nodes?.length || 0} nodes, ${payload.assets?.length || 0} assets`);
+    // Assets are stored at the top level of the JSON (json.assets), not inside json.session
+    const topLevelAssets = Array.isArray(json.assets) ? json.assets : [];
+    console.log(`[loadSystemSessionFromZip] payload has ${payload.nodes?.length || 0} nodes, ${topLevelAssets.length} assets`);
 
     // Restore assets from zip into storage so /api/assets/{hash} works
-    let assets = (payload.assets || []).filter((a) => !a.missing);
+    let assets = topLevelAssets.filter((a) => !a.missing);
 
     // Fallback: if session.json has no assets array, scan the zip for asset files
     // This handles legacy exports that included asset files but not the assets manifest.
@@ -975,7 +977,20 @@ async function loadSystemSessionFromZip(sessionId) {
         pending: false,
         createdAt: m.createdAt || session.createdAt
       })),
-      viewState: payload.viewState || session.viewState
+      viewState: (() => {
+        const vs = payload.viewState || session.viewState;
+        if (!vs || typeof vs !== "object") return vs;
+        // Deep-clone to avoid mutating the parsed JSON object
+        const cloned = JSON.parse(JSON.stringify(vs));
+        // Clear any pending flags in persisted chat messages so the client
+        // does not show a stuck "thinking" indicator for imported sessions.
+        if (Array.isArray(cloned.stateSnapshot?.chatMessages)) {
+          for (const m of cloned.stateSnapshot.chatMessages) {
+            if (m && typeof m === "object") m.pending = false;
+          }
+        }
+        return cloned;
+      })()
     };
   } catch (e) {
     console.error("[loadSystemSessionFromZip]", e);
