@@ -9,6 +9,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const publicApp = fs.readFileSync(path.join(repoRoot, "public", "app.js"), "utf8");
 const server = fs.readFileSync(path.join(repoRoot, "server.js"), "utf8");
+const serverRouter = fs.readFileSync(path.join(repoRoot, "src", "server", "router.js"), "utf8");
+const serverSurface = `${server}\n${serverRouter}`;
 
 function extractFunctionBody(source, functionName, nextFunctionName) {
   const start = source.indexOf(`function ${functionName}`);
@@ -72,7 +74,7 @@ for (const token of [
   "CANVAS_ACTION_TRACE_LOG_RETENTION",
   "summary_only_no_hidden_reasoning"
 ]) {
-  assert.ok(server.includes(token), `server must preserve action trace summary support: ${token}`);
+  assert.ok(serverSurface.includes(token), `server must preserve action trace summary support: ${token}`);
 }
 
 for (const type of ["create_plan", "create_comparison", "generate_image", "create_note", "create_table"]) {

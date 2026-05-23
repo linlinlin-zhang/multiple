@@ -2,19 +2,11 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { handleCreateSession, handleGetSession, handleUpdateSession, handleExportSession } from "./src/api/sessions.js";
-import { handleListHistory, handleRenameSession, handleDeleteSession, syncSystemHistory } from "./src/api/history.js";
-import { handleStoreAsset, handleGetAsset } from "./src/api/assets.js";
-import { handleCreateShare, handleGetShare, handleCreateImageShare, handleGetImageShare } from "./src/api/share.js";
-import { handleImportSession } from "./src/api/import.js";
-import { handleGetSettings, handleUpdateSettings } from "./src/api/settings.js";
-import { handleListMaterials, handleCreateMaterial, handleUpdateMaterial, handleDeleteMaterial, handleGetMaterialFile, syncSystemMaterials } from "./src/api/materials.js";
-import { handleCreateFileUnderstanding, handleGetFileUnderstanding } from "./src/api/fileUnderstanding.js";
-import { handleContextIngest, handleContextRetrieve, handleContextStats, handleContextWipe } from "./src/api/context.js";
+import { syncSystemHistory } from "./src/api/history.js";
+import { syncSystemMaterials } from "./src/api/materials.js";
 import { ensureStorageDirs, storeDataUrl, storeFile } from "./src/lib/storage.js";
 import { extractTextFromBuffer } from "./src/lib/textExtract.js";
 import { parseFileStructured } from "./src/lib/fileParser.js";
-import { resolveVisitor } from "./src/lib/visitor.js";
 import { PrismaClient } from "@prisma/client";
 import WebSocket from "ws";
 import { buildAnalysisPrompt, buildExplorePrompt, buildUrlAnalysisPrompt, buildTextAnalysisPrompt, buildChatSystemContext, buildChatUserPrompt, buildGeneratePrompt, buildExplainPrompt, buildExplainSystemPrompt, buildRealtimeInstruction, buildDeepThinkSystemPrompt, buildDeepThinkUserPrompt, buildExploreContent, CONTEXT_BOUNDARY_DIRECTIVES, SOURCE_GROUNDING_DIRECTIVES, xmlBlock, CANVAS_ACTION_TYPES, CANVAS_ACTION_TYPES_TEXT } from "./src/prompts/index.js";
@@ -33,6 +25,10 @@ import {
   filterCanvasActionsByPolicy,
   summarizeCanvasActionPolicy
 } from "./src/lib/canvasActionPolicy.js";
+import { loadDotEnv } from "./src/server/env.js";
+import { createStaticFileHandler, sendJson } from "./src/server/http.js";
+import { createRequestHandler } from "./src/server/router.js";
+import { writeSse } from "./src/server/sse.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -639,264 +635,32 @@ function formatReferenceSection(references = [], lang) {
   return [title, "", ...lines].join("\n");
 }
 
-const server = http.createServer(async (req, res) => {
-  try {
-    const url = new URL(req.url || "/", `http://${req.headers.host}`);
-    const visitor = resolveVisitor(req, res);
-
-    if (req.method === "GET" && url.pathname === "/api/health") {
-      return sendJson(res, 200, {
-        ok: true,
-        mode: appMode(),
-        chat: roleHealth(runtimeConfigs.chat),
-        analysis: roleHealth(runtimeConfigs.analysis),
-        image: roleHealth(runtimeConfigs.image),
-        video: roleHealth(runtimeConfigs.video),
-        asr: roleHealth(runtimeConfigs.asr),
-        realtime: roleHealth(runtimeConfigs.realtime),
-        deepthink: roleHealth(runtimeConfigs.deepthink)
-      });
-    }
-
-    if (req.method === "GET" && url.pathname === "/api/debug/action-traces") {
-      return await handleListActionTraceSummaries(url, res);
-    }
-
-    if (req.method === "GET" && url.pathname === "/api/settings") {
-      return await handleGetSettings(res);
-    }
-
-    if (req.method === "PUT" && url.pathname === "/api/settings") {
-      const body = await readJson(req);
-      const result = await handleUpdateSettings(body, res, req);
-      await refreshConfigs();
-      return result;
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/chat") {
-      const body = await readJson(req);
-      return await handleChat(body, res);
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/chat-title") {
-      const body = await readJson(req);
-      return await handleChatTitle(body, res);
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/asr") {
-      const body = await readJson(req);
-      return await handleAsr(body, res);
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/realtime-voice") {
-      const body = await readJson(req);
-      return await handleRealtimeVoice(body, res);
-    }
-
-    if (req.method === "POST" && (url.pathname === "/api/deep-think" || url.pathname === "/api/deep-research")) {
-      const body = await readJson(req);
-      return await handleDeepThink(body, res);
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/image-search") {
-      const body = await readJson(req);
-      return await handleImageSearch(body, res);
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/route-task") {
-      const body = await readJson(req);
-      return await handleRouteTask(body, res);
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/analyze") {
-      const body = await readJson(req);
-      return await handleAnalyze(body, res);
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/analyze-text") {
-      const body = await readJson(req);
-      return await handleAnalyzeText(body, res);
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/analyze-url") {
-      const body = await readJson(req);
-      return await handleAnalyzeUrl(body, res);
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/analyze-explore") {
-      const body = await readJson(req);
-      return await handleAnalyzeExplore(body, res);
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/generate") {
-      const body = await readJson(req);
-      return await handleGenerate(body, res);
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/generate-video") {
-      const body = await readJson(req);
-      return await handleGenerateVideo(body, res);
-    }
-
-    if (req.method === "POST" && url.pathname === "/api/explain") {
-      const body = await readJson(req);
-      return await handleExplain(body, res);
-    }
-
-    // Asset routes
-    if (req.method === "POST" && url.pathname === "/api/assets") {
-      const body = await readJson(req);
-      return await handleStoreAsset(body, res, visitor);
-    }
-    if (req.method === "GET" && url.pathname.startsWith("/api/assets/")) {
-      return await handleGetAsset(req, res);
-    }
-
-    // Session routes
-    if (req.method === "POST" && url.pathname === "/api/sessions") {
-      const body = await readJson(req);
-      return await handleCreateSession(body, res, visitor);
-    }
-    if (req.method === "GET" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/export")) {
-      const id = url.pathname.split("/")[3];
-      return await handleExportSession(id, res, visitor);
-    }
-    if (req.method === "GET" && /^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
-      const id = url.pathname.split("/")[3];
-      return await handleGetSession(id, res, visitor);
-    }
-    if (req.method === "PUT" && /^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
-      const id = url.pathname.split("/")[3];
-      const body = await readJson(req);
-      return await handleUpdateSession(id, body, res, visitor);
-    }
-    if (req.method === "DELETE" && /^\/api\/sessions\/[^/]+$/.test(url.pathname)) {
-      const id = url.pathname.split("/")[3];
-      return await handleDeleteSession(id, res, visitor);
-    }
-
-    // Import route
-    if (req.method === "POST" && url.pathname === "/api/import") {
-      const contentType = String(req.headers["content-type"] || "").toLowerCase();
-      const body = /zip|octet-stream/i.test(contentType)
-        ? await readBodyBuffer(req)
-        : await readJson(req);
-      return await handleImportSession(body, res, visitor);
-    }
-
-    // Share routes
-    if (req.method === "POST" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/share")) {
-      const id = url.pathname.split("/")[3];
-      return await handleCreateShare(id, res, visitor);
-    }
-    if (req.method === "GET" && url.pathname.startsWith("/api/share/")) {
-      const token = url.pathname.split("/")[3];
-      return await handleGetShare(token, res);
-    }
-    if (req.method === "POST" && url.pathname === "/api/share-image") {
-      const body = await readJson(req);
-      return await handleCreateImageShare(body, res, visitor);
-    }
-    if (req.method === "GET" && url.pathname.startsWith("/api/share-image/")) {
-      const token = url.pathname.split("/")[3];
-      return await handleGetImageShare(token, res);
-    }
-
-    // History route
-    if (req.method === "GET" && url.pathname === "/api/history") {
-      return await handleListHistory(Object.fromEntries(url.searchParams), res, visitor);
-    }
-    if (req.method === "PATCH" && /^\/api\/sessions\/[^/]+\/title$/.test(url.pathname)) {
-      const id = url.pathname.split("/")[3];
-      const body = await readJson(req);
-      return await handleRenameSession(id, body, res, visitor);
-    }
-
-    // Material library routes
-    if (req.method === "GET" && url.pathname === "/api/materials") {
-      return await handleListMaterials(Object.fromEntries(url.searchParams), res, visitor);
-    }
-    if (req.method === "POST" && url.pathname === "/api/materials") {
-      const body = await readJson(req);
-      return await handleCreateMaterial(body, res, visitor);
-    }
-    if (req.method === "PUT" && /^\/api\/materials\/[^/]+$/.test(url.pathname)) {
-      const id = url.pathname.split("/")[3];
-      const body = await readJson(req);
-      return await handleUpdateMaterial(id, body, res, visitor);
-    }
-    if (req.method === "DELETE" && /^\/api\/materials\/[^/]+$/.test(url.pathname)) {
-      const id = url.pathname.split("/")[3];
-      return await handleDeleteMaterial(id, res, visitor);
-    }
-    if (req.method === "GET" && /^\/api\/materials\/[^/]+\/file$/.test(url.pathname)) {
-      const id = url.pathname.split("/")[3];
-      return await handleGetMaterialFile(id, res, {
-        ...visitor,
-        download: url.searchParams.get("download") === "1"
-      });
-    }
-
-    // File understanding routes
-    if (req.method === "POST" && url.pathname === "/api/file-understanding") {
-      const body = await readJson(req);
-      return await handleCreateFileUnderstanding(body, res);
-    }
-    if (req.method === "GET" && url.pathname.startsWith("/api/file-understanding/")) {
-      return await handleGetFileUnderstanding(req, res);
-    }
-
-    // Context (session-scoped RAG) routes
-    if (req.method === "POST" && url.pathname === "/api/context/ingest") {
-      const body = await readJson(req);
-      return await handleContextIngest(body, res, visitor);
-    }
-    if (req.method === "POST" && url.pathname === "/api/context/retrieve") {
-      const body = await readJson(req);
-      return await handleContextRetrieve(body, res, visitor);
-    }
-    if (req.method === "GET" && url.pathname === "/api/context/stats") {
-      return await handleContextStats(req, res, visitor);
-    }
-    if (req.method === "DELETE" && url.pathname.startsWith("/api/context/")) {
-      const id = url.pathname.split("/")[3];
-      return await handleContextWipe(id, res, visitor);
-    }
-
-    if (req.method === "GET") {
-      if (url.pathname === "/history") {
-        res.writeHead(302, { Location: "/history/" });
-        return res.end();
-      }
-      if (url.pathname === "/history/") {
-        return serveStatic("/history/index.html", res);
-      }
-      if (url.pathname.startsWith("/share/assets/")) {
-        return serveStatic(url.pathname.replace(/^\/share/, ""), res);
-      }
-      if (/^\/share\/[^/]+\/?$/.test(url.pathname)) {
-        return serveStatic("/share.html", res);
-      }
-      if (/^\/share-image\/[^/]+\/?$/.test(url.pathname)) {
-        return serveStatic("/share-image.html", res);
-      }
-      if (url.pathname === "/home.html") {
-        return sendJson(res, 404, { error: "Not found" });
-      }
-      return serveStatic(url.pathname, res);
-    }
-
-    return sendJson(res, 405, { error: "Method not allowed" });
-  } catch (error) {
-    console.error(error);
-    const message = error instanceof Error ? error.message : String(error);
-    const isTimeout = /timeout|timed out|abort/i.test(message);
-    return sendJson(res, isTimeout ? 504 : 500, {
-      error: isTimeout ? "Upstream timeout" : "Server error",
-      message
-    });
+const serveStatic = createStaticFileHandler(publicDir);
+const server = http.createServer(createRequestHandler({
+  runtimeConfigs,
+  appMode,
+  roleHealth,
+  refreshConfigs,
+  serveStatic,
+  maxBodyBytes: MAX_BODY_BYTES,
+  handlers: {
+    handleListActionTraceSummaries,
+    handleChat,
+    handleChatTitle,
+    handleAsr,
+    handleRealtimeVoice,
+    handleDeepThink,
+    handleImageSearch,
+    handleRouteTask,
+    handleAnalyze,
+    handleAnalyzeText,
+    handleAnalyzeUrl,
+    handleAnalyzeExplore,
+    handleGenerate,
+    handleGenerateVideo,
+    handleExplain
   }
-});
+}));
 
 server.listen(PORT, HOST, () => {
   console.log(`ThoughtGrid running at http://${HOST}:${PORT}`);
@@ -7810,11 +7574,6 @@ async function callAnalysisCompletion(payload, options = {}) {
   }
 }
 
-function writeSse(res, event, data) {
-  res.write(`event: ${event}\n`);
-  res.write(`data: ${JSON.stringify(data)}\n\n`);
-}
-
 async function streamChatCompletions(config, payload, options = {}) {
   const requestPayload = applyRequestOptions({
     model: config.model,
@@ -9347,120 +9106,6 @@ function paletteFor(seed) {
   return palettes[index];
 }
 
-function readJson(req) {
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    const chunks = [];
-    req.on("data", (chunk) => {
-      size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(new Error("Request body is too large. Please upload a smaller file."));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on("end", () => {
-      const raw = Buffer.concat(chunks).toString("utf8");
-      try {
-        resolve(raw ? JSON.parse(raw) : {});
-      } catch {
-        reject(new Error("Invalid JSON body."));
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-function readBodyBuffer(req) {
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    const chunks = [];
-    req.on("data", (chunk) => {
-      size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(new Error("Request body is too large. Please upload a smaller file."));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on("end", () => resolve(Buffer.concat(chunks)));
-    req.on("error", reject);
-  });
-}
-
-function serveStatic(requestPath, res) {
-  const cleanPath = decodeURIComponent(requestPath.split("?")[0]);
-  const relativePath = cleanPath === "/" ? "index.html" : cleanPath.replace(/^\/+/, "");
-  const targetPath = path.normalize(path.join(publicDir, relativePath));
-
-  if (!targetPath.startsWith(publicDir)) {
-    return sendJson(res, 403, { error: "Forbidden" });
-  }
-
-  fs.readFile(targetPath, (error, data) => {
-    if (error) {
-      return sendJson(res, 404, { error: "Not found" });
-    }
-    res.writeHead(200, {
-      "Content-Type": mimeType(targetPath),
-      ...staticCacheHeaders(relativePath)
-    });
-    res.end(data);
-  });
-}
-
-function staticCacheHeaders(relativePath) {
-  const normalized = String(relativePath || "").replace(/\\/g, "/");
-  if (/^home-assets\/cards\/.+\.(?:jpe?g|png|webp|gif|avif)$/i.test(normalized)) {
-    return {
-      "Cache-Control": "public, max-age=31536000, immutable",
-      "Access-Control-Allow-Origin": "*",
-      "Timing-Allow-Origin": "*"
-    };
-  }
-  if (/^(?:app\.js|styles\.css)$/i.test(normalized)) {
-    return {
-      "Cache-Control": "no-cache"
-    };
-  }
-  if (/\.(?:css|js|mjs|png|jpe?g|webp|gif|svg|ico|woff2?)$/i.test(normalized)) {
-    return {
-      "Cache-Control": "public, max-age=604800"
-    };
-  }
-  return {
-    "Cache-Control": "no-cache"
-  };
-}
-
-function sendJson(res, status, data) {
-  res.writeHead(status, {
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-cache"
-  });
-  res.end(JSON.stringify(data));
-}
-
-function mimeType(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  return {
-    ".html": "text/html; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-    ".svg": "image/svg+xml",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-    ".mp4": "video/mp4",
-    ".webm": "video/webm",
-    ".mov": "video/quicktime",
-    ".m4v": "video/mp4"
-  }[ext] || "application/octet-stream";
-}
-
 function normalizeDataUrl(value) {
   if (typeof value !== "string") return null;
   if (!/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(value) && !/^data:image\/svg\+xml(?:;[^,]*)?,/i.test(value)) {
@@ -9608,18 +9253,3 @@ function escapeXml(value) {
     .replace(/"/g, "&quot;");
 }
 
-function loadDotEnv(envPath) {
-  if (!fs.existsSync(envPath)) return;
-  const content = fs.readFileSync(envPath, "utf8");
-  for (const line of content.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const index = trimmed.indexOf("=");
-    if (index === -1) continue;
-    const key = trimmed.slice(0, index).trim();
-    const value = trimmed.slice(index + 1).trim().replace(/^['"]|['"]$/g, "");
-    if (key && process.env[key] === undefined) {
-      process.env[key] = value;
-    }
-  }
-}

@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import JSZip from "jszip";
 import { prisma } from "../lib/prisma.js";
 import { isGenericSessionTitle, resolveSessionTitle } from "../lib/sessionTitle.js";
 
@@ -22,6 +21,44 @@ export async function handleListHistory(query, res, options = {}) {
     const offset = Math.max(Number(query?.offset) || 0, 0);
     const includeDemo = query?.includeDemo === "true";
     const visitorId = options.visitorId || "legacy";
+
+    if (!supportsSystemSessions()) {
+      const where = { visitorId };
+      if (!includeDemo) where.isDemo = false;
+      const [sessions, total] = await Promise.all([
+        prisma.session.findMany({
+          where,
+          orderBy: { updatedAt: "desc" },
+          skip: offset,
+          ...(limit ? { take: limit } : {}),
+          select: {
+            id: true,
+            title: true,
+            isDemo: true,
+            createdAt: true,
+            updatedAt: true,
+            chatMessages: {
+              orderBy: { createdAt: "asc" },
+              take: 2,
+              select: {
+                role: true,
+                content: true
+              }
+            },
+            _count: {
+              select: { nodes: true, assets: true }
+            }
+          }
+        }),
+        prisma.session.count({ where })
+      ]);
+
+      return sendJson(res, 200, {
+        ok: true,
+        sessions: sessions.map((s) => formatHistorySession(s)),
+        total
+      });
+    }
 
     // 获取该用户已隐藏的系统会话ID
     const hiddenRecords = await prisma.sessionHidden.findMany({
@@ -72,22 +109,7 @@ export async function handleListHistory(query, res, options = {}) {
       prisma.session.count({ where })
     ]);
 
-    const formatted = sessions.map((s) => ({
-      id: s.id,
-      title: isGenericSessionTitle(s.title)
-        ? resolveSessionTitle({ requestedTitle: s.title, chatMessages: s.chatMessages, fallbackTitle: s.title })
-        : s.title,
-      isDemo: s.isDemo,
-      source: s.source,
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt,
-      nodeCount: s.source === "system"
-        ? (s.viewState?.nodeCount ?? s._count.nodes)
-        : s._count.nodes,
-      assetCount: s.source === "system"
-        ? (s.viewState?.assetCount ?? s._count.assets)
-        : s._count.assets
-    }));
+    const formatted = sessions.map((s) => formatHistorySession(s));
 
     return sendJson(res, 200, {
       ok: true,
@@ -114,7 +136,9 @@ export async function handleRenameSession(sessionId, body, res, options = {}) {
     }
 
     const existing = await prisma.session.findFirst({
-      where: { id: sessionId, visitorId: options.visitorId || "legacy", source: "user" },
+      where: supportsSystemSessions()
+        ? { id: sessionId, visitorId: options.visitorId || "legacy", source: "user" }
+        : { id: sessionId, visitorId: options.visitorId || "legacy" },
       select: { id: true }
     });
     if (!existing) {
@@ -145,6 +169,16 @@ export async function handleDeleteSession(sessionId, res, options = {}) {
     }
 
     const visitorId = options.visitorId || "legacy";
+    if (!supportsSystemSessions()) {
+      const result = await prisma.session.deleteMany({
+        where: { id: sessionId, visitorId }
+      });
+      if (result.count === 0) {
+        return sendJson(res, 404, { error: "Session not found" });
+      }
+      return sendJson(res, 200, { ok: true });
+    }
+
     const item = await prisma.session.findUnique({ where: { id: sessionId } });
 
     if (!item) {
@@ -185,6 +219,11 @@ const SYSTEM_HISTORY_DIR = path.join(process.cwd(), "history_material");
  */
 export async function syncSystemHistory() {
   try {
+    if (!supportsSystemSessions()) {
+      console.log("[syncSystemHistory] Prisma client does not expose system session models, skipping");
+      return;
+    }
+
     const dirStat = await fs.stat(SYSTEM_HISTORY_DIR).catch(() => null);
     if (!dirStat || !dirStat.isDirectory()) {
       console.log("[syncSystemHistory] No history_material/ directory found, skipping");
@@ -212,6 +251,7 @@ export async function syncSystemHistory() {
       let assetCount = 0;
       try {
         const zipBuffer = await fs.readFile(fullPath);
+        const JSZip = await loadJSZip();
         const zip = await JSZip.loadAsync(zipBuffer);
         const sessionJson = zip.file("session.json");
         if (sessionJson) {
@@ -263,4 +303,33 @@ export async function syncSystemHistory() {
   } catch (error) {
     console.error("[syncSystemHistory]", error);
   }
+}
+
+function supportsSystemSessions() {
+  return Boolean(prisma.sessionHidden);
+}
+
+function formatHistorySession(session) {
+  const source = session.source || "user";
+  return {
+    id: session.id,
+    title: isGenericSessionTitle(session.title)
+      ? resolveSessionTitle({ requestedTitle: session.title, chatMessages: session.chatMessages, fallbackTitle: session.title })
+      : session.title,
+    isDemo: session.isDemo,
+    source,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    nodeCount: source === "system"
+      ? (session.viewState?.nodeCount ?? session._count.nodes)
+      : session._count.nodes,
+    assetCount: source === "system"
+      ? (session.viewState?.assetCount ?? session._count.assets)
+      : session._count.assets
+  };
+}
+
+async function loadJSZip() {
+  const module = await import("jszip");
+  return module.default;
 }
