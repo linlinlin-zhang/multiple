@@ -9,8 +9,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..");
 const publicApp = fs.readFileSync(path.join(repoRoot, "public", "app.js"), "utf8");
 const server = fs.readFileSync(path.join(repoRoot, "server.js"), "utf8");
-const serverRouter = fs.readFileSync(path.join(repoRoot, "src", "server", "router.js"), "utf8");
-const serverSurface = `${server}\n${serverRouter}`;
+const serverModulesDir = path.join(repoRoot, "src", "server");
+const serverModules = fs.readdirSync(serverModulesDir)
+  .filter((fileName) => fileName.endsWith(".js"))
+  .map((fileName) => fs.readFileSync(path.join(serverModulesDir, fileName), "utf8"))
+  .join("\n");
+const serverSurface = `${server}\n${serverModules}`;
 
 function extractFunctionBody(source, functionName, nextFunctionName) {
   const start = source.indexOf(`function ${functionName}`);
