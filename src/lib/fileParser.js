@@ -6,8 +6,6 @@
  * table-like structures.
  */
 
-import { PDFParse } from "pdf-parse";
-import JSZip from "jszip";
 import { extractTextFromBuffer } from "./textExtract.js";
 
 const SCANNED_THRESHOLD_CHARS_PER_PAGE = 30;
@@ -67,6 +65,7 @@ function parseLegacyOfficeStructured(buffer, ext) {
 async function parseDocxStructured(buffer) {
   let zip;
   try {
+    const JSZip = await loadJSZip();
     zip = await JSZip.loadAsync(buffer);
   } catch {
     return parseDocxFallback(buffer);
@@ -113,6 +112,9 @@ function parseDocxFallback(buffer) {
 }
 
 async function parsePdfStructured(buffer) {
+  const PDFParse = await loadPdfParse();
+  if (!PDFParse) return parsePdfFallback(buffer);
+
   let parser;
   try {
     parser = new PDFParse({ data: buffer });
@@ -173,6 +175,21 @@ async function parsePdfStructured(buffer) {
   }
 }
 
+async function loadPdfParse() {
+  try {
+    const module = await import("pdf-parse");
+    return module.PDFParse;
+  } catch (error) {
+    console.warn("[parsePdfStructured] pdf-parse unavailable, falling back:", error.message);
+    return null;
+  }
+}
+
+async function loadJSZip() {
+  const module = await import("jszip");
+  return module.default;
+}
+
 function parsePdfFallback(buffer) {
   const raw = buffer.toString("latin1");
   const pageMatches = raw.match(/\/Type\s*\/Page\b/g) || [];
@@ -223,6 +240,7 @@ function parsePdfFallback(buffer) {
 async function parsePptxStructured(buffer) {
   let zip;
   try {
+    const JSZip = await loadJSZip();
     zip = await JSZip.loadAsync(buffer);
   } catch {
     return parsePptxFallback(buffer);

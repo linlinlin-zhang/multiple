@@ -18,7 +18,7 @@
         }
       })();
     </script>
-    <link rel="stylesheet" href="/styles.css?v=31" />
+    <link rel="stylesheet" href="/styles.css?v=32" />
   </head>
   <body>
     <div class="app-shell">
@@ -435,6 +435,7 @@
       <div id="viewerThumbnailStrip" class="viewer-thumbnail-strip"></div>
       <div class="image-viewer-content">
         <img id="viewerImage" class="viewer-image" src="" alt="" />
+        <video id="viewerVideo" class="viewer-image viewer-video hidden" controls playsinline preload="metadata"></video>
         <canvas id="viewerMaskCanvas" class="viewer-mask-canvas" aria-label="图片选区画布"></canvas>
         <div class="viewer-meta">
           <h3 id="viewerTitle"></h3>
@@ -507,6 +508,7 @@
         <button id="closeImageShare" class="image-share-close" type="button" aria-label="关闭">×</button>
         <h3 id="shareTitle">分享图片</h3>
         <img id="sharePreviewImage" class="share-preview-image" src="" alt="" />
+        <video id="sharePreviewVideo" class="share-preview-image share-preview-video hidden" controls playsinline preload="metadata"></video>
         <label class="share-name-field">
           <span>图片命名</span>
           <input id="shareNameInput" type="text" autocomplete="off" />

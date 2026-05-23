@@ -53,6 +53,9 @@ const VIDEO_DOWNLOAD_TIMEOUT_MS = Number(process.env.VIDEO_DOWNLOAD_TIMEOUT_MS |
 const MAX_BODY_BYTES = 150 * 1024 * 1024;
 const CHAT_COMPLETION_TIMEOUT_MS = Number(process.env.CHAT_COMPLETION_TIMEOUT_MS || 180000);
 const ANALYSIS_FAST_TIMEOUT_MS = Number(process.env.ANALYSIS_FAST_TIMEOUT_MS || 90000);
+const FILE_ANALYSIS_TIMEOUT_MS = Number(process.env.FILE_ANALYSIS_TIMEOUT_MS || 150000);
+const FILE_EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.FILE_EXPLORE_THINKING_TIMEOUT_MS || 180000);
+const FILE_EXPLORE_FALLBACK_TIMEOUT_MS = Number(process.env.FILE_EXPLORE_FALLBACK_TIMEOUT_MS || 90000);
 const CHAT_STREAM_IDLE_TIMEOUT_MS = Number(process.env.CHAT_STREAM_IDLE_TIMEOUT_MS || process.env.CHAT_STREAM_TIMEOUT_MS || 240000);
 const DEEP_RESEARCH_TIMEOUT_MS = Number(process.env.DEEP_RESEARCH_TIMEOUT_MS || 600000);
 const EXPLORE_THINKING_TIMEOUT_MS = Number(process.env.EXPLORE_THINKING_TIMEOUT_MS || 180000);
@@ -4871,10 +4874,6 @@ async function handleAnalyzeExplore(body, res) {
     return sendJson(res, 400, { error: "imageDataUrl, text, dataUrl, or url is required" });
   }
 
-  if (isDemoRole(runtimeConfigs.analysis)) {
-    return sendJson(res, 200, buildDemoExplore(fileName));
-  }
-
   const lang = body?.language === "en" ? "en" : "zh";
   let extractedText = "";
   if (dataUrl && fileName) {
@@ -4884,6 +4883,22 @@ async function handleAnalyzeExplore(body, res) {
     } catch {
       extractedText = "";
     }
+  }
+
+  if (isDemoRole(runtimeConfigs.analysis)) {
+    if ((text || extractedText || dataUrl) && !imageDataUrl && !url) {
+      const demo = buildDocumentFallbackExplore({
+        fileName,
+        text: text || extractedText,
+        lang,
+        warning: "Demo mode: returned parser-derived document exploration cards.",
+        model: runtimeConfigs.analysis.model,
+        taskType: "research"
+      });
+      demo.provider = "demo";
+      return sendJson(res, 200, demo);
+    }
+    return sendJson(res, 200, buildDemoExplore(fileName));
   }
 
   const primaryContent = text || extractedText || url || imageDataUrl || "";
@@ -4921,7 +4936,10 @@ async function handleAnalyzeExplore(body, res) {
     messages: [{ role: "user", content }]
   };
 
-  applyReasoningMode(analysisPayload, runtimeConfigs.analysis, thinkingMode);
+  const isDocumentExplore = Boolean((text || extractedText || dataUrl) && !imageDataUrl && !url);
+  const effectiveExploreThinkingMode = thinkingMode;
+
+  applyReasoningMode(analysisPayload, runtimeConfigs.analysis, effectiveExploreThinkingMode);
   applyWebSearchMode(analysisPayload, runtimeConfigs.analysis, Boolean(url));
   applyAnalysisJsonObjectResponseMode(analysisPayload);
 
@@ -4962,12 +4980,19 @@ async function handleAnalyzeExplore(body, res) {
     }
   };
 
+  const primaryExploreTimeout = isDocumentExplore
+    ? (effectiveExploreThinkingMode === "thinking" ? FILE_EXPLORE_THINKING_TIMEOUT_MS : FILE_ANALYSIS_TIMEOUT_MS)
+    : (effectiveExploreThinkingMode === "thinking" ? EXPLORE_THINKING_TIMEOUT_MS : CHAT_COMPLETION_TIMEOUT_MS);
+  const fallbackExploreTimeout = isDocumentExplore ? FILE_EXPLORE_FALLBACK_TIMEOUT_MS : EXPLORE_FALLBACK_TIMEOUT_MS;
+
   try {
     const response = await callAnalysisCompletion(analysisPayload, {
-      timeoutMs: thinkingMode === "thinking" ? EXPLORE_THINKING_TIMEOUT_MS : CHAT_COMPLETION_TIMEOUT_MS
+      timeoutMs: primaryExploreTimeout
     });
     const { parsed, repaired } = await parseAnalysisResponseJson(response, { lang, includeReferences: true });
-    const normalized = normalizeExplore(parsed, fileName);
+    const normalized = normalizeExplore(parsed, fileName, isDocumentExplore
+      ? buildDocumentFallbackExplore({ fileName, text: text || extractedText, lang, model: runtimeConfigs.analysis.model, taskType })
+      : null);
     if (repaired) normalized.warningCode = "explore_json_repaired";
     normalized.provider = "api";
     normalized.model = response?.model || runtimeConfigs.analysis.model;
@@ -4975,7 +5000,7 @@ async function handleAnalyzeExplore(body, res) {
     ingestExploreSources();
     return sendJson(res, 200, normalized);
   } catch (error) {
-    if (thinkingMode === "thinking" && shouldRetryExploreWithoutThinking(error)) {
+    if (effectiveExploreThinkingMode === "thinking" && shouldRetryExploreWithoutThinking(error)) {
       console.info("[handleAnalyzeExplore] thinking path failed, retrying without thinking:", error.message);
       try {
         const fallbackPayload = applyWebSearchMode(
@@ -4985,10 +5010,12 @@ async function handleAnalyzeExplore(body, res) {
         );
         applyAnalysisJsonObjectResponseMode(fallbackPayload);
         const response = await callAnalysisCompletion(fallbackPayload, {
-          timeoutMs: EXPLORE_FALLBACK_TIMEOUT_MS
+          timeoutMs: fallbackExploreTimeout
         });
-        const { parsed, repaired } = await parseAnalysisResponseJson(response, { lang, includeReferences: true, timeoutMs: EXPLORE_FALLBACK_TIMEOUT_MS });
-        const normalized = normalizeExplore(parsed, fileName);
+        const { parsed, repaired } = await parseAnalysisResponseJson(response, { lang, includeReferences: true, timeoutMs: fallbackExploreTimeout });
+        const normalized = normalizeExplore(parsed, fileName, isDocumentExplore
+          ? buildDocumentFallbackExplore({ fileName, text: text || extractedText, lang, model: runtimeConfigs.analysis.model, taskType })
+          : null);
         if (repaired) normalized.warningCode = "explore_json_repaired";
         normalized.provider = "api";
         normalized.model = response?.model || runtimeConfigs.analysis.model;
@@ -5001,7 +5028,16 @@ async function handleAnalyzeExplore(body, res) {
       }
     }
     console.error("[handleAnalyzeExplore] error:", error);
-    const fallback = fallbackExplore();
+    const fallback = isDocumentExplore
+      ? buildDocumentFallbackExplore({
+          fileName,
+          text: text || extractedText,
+          lang,
+          warning: error.message || "Explore analysis failed; returned parser-derived fallback cards.",
+          model: runtimeConfigs.analysis.model,
+          taskType
+        })
+      : fallbackExplore();
     fallback.warning = error.message || "Explore analysis failed; returned fallback cards.";
     return sendJson(res, 200, fallback);
   }
@@ -5097,6 +5133,7 @@ async function handleAnalyzeText(body, res) {
   const safeFileName = fileName || "document";
   const thinkingMode = body?.thinkingMode === "thinking" ? "thinking" : "no-thinking";
   const sessionId = typeof body?.sessionId === "string" ? body.sessionId.trim() : "";
+  const lang = body?.language === "en" ? "en" : "zh";
 
   let extractedText = "";
   let storedHash = null;
@@ -5124,20 +5161,31 @@ async function handleAnalyzeText(body, res) {
     return sendJson(res, 400, { error: "File appears to be empty or unreadable." });
   }
 
+  let taskType = "research";
+  let confidence = 0;
+  let wasFallback = true;
+
   if (isDemoRole(runtimeConfigs.analysis)) {
-    const demo = buildDemoAnalysis(safeFileName);
+    const demo = buildDocumentFallbackAnalysis({
+      fileName: safeFileName,
+      text: extractedText,
+      lang,
+      warning: "Demo mode: returned parser-derived document cards.",
+      model: runtimeConfigs.analysis.model,
+      taskType
+    });
+    demo.provider = "demo";
     if (storedHash) demo.sourceHash = storedHash;
     return sendJson(res, 200, demo);
   }
 
-  const lang = body?.language === "en" ? "en" : "zh";
-  const { taskType, confidence, wasFallback } = await routeContent({
+  ({ taskType, confidence, wasFallback } = await routeContent({
     content: extractedText,
     contentType: body?.contentType || "text",
     fileName,
     lang,
     config: runtimeConfigs.chat
-  });
+  }));
   console.log(`[route] ${taskType} (confidence: ${confidence}, fallback: ${wasFallback})`);
 
   const prompt = buildTextAnalysisPrompt({
@@ -5160,9 +5208,15 @@ async function handleAnalyzeText(body, res) {
   applyAnalysisJsonObjectResponseMode(analysisPayload);
 
   try {
-    const response = await callAnalysisCompletion(analysisPayload, { timeoutMs: ANALYSIS_FAST_TIMEOUT_MS });
+    const response = await callAnalysisCompletion(analysisPayload, { timeoutMs: FILE_ANALYSIS_TIMEOUT_MS });
     const { parsed, repaired } = await parseAnalysisResponseJson(response, { lang, includeReferences: false });
-    const normalized = normalizeAnalysis(parsed, safeFileName);
+    const normalized = normalizeAnalysis(parsed, safeFileName, buildDocumentFallbackAnalysis({
+      fileName: safeFileName,
+      text: extractedText,
+      lang,
+      model: runtimeConfigs.analysis.model,
+      taskType
+    }));
     if (repaired) normalized.warningCode = "analysis_json_repaired";
     normalized.provider = "api";
     normalized.model = response?.model || runtimeConfigs.analysis.model;
@@ -5185,12 +5239,14 @@ async function handleAnalyzeText(body, res) {
     return sendJson(res, 200, normalized);
   } catch (error) {
     console.error("[handleAnalyzeText] error:", error);
-    const fallback = buildDemoAnalysis(safeFileName);
-    fallback.provider = "fallback";
-    fallback.model = runtimeConfigs.analysis.model;
-    fallback.taskType = taskType;
-    fallback.warningCode = "analysis_fallback";
-    fallback.warning = error.message || "Text analysis failed; returned fallback cards.";
+    const fallback = buildDocumentFallbackAnalysis({
+      fileName: safeFileName,
+      text: extractedText,
+      lang,
+      warning: error.message || "Text analysis failed; returned parser-derived fallback cards.",
+      model: runtimeConfigs.analysis.model,
+      taskType
+    });
     if (storedHash) fallback.sourceHash = storedHash;
     return sendJson(res, 200, fallback);
   }
@@ -8602,8 +8658,8 @@ async function repairAnalysisJsonText(text, { lang = "zh", includeReferences = f
   return collectChatContent(response);
 }
 
-function normalizeAnalysis(value, fileName = "source image") {
-  const fallback = buildDemoAnalysis(fileName);
+function normalizeAnalysis(value, fileName = "source image", fallbackOverride = null) {
+  const fallback = fallbackOverride || buildDemoAnalysis(fileName);
   const options = ensureOptionRange(
     Array.isArray(value?.options) ? value.options : fallback.options,
     fallback.options,
@@ -8631,8 +8687,8 @@ function normalizeAnalysis(value, fileName = "source image") {
   };
 }
 
-function normalizeExplore(value, fileName = "source image") {
-  const fallback = buildDemoExplore(fileName);
+function normalizeExplore(value, fileName = "source image", fallbackOverride = null) {
+  const fallback = fallbackOverride || buildDemoExplore(fileName);
   const options = ensureOptionRange(
     Array.isArray(value?.options) ? value.options : fallback.options,
     fallback.options,
@@ -8658,12 +8714,15 @@ function normalizeExplore(value, fileName = "source image") {
       nodeType: normalizeAnalysisNodeType(option?.nodeType),
       content: normalizeStructuredContent(option?.content)
     })),
-    references: references.slice(0, EXPLORE_CANVAS_CARD_MAX).map((ref, index) => ({
-      title: stringOr(ref?.title, fallback.references[index % fallback.references.length].title).slice(0, 80),
-      url: stringOr(ref?.url, fallback.references[index % fallback.references.length].url).slice(0, 512),
-      description: stringOr(ref?.description, fallback.references[index % fallback.references.length].description).slice(0, 200),
+    references: references.slice(0, EXPLORE_CANVAS_CARD_MAX).map((ref, index) => {
+      const fallbackRef = fallback.references?.[index % fallback.references.length] || {};
+      return {
+      title: stringOr(ref?.title, fallbackRef.title || "参考资料").slice(0, 80),
+      url: stringOr(ref?.url, fallbackRef.url || "").slice(0, 512),
+      description: stringOr(ref?.description, fallbackRef.description || "").slice(0, 200),
       type: ["web", "doc", "image"].includes(ref?.type) ? ref.type : "web"
-    }))
+      };
+    })
   };
 }
 
@@ -8896,8 +8955,11 @@ function normalizeChatMessages(value) {
     .filter((item) => item.content);
 }
 
-function buildDemoChatReply(message, analysis) {
-  const optionCount = analysis.options?.length || 0;
+function buildFollowupResponse(message, analysis) {
+  if (/生成|出图|图片|画/.test(message)) {
+    const best = analysis.options?.[0];
+    return `可以继续走「${best?.title || "视觉方向"}」。我会把它转成更明确的生成提示词，并建议你先做 2-3 个风格变体。`;
+  }
   if (/提示词|prompt/i.test(message)) {
     return "可以把方向写成：保留原图主体和色彩记忆，强化一个明确的场景、光线和材质目标，再限制不要出现水印或可读文字。";
   }
@@ -8908,6 +8970,186 @@ function buildDemoChatReply(message, analysis) {
     return "下一步可以让分析模型再扩展一组分支，例如更商业、更叙事、更极简或更实验的方向。";
   }
   return `我会围绕“${analysis.summary || "当前图片"}”继续帮你收束想法。你可以告诉我想更像海报、电影剧照、线索板，还是概念板。`;
+}
+
+function buildDocumentFallbackAnalysis({ fileName = "document", text = "", lang = "zh", warning = "", model = "", taskType = "research" } = {}) {
+  const isEn = lang === "en";
+  const name = fileName || (isEn ? "document" : "文档");
+  const baseTitle = name.replace(/\.[^.]+$/, "") || name;
+  const cleaned = compactDocumentText(text);
+  const excerpt = cleaned.slice(0, isEn ? 700 : 520);
+  const keywords = documentFallbackKeywords(cleaned, isEn);
+  const subjects = keywords.length ? keywords : [isEn ? "document theme" : "文档主题", isEn ? "key points" : "关键要点"];
+  const summary = isEn
+    ? `Parsed ${name} locally and extracted document-based directions from its readable text.`
+    : `已基于 ${name} 的可读文本生成文档分析方向。`;
+  const keyPointText = excerpt || (isEn ? "No detailed excerpt was available." : "未提取到更长的正文节选。");
+  return {
+    provider: "fallback",
+    model,
+    taskType,
+    warningCode: "analysis_fallback",
+    warning,
+    title: isEn ? `${baseTitle} document analysis` : `${baseTitle} 文档分析`,
+    summary,
+    detectedSubjects: subjects.slice(0, 6),
+    moodKeywords: keywords.slice(0, 8),
+    options: [
+      {
+        id: "document-summary",
+        title: isEn ? "Document Summary" : "文档摘要",
+        description: isEn ? "Create a reusable summary card grounded in the extracted document text." : "基于已提取正文生成可复用摘要卡。",
+        prompt: isEn ? `Summarize ${name} with key conclusions, evidence, and follow-up questions.` : `总结 ${name} 的核心结论、依据和后续问题。`,
+        tone: "research",
+        layoutHint: "board",
+        purpose: "content",
+        nodeType: "note",
+        content: { text: keyPointText }
+      },
+      {
+        id: "key-points-table",
+        title: isEn ? "Key Points" : "要点表格",
+        description: isEn ? "Turn the document into a table of themes, evidence, and implications." : "把文档整理成主题、依据和启示表格。",
+        prompt: isEn ? `Extract the main themes, supporting evidence, and implications from ${name}.` : `从 ${name} 中提取主要主题、支撑依据和启示。`,
+        tone: "research",
+        layoutHint: "board",
+        purpose: "research",
+        nodeType: "table",
+        content: {
+          columns: isEn ? ["Theme", "Evidence", "Implication"] : ["主题", "依据", "启示"],
+          rows: documentFallbackRows(keywords, excerpt, isEn)
+        }
+      },
+      {
+        id: "followup-research",
+        title: isEn ? "Follow-up Research" : "后续研究",
+        description: isEn ? "List what should be verified, expanded, or compared next." : "列出下一步需要核实、扩展或对比的内容。",
+        prompt: isEn ? `Design follow-up research questions based on ${name}.` : `基于 ${name} 设计后续研究问题。`,
+        tone: "research",
+        layoutHint: "board",
+        purpose: "research",
+        nodeType: "note",
+        content: { text: documentFallbackResearchText(keywords, isEn) }
+      },
+      {
+        id: "execution-plan",
+        title: isEn ? "Action Plan" : "行动计划",
+        description: isEn ? "Convert the document into concrete next steps." : "把文档内容转成可执行的下一步。",
+        prompt: isEn ? `Create an execution plan from the useful findings in ${name}.` : `根据 ${name} 中的有效信息制定执行计划。`,
+        tone: "plan",
+        layoutHint: "board",
+        purpose: "plan",
+        nodeType: "plan",
+        content: {
+          summary: isEn ? `Plan derived from ${name}` : `基于 ${name} 的执行计划`,
+          steps: documentFallbackSteps(isEn)
+        }
+      },
+      {
+        id: "presentation-outline",
+        title: isEn ? "Report Outline" : "汇报提纲",
+        description: isEn ? "Reframe the document into an outline suitable for sharing or presentation." : "把文档改写成适合分享或汇报的结构。",
+        prompt: isEn ? `Build a presentation/report outline from ${name}.` : `基于 ${name} 生成汇报或报告提纲。`,
+        tone: "editorial",
+        layoutHint: "board",
+        purpose: "content",
+        nodeType: "timeline",
+        content: {
+          items: documentFallbackOutline(keywords, isEn)
+        }
+      }
+    ]
+  };
+}
+
+function buildDocumentFallbackExplore({ fileName = "document", text = "", lang = "zh", warning = "", model = "", taskType = "research" } = {}) {
+  const base = buildDocumentFallbackAnalysis({ fileName, text, lang, warning, model, taskType });
+  const isEn = lang === "en";
+  return {
+    ...base,
+    warningCode: "explore_fallback",
+    title: isEn ? `${fileName.replace(/\.[^.]+$/, "") || "Document"} exploration` : `${fileName.replace(/\.[^.]+$/, "") || "文档"} 深度探索`,
+    summary: isEn ? `${base.summary} Added exploration, comparison, and reference-gathering directions.` : `${base.summary} 已补充探索、对比和资料收集方向。`,
+    options: [
+      ...base.options,
+      {
+        id: "comparison-angle",
+        title: isEn ? "Compare Angles" : "对比视角",
+        description: isEn ? "Compare the document's claims or themes across alternative viewpoints." : "从不同视角对比文档中的观点或主题。",
+        prompt: isEn ? `Compare the main claims in ${fileName} with alternative perspectives and identify tensions.` : `对比 ${fileName} 中的主要观点与其他可能视角，识别分歧和张力。`,
+        tone: "comparison",
+        layoutHint: "board",
+        purpose: "research",
+        nodeType: "comparison",
+        content: {
+          criteria: isEn ? ["Evidence", "Risk", "Opportunity"] : ["证据", "风险", "机会"],
+          items: [
+            { title: isEn ? "Original document" : "原文观点", summary: base.summary },
+            { title: isEn ? "Further verification" : "待核实方向", summary: isEn ? "Check assumptions, missing data, and comparable cases." : "核实假设、缺失数据和可对比案例。" }
+          ]
+        }
+      }
+    ],
+    references: []
+  };
+}
+
+function compactDocumentText(text) {
+  return String(text || "").replace(/\s+/g, " ").trim();
+}
+
+function documentFallbackKeywords(text, isEn = false) {
+  const value = compactDocumentText(text).toLowerCase();
+  const terms = isEn
+    ? (value.match(/[a-z][a-z0-9-]{3,}/g) || [])
+    : (value.match(/[\u4e00-\u9fff]{2,6}|[a-z][a-z0-9-]{3,}/g) || []);
+  const stops = new Set(isEn
+    ? ["this", "that", "with", "from", "have", "will", "would", "should", "document", "content", "analysis"]
+    : ["这个", "进行", "通过", "根据", "需要", "可以", "以及", "内容", "文档", "分析", "研究", "文件"]);
+  const counts = new Map();
+  for (const term of terms) {
+    if (stops.has(term) || term.length < 2) continue;
+    counts.set(term, (counts.get(term) || 0) + 1);
+  }
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([term]) => term).slice(0, 8);
+}
+
+function documentFallbackRows(keywords, excerpt, isEn = false) {
+  const items = keywords.length ? keywords.slice(0, 4) : (isEn ? ["Core theme", "Evidence", "Next step"] : ["核心主题", "支撑依据", "下一步"]);
+  return items.map((item, index) => ({
+    [isEn ? "Theme" : "主题"]: item,
+    [isEn ? "Evidence" : "依据"]: index === 0 ? excerpt.slice(0, isEn ? 180 : 120) : (isEn ? "Derived from extracted document text." : "来自已提取文档正文。"),
+    [isEn ? "Implication" : "启示"]: isEn ? "Needs review, synthesis, or follow-up action." : "可继续复核、整理或转成行动。"
+  }));
+}
+
+function documentFallbackResearchText(keywords, isEn = false) {
+  const focus = keywords.length ? keywords.join(isEn ? ", " : "、") : (isEn ? "the document's key themes" : "文档核心主题");
+  return isEn
+    ? `Follow-up research should verify ${focus}, compare it with external references, identify missing evidence, and turn the strongest findings into reusable canvas cards.`
+    : `后续研究应围绕 ${focus} 展开：核实关键事实，补充外部资料，对比相似案例，并把最有价值的发现整理成可复用画布卡片。`;
+}
+
+function documentFallbackSteps(isEn = false) {
+  return isEn
+    ? [
+        { title: "Review extracted text", description: "Confirm the parser captured the important parts of the document." },
+        { title: "Group key themes", description: "Cluster repeated topics, claims, data points, and open questions." },
+        { title: "Create deliverables", description: "Turn the strongest themes into summary, plan, table, or research cards." }
+      ]
+    : [
+        { title: "核对提取文本", description: "确认解析器捕获了文档中的重要内容。" },
+        { title: "归纳关键主题", description: "聚类反复出现的主题、观点、数据点和开放问题。" },
+        { title: "生成交付卡片", description: "把最有价值的主题转成摘要、计划、表格或研究卡片。" }
+      ];
+}
+
+function documentFallbackOutline(keywords, isEn = false) {
+  const topics = keywords.length ? keywords.slice(0, 4) : (isEn ? ["Context", "Findings", "Actions"] : ["背景", "发现", "行动"]);
+  return topics.map((topic, index) => ({
+    title: topic,
+    description: isEn ? `Section ${index + 1}: explain ${topic} with evidence and next steps.` : `第 ${index + 1} 部分：围绕「${topic}」补充依据和下一步。`
+  }));
 }
 
 function buildDemoAnalysis(fileName = "source image") {

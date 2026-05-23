@@ -8,7 +8,7 @@
  */
 
 import { parseFileStructured } from "./fileParser.js";
-import { CONTEXT_BOUNDARY_DIRECTIVES, jsonSchemaContract, xmlBlock } from "../prompts/index.js";
+import { CONTEXT_BOUNDARY_DIRECTIVES, jsonSchemaContract, xmlBlock } from "../prompts/shared.js";
 
 const API_TIMEOUT_MS = 120000;
 const MAX_PAGES_FOR_PROMPT = 6;

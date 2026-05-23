@@ -1,4 +1,3 @@
-import JSZip from "jszip";
 import { prisma } from "../lib/prisma.js";
 import { parseDataUrl, storeFile } from "../lib/storage.js";
 
@@ -8,6 +7,11 @@ function sendJson(res, status, data) {
     "Cache-Control": "no-cache"
   });
   res.end(JSON.stringify(data));
+}
+
+async function loadJSZip() {
+  const module = await import("jszip");
+  return module.default;
 }
 
 function normalizeAssetKind(kind) {
@@ -70,6 +74,7 @@ function rewriteAssetHashes(value, hashMap) {
 }
 
 async function payloadFromArchive(buffer) {
+  const JSZip = await loadJSZip();
   const zip = await JSZip.loadAsync(buffer);
   const sessionFile = zip.file("session.json") || zip.file(/(^|\/)[^/]+\.json$/i)[0];
   if (!sessionFile) throw new Error("Session package does not contain a JSON file.");

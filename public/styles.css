@@ -1537,6 +1537,16 @@ body.chat-sidebar-closed .canvas-history-nav {
   height: 22px;
 }
 
+.upload-target.has-video-preview .image-card-actions {
+  left: auto;
+  right: 22px;
+  bottom: 66px;
+  width: 48px;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
 .upload-target:hover .image-card-action,
 .generated-image-wrap:hover .image-card-action,
 .generated-node:hover .image-card-action,
@@ -4676,6 +4686,15 @@ html[data-theme="dark"] .chat-generate-button:disabled {
   max-width: calc(100vw - 108px - 7.5vw);
   max-height: calc(100vh - 236px);
   transform: translate(-50%, -50%);
+  background: #111111;
+}
+
+.image-viewer-modal.is-video-viewer .viewer-thumbnail-strip,
+.image-viewer-modal.is-video-viewer .viewer-mask-canvas,
+.image-viewer-modal.is-video-viewer .viewer-tool-button,
+.image-viewer-modal.is-video-viewer .viewer-aspect-control,
+.image-viewer-modal.is-video-viewer #viewerRegenerate {
+  display: none;
 }
 
 .viewer-mask-canvas {

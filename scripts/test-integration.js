@@ -1,14 +1,16 @@
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 
-const BASE_URL = "http://localhost:3001";
+const BASE_URL = "http://127.0.0.1:3001";
 const SERVER_CMD = ["node", "server.js"];
-const SERVER_ENV = { ...process.env, PORT: "3001", NODE_ENV: "test" };
+const SERVER_ENV = { ...process.env, HOST: "127.0.0.1", PORT: "3001", NODE_ENV: "test" };
+const SERVER_STARTUP_TIMEOUT_MS = 30000;
 
 let server;
 let failed = 0;
 const errors = [];
 const cookieJar = new Map();
+let serverOutput = "";
 
 function log(msg) {
   console.log("[test] " + msg);
@@ -57,10 +59,16 @@ function startServer() {
       env: SERVER_ENV,
       stdio: "pipe"
     });
+    server.stdout.on("data", (chunk) => {
+      serverOutput += String(chunk);
+    });
+    server.stderr.on("data", (chunk) => {
+      serverOutput += String(chunk);
+    });
     let ready = false;
     const timer = setTimeout(() => {
-      if (!ready) reject(new Error("Server startup timeout"));
-    }, 10000);
+      if (!ready) reject(new Error(`Server startup timeout${serverOutput ? `\n${serverOutput.trim()}` : ""}`));
+    }, SERVER_STARTUP_TIMEOUT_MS);
     const check = setInterval(async () => {
       try {
         const headers = {};

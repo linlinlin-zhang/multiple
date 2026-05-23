@@ -141,9 +141,11 @@ const viewerPromptInput = document.querySelector("#viewerPromptInput");
 const viewerSubmitModify = document.querySelector("#viewerSubmitModify");
 const viewerAsrButton = document.querySelector("#viewerAsrButton");
 const viewerMaskCanvas = document.querySelector("#viewerMaskCanvas");
+const viewerVideo = document.querySelector("#viewerVideo");
 const viewerThumbnailStrip = document.querySelector("#viewerThumbnailStrip");
 const imageShareModal = document.querySelector("#imageShareModal");
 const sharePreviewImage = document.querySelector("#sharePreviewImage");
+const sharePreviewVideo = document.querySelector("#sharePreviewVideo");
 const shareTitle = document.querySelector("#shareTitle");
 const shareNameInput = document.querySelector("#shareNameInput");
 const shareLinkInput = document.querySelector("#shareLinkInput");
@@ -5944,6 +5946,36 @@ function handleExplore() {
   exploreSource();
 }
 
+function videoResearchPrompt(useExplore = false, standalone = false) {
+  if (useExplore) {
+    return standalone
+      ? (currentLang === "en" ? "Please deeply explore this video source card and create 6-10 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请深入探索这张视频源卡片，并创建 6 到 10 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。")
+      : (currentLang === "en" ? "Please deeply explore this uploaded video, summarize important moments, and create 6-10 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards." : "请深入探索这个上传视频，总结重要片段，并创建 6 到 10 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。");
+  }
+  return standalone
+    ? (currentLang === "en" ? "Please analyze this video source card, summarize the key moments, and create 5-8 canvas direction cards. At least half, and up to all when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types." : "请分析这张视频源卡片，总结关键片段，并创建 5 到 8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型。")
+    : (currentLang === "en" ? "Please analyze this uploaded video. Summarize the key scenes, visible details, temporal structure, and create 5-8 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards." : "请分析这个上传视频，总结关键画面、可见细节、时间结构，并创建 5 到 8 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。");
+}
+
+function videoResearchAction(useExplore = false, title = "") {
+  return {
+    type: useExplore ? "explore_source" : "analyze_source",
+    title: title || (useExplore
+      ? (currentLang === "en" ? "Explore video source" : "探索视频源")
+      : (currentLang === "en" ? "Analyze video source" : "分析视频源"))
+  };
+}
+
+async function submitVideoResearchChat({ useExplore = false, standalone = false, title = "" } = {}) {
+  const action = videoResearchAction(useExplore, title);
+  await submitChatMessage(videoResearchPrompt(useExplore, standalone), {
+    displayMessage: "",
+    displayActions: [action],
+    threadTitle: action.title,
+    forcedThinkingMode: useExplore ? "thinking" : "no-thinking"
+  });
+}
+
 async function exploreSource() {
   if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) {
     await ensureSourceDocumentDataUrl();
@@ -5953,13 +5985,7 @@ async function exploreSource() {
   if (state.sourceType === "text" && !state.sourceText && !state.sourceDataUrl) return;
   if (state.sourceType === "url" && !state.sourceUrl) return;
   if (state.sourceType === "video") {
-    await submitChatMessage(currentLang === "en" ? "Explore video" : "探索视频", {
-      modelMessage: currentLang === "en"
-        ? "Please deeply explore this uploaded video, summarize important moments, and create 6-10 canvas direction cards. At least half of the cards, and up to all of them when suitable, should be smart image-generation expansion directions such as style frames, key visuals, posters, storyboards, scene extensions, or visual concept variations. Non-visual cards should use rich content types so they do not appear as image-generation cards."
-        : "请深入探索这个上传视频，总结重要片段，并创建 6 到 10 张画布方向卡片。至少一半卡片，必要时可全部，都应与智能成图方向发散扩展有关，例如风格帧、关键视觉、海报、分镜、场景延展或视觉概念变体。非视觉卡片请使用富内容类型，避免显示成“生成这张图”的卡片。",
-      forcedThinkingMode: "thinking",
-      displayActions: [{ type: "explore_source" }]
-    });
+    await submitVideoResearchChat({ useExplore: true, title: state.fileName || "" });
     return;
   }
 
@@ -6400,7 +6426,9 @@ async function submitChatMessage(message, options = {}) {
   const text = String(message || "").trim();
   if (!text) return;
   const modelText = String(options.modelMessage || text).trim();
-  const visibleText = String(options.displayMessage || text).trim();
+  const visibleText = Object.prototype.hasOwnProperty.call(options, "displayMessage")
+    ? String(options.displayMessage || "").trim()
+    : text;
   if (chatOperationBusy) return;
   const subagentsEnabled = Boolean(options.subagentsEnabled ?? state.subagentsEnabled);
   const inferredAgentMode = subagentsEnabled && shouldUseClientAgentMode(modelText);
@@ -6421,7 +6449,8 @@ async function submitChatMessage(message, options = {}) {
   chatInput.value = "";
   clearChatAttachmentPreview();
   updateChatPrimaryButtonMode();
-  updateActiveChatThreadTitle(visibleText);
+  const titleText = String(options.threadTitle || visibleText || actionDisplayTitle((options.displayActions || options.userActions || [])[0] || {}) || text).trim();
+  updateActiveChatThreadTitle(titleText);
   const userAttachments = attachmentImageDataUrl ? [{
     type: "image",
     name: chatAttachment?.fileName || "",

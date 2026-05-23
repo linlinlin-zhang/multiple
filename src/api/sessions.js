@@ -1,5 +1,4 @@
 import fs from "node:fs/promises";
-import JSZip from "jszip";
 import { prisma } from "../lib/prisma.js";
 import { storeDataUrl, readFile, parseDataUrl, storeFile } from "../lib/storage.js";
 import { isGenericSessionTitle, resolveSessionTitle } from "../lib/sessionTitle.js";
@@ -10,6 +9,11 @@ function sendJson(res, status, data) {
     "Cache-Control": "no-cache"
   });
   res.end(JSON.stringify(data));
+}
+
+async function loadJSZip() {
+  const module = await import("jszip");
+  return module.default;
 }
 
 function serializeState(state) {
@@ -1198,6 +1202,7 @@ export async function handleExportSession(sessionId, res, options = {}) {
       return sendJson(res, 404, { error: "Session not found" });
     }
 
+    const JSZip = await loadJSZip();
     const zip = new JSZip();
     const exportPayload = {
       version: 1,
