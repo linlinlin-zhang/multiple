@@ -6413,6 +6413,17 @@ html[data-theme="dark"] .blueprint-compose {
   overflow: hidden;
 }
 
+.fu-page-frame {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 7px;
+  margin-bottom: 7px;
+  border: 1px solid var(--divider);
+  background: var(--bg-tertiary);
+}
+
 .fu-page-card strong,
 .fu-page-card span,
 .fu-page-card small {
@@ -6492,10 +6503,15 @@ html[data-theme="dark"] .blueprint-compose {
 }
 
 .fu-ocr p,
-.fu-qa-block p {
+.fu-qa-block p,
+.fu-transcript {
   margin: 0;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.fu-transcript.muted {
+  color: var(--text-tertiary);
 }
 
 /* Document preview */
@@ -7485,6 +7501,36 @@ html[data-theme="dark"] .rich-node-quote .rich-body {
   margin: 0;
   font-size: 12px;
   opacity: 0.82;
+}
+
+.rich-timeline-frame {
+  display: block;
+  width: 100%;
+  max-height: 108px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-bottom: 7px;
+  border: 1px solid rgba(79, 70, 229, 0.18);
+  background: rgba(255,255,255,0.65);
+}
+
+.option-timeline-card .rich-timeline-frame {
+  max-height: 82px;
+}
+
+.rich-timeline-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 7px;
+}
+
+.rich-timeline-tags span {
+  border-radius: 999px;
+  padding: 2px 7px;
+  font-size: 10px;
+  color: #4c1d95;
+  background: rgba(139, 92, 246, 0.12);
 }
 
 .rich-comparison {

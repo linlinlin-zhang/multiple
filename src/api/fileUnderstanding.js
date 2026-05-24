@@ -44,7 +44,12 @@ export async function handleCreateFileUnderstanding(body, res) {
 
     const forceAsync = body?.async === true || body?.background === true;
     if (forceAsync || buffer.length >= ASYNC_THRESHOLD_BYTES) {
-      const job = enqueueUnderstandingJob(input, { lang });
+      const job = enqueueUnderstandingJob(input, {
+        lang,
+        videoMetadata: body?.videoMetadata || null,
+        videoFrames: Array.isArray(body?.videoFrames) ? body.videoFrames : [],
+        transcript: typeof body?.transcript === "string" ? body.transcript : ""
+      });
       return sendJson(res, 202, {
         ok: true,
         async: true,
@@ -60,6 +65,9 @@ export async function handleCreateFileUnderstanding(body, res) {
     // Build understanding
     const result = await buildFileUnderstanding(buffer, fileName, ext, {
       lang,
+      videoMetadata: body?.videoMetadata || null,
+      videoFrames: Array.isArray(body?.videoFrames) ? body.videoFrames : [],
+      transcript: typeof body?.transcript === "string" ? body.transcript : "",
       apiKey: process.env.ANALYSIS_API_KEY || process.env.DASHSCOPE_API_KEY,
       baseUrl: process.env.ANALYSIS_API_BASE_URL,
       model: process.env.ANALYSIS_MODEL
@@ -160,6 +168,7 @@ function serializeUnderstanding(record) {
     canvasCards: metadata.canvasCards || [],
     canvasLinks: metadata.canvasLinks || [],
     qaHints: metadata.qaHints || null,
+    videoTimeline: metadata.videoTimeline || record.videoTimeline || null,
     ocr: metadata.ocr || null,
     isScanned: record.isScanned,
     metadata,
@@ -247,6 +256,9 @@ async function runUnderstandingJob(job, input, options = {}) {
   job.updatedAt = Date.now();
   const result = await buildFileUnderstanding(input.buffer, input.fileName, input.ext, {
     lang: options.lang,
+    videoMetadata: options.videoMetadata || null,
+    videoFrames: Array.isArray(options.videoFrames) ? options.videoFrames : [],
+    transcript: typeof options.transcript === "string" ? options.transcript : "",
     apiKey: process.env.ANALYSIS_API_KEY || process.env.DASHSCOPE_API_KEY,
     baseUrl: process.env.ANALYSIS_API_BASE_URL,
     model: process.env.ANALYSIS_MODEL
@@ -291,6 +303,7 @@ function understandingRecordData({ resolvedHash, fileName, mimeType, result }) {
       canvasCards: result.canvasCards || result.metadata?.canvasCards || [],
       canvasLinks: result.canvasLinks || result.metadata?.canvasLinks || [],
       qaHints: result.qaHints || result.metadata?.qaHints || null,
+      videoTimeline: result.videoTimeline || result.metadata?.videoTimeline || null,
       ocr: result.ocr || result.metadata?.ocr || null
     }
   };
@@ -331,7 +344,11 @@ function extFromMime(mimeType) {
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
     "text/plain": "txt",
     "text/markdown": "md",
-    "application/json": "json"
+    "application/json": "json",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/quicktime": "mov",
+    "video/x-m4v": "m4v"
   };
   return map[mimeType] || "";
 }

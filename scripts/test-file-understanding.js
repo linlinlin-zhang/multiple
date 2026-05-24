@@ -47,4 +47,35 @@ describe("file understanding", () => {
     assert.equal(result.citations[0].page, 1);
     assert.ok(result.citations[0].quote.includes("next action"));
   });
+
+  it("builds video timeline understanding from key frames and transcript", async () => {
+    const tinyFrame = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2w==";
+    const result = await buildFileUnderstanding(Buffer.from("fake-video-bytes"), "demo-video.mp4", "mp4", {
+      lang: "en",
+      apiKey: "",
+      videoMetadata: {
+        type: "video",
+        durationSeconds: 14,
+        width: 1280,
+        height: 720,
+        mimeType: "video/mp4"
+      },
+      videoFrames: [
+        { time: 0.2, timeLabel: "00:00", dataUrl: tinyFrame, width: 1280, height: 720 },
+        { time: 6.5, timeLabel: "00:07", dataUrl: tinyFrame, width: 1280, height: 720 },
+        { time: 12.4, timeLabel: "00:12", dataUrl: tinyFrame, width: 1280, height: 720 }
+      ],
+      transcript: "Welcome to the demo. This clip shows the canvas turning video evidence into timeline cards."
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.documentPreview.type, "video");
+    assert.ok(result.videoTimeline.scenes.length >= 3);
+    assert.ok(result.videoTimeline.transcript.includes("Welcome to the demo"));
+    assert.ok(result.canvasCards.some((card) => card.id === "video-timeline"));
+    const timeline = result.canvasCards.find((card) => card.id === "video-timeline");
+    assert.equal(timeline.nodeType, "timeline");
+    assert.ok(timeline.content.items[0].frameDataUrl.startsWith("data:image/"));
+    assert.equal(result.qaHints.citationStyle, "timestamp");
+  });
 });

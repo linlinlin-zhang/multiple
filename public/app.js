@@ -669,6 +669,13 @@ const i18n = {
     "fileUnderstanding.ocrComplete": "OCR 已完成",
     "fileUnderstanding.ocrPending": "OCR 未配置或待处理",
     "fileUnderstanding.pageStats": "{words} 字词 · {tables} 表 · {images} 图",
+    "fileUnderstanding.understandVideoButton": "理解视频",
+    "fileUnderstanding.understandingVideo": "正在理解视频...",
+    "fileUnderstanding.videoTimeline": "视频时间线",
+    "fileUnderstanding.videoFrames": "关键帧",
+    "fileUnderstanding.videoTranscript": "音频转写",
+    "fileUnderstanding.videoTranscriptMissing": "未检测到可用音频转写",
+    "fileUnderstanding.videoTooltip": "抽取关键帧、识别音轨并生成可引用时间戳卡片",
     "direction.research": "研究",
     "direction.taskPlan": "任务计划",
     "direction.webAnalysis": "网页分析",
@@ -1337,6 +1344,13 @@ const i18n = {
     "fileUnderstanding.ocrComplete": "OCR complete",
     "fileUnderstanding.ocrPending": "OCR not configured or pending",
     "fileUnderstanding.pageStats": "{words} words · {tables} tables · {images} images",
+    "fileUnderstanding.understandVideoButton": "Understand Video",
+    "fileUnderstanding.understandingVideo": "Understanding video...",
+    "fileUnderstanding.videoTimeline": "Video Timeline",
+    "fileUnderstanding.videoFrames": "Key Frames",
+    "fileUnderstanding.videoTranscript": "Audio Transcript",
+    "fileUnderstanding.videoTranscriptMissing": "No usable audio transcript detected",
+    "fileUnderstanding.videoTooltip": "Extract key frames, transcribe audio, and create timestamped canvas cards",
     "direction.research": "Research",
     "direction.taskPlan": "Task Plan",
     "direction.webAnalysis": "Web Analysis",
@@ -1634,10 +1648,10 @@ function renderAllText() {
     const mode = opt.dataset.mode;
     if (label && mode === "analyze") label.textContent = t("research.analyze");
     if (label && mode === "explore") label.textContent = t("research.explore");
-    if (label && mode === "understand") label.textContent = t("fileUnderstanding.understandButton");
+    if (label && mode === "understand") label.textContent = understandSourceButtonLabel();
     if (tooltip && mode === "analyze") tooltip.textContent = t("research.analyzeTooltip");
     if (tooltip && mode === "explore") tooltip.textContent = t("research.exploreTooltip");
-    if (tooltip && mode === "understand") tooltip.textContent = currentLang === "en" ? "Understand document structure, extract key materials and generate actionable directions" : "理解文档结构、提取关键素材并生成可执行方向";
+    if (tooltip && mode === "understand") tooltip.textContent = understandSourceTooltipText();
   });
   const urlIn = document.querySelector("#urlInput");
   if (urlIn) urlIn.placeholder = t("source.urlPlaceholder");
@@ -9403,7 +9417,18 @@ function actionContentText(action = {}) {
     return String(content.text || content.body || content.summary || content.caption || content.context);
   }
   if (Array.isArray(content.steps)) return content.steps.map((step) => step?.title || step?.description || step).filter(Boolean).join("\n");
-  if (Array.isArray(content.items)) return content.items.map((item) => { const raw = item?.title || item?.text || item?.description || item; return typeof raw === "string" ? raw : (typeof item === "string" ? item : ""); }).filter(Boolean).join("\n");
+  if (Array.isArray(content.items)) return content.items.map((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return typeof item === "string" ? item : "";
+    const meta = [
+      item.time || item.date || item.phase || item.source?.label || "",
+      item.title || item.name || item.text || "",
+      item.description || item.detail || item.body || "",
+      Array.isArray(item.people) && item.people.length ? `${currentLang === "en" ? "People" : "人物"}: ${item.people.join(", ")}` : "",
+      Array.isArray(item.objects) && item.objects.length ? `${currentLang === "en" ? "Objects" : "物体"}: ${item.objects.join(", ")}` : "",
+      Array.isArray(item.actions) && item.actions.length ? `${currentLang === "en" ? "Actions" : "动作"}: ${item.actions.join(", ")}` : ""
+    ].filter(Boolean);
+    return meta.join(" | ");
+  }).filter(Boolean).join("\n");
   if (Array.isArray(content.events)) return content.events.map((item) => item?.title || item?.name || item?.description || item).filter(Boolean).join("\n");
   if (Array.isArray(content.options)) return content.options.map((item) => item?.title || item?.name || item?.summary || item?.description || item).filter(Boolean).join("\n");
   if (Array.isArray(content.rows)) return content.rows.map(tableRowSearchText).filter(Boolean).join("\n");
@@ -10807,6 +10832,14 @@ function renderTimelineCard(content = {}, compact = false) {
     time.textContent = String(item?.time || item?.date || item?.phase || "").slice(0, 60);
     const body = document.createElement("div");
     body.className = "rich-timeline-body";
+    const frameUrl = String(item?.frameDataUrl || item?.imageDataUrl || item?.thumbnailUrl || "").trim();
+    if (frameUrl && frameUrl.startsWith("data:image/")) {
+      const img = document.createElement("img");
+      img.className = "rich-timeline-frame";
+      img.src = frameUrl;
+      img.alt = String(item?.title || item?.name || "");
+      body.appendChild(img);
+    }
     const title = document.createElement("strong");
     title.textContent = String(item?.title || item?.name || item || "").slice(0, 120);
     body.appendChild(title);
@@ -10815,6 +10848,23 @@ function renderTimelineCard(content = {}, compact = false) {
       const p = document.createElement("p");
       p.textContent = desc.slice(0, 360);
       body.appendChild(p);
+    }
+    if (!compact) {
+      const tags = [
+        ...(Array.isArray(item?.people) ? item.people : []).slice(0, 4),
+        ...(Array.isArray(item?.objects) ? item.objects : []).slice(0, 4),
+        ...(Array.isArray(item?.actions) ? item.actions : []).slice(0, 4)
+      ].filter(Boolean);
+      if (tags.length) {
+        const tagWrap = document.createElement("div");
+        tagWrap.className = "rich-timeline-tags";
+        tags.slice(0, 8).forEach((tag) => {
+          const badge = document.createElement("span");
+          badge.textContent = String(tag).slice(0, 36);
+          tagWrap.appendChild(badge);
+        });
+        body.appendChild(tagWrap);
+      }
     }
     li.append(time, body);
     wrap.appendChild(li);
@@ -17910,6 +17960,156 @@ async function extractVideoFrameDataUrls(videoDataUrl, { maxFrames = 4 } = {}) {
   return frames;
 }
 
+async function readVideoUnderstandingMetadata(videoDataUrl) {
+  if (!videoDataUrl || !videoDataUrl.startsWith("data:video/")) return { type: "video" };
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+  video.src = videoDataUrl;
+  await waitForMediaEvent(video, "loadedmetadata", 12000);
+  const metadata = {
+    type: "video",
+    durationSeconds: Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0,
+    width: video.videoWidth || 0,
+    height: video.videoHeight || 0
+  };
+  video.removeAttribute("src");
+  video.load();
+  return metadata;
+}
+
+async function extractVideoTimelineFrames(videoDataUrl, { maxFrames = 6 } = {}) {
+  if (!videoDataUrl || !videoDataUrl.startsWith("data:video/")) return [];
+  const video = document.createElement("video");
+  video.muted = true;
+  video.playsInline = true;
+  video.preload = "metadata";
+  video.src = videoDataUrl;
+  await waitForMediaEvent(video, "loadedmetadata", 12000);
+  const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 1;
+  const count = Math.max(1, Math.min(maxFrames, 8));
+  const times = Array.from({ length: count }, (_, index) => {
+    if (count === 1) return Math.max(0, Math.min(duration * 0.5, Math.max(0.05, duration - 0.05)));
+    const startPad = Math.min(0.25, duration * 0.05);
+    const endPad = Math.min(0.25, duration * 0.05);
+    const usable = Math.max(0.05, duration - startPad - endPad);
+    return Math.max(0, Math.min(duration - 0.05, startPad + usable * (index / (count - 1))));
+  });
+  const frames = [];
+  for (const [index, time] of times.entries()) {
+    try {
+      video.currentTime = time;
+      await waitForMediaEvent(video, "seeked", 8000);
+      const dataUrl = videoElementToJpegDataUrl(video, { maxLongEdge: 720, quality: 0.62 });
+      if (dataUrl) {
+        frames.push({
+          index: index + 1,
+          time,
+          timeLabel: formatTimecode(time),
+          width: video.videoWidth || 0,
+          height: video.videoHeight || 0,
+          dataUrl
+        });
+      }
+    } catch {}
+  }
+  video.removeAttribute("src");
+  video.load();
+  return frames;
+}
+
+async function extractVideoAudioWavDataUrl(videoDataUrl, { maxDurationSeconds = 120, targetSampleRate = 16000 } = {}) {
+  if (!videoDataUrl || !videoDataUrl.startsWith("data:video/")) return "";
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return "";
+  const response = await fetch(videoDataUrl);
+  const arrayBuffer = await response.arrayBuffer();
+  const audioContext = new AudioContextClass();
+  try {
+    const decoded = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+    if (!decoded || !decoded.numberOfChannels || !decoded.length) return "";
+    const duration = Math.min(decoded.duration || 0, maxDurationSeconds);
+    if (!duration || duration < 0.25) return "";
+    const sampleRate = Math.max(8000, Math.min(48000, Number(targetSampleRate) || 16000));
+    const samples = downmixAudioBuffer(decoded, { durationSeconds: duration, targetSampleRate: sampleRate });
+    if (!samples.length || audioRms(samples) < 0.0005) return "";
+    return pcmFloatToWavDataUrl(samples, sampleRate);
+  } finally {
+    audioContext.close?.().catch(() => {});
+  }
+}
+
+function downmixAudioBuffer(audioBuffer, { durationSeconds, targetSampleRate }) {
+  const sourceRate = audioBuffer.sampleRate || targetSampleRate;
+  const sourceLength = Math.min(audioBuffer.length, Math.floor(durationSeconds * sourceRate));
+  const targetLength = Math.max(1, Math.floor(sourceLength / sourceRate * targetSampleRate));
+  const channels = Array.from({ length: audioBuffer.numberOfChannels || 1 }, (_, index) => audioBuffer.getChannelData(index));
+  const out = new Float32Array(targetLength);
+  for (let i = 0; i < targetLength; i += 1) {
+    const sourceIndex = Math.min(sourceLength - 1, Math.floor(i * sourceRate / targetSampleRate));
+    let sum = 0;
+    for (const channel of channels) sum += channel[sourceIndex] || 0;
+    out[i] = sum / Math.max(1, channels.length);
+  }
+  return out;
+}
+
+function audioRms(samples) {
+  if (!samples?.length) return 0;
+  let sum = 0;
+  const stride = Math.max(1, Math.floor(samples.length / 16000));
+  let count = 0;
+  for (let i = 0; i < samples.length; i += stride) {
+    sum += samples[i] * samples[i];
+    count += 1;
+  }
+  return Math.sqrt(sum / Math.max(1, count));
+}
+
+function pcmFloatToWavDataUrl(samples, sampleRate) {
+  const channels = 1;
+  const bitsPerSample = 16;
+  const dataSize = samples.length * 2;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  writeAscii(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(view, 8, "WAVE");
+  writeAscii(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * channels * bitsPerSample / 8, true);
+  view.setUint16(32, channels * bitsPerSample / 8, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeAscii(view, 36, "data");
+  view.setUint32(40, dataSize, true);
+  let offset = 44;
+  for (const sample of samples) {
+    const clamped = Math.max(-1, Math.min(1, sample || 0));
+    view.setInt16(offset, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
+    offset += 2;
+  }
+  return `data:audio/wav;base64,${arrayBufferToBase64(buffer)}`;
+}
+
+function writeAscii(view, offset, text) {
+  for (let i = 0; i < text.length; i += 1) {
+    view.setUint8(offset + i, text.charCodeAt(i));
+  }
+}
+
+function formatTimecode(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 function waitForMediaEvent(element, eventName, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
     const timer = window.setTimeout(() => cleanup(new Error(`${eventName} timeout`)), timeoutMs);
@@ -18354,6 +18554,15 @@ async function compressVideoFile(file) {
     if (!mimeType) return fallback();
     const stream = canvas.captureStream(VIDEO_CAPTURE_FPS);
     tracks = stream.getTracks();
+    if (typeof video.captureStream === "function") {
+      try {
+        const sourceStream = video.captureStream();
+        sourceStream.getAudioTracks().forEach((track) => {
+          stream.addTrack(track);
+          tracks.push(track);
+        });
+      } catch {}
+    }
     const chunks = [];
     const recorder = new MediaRecorder(stream, {
       mimeType,
@@ -19103,8 +19312,13 @@ function updateSourceBadge() {
 
 function syncResearchDropdownOptions() {
   const isRichDoc = state.sourceType === "text" && state.fileName && /\.(pdf|ppt|pptx|doc|docx)$/i.test(state.fileName);
+  const isVideo = state.sourceType === "video" && Boolean(state.sourceVideo || state.sourceVideoHash);
   document.querySelectorAll('.research-option[data-mode="understand"]').forEach((el) => {
-    el.style.display = isRichDoc ? "" : "none";
+    el.style.display = isRichDoc || isVideo ? "" : "none";
+    const label = el.querySelector(".option-label");
+    const tooltip = el.querySelector(".option-tooltip");
+    if (label) label.textContent = understandSourceButtonLabel();
+    if (tooltip) tooltip.textContent = understandSourceTooltipText();
   });
   document.querySelectorAll('.research-option[data-mode="analyze"], .research-option[data-mode="explore"]').forEach((el) => {
     el.style.display = "";
@@ -20114,28 +20328,21 @@ function animateNodesToPositions(targetPositions, duration = 400) {
 // 鈹€鈹€鈹€ File Understanding 鈹€鈹€鈹€
 
 async function triggerFileUnderstanding() {
-  const hasData = state.sourceDataUrl || state.sourceText;
-  if (state.sourceType !== "text" || !hasData) {
+  const hasDocumentData = state.sourceDataUrl || state.sourceText || state.sourceDataUrlHash;
+  const hasVideoData = state.sourceType === "video" && (state.sourceVideo || state.sourceVideoHash);
+  if (!((state.sourceType === "text" && hasDocumentData) || hasVideoData)) {
     showToast(t("file.unsupported"));
     return;
   }
 
-  setStatus(t("fileUnderstanding.understanding"), "busy");
-  setResearchButtonBusy(true, t("fileUnderstanding.understanding"));
+  const isVideo = state.sourceType === "video";
+  setStatus(isVideo ? t("fileUnderstanding.understandingVideo") : t("fileUnderstanding.understanding"), "busy");
+  setResearchButtonBusy(true, isVideo ? t("fileUnderstanding.understandingVideo") : t("fileUnderstanding.understanding"));
 
   try {
-    let dataUrl = state.sourceDataUrl;
-    let hash = state.sourceDataUrlHash;
-
-    if (!dataUrl && state.sourceText) {
-      const textBytes = new TextEncoder().encode(state.sourceText);
-      const base64 = arrayBufferToBase64(textBytes.buffer);
-      dataUrl = `data:text/plain;base64,${base64}`;
-      hash = null;
-    }
-
-    const payload = { dataUrl, fileName: state.fileName, language: currentLang };
-    if (hash) payload.hash = hash;
+    const payload = isVideo
+      ? await buildVideoUnderstandingPayload()
+      : await buildDocumentUnderstandingPayload();
 
     let result = await postJson("/api/file-understanding", payload, {
       timeoutMs: 180000,
@@ -20162,6 +20369,99 @@ async function triggerFileUnderstanding() {
   } finally {
     setResearchButtonBusy(false);
   }
+}
+
+async function buildDocumentUnderstandingPayload() {
+  let dataUrl = state.sourceDataUrl;
+  let hash = state.sourceDataUrlHash;
+
+  if (!dataUrl && hash) {
+    return { hash, fileName: state.fileName, language: currentLang };
+  }
+
+  if (!dataUrl && state.sourceText) {
+    const textBytes = new TextEncoder().encode(state.sourceText);
+    const base64 = arrayBufferToBase64(textBytes.buffer);
+    dataUrl = `data:text/plain;base64,${base64}`;
+    hash = null;
+  }
+
+  const payload = { dataUrl, fileName: state.fileName, language: currentLang };
+  if (hash) payload.hash = hash;
+  return payload;
+}
+
+async function buildVideoUnderstandingPayload() {
+  const videoDataUrl = await getSourceVideoDataUrl("source");
+  if (!videoDataUrl) throw new Error(t("file.unsupported"));
+  setStatus(t("fileUnderstanding.videoFrames"), "busy");
+  const metadata = await readVideoUnderstandingMetadata(videoDataUrl);
+  metadata.fileName = state.fileName || "";
+  metadata.mimeType = state.sourceVideoMimeType || sourceVideoMimeType(state.fileName || "", "");
+  metadata.fileSize = utf8ByteLength(videoDataUrl);
+  const videoFrames = await extractVideoTimelineFrames(videoDataUrl, {
+    maxFrames: metadata.durationSeconds > 45 ? 8 : (metadata.durationSeconds > 12 ? 6 : 4)
+  });
+  let transcript = "";
+  let transcriptStatus = "unavailable";
+  try {
+    setStatus(t("fileUnderstanding.videoTranscript"), "busy");
+    const audioDataUrl = await extractVideoAudioWavDataUrl(videoDataUrl, {
+      maxDurationSeconds: 120,
+      targetSampleRate: 16000
+    });
+    if (audioDataUrl) {
+      const asr = await postJson("/api/asr", {
+        audioDataUrl,
+        language: currentLang
+      }, {
+        timeoutMs: 120000,
+        timeoutMessage: t("research.timeout")
+      });
+      transcript = String(asr?.text || "").trim();
+      transcriptStatus = transcript ? "complete" : "empty";
+    }
+  } catch (error) {
+    console.warn("[buildVideoUnderstandingPayload] audio transcription skipped:", error?.message || error);
+    transcriptStatus = "failed";
+  }
+  metadata.transcriptStatus = transcriptStatus;
+  metadata.hasAudio = transcriptStatus === "complete";
+
+  let hash = state.sourceVideoHash || "";
+  if (!hash && state.sourceVideo && state.sourceVideo.startsWith("data:")) {
+    try {
+      const stored = await postJson("/api/assets", {
+        dataUrl: state.sourceVideo,
+        kind: "upload",
+        fileName: state.fileName
+      }, {
+        timeoutMs: 180000,
+        timeoutMessage: t("research.timeout")
+      });
+      hash = stored.hash || "";
+      state.sourceVideoHash = hash;
+      if (hash) state.sourceVideo = `/api/assets/${hash}?kind=upload`;
+      autoSave();
+    } catch (error) {
+      console.warn("[buildVideoUnderstandingPayload] failed to persist source video:", error?.message || error);
+    }
+  }
+
+  const payload = {
+    fileName: state.fileName,
+    mimeType: metadata.mimeType,
+    language: currentLang,
+    videoMetadata: metadata,
+    videoFrames,
+    transcript
+  };
+  if (hash) {
+    payload.hash = hash;
+  } else {
+    payload.dataUrl = videoDataUrl;
+  }
+  return payload;
 }
 
 async function pollFileUnderstandingJob(jobId) {
@@ -20206,6 +20506,7 @@ function renderFileUnderstanding(understanding) {
   const struct = understanding.structure || {};
   const materials = understanding.keyMaterials || {};
   const preview = understanding.documentPreview || understanding.metadata?.documentPreview || null;
+  const videoTimeline = understanding.videoTimeline || understanding.metadata?.videoTimeline || null;
   const ocr = understanding.ocr || understanding.metadata?.ocr || preview?.ocr || null;
   const imgCount = (materials.images || []).length;
   const tblCount = (materials.tables || []).length;
@@ -20228,6 +20529,18 @@ function renderFileUnderstanding(understanding) {
     html += `</div>`;
   }
 
+  if (videoTimeline?.scenes?.length) {
+    html += `<div class="fu-block fu-video-block">`;
+    html += `<h4>${escapeHtml(t("fileUnderstanding.videoTimeline"))}</h4>`;
+    html += `<p class="fu-pages">${escapeHtml(videoTimeline.durationLabel || "")} · ${escapeHtml(t("fileUnderstanding.videoFrames"))}: ${videoTimeline.frameCount || videoTimeline.scenes.length}</p>`;
+    if (videoTimeline.transcript) {
+      html += `<p class="fu-transcript">${escapeHtml(String(videoTimeline.transcript).slice(0, 260))}</p>`;
+    } else {
+      html += `<p class="fu-transcript muted">${escapeHtml(t("fileUnderstanding.videoTranscriptMissing"))}</p>`;
+    }
+    html += `</div>`;
+  }
+
   if (preview?.pages?.length) {
     html += `<div class="fu-block fu-preview-block">`;
     html += `<h4>${escapeHtml(t("fileUnderstanding.preview"))}</h4>`;
@@ -20239,6 +20552,9 @@ function renderFileUnderstanding(understanding) {
         images: page.imageCount || 0
       });
       html += `<article class="fu-page-card">`;
+      if (page.frameDataUrl) {
+        html += `<img class="fu-page-frame" src="${escapeHtml(page.frameDataUrl)}" alt="${escapeHtml(page.label || "")}" />`;
+      }
       html += `<strong>${escapeHtml(page.label || `${page.pageNumber}`)}</strong>`;
       html += `<span>${escapeHtml(page.title || "")}</span>`;
       html += `<p>${escapeHtml(page.excerpt || "")}</p>`;
@@ -20442,6 +20758,19 @@ function getDirectionTypeIcon(type) {
 function getDirectionButtonLabel(type) {
   if (type === "image-generation") return t("option.generate") || "Generate";
   return t("direction.research") || "Research";
+}
+
+function understandSourceButtonLabel() {
+  return state.sourceType === "video"
+    ? t("fileUnderstanding.understandVideoButton")
+    : t("fileUnderstanding.understandButton");
+}
+
+function understandSourceTooltipText() {
+  if (state.sourceType === "video") return t("fileUnderstanding.videoTooltip");
+  return currentLang === "en"
+    ? "Understand document structure, extract key materials and generate actionable directions"
+    : "理解文档结构、提取关键素材并生成可执行方向";
 }
 
 async function handleDirectionAction(nodeId, dir) {
