@@ -1,6 +1,6 @@
 import { handleGetAsset, handleStoreAsset } from "../api/assets.js";
 import { handleContextIngest, handleContextRetrieve, handleContextStats, handleContextWipe } from "../api/context.js";
-import { handleCreateFileUnderstanding, handleGetFileUnderstanding } from "../api/fileUnderstanding.js";
+import { handleAskFileQuestion, handleCreateFileUnderstanding, handleGetFileUnderstanding, handleGetFileUnderstandingJob } from "../api/fileUnderstanding.js";
 import { handleDeleteSession, handleListHistory, handleRenameSession } from "../api/history.js";
 import { handleImportSession } from "../api/import.js";
 import { handleCreateMaterial, handleDeleteMaterial, handleGetMaterialFile, handleListMaterials, handleUpdateMaterial } from "../api/materials.js";
@@ -214,6 +214,13 @@ export function createRequestHandler({
       if (req.method === "POST" && url.pathname === "/api/file-understanding") {
         const body = await readJson(req, { maxBodyBytes });
         return await handleCreateFileUnderstanding(body, res);
+      }
+      if (req.method === "POST" && url.pathname === "/api/file-understanding/qa") {
+        const body = await readJson(req, { maxBodyBytes });
+        return await handleAskFileQuestion(body, res);
+      }
+      if (req.method === "GET" && url.pathname.startsWith("/api/file-understanding/jobs/")) {
+        return await handleGetFileUnderstandingJob(req, res);
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/file-understanding/")) {
         return await handleGetFileUnderstanding(req, res);

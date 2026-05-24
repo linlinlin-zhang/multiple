@@ -14,6 +14,8 @@ const API_TIMEOUT_MS = 120000;
 const MAX_PAGES_FOR_PROMPT = 6;
 const MAX_CHARS_PER_PAGE_IN_PROMPT = 900;
 const MAX_KEY_PHRASES = 12;
+const MAX_PREVIEW_PAGES = 24;
+const MAX_CANVAS_CARDS = 12;
 
 const DIRECTION_TYPES = new Set([
   "image-generation",
@@ -26,10 +28,12 @@ const DIRECTION_TYPES = new Set([
 
 export async function buildFileUnderstanding(buffer, fileName, ext, options = {}) {
   const lang = options.lang === "en" ? "en" : "zh";
-  const parsed = await parseFileStructured(buffer, ext);
+  const initialParsed = await parseFileStructured(buffer, ext);
+  const ocr = await maybeRunOcr(initialParsed, buffer, ext, { ...options, fileName });
+  const parsed = ocr.parsed || initialParsed;
 
   if (parsed.isScanned) {
-    return buildScannedUnderstanding(parsed, fileName, lang);
+    return enrichUnderstanding(buildScannedUnderstanding(parsed, fileName, lang), parsed, fileName, lang, ocr);
   }
 
   const apiKey = options.apiKey || process.env.ANALYSIS_API_KEY || process.env.DASHSCOPE_API_KEY || "";
@@ -37,7 +41,7 @@ export async function buildFileUnderstanding(buffer, fileName, ext, options = {}
   const model = options.model || process.env.ANALYSIS_MODEL || "qwen3.6-plus";
 
   if (!apiKey) {
-    return buildFallbackUnderstanding(parsed, fileName, lang);
+    return enrichUnderstanding(buildFallbackUnderstanding(parsed, fileName, lang), parsed, fileName, lang, ocr);
   }
 
   try {
@@ -46,20 +50,70 @@ export async function buildFileUnderstanding(buffer, fileName, ext, options = {}
     const content = collectChatContent(response);
     const parsedJson = parseJsonFromText(content);
     const normalized = normalizeUnderstanding(parsedJson, parsed, fileName, lang);
+    const enriched = enrichUnderstanding(normalized, parsed, fileName, lang, ocr);
     return {
-      ...normalized,
+      ...enriched,
       ok: true,
       isScanned: false,
-      metadata: { ...(parsed.metadata || {}), keyPhrases: parsed.keyPhrases || [] },
+      metadata: { ...(enriched.metadata || {}), ...(parsed.metadata || {}), keyPhrases: parsed.keyPhrases || [] },
       rawParsed: parsed
     };
   } catch (error) {
     console.error("[buildFileUnderstanding] LLM failed:", error.message);
     return {
-      ...buildFallbackUnderstanding(parsed, fileName, lang),
+      ...enrichUnderstanding(buildFallbackUnderstanding(parsed, fileName, lang), parsed, fileName, lang, ocr),
       _llmError: error.message
     };
   }
+}
+
+export async function answerFileQuestion(buffer, fileName, ext, question, options = {}) {
+  const lang = options.lang === "en" ? "en" : "zh";
+  const parsed = await parseFileStructured(buffer, ext);
+  const pages = selectQuestionPages(parsed, question, 5);
+  const citations = pages.map((page) => ({
+    page: page.pageNumber,
+    label: pageLabel(parsed.type, page.pageNumber, lang),
+    quote: citeQuote(page.text, question)
+  })).filter((citation) => citation.quote);
+  const apiKey = options.apiKey || process.env.ANALYSIS_API_KEY || process.env.DASHSCOPE_API_KEY || "";
+  const baseUrl = options.baseUrl || process.env.ANALYSIS_API_BASE_URL || "https://dashscope.aliyuncs.com/compatible-mode/v1";
+  const model = options.model || process.env.ANALYSIS_MODEL || "qwen3.6-plus";
+
+  if (apiKey && pages.length) {
+    try {
+      const prompt = buildQaPrompt({ parsed, fileName, question, pages, lang });
+      const response = await callLlm(apiKey, baseUrl, model, prompt);
+      const content = collectChatContent(response).trim();
+      if (content) {
+        return {
+          ok: true,
+          answer: content,
+          citations,
+          pages: pages.map((page) => page.pageNumber),
+          model: response?.model || model
+        };
+      }
+    } catch (error) {
+      console.error("[answerFileQuestion] LLM failed:", error.message);
+    }
+  }
+
+  const isEn = lang === "en";
+  const snippets = citations.length
+    ? citations.map((citation) => `${citation.label}: ${citation.quote}`).join("\n")
+    : pages.map((page) => `${pageLabel(parsed.type, page.pageNumber, lang)}: ${page.text.slice(0, 360)}`).join("\n");
+  return {
+    ok: true,
+    answer: snippets
+      ? (isEn
+          ? `I found the most relevant passages below. Use the page citations to verify the answer.\n\n${snippets}`
+          : `我找到了最相关的页内片段，可根据页码引用核对答案。\n\n${snippets}`)
+      : (isEn ? "I could not find enough readable text in this file to answer confidently." : "这份文件中没有足够可读文本，暂时无法可靠回答。"),
+    citations,
+    pages: pages.map((page) => page.pageNumber),
+    model: "local-page-retrieval"
+  };
 }
 
 function buildScannedUnderstanding(parsed, fileName, lang) {
@@ -401,6 +455,415 @@ function buildFallbackUnderstanding(parsed, fileName, lang) {
     metadata: { ...(parsed.metadata || {}), keyPhrases },
     rawParsed: parsed
   };
+}
+
+function enrichUnderstanding(base, parsed, fileName, lang, ocr = {}) {
+  const metadata = {
+    ...(base.metadata || {}),
+    ...(parsed.metadata || {}),
+    keyPhrases: base.keyPhrases || base.metadata?.keyPhrases || parsed.keyPhrases || [],
+    documentPreview: buildDocumentPreview(parsed, lang, ocr),
+    qaHints: buildQaHints(parsed, fileName, lang),
+    ocr: normalizeOcrStatus(ocr)
+  };
+  const canvasCards = buildCanvasCards(parsed, base, fileName, lang);
+  return {
+    ...base,
+    documentPreview: metadata.documentPreview,
+    canvasCards,
+    canvasLinks: buildCanvasLinks(canvasCards),
+    qaHints: metadata.qaHints,
+    metadata
+  };
+}
+
+function buildDocumentPreview(parsed, lang, ocr = {}) {
+  const pages = (parsed.pages || []).slice(0, MAX_PREVIEW_PAGES).map((page) => {
+    const title = inferPageTitle(page, parsed.type, lang);
+    return {
+      pageNumber: page.pageNumber,
+      label: pageLabel(parsed.type, page.pageNumber, lang),
+      title,
+      excerpt: String(page.text || "").replace(/\s+/g, " ").slice(0, 420),
+      wordCount: page.wordCount || 0,
+      imageCount: page.images?.length || 0,
+      tableCount: page.tables?.length || 0,
+      tables: (page.tables || []).slice(0, 3).map((table, index) => ({
+        index,
+        rowCount: table.rowCount || 0,
+        colCount: table.colCount || 0,
+        preview: (table.cells || []).slice(0, 4).map((row) => row.slice(0, 5))
+      }))
+    };
+  });
+  return {
+    type: parsed.type,
+    totalPages: parsed.totalPages || pages.length || 1,
+    isScanned: Boolean(parsed.isScanned),
+    truncated: (parsed.pages || []).length > pages.length,
+    ocr: normalizeOcrStatus(ocr),
+    pages
+  };
+}
+
+function buildCanvasCards(parsed, understanding, fileName, lang) {
+  const isEn = lang === "en";
+  const title = fileName || (isEn ? "Document" : "文档");
+  const cards = [];
+  const safeTitle = title.replace(/\.[^.]+$/, "");
+  const summaryText = [
+    `# ${safeTitle}`,
+    "",
+    understanding.abstract || understanding.summary || "",
+    "",
+    (understanding.keyPhrases || parsed.keyPhrases || []).length
+      ? `## ${isEn ? "Key phrases" : "关键词"}\n\n${(understanding.keyPhrases || parsed.keyPhrases || []).slice(0, 12).map((item) => `- ${item}`).join("\n")}`
+      : "",
+    buildPageCitationList(parsed, lang)
+  ].filter(Boolean).join("\n\n");
+  cards.push({
+    id: "file-summary",
+    type: "create_note",
+    nodeType: "note",
+    title: isEn ? "Document summary" : "文档摘要",
+    description: understanding.summary || "",
+    prompt: summaryText,
+    content: { text: summaryText },
+    pageRange: parsed.totalPages > 1 ? `1-${parsed.totalPages}` : "1"
+  });
+
+  const sections = Array.isArray(understanding.structure?.sections) ? understanding.structure.sections : [];
+  if (sections.length) {
+    cards.push({
+      id: "file-outline",
+      type: "create_timeline",
+      nodeType: "timeline",
+      title: isEn ? "Document outline" : "文档目录",
+      description: isEn ? "Page-aware structure extracted from the file." : "从文件中提取的带页码结构。",
+      prompt: sections.map((section) => `${section.pageRange || ""} ${section.title}: ${section.summary || ""}`).join("\n"),
+      content: {
+        items: sections.slice(0, 16).map((section) => ({
+          time: section.pageRange ? `${isEn ? "p." : "第"} ${section.pageRange}` : "",
+          title: section.title,
+          description: section.summary
+        }))
+      }
+    });
+  }
+
+  const tableEntries = [];
+  for (const page of parsed.pages || []) {
+    for (const [index, table] of (page.tables || []).entries()) {
+      tableEntries.push({ page, table, index });
+    }
+  }
+  for (const entry of tableEntries.slice(0, 4)) {
+    const columns = inferTableColumns(entry.table);
+    const rows = tableRowsAsObjects(entry.table, columns).slice(0, 12);
+    cards.push({
+      id: `file-table-${entry.page.pageNumber}-${entry.index + 1}`,
+      type: "create_table",
+      nodeType: "table",
+      title: isEn ? `Table p.${entry.page.pageNumber}` : `第 ${entry.page.pageNumber} 页表格`,
+      description: isEn
+        ? `Detected table with ${entry.table.rowCount || 0} rows and ${entry.table.colCount || 0} columns.`
+        : `检测到 ${entry.table.rowCount || 0} 行 ${entry.table.colCount || 0} 列的表格。`,
+      prompt: `${pageLabel(parsed.type, entry.page.pageNumber, lang)} table ${entry.index + 1}`,
+      content: {
+        columns,
+        rows,
+        caption: isEn ? `Extracted from page ${entry.page.pageNumber}` : `提取自第 ${entry.page.pageNumber} 页`
+      },
+      pageRange: String(entry.page.pageNumber)
+    });
+  }
+
+  const images = parsed.pages.flatMap((page) => (page.images || []).map((image, index) => ({ page, image, index })));
+  if (images.length) {
+    const text = images.slice(0, 16).map((item) => {
+      const name = item.image?.name || `${isEn ? "Image" : "图片"} ${item.index + 1}`;
+      return `- ${pageLabel(parsed.type, item.page.pageNumber, lang)}: ${name}`;
+    }).join("\n");
+    cards.push({
+      id: "file-images",
+      type: "create_note",
+      nodeType: "note",
+      title: isEn ? "Image inventory" : "图片素材清单",
+      description: isEn ? `${images.length} embedded image(s) detected.` : `检测到 ${images.length} 个内嵌图片素材。`,
+      prompt: text,
+      content: { text },
+      pageRange: images.length ? `${images[0].page.pageNumber}` : ""
+    });
+  }
+
+  if (parsed.isScanned) {
+    cards.push({
+      id: "file-ocr-needed",
+      type: "create_todo",
+      nodeType: "todo",
+      title: isEn ? "OCR checklist" : "OCR 处理清单",
+      description: isEn ? "The file needs OCR before detailed analysis." : "该文件需要 OCR 后才能进行详细理解。",
+      prompt: "",
+      content: {
+        items: [
+          { text: isEn ? "Run OCR on the scanned pages" : "对扫描页执行 OCR", done: false, priority: "high" },
+          { text: isEn ? "Review page previews and mark important pages" : "检查分页预览并标记重点页", done: false, priority: "medium" },
+          { text: isEn ? "Re-run document understanding after OCR" : "OCR 后重新执行文档理解", done: false, priority: "medium" }
+        ]
+      }
+    });
+  }
+
+  return cards.slice(0, MAX_CANVAS_CARDS);
+}
+
+function buildCanvasLinks(cards) {
+  return cards.slice(1).map((card) => ({ from: "file-summary", to: card.id, label: card.pageRange || "" }));
+}
+
+function buildQaHints(parsed, fileName, lang) {
+  const isEn = lang === "en";
+  const phrases = parsed.keyPhrases || [];
+  const subject = phrases[0] || fileName?.replace(/\.[^.]+$/, "") || (isEn ? "this file" : "这份文件");
+  return {
+    supported: !parsed.isScanned && Boolean(parsed.allText),
+    citationStyle: isEn ? "page" : "页码",
+    suggestedQuestions: isEn
+      ? [
+          `What is the main argument of ${subject}?`,
+          "Which pages contain tables or evidence?",
+          "What are the next actions implied by this file?"
+        ]
+      : [
+          `${subject} 的核心观点是什么？`,
+          "哪些页包含表格或关键证据？",
+          "这份文件隐含了哪些下一步行动？"
+        ]
+  };
+}
+
+async function maybeRunOcr(parsed, buffer, ext, options = {}) {
+  if (!parsed?.isScanned) return { status: "not_needed", provider: "", message: "" };
+  const endpoint = options.ocrEndpoint || process.env.OCR_API_BASE_URL || process.env.OCR_ENDPOINT || "";
+  const apiKey = options.ocrApiKey || process.env.OCR_API_KEY || process.env.DASHSCOPE_API_KEY || "";
+  if (!endpoint || options.enableOcr === false) {
+    return {
+      status: "not_configured",
+      provider: endpoint ? "generic" : "",
+      message: "OCR endpoint is not configured."
+    };
+  }
+  try {
+    const response = await callOcrProvider({
+      endpoint,
+      apiKey,
+      model: options.ocrModel || process.env.OCR_MODEL || "",
+      buffer,
+      ext,
+      fileName: options.fileName || ""
+    });
+    const pages = normalizeOcrPages(response, parsed.totalPages);
+    const textLength = pages.reduce((sum, page) => sum + page.text.length, 0);
+    if (!textLength) {
+      return { status: "empty", provider: endpoint, message: "OCR returned no text." };
+    }
+    const ocrParsed = {
+      ...parsed,
+      isScanned: false,
+      pages: pages.map((page, index) => ({
+        pageNumber: page.pageNumber || index + 1,
+        text: page.text,
+        wordCount: countWordsLocal(page.text),
+        images: parsed.pages?.[index]?.images || [],
+        tables: parsed.pages?.[index]?.tables || []
+      })),
+      allText: pages.map((page) => page.text).join("\n"),
+      keyPhrases: extractLocalKeyPhrases(pages.map((page) => page.text).join("\n"))
+    };
+    return { status: "complete", provider: endpoint, message: "", parsed: ocrParsed };
+  } catch (error) {
+    return {
+      status: "failed",
+      provider: endpoint,
+      message: error.message || "OCR failed."
+    };
+  }
+}
+
+async function callOcrProvider({ endpoint, apiKey, model, buffer, ext, fileName }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: model || undefined,
+        fileName,
+        fileType: ext,
+        data: buffer.toString("base64")
+      }),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = { text };
+    }
+    if (!response.ok) {
+      throw new Error(json?.error?.message || text || response.statusText);
+    }
+    return json;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function normalizeOcrPages(response, totalPages = 1) {
+  if (Array.isArray(response?.pages)) {
+    return response.pages.map((page, index) => ({
+      pageNumber: Number(page.pageNumber || page.page || index + 1),
+      text: String(page.text || page.content || "").trim()
+    })).filter((page) => page.text);
+  }
+  const text = String(response?.text || response?.content || response?.result || "").trim();
+  if (!text) return [];
+  const chunks = text.split(/\n\s*(?:---+\s*)?page\s+\d+\s*(?:---+)?\n/i).filter(Boolean);
+  if (chunks.length > 1) {
+    return chunks.map((chunk, index) => ({ pageNumber: index + 1, text: chunk.trim() }));
+  }
+  return [{ pageNumber: 1, text: text.slice(0, Math.max(text.length, totalPages * 800)) }];
+}
+
+function normalizeOcrStatus(ocr = {}) {
+  return {
+    status: ocr.status || "unknown",
+    provider: ocr.provider || "",
+    message: ocr.message || ""
+  };
+}
+
+function pageLabel(type, pageNumber, lang) {
+  if (lang === "en") return type === "pptx" || type === "ppt" ? `Slide ${pageNumber}` : `Page ${pageNumber}`;
+  return type === "pptx" || type === "ppt" ? `第 ${pageNumber} 张` : `第 ${pageNumber} 页`;
+}
+
+function inferPageTitle(page, type, lang) {
+  const text = String(page?.text || "").trim();
+  const firstLine = text.split(/\n+/).map((line) => line.trim()).find(Boolean);
+  if (firstLine) return firstLine.slice(0, 80);
+  return pageLabel(type, page?.pageNumber || 1, lang);
+}
+
+function buildPageCitationList(parsed, lang) {
+  const usefulPages = (parsed.pages || []).filter((page) => page.text).slice(0, 10);
+  if (!usefulPages.length) return "";
+  const title = lang === "en" ? "## Page citations" : "## 页码引用";
+  return [
+    title,
+    "",
+    ...usefulPages.map((page) => `- ${pageLabel(parsed.type, page.pageNumber, lang)}: ${String(page.text || "").replace(/\s+/g, " ").slice(0, 160)}`)
+  ].join("\n");
+}
+
+function inferTableColumns(table) {
+  const cells = Array.isArray(table?.cells) ? table.cells : [];
+  const first = cells[0] || [];
+  const count = Math.max(table?.colCount || 0, first.length, 1);
+  return Array.from({ length: count }, (_, index) => String(first[index] || `Column ${index + 1}`).slice(0, 48));
+}
+
+function tableRowsAsObjects(table, columns) {
+  const cells = Array.isArray(table?.cells) ? table.cells : [];
+  const rows = cells.length > 1 ? cells.slice(1) : cells;
+  return rows.map((row) => {
+    const obj = {};
+    columns.forEach((column, index) => {
+      obj[column] = String(row[index] || "");
+    });
+    return obj;
+  });
+}
+
+function selectQuestionPages(parsed, question, maxPages = 5) {
+  const queryTokens = tokenizeForSearch(question);
+  const pages = (parsed.pages || []).filter((page) => page.text);
+  const scored = pages.map((page) => {
+    const text = String(page.text || "").toLowerCase();
+    let score = 0;
+    for (const token of queryTokens) {
+      if (text.includes(token)) score += token.length > 2 ? 3 : 1;
+    }
+    if (!score && queryTokens.length) score = overlapScore(text, queryTokens);
+    return { page, score };
+  }).sort((a, b) => b.score - a.score || a.page.pageNumber - b.page.pageNumber);
+  const selected = scored.filter((item) => item.score > 0).slice(0, maxPages).map((item) => item.page);
+  return selected.length ? selected : pages.slice(0, maxPages);
+}
+
+function tokenizeForSearch(text) {
+  const raw = String(text || "").toLowerCase();
+  const en = raw.match(/[a-z0-9]{2,}/g) || [];
+  const zh = raw.match(/[\u4e00-\u9fff]{2,4}/g) || [];
+  return Array.from(new Set([...en, ...zh])).slice(0, 24);
+}
+
+function overlapScore(text, tokens) {
+  let score = 0;
+  for (const token of tokens) {
+    if (text.includes(token.slice(0, 2))) score += 1;
+  }
+  return score;
+}
+
+function citeQuote(text, question) {
+  const sentences = String(text || "").split(/(?<=[。！？.!?])\s+|\n+/).map((item) => item.trim()).filter(Boolean);
+  const tokens = tokenizeForSearch(question);
+  const best = sentences
+    .map((sentence) => ({ sentence, score: overlapScore(sentence.toLowerCase(), tokens) }))
+    .sort((a, b) => b.score - a.score || b.sentence.length - a.sentence.length)[0];
+  return (best?.sentence || sentences[0] || String(text || "")).slice(0, 360);
+}
+
+function buildQaPrompt({ parsed, fileName, question, pages, lang }) {
+  const isEn = lang === "en";
+  const context = pages.map((page) => {
+    return `${pageLabel(parsed.type, page.pageNumber, lang)}\n${String(page.text || "").slice(0, 1800)}`;
+  }).join("\n\n---\n\n");
+  return {
+    system: isEn
+      ? "Answer questions about a document. Use only the provided page excerpts. Include page citations like [Page 2]."
+      : "请回答关于文档的问题。只能使用提供的页内摘录，并用类似 [第 2 页] 的格式标注页码引用。",
+    user: [
+      isEn ? `File: ${fileName || "document"}` : `文件：${fileName || "文档"}`,
+      isEn ? `Question: ${question}` : `问题：${question}`,
+      "",
+      xmlBlock("page_excerpts", context || "(no readable text)", { trusted: "false" })
+    ].join("\n")
+  };
+}
+
+function countWordsLocal(text) {
+  if (!text) return 0;
+  const cjk = (text.match(/[\u4e00-\u9fff]/g) || []).length;
+  const latin = (text.match(/[a-zA-Z0-9_]+/g) || []).length;
+  return cjk + latin;
+}
+
+function extractLocalKeyPhrases(text, max = MAX_KEY_PHRASES) {
+  const cleaned = String(text || "").toLowerCase();
+  const phrases = [
+    ...(cleaned.match(/[\u4e00-\u9fff]{2,4}/g) || []),
+    ...(cleaned.match(/[a-z]{3,}(?:\s+[a-z]{3,})?/g) || [])
+  ];
+  const counts = new Map();
+  for (const phrase of phrases) counts.set(phrase, (counts.get(phrase) || 0) + 1);
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([phrase]) => phrase).slice(0, max);
 }
 
 function ensureDirectionCount(raw, fallback, lang) {

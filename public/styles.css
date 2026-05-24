@@ -6045,6 +6045,57 @@ html[data-theme="dark"] .blueprint-compose {
   gap: 6px;
 }
 
+.fu-page-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+}
+
+.fu-page-card {
+  min-height: 108px;
+  padding: 9px;
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.fu-page-card strong,
+.fu-page-card span,
+.fu-page-card small {
+  display: block;
+}
+
+.fu-page-card strong {
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.fu-page-card span {
+  margin-top: 3px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.fu-page-card p {
+  display: -webkit-box;
+  margin: 5px 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.45;
+  overflow: hidden;
+  line-clamp: 3;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.fu-page-card small {
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
 .fu-badge {
   display: inline-flex;
   align-items: center;
@@ -6085,6 +6136,13 @@ html[data-theme="dark"] .blueprint-compose {
   margin: 0;
   font-size: 12px;
   color: #9a7d28;
+}
+
+.fu-ocr p,
+.fu-qa-block p {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 /* Document preview */

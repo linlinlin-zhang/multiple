@@ -645,6 +645,14 @@ const i18n = {
     "fileUnderstanding.charts": "图表",
     "fileUnderstanding.understandButton": "理解文档",
     "fileUnderstanding.understanding": "正在理解文档...",
+    "fileUnderstanding.background": "文档较大，已转入后台理解...",
+    "fileUnderstanding.preview": "分页预览",
+    "fileUnderstanding.autoCards": "自动拆卡",
+    "fileUnderstanding.qa": "页码问答",
+    "fileUnderstanding.ocr": "OCR",
+    "fileUnderstanding.ocrComplete": "OCR 已完成",
+    "fileUnderstanding.ocrPending": "OCR 未配置或待处理",
+    "fileUnderstanding.pageStats": "{words} 字词 · {tables} 表 · {images} 图",
     "direction.research": "研究",
     "direction.taskPlan": "任务计划",
     "direction.webAnalysis": "网页分析",
@@ -1230,6 +1238,14 @@ const i18n = {
     "fileUnderstanding.scannedWarning": "This appears to be a scanned document. OCR is recommended for full text extraction.",
     "fileUnderstanding.understandButton": "Understand Document",
     "fileUnderstanding.understanding": "Understanding...",
+    "fileUnderstanding.background": "Large file queued for background understanding...",
+    "fileUnderstanding.preview": "Page Preview",
+    "fileUnderstanding.autoCards": "Auto Cards",
+    "fileUnderstanding.qa": "Page Q&A",
+    "fileUnderstanding.ocr": "OCR",
+    "fileUnderstanding.ocrComplete": "OCR complete",
+    "fileUnderstanding.ocrPending": "OCR not configured or pending",
+    "fileUnderstanding.pageStats": "{words} words · {tables} tables · {images} images",
     "direction.research": "Research",
     "direction.taskPlan": "Task Plan",
     "direction.webAnalysis": "Web Analysis",
@@ -18758,15 +18774,20 @@ async function triggerFileUnderstanding() {
     const payload = { dataUrl, fileName: state.fileName, language: currentLang };
     if (hash) payload.hash = hash;
 
-    const result = await postJson("/api/file-understanding", payload, {
+    let result = await postJson("/api/file-understanding", payload, {
       timeoutMs: 180000,
       timeoutMessage: t("research.timeout")
     });
+    if (result?.async && result.jobId) {
+      setStatus(t("fileUnderstanding.background"), "busy");
+      result = await pollFileUnderstandingJob(result.jobId);
+    }
 
     if (result.ok) {
       state.fileUnderstanding = result.result;
       renderFileUnderstanding(result.result);
       renderDocumentUnderstandingOptions(result.result.actionableDirections || []);
+      renderFileUnderstandingCanvasCards(result.result.canvasCards || [], result.result.canvasLinks || []);
       setStatus(t("status.ready"), "ready");
       autoSave();
     } else {
@@ -18778,6 +18799,24 @@ async function triggerFileUnderstanding() {
   } finally {
     setResearchButtonBusy(false);
   }
+}
+
+async function pollFileUnderstandingJob(jobId) {
+  const started = Date.now();
+  const timeoutMs = 10 * 60 * 1000;
+  while (Date.now() - started < timeoutMs) {
+    await delay(1600);
+    const job = await getJson(`/api/file-understanding/jobs/${encodeURIComponent(jobId)}`);
+    if (job.status === "completed") {
+      return { ok: true, result: job.result, hash: job.hash, async: true, jobId };
+    }
+    if (job.status === "failed") {
+      throw new Error(job.error || "File understanding failed");
+    }
+    const progress = Number(job.progress) || 0;
+    setStatus(`${t("fileUnderstanding.background")} ${progress}%`, "busy");
+  }
+  throw new Error(t("research.timeout"));
 }
 
 function renderFileUnderstanding(understanding) {
@@ -18803,6 +18842,8 @@ function renderFileUnderstanding(understanding) {
 
   const struct = understanding.structure || {};
   const materials = understanding.keyMaterials || {};
+  const preview = understanding.documentPreview || understanding.metadata?.documentPreview || null;
+  const ocr = understanding.ocr || understanding.metadata?.ocr || preview?.ocr || null;
   const imgCount = (materials.images || []).length;
   const tblCount = (materials.tables || []).length;
   const chartCount = (materials.charts || []).length;
@@ -18824,6 +18865,27 @@ function renderFileUnderstanding(understanding) {
     html += `</div>`;
   }
 
+  if (preview?.pages?.length) {
+    html += `<div class="fu-block fu-preview-block">`;
+    html += `<h4>${escapeHtml(t("fileUnderstanding.preview"))}</h4>`;
+    html += `<div class="fu-page-grid">`;
+    for (const page of preview.pages.slice(0, 8)) {
+      const stats = t("fileUnderstanding.pageStats", {
+        words: page.wordCount || 0,
+        tables: page.tableCount || 0,
+        images: page.imageCount || 0
+      });
+      html += `<article class="fu-page-card">`;
+      html += `<strong>${escapeHtml(page.label || `${page.pageNumber}`)}</strong>`;
+      html += `<span>${escapeHtml(page.title || "")}</span>`;
+      html += `<p>${escapeHtml(page.excerpt || "")}</p>`;
+      html += `<small>${escapeHtml(stats)}</small>`;
+      html += `</article>`;
+    }
+    html += `</div>`;
+    html += `</div>`;
+  }
+
   if (imgCount || tblCount || chartCount) {
     html += `<div class="fu-block">`;
     html += `<h4>${escapeHtml(t("fileUnderstanding.keyMaterials"))}</h4>`;
@@ -18840,8 +18902,30 @@ function renderFileUnderstanding(understanding) {
     html += `</div></div>`;
   }
 
+  if (understanding.canvasCards?.length) {
+    html += `<div class="fu-block">`;
+    html += `<h4>${escapeHtml(t("fileUnderstanding.autoCards"))}</h4>`;
+    html += `<p class="fu-pages">${escapeHtml(String(understanding.canvasCards.length))}</p>`;
+    html += `</div>`;
+  }
+
+  if (understanding.qaHints?.supported || understanding.qaHints?.suggestedQuestions?.length) {
+    html += `<div class="fu-block fu-qa-block">`;
+    html += `<h4>${escapeHtml(t("fileUnderstanding.qa"))}</h4>`;
+    html += `<ul class="fu-outline">`;
+    for (const question of (understanding.qaHints.suggestedQuestions || []).slice(0, 3)) {
+      html += `<li>${escapeHtml(question)}</li>`;
+    }
+    html += `</ul>`;
+    html += `</div>`;
+  }
+
   if (understanding.isScanned) {
     html += `<div class="fu-block fu-scanned"><p>${escapeHtml(t("fileUnderstanding.scannedWarning"))}</p></div>`;
+  }
+  if (ocr?.status && ocr.status !== "not_needed") {
+    const ocrText = ocr.status === "complete" ? t("fileUnderstanding.ocrComplete") : `${t("fileUnderstanding.ocrPending")}${ocr.message ? `: ${ocr.message}` : ""}`;
+    html += `<div class="fu-block fu-ocr"><h4>${escapeHtml(t("fileUnderstanding.ocr"))}</h4><p>${escapeHtml(ocrText)}</p></div>`;
   }
 
   html += `</div>`;
@@ -18860,6 +18944,63 @@ function renderFileUnderstanding(understanding) {
   state.autoHiddenReasons.clear();
   state.contentHidden.clear();
   applyCollapseState();
+}
+
+function renderFileUnderstandingCanvasCards(cards = [], links = []) {
+  clearFileUnderstandingCanvasCards();
+  if (!Array.isArray(cards) || !cards.length || !state.nodes.has("analysis")) return;
+  const createdByCardId = new Map();
+  cards.slice(0, 10).forEach((card, index) => {
+    const action = {
+      ...card,
+      parentNodeId: "analysis",
+      batchIndex: index,
+      batchSize: cards.length,
+      layoutHint: card.layoutHint || "document"
+    };
+    const nodeId = createDirectionFromAction(action);
+    const node = nodeId ? state.nodes.get(nodeId) : null;
+    if (!node?.element || !node.option) return;
+    node.option.fileUnderstandingCard = true;
+    node.option.fileUnderstandingCardId = card.id || nodeId;
+    turnIntoRichNode(node.element, node.option);
+    node.generated = true;
+    node.width = node.element.offsetWidth || node.width;
+    node.height = node.element.offsetHeight || node.height;
+    state.generatedCount += 1;
+    createdByCardId.set(card.id || node.option.fileUnderstandingCardId, nodeId);
+  });
+  for (const link of Array.isArray(links) ? links : []) {
+    const from = createdByCardId.get(link.from) || "analysis";
+    const to = createdByCardId.get(link.to);
+    if (from && to && !state.links.some((item) => item.from === from && item.to === to)) {
+      state.links.push({ from, to, kind: "document" });
+    }
+  }
+  applyCollapseState();
+  updateCounts();
+  drawLinks();
+  scheduleGeneratedArrange({ delay: 160, duration: 520 });
+}
+
+function clearFileUnderstandingCanvasCards() {
+  const removeIds = [];
+  for (const [id, node] of state.nodes.entries()) {
+    if (node?.option?.fileUnderstandingCard) removeIds.push(id);
+  }
+  for (const id of removeIds) {
+    const node = state.nodes.get(id);
+    node?.element?.remove();
+    state.nodes.delete(id);
+    state.collapsed.delete(id);
+    state.selectiveHidden.delete(id);
+    state.autoHiddenReasons.delete(id);
+    state.contentHidden.delete(id);
+    if (node?.generated) state.generatedCount = Math.max(0, state.generatedCount - 1);
+  }
+  if (removeIds.length) {
+    state.links = state.links.filter((link) => !removeIds.includes(link.from) && !removeIds.includes(link.to));
+  }
 }
 
 function renderDocumentUnderstandingOptions(directions) {
