@@ -95,6 +95,149 @@ async function normalizeImportPayload(input) {
   return input;
 }
 
+function importError(message, status = 400) {
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+function validateImportPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    throw importError("Invalid request body", 400);
+  }
+
+  const version = Number(payload.version);
+  if (version !== 1 && version !== 2) {
+    throw importError("Unsupported export version", 400);
+  }
+
+  const session = payload.session;
+  if (!session || !Array.isArray(session.nodes) || !Array.isArray(session.links) || !Array.isArray(session.chatMessages)) {
+    throw importError("Invalid session data", 400);
+  }
+
+  return session;
+}
+
+function validHash(value) {
+  return /^[a-f0-9]{64}$/i.test(String(value || ""));
+}
+
+function sessionTitleForImport(session) {
+  return String(session?.title || "导入的会话").trim().slice(0, 160) || "导入的会话";
+}
+
+async function countExistingTitle(title, visitorId) {
+  try {
+    return await prisma.session.count({ where: { visitorId, source: "user", title } });
+  } catch {
+    return prisma.session.count({ where: { visitorId, title } });
+  }
+}
+
+async function resolveImportedTitle(title, strategy, visitorId) {
+  const base = sessionTitleForImport({ title });
+  if (strategy !== "rename") return base;
+
+  let candidate = base;
+  let suffix = 2;
+  while (await countExistingTitle(candidate, visitorId)) {
+    candidate = `${base} (导入 ${suffix})`.slice(0, 160);
+    suffix += 1;
+    if (suffix > 99) {
+      candidate = `${base.slice(0, 132)} ${Date.now()}`;
+      break;
+    }
+  }
+  return candidate;
+}
+
+async function summarizeNormalizedImportPayload(payload, options = {}) {
+  const session = validateImportPayload(payload);
+  const visitorId = options.visitorId || "legacy";
+  const title = sessionTitleForImport(session);
+  const assets = Array.isArray(payload.assets) ? payload.assets : [];
+  const assetHashes = [...new Set(assets.map((asset) => String(asset?.hash || "").toLowerCase()).filter(validHash))];
+  const missingAssets = assets.filter((asset) => asset?.missing || (asset?.path && !asset?.buffer && !asset?.dataUrl && !asset?.hash));
+  const totalAssetBytes = assets.reduce((sum, asset) => {
+    if (Buffer.isBuffer(asset?.buffer)) return sum + asset.buffer.length;
+    const fileSize = Number(asset?.fileSize);
+    return sum + (Number.isFinite(fileSize) && fileSize > 0 ? fileSize : 0);
+  }, 0);
+
+  const conflicts = [];
+  const existingTitleCount = await countExistingTitle(title, visitorId);
+  if (existingTitleCount > 0) {
+    conflicts.push({
+      type: "title",
+      severity: "warning",
+      title,
+      existingCount: existingTitleCount,
+      message: "A session with the same title already exists."
+    });
+  }
+
+  if (assetHashes.length) {
+    const [duplicateSessionAssets, duplicateMaterials] = await Promise.all([
+      prisma.asset.count({
+        where: {
+          hash: { in: assetHashes },
+          session: { visitorId }
+        }
+      }).catch(() => 0),
+      prisma.materialItem.count({
+        where: {
+          hash: { in: assetHashes },
+          OR: [
+            { visitorId },
+            { source: "system" }
+          ]
+        }
+      }).catch(() => 0)
+    ]);
+    if (duplicateSessionAssets || duplicateMaterials) {
+      conflicts.push({
+        type: "assets",
+        severity: "info",
+        duplicateSessionAssets,
+        duplicateMaterials,
+        message: "Some assets already exist and will be deduplicated by content hash."
+      });
+    }
+  }
+
+  const warnings = [];
+  if (missingAssets.length) {
+    warnings.push({
+      type: "missing-assets",
+      count: missingAssets.length,
+      message: "Some exported assets are marked missing or unavailable in the package."
+    });
+  }
+
+  return {
+    ok: true,
+    version: Number(payload.version),
+    packageVersion: Number(payload.packageVersion || 1),
+    format: payload.format || "thoughtgrid-session-package",
+    originalSessionId: payload.originalSessionId || null,
+    title,
+    nodeCount: session.nodes.length,
+    linkCount: session.links.length,
+    assetCount: assets.length,
+    chatMessageCount: session.chatMessages.length,
+    totalAssetBytes,
+    conflicts,
+    warnings
+  };
+}
+
+function inputFromBatchPackage(item) {
+  if (item?.payload) return item.payload;
+  if (typeof item?.json === "string") return JSON.parse(item.json);
+  return item;
+}
+
 async function storeImportAsset(asset, storedAssets, hashMap) {
   const kind = normalizeAssetKind(asset.kind);
   let buffer = Buffer.isBuffer(asset.buffer) ? asset.buffer : null;
@@ -127,121 +270,185 @@ async function storeImportAsset(asset, storedAssets, hashMap) {
   }
 }
 
+async function importSessionPayload(input, options = {}) {
+  const payload = await normalizeImportPayload(input);
+  const preview = await summarizeNormalizedImportPayload(payload, options);
+  const session = validateImportPayload(payload);
+  const visitorId = options.visitorId || "legacy";
+  const conflictStrategy = options.conflictStrategy === "rename" ? "rename" : "duplicate";
+
+  const storedAssets = [];
+  const hashMap = new Map();
+  const assets = Array.isArray(payload.assets) ? payload.assets : [];
+  for (const asset of assets) {
+    try {
+      await storeImportAsset(asset, storedAssets, hashMap);
+    } catch (err) {
+      console.error("[import] failed to store asset:", err.message);
+    }
+  }
+
+  const restoredSession = rewriteAssetHashes(session, hashMap);
+  const restoredTitle = await resolveImportedTitle(restoredSession.title, conflictStrategy, visitorId);
+  let restoredViewState = restoredSession.viewState || { x: 0, y: 0, scale: 0.86 };
+  if (restoredViewState && typeof restoredViewState === "object" && !Array.isArray(restoredViewState)) {
+    const snapshot = restoredViewState.stateSnapshot && typeof restoredViewState.stateSnapshot === "object"
+      ? restoredViewState.stateSnapshot
+      : null;
+    if (snapshot && !Array.isArray(snapshot.chatMessages) && Array.isArray(restoredSession.chatMessages)) {
+      restoredViewState = {
+        ...restoredViewState,
+        stateSnapshot: {
+          ...snapshot,
+          chatMessages: restoredSession.chatMessages
+        }
+      };
+    }
+  }
+
+  const newSession = await prisma.$transaction(async (tx) => {
+    const sessionRecord = await tx.session.create({
+      data: {
+        visitorId,
+        title: restoredTitle,
+        isDemo: restoredSession.isDemo || false,
+        viewState: restoredViewState
+      }
+    });
+
+    if (storedAssets.length) {
+      await tx.asset.createMany({
+        data: storedAssets.map((a) => ({ ...a, sessionId: sessionRecord.id }))
+      });
+    }
+
+    if (restoredSession.nodes?.length) {
+      await tx.node.createMany({
+        data: restoredSession.nodes.map((n) => ({
+          sessionId: sessionRecord.id,
+          nodeId: n.nodeId,
+          type: n.type,
+          x: n.x,
+          y: n.y,
+          width: n.width || 318,
+          height: n.height || 220,
+          data: n.data || {},
+          collapsed: n.collapsed || false
+        }))
+      });
+    }
+
+    if (restoredSession.links?.length) {
+      await tx.link.createMany({
+        data: restoredSession.links.map((l) => ({
+          sessionId: sessionRecord.id,
+          fromNodeId: l.fromNodeId,
+          toNodeId: l.toNodeId,
+          kind: l.kind || "option"
+        }))
+      });
+    }
+
+    const chatMessages = (restoredSession.chatMessages || []).map((m) => ({
+      sessionId: sessionRecord.id,
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: typeof m.content === "string" ? m.content : "",
+      thinkingContent: typeof m.thinkingContent === "string" ? m.thinkingContent : null,
+      references: Array.isArray(m.references) ? m.references : null
+    })).filter((m) => m.content);
+    if (chatMessages.length) {
+      await tx.chatMessage.createMany({
+        data: chatMessages
+      });
+    }
+
+    return sessionRecord;
+  });
+
+  return {
+    ok: true,
+    sessionId: newSession.id,
+    title: newSession.title,
+    createdAt: newSession.createdAt,
+    preview,
+    conflicts: preview.conflicts,
+    warnings: preview.warnings
+  };
+}
+
+/**
+ * POST /api/import/preview
+ */
+export async function handlePreviewImport(body, res, options = {}) {
+  try {
+    const payload = await normalizeImportPayload(body);
+    const preview = await summarizeNormalizedImportPayload(payload, options);
+    return sendJson(res, 200, preview);
+  } catch (error) {
+    console.error("[handlePreviewImport]", error);
+    return sendJson(res, error.status || 500, { error: error.message || "Failed to preview import" });
+  }
+}
+
 /**
  * POST /api/import
  */
 export async function handleImportSession(body, res, options = {}) {
   try {
-    const payload = await normalizeImportPayload(body);
-    if (!payload || typeof payload !== "object") {
-      return sendJson(res, 400, { error: "Invalid request body" });
-    }
-
-    const version = Number(payload.version);
-    if (version !== 1 && version !== 2) {
-      return sendJson(res, 400, { error: "Unsupported export version" });
-    }
-
-    const session = payload.session;
-    if (!session || !Array.isArray(session.nodes) || !Array.isArray(session.links) || !Array.isArray(session.chatMessages)) {
-      return sendJson(res, 400, { error: "Invalid session data" });
-    }
-
-    const storedAssets = [];
-    const hashMap = new Map();
-    const assets = Array.isArray(payload.assets) ? payload.assets : [];
-    for (const asset of assets) {
-      try {
-        await storeImportAsset(asset, storedAssets, hashMap);
-      } catch (err) {
-        console.error("[import] failed to store asset:", err.message);
-      }
-    }
-
-    const restoredSession = rewriteAssetHashes(session, hashMap);
-    let restoredViewState = restoredSession.viewState || { x: 0, y: 0, scale: 0.86 };
-    if (restoredViewState && typeof restoredViewState === "object" && !Array.isArray(restoredViewState)) {
-      const snapshot = restoredViewState.stateSnapshot && typeof restoredViewState.stateSnapshot === "object"
-        ? restoredViewState.stateSnapshot
-        : null;
-      if (snapshot && !Array.isArray(snapshot.chatMessages) && Array.isArray(restoredSession.chatMessages)) {
-        restoredViewState = {
-          ...restoredViewState,
-          stateSnapshot: {
-            ...snapshot,
-            chatMessages: restoredSession.chatMessages
-          }
-        };
-      }
-    }
-
-    const newSession = await prisma.$transaction(async (tx) => {
-      const sessionRecord = await tx.session.create({
-        data: {
-          visitorId: options.visitorId || "legacy",
-          title: restoredSession.title || "导入的会话",
-          isDemo: restoredSession.isDemo || false,
-          viewState: restoredViewState
-        }
-      });
-
-      if (storedAssets.length) {
-        await tx.asset.createMany({
-          data: storedAssets.map((a) => ({ ...a, sessionId: sessionRecord.id }))
-        });
-      }
-
-      if (restoredSession.nodes?.length) {
-        await tx.node.createMany({
-          data: restoredSession.nodes.map((n) => ({
-            sessionId: sessionRecord.id,
-            nodeId: n.nodeId,
-            type: n.type,
-            x: n.x,
-            y: n.y,
-            width: n.width || 318,
-            height: n.height || 220,
-            data: n.data || {},
-            collapsed: n.collapsed || false
-          }))
-        });
-      }
-
-      if (restoredSession.links?.length) {
-        await tx.link.createMany({
-          data: restoredSession.links.map((l) => ({
-            sessionId: sessionRecord.id,
-            fromNodeId: l.fromNodeId,
-            toNodeId: l.toNodeId,
-            kind: l.kind || "option"
-          }))
-        });
-      }
-
-      const chatMessages = (restoredSession.chatMessages || []).map((m) => ({
-        sessionId: sessionRecord.id,
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: typeof m.content === "string" ? m.content : "",
-        thinkingContent: typeof m.thinkingContent === "string" ? m.thinkingContent : null,
-        references: Array.isArray(m.references) ? m.references : null
-      })).filter((m) => m.content);
-      if (chatMessages.length) {
-        await tx.chatMessage.createMany({
-          data: chatMessages
-        });
-      }
-
-      return sessionRecord;
+    const result = await importSessionPayload(body, {
+      ...options,
+      conflictStrategy: body?.conflictStrategy
     });
-
-    return sendJson(res, 200, {
-      ok: true,
-      sessionId: newSession.id,
-      title: newSession.title,
-      createdAt: newSession.createdAt
-    });
+    return sendJson(res, 200, result);
   } catch (error) {
     console.error("[handleImportSession]", error);
-    return sendJson(res, 500, { error: error.message || "Failed to import session" });
+    return sendJson(res, error.status || 500, { error: error.message || "Failed to import session" });
+  }
+}
+
+/**
+ * POST /api/import/batch
+ */
+export async function handleBatchImport(body, res, options = {}) {
+  try {
+    const packages = Array.isArray(body) ? body : (Array.isArray(body?.packages) ? body.packages : []);
+    if (!packages.length) {
+      return sendJson(res, 400, { error: "packages is required" });
+    }
+    if (packages.length > 20) {
+      return sendJson(res, 400, { error: "Batch import supports up to 20 packages at once" });
+    }
+
+    const conflictStrategy = body?.conflictStrategy === "rename" ? "rename" : "duplicate";
+    const results = [];
+    for (const [index, item] of packages.entries()) {
+      const name = typeof item?.name === "string" && item.name.trim()
+        ? item.name.trim().slice(0, 240)
+        : `package-${index + 1}`;
+      try {
+        const result = await importSessionPayload(inputFromBatchPackage(item), {
+          ...options,
+          conflictStrategy
+        });
+        results.push({ name, ...result });
+      } catch (error) {
+        results.push({
+          ok: false,
+          name,
+          error: error.message || "Failed to import package"
+        });
+      }
+    }
+
+    const failedCount = results.filter((item) => !item.ok).length;
+    return sendJson(res, 200, {
+      ok: failedCount === 0,
+      importedCount: results.length - failedCount,
+      failedCount,
+      results
+    });
+  } catch (error) {
+    console.error("[handleBatchImport]", error);
+    return sendJson(res, error.status || 500, { error: error.message || "Failed to batch import sessions" });
   }
 }

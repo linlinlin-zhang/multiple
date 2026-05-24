@@ -9,7 +9,7 @@ import MaterialSortSelect from "./MaterialSortSelect";
 import MaterialEmptyState from "./MaterialEmptyState";
 import FileIcon from "./FileIcon";
 import { Button } from "@/components/ui/button";
-import type { MaterialSort, MaterialItem } from "@/types";
+import type { MaterialSort, MaterialItem, SourceFilter } from "@/types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -56,15 +56,46 @@ function SkeletonGrid() {
   );
 }
 
+function SourceSegment({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: SourceFilter;
+  onChange: (value: SourceFilter) => void;
+  disabled?: boolean;
+}) {
+  const { t } = useI18n();
+  const options: SourceFilter[] = ["all", "user", "system"];
+  return (
+    <div className={`flex h-9 overflow-hidden rounded border border-cabinet-border bg-cabinet-paper ${disabled ? "opacity-50" : ""}`}>
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(option)}
+          className={`px-3 text-xs font-medium transition-colors ${
+            value === option ? "bg-cabinet-ink text-cabinet-paper" : "text-cabinet-inkMuted hover:bg-cabinet-itemBg"
+          }`}
+        >
+          {t(`source.${option}`)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function MaterialLibraryPage() {
   const { t } = useI18n();
   const [searchQuery, setSearchQuery] = useState("");
   const [sort, setSort] = useState<MaterialSort>("added");
   const [favoritedOnly, setFavoritedOnly] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
   const [navigationOpen, setNavigationOpen] = useState(false);
-  const { items, total, loading, error, refetch } = useMaterials(searchQuery, sort, favoritedOnly);
+  const { items, total, loading, error, refetch } = useMaterials(searchQuery, sort, favoritedOnly, sourceFilter);
 
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string; source: MaterialItem["source"] } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [previewItemId, setPreviewItemId] = useState<string | null>(null);
@@ -72,10 +103,14 @@ export default function MaterialLibraryPage() {
 
   const previewItem = previewItemId ? items.find((i) => i.id === previewItemId) || null : null;
 
+  useEffect(() => {
+    if (favoritedOnly && sourceFilter !== "all") setSourceFilter("all");
+  }, [favoritedOnly, sourceFilter]);
+
   const handleDelete = useCallback((id: string) => {
     const item = items.find(i => i.id === id);
     if (item) {
-      setDeleteTarget({ id: item.id, name: item.fileName });
+      setDeleteTarget({ id: item.id, name: item.fileName, source: item.source });
     }
   }, [items]);
 
@@ -96,6 +131,8 @@ export default function MaterialLibraryPage() {
   }, [deleteTarget, refetch, t]);
 
   const handleRename = useCallback(async (id: string, fileName: string) => {
+    const item = items.find((entry) => entry.id === id);
+    if (item?.source === "system") return;
     try {
       const res = await fetch(`/api/materials/${id}`, {
         method: "PUT",
@@ -111,9 +148,11 @@ export default function MaterialLibraryPage() {
       console.error("Rename failed:", err);
       alert(t("library.renameFailed"));
     }
-  }, [refetch, t]);
+  }, [items, refetch, t]);
 
   const handleToggleFavorite = useCallback(async (id: string, favorited: boolean) => {
+    const item = items.find((entry) => entry.id === id);
+    if (item?.source === "system") return;
     try {
       const res = await fetch(`/api/materials/${id}`, {
         method: "PUT",
@@ -128,6 +167,17 @@ export default function MaterialLibraryPage() {
     } catch (err) {
       console.error("Favorite toggle failed:", err);
       alert(t("library.favoriteFailed"));
+    }
+  }, [items, refetch, t]);
+
+  const handleRestore = useCallback(async (id: string) => {
+    try {
+      const res = await fetch(`/api/materials/${id}/restore`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      refetch();
+    } catch (err) {
+      console.error("Restore failed:", err);
+      alert(t("library.restoreFailed"));
     }
   }, [refetch, t]);
 
@@ -236,6 +286,7 @@ export default function MaterialLibraryPage() {
                 <span className="text-xs text-cabinet-inkMuted hidden sm:inline">{t("library.sortBy")}</span>
                 <MaterialSortSelect value={sort} onChange={setSort} />
               </div>
+              <SourceSegment value={sourceFilter} onChange={setSourceFilter} disabled={favoritedOnly} />
             </div>
 
             {/* Item count */}
@@ -267,6 +318,7 @@ export default function MaterialLibraryPage() {
                 onDelete={handleDelete}
                 onRename={handleRename}
                 onToggleFavorite={handleToggleFavorite}
+                onRestore={handleRestore}
                 onPreview={handlePreview}
               />
             )}
@@ -281,6 +333,7 @@ export default function MaterialLibraryPage() {
             <AlertDialogTitle>{t("library.deleteConfirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
               {t("library.deleteConfirmDesc", { name: deleteTarget?.name || "" })}
+              {deleteTarget?.source === "system" ? ` ${t("library.hideSystemHint")}` : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -290,7 +343,7 @@ export default function MaterialLibraryPage() {
               disabled={deleting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {deleting ? "..." : t("library.delete")}
+              {deleting ? "..." : (deleteTarget?.source === "system" ? t("library.hideSystem") : t("library.delete"))}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

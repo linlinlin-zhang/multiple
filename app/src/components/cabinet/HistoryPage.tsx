@@ -1,15 +1,35 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSession } from "../../hooks/useHistory";
 import AssetSidebar from "./AssetSidebar";
 import AssetDetailPane from "./AssetDetailPane";
 import NodeGraphThumbnail from "./NodeGraphThumbnail";
 import { useI18n } from "@/lib/i18n";
-import { Menu, X } from "lucide-react";
+import { Copy, Download, Share2, Trash2, Menu, X } from "lucide-react";
 import type { Asset, OutputKind, SessionDetail } from "@/types";
 
 interface HistoryPageProps {
   sessionId: string | null;
   outputKind: OutputKind;
+}
+
+interface ExportPreview {
+  title: string;
+  nodeCount: number;
+  linkCount: number;
+  assetCount: number;
+  chatMessageCount: number;
+  estimatedAssetBytes: number;
+  warnings?: Array<{ type: string; count?: number; message?: string }>;
+}
+
+interface ShareLink {
+  token: string;
+  type: "session" | "image";
+  shareUrl: string;
+  createdAt: string;
+  expiresAt: string | null;
+  accessCount: number;
+  lastAccessedAt: string | null;
 }
 
 function SkeletonHistoryPage() {
@@ -149,6 +169,13 @@ function getFirstOutputId(session: SessionDetail | null, outputKind: OutputKind)
   return outputIdsForKind(session, outputKind)?.[0] ?? null;
 }
 
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function isOutputIdForKind(session: SessionDetail | null, outputKind: OutputKind, id: string | null) {
   if (!id) return false;
   return Boolean(outputIdsForKind(session, outputKind)?.includes(id));
@@ -158,6 +185,10 @@ export default function HistoryPage({ sessionId, outputKind }: HistoryPageProps)
   const { session, loading, error, refetch } = useSession(sessionId);
   const [selectedAssetIdIntent, setSelectedAssetIdIntent] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [exportPreview, setExportPreview] = useState<ExportPreview | null>(null);
+  const [shares, setShares] = useState<ShareLink[]>([]);
+  const [shareExpiry, setShareExpiry] = useState("30");
+  const [shareBusy, setShareBusy] = useState(false);
   const { t } = useI18n();
   const nodeCount = session?.nodeCount ?? session?.nodes.length ?? 0;
   const assetCount = session?.assetCount ?? session?.assets.length ?? 0;
@@ -167,6 +198,82 @@ export default function HistoryPage({ sessionId, outputKind }: HistoryPageProps)
     ? selectedAssetIdIntent
     : firstOutputId;
   const showBlueprint = Boolean(session && selectedAssetId && selectedAssetId === firstOutputId);
+  const canManageShares = Boolean(session && session.source !== "system" && !session.hidden);
+
+  useEffect(() => {
+    setExportPreview(null);
+    setShares([]);
+    if (!session?.id) return;
+    let cancelled = false;
+
+    fetch(`/api/sessions/${session.id}/export/preview`)
+      .then(async (res) => {
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+        if (!cancelled) setExportPreview(data);
+      })
+      .catch(() => {
+        if (!cancelled) setExportPreview(null);
+      });
+
+    if (session.source !== "system") {
+      fetch(`/api/sessions/${session.id}/shares`)
+        .then(async (res) => {
+          const data = await res.json();
+          if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+          if (!cancelled) setShares(data.shares || []);
+        })
+        .catch(() => {
+          if (!cancelled) setShares([]);
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.id, session?.source]);
+
+  const refreshShares = async () => {
+    if (!session?.id || !canManageShares) return;
+    const res = await fetch(`/api/sessions/${session.id}/shares`);
+    const data = await res.json();
+    if (res.ok) setShares(data.shares || []);
+  };
+
+  const createShare = async () => {
+    if (!session?.id || !canManageShares) return;
+    setShareBusy(true);
+    try {
+      const expiresInDays = shareExpiry === "never" ? null : Number(shareExpiry);
+      const res = await fetch(`/api/sessions/${session.id}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ expiresInDays })
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      const fullUrl = `${window.location.origin}${data.shareUrl}`;
+      await navigator.clipboard?.writeText(fullUrl).catch(() => undefined);
+      await refreshShares();
+    } catch (shareError) {
+      console.error("Create share failed", shareError);
+      alert(t("share.createFailed"));
+    } finally {
+      setShareBusy(false);
+    }
+  };
+
+  const deleteShare = async (token: string) => {
+    if (!canManageShares) return;
+    try {
+      const res = await fetch(`/api/share/${token}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await refreshShares();
+    } catch (shareError) {
+      console.error("Delete share failed", shareError);
+      alert(t("share.deleteFailed"));
+    }
+  };
 
   if (loading && !session) {
     return <SkeletonHistoryPage />;
@@ -250,6 +357,8 @@ export default function HistoryPage({ sessionId, outputKind }: HistoryPageProps)
                   <span>{nodeCount} {t("history.nodeCount")}</span>
                   <span>·</span>
                   <span>{assetCount} {t("history.assetCount")}</span>
+                  <span>·</span>
+                  <span>{session.source === "system" ? t("source.system") : t("source.user")}</span>
                 </div>
               </div>
               <a
@@ -258,6 +367,91 @@ export default function HistoryPage({ sessionId, outputKind }: HistoryPageProps)
               >
                 {t("cabinet.openInCanvas")}
               </a>
+            </div>
+            <div className="mt-5 rounded-lg border border-cabinet-border bg-cabinet-itemBg/55 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <a
+                  href={`/api/sessions/${session.id}/export`}
+                  className="inline-flex h-8 items-center gap-1.5 rounded border border-cabinet-border bg-cabinet-paper px-3 text-xs font-medium text-cabinet-ink hover:bg-cabinet-bg"
+                >
+                  <Download size={14} />
+                  {t("history.export")}
+                </a>
+                <span className="text-xs text-cabinet-inkMuted">
+                  {exportPreview
+                    ? t("history.exportPreviewStats", {
+                        nodes: exportPreview.nodeCount,
+                        assets: exportPreview.assetCount,
+                        chats: exportPreview.chatMessageCount,
+                        size: formatBytes(exportPreview.estimatedAssetBytes)
+                      })
+                    : t("history.exportPreviewLoading")}
+                </span>
+                <div className="flex-1" />
+                {canManageShares && (
+                  <>
+                    <select
+                      value={shareExpiry}
+                      onChange={(event) => setShareExpiry(event.target.value)}
+                      className="h-8 rounded border border-cabinet-border bg-cabinet-paper px-2 text-xs text-cabinet-ink outline-none"
+                      aria-label={t("share.expires")}
+                    >
+                      <option value="7">{t("share.expiry7")}</option>
+                      <option value="30">{t("share.expiry30")}</option>
+                      <option value="90">{t("share.expiry90")}</option>
+                      <option value="never">{t("share.expiryNever")}</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={createShare}
+                      disabled={shareBusy}
+                      className="inline-flex h-8 items-center gap-1.5 rounded bg-cabinet-ink px-3 text-xs font-medium text-cabinet-paper hover:bg-cabinet-ink2 disabled:opacity-50"
+                    >
+                      <Share2 size={14} />
+                      {shareBusy ? t("share.creating") : t("share.create")}
+                    </button>
+                  </>
+                )}
+              </div>
+              {canManageShares && shares.length > 0 && (
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs font-medium text-cabinet-ink">
+                    {t("share.links")} ({shares.length})
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    {shares.map((share) => {
+                      const fullUrl = `${window.location.origin}${share.shareUrl}`;
+                      return (
+                        <div key={share.token} className="flex flex-wrap items-center gap-2 rounded border border-cabinet-border bg-cabinet-paper px-3 py-2 text-xs text-cabinet-inkMuted">
+                          <span className="font-medium text-cabinet-ink">{share.type === "image" ? t("share.imageType") : t("share.sessionType")}</span>
+                          <span>{t("share.visits", { count: share.accessCount || 0 })}</span>
+                          <span>{share.expiresAt ? `${t("share.expires")} ${new Date(share.expiresAt).toLocaleDateString()}` : t("share.expiryNever")}</span>
+                          {share.lastAccessedAt && <span>{t("share.lastAccessed")} {new Date(share.lastAccessedAt).toLocaleString()}</span>}
+                          <div className="flex-1 min-w-[120px] truncate text-cabinet-inkMuted">{fullUrl}</div>
+                          <button
+                            type="button"
+                            onClick={() => navigator.clipboard?.writeText(fullUrl)}
+                            className="flex h-7 w-7 items-center justify-center rounded hover:bg-cabinet-itemBg"
+                            aria-label={t("share.copyLink")}
+                            title={t("share.copyLink")}
+                          >
+                            <Copy size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void deleteShare(share.token)}
+                            className="flex h-7 w-7 items-center justify-center rounded hover:bg-cabinet-itemBg hover:text-[#d53b00]"
+                            aria-label={t("share.delete")}
+                            title={t("share.delete")}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </details>
+              )}
             </div>
           </div>
         )}

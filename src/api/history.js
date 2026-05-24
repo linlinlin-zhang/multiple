@@ -20,9 +20,14 @@ export async function handleListHistory(query, res, options = {}) {
     const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.floor(parsedLimit) : null;
     const offset = Math.max(Number(query?.offset) || 0, 0);
     const includeDemo = query?.includeDemo === "true";
+    const sourceFilter = ["user", "system", "all"].includes(query?.source) ? query.source : "all";
+    const includeHidden = query?.includeHidden === "1" || query?.includeHidden === "true";
     const visitorId = options.visitorId || "legacy";
 
     if (!supportsSystemSessions()) {
+      if (sourceFilter === "system") {
+        return sendJson(res, 200, { ok: true, sessions: [], total: 0 });
+      }
       const where = { visitorId };
       if (!includeDemo) where.isDemo = false;
       const [sessions, total] = await Promise.all([
@@ -67,15 +72,16 @@ export async function handleListHistory(query, res, options = {}) {
     });
     const hiddenIds = hiddenRecords.map(h => h.sessionId);
 
-    const where = {
-      OR: [
-        { visitorId, source: "user" },
-        { source: "system" }
-      ]
-    };
-    if (hiddenIds.length > 0) {
-      where.OR[1].id = { notIn: hiddenIds };
+    const clauses = [];
+    if (sourceFilter !== "system") clauses.push({ visitorId, source: "user" });
+    if (sourceFilter !== "user") {
+      const systemClause = { source: "system" };
+      if (!includeHidden && hiddenIds.length > 0) {
+        systemClause.id = { notIn: hiddenIds };
+      }
+      clauses.push(systemClause);
     }
+    const where = { OR: clauses.length ? clauses : [{ visitorId, source: "user" }] };
     if (!includeDemo) {
       where.OR = where.OR.map(clause => ({ ...clause, isDemo: false }));
     }
@@ -103,7 +109,13 @@ export async function handleListHistory(query, res, options = {}) {
           },
           _count: {
             select: { nodes: true, assets: true }
-          }
+          },
+          hiddenBy: {
+            where: { visitorId },
+            select: { id: true },
+            take: 1
+          },
+          viewState: true
         }
       }),
       prisma.session.count({ where })
@@ -209,6 +221,29 @@ export async function handleDeleteSession(sessionId, res, options = {}) {
       return sendJson(res, 404, { error: "Session not found" });
     }
     return sendJson(res, 500, { error: error.message || "Failed to delete session" });
+  }
+}
+
+export async function handleRestoreSession(sessionId, res, options = {}) {
+  try {
+    if (!sessionId || typeof sessionId !== "string") {
+      return sendJson(res, 400, { error: "sessionId is required" });
+    }
+
+    if (!supportsSystemSessions()) {
+      return sendJson(res, 200, { ok: true });
+    }
+
+    await prisma.sessionHidden.deleteMany({
+      where: {
+        visitorId: options.visitorId || "legacy",
+        sessionId
+      }
+    });
+    return sendJson(res, 200, { ok: true });
+  } catch (error) {
+    console.error("[handleRestoreSession]", error);
+    return sendJson(res, 500, { error: error.message || "Failed to restore session" });
   }
 }
 
@@ -318,6 +353,7 @@ function formatHistorySession(session) {
       : session.title,
     isDemo: session.isDemo,
     source,
+    hidden: Boolean(session.hiddenBy?.length),
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     nodeCount: source === "system"

@@ -2,6 +2,8 @@ export interface HistorySession {
   id: string;
   title: string;
   isDemo: boolean;
+  source?: "user" | "system";
+  hidden?: boolean;
   createdAt: string;
   updatedAt: string;
   nodeCount: number;
@@ -150,11 +152,13 @@ export interface MaterialItem {
   filePath: string;
   favorited: boolean;
   source: "user" | "system";
+  hidden?: boolean;
   addedAt: string;
   updatedAt: string;
 }
 
 export type MaterialSort = "date" | "added" | "name" | "size";
+export type SourceFilter = "all" | "user" | "system";
 
 export interface MaterialsResponse {
   ok: boolean;

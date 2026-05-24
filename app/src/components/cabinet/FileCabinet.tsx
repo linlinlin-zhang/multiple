@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import FolderTab from "./FolderTab";
 import { useHistory } from "../../hooks/useHistory";
 import HistoryPage from "./HistoryPage";
 import AppNavigation from "@/components/AppNavigation";
 import { useI18n } from "@/lib/i18n";
-import { Clock, FileText, Globe2, Image, Menu, MessageSquare, Search, Trash2, Video, X } from "lucide-react";
-import type { HistorySession, OutputKind } from "@/types";
+import { Clock, FileText, Globe2, Image, Menu, MessageSquare, RotateCcw, Search, Trash2, Upload, Video, X } from "lucide-react";
+import type { HistorySession, OutputKind, SourceFilter } from "@/types";
 
 const OUTPUT_TABS: { kind: OutputKind; labelKey: string; icon: ReactNode }[] = [
   { kind: "image", labelKey: "history.tabImages", icon: <Image size={16} /> },
@@ -23,6 +23,73 @@ function Spinner() {
   );
 }
 
+function fileToBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = String(reader.result || "");
+      resolve(value.includes(",") ? value.split(",")[1] : value);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function isZipFile(file: File) {
+  return /\.zip$/i.test(file.name) || /zip|octet-stream/i.test(file.type || "");
+}
+
+async function previewImportFile(file: File) {
+  const res = isZipFile(file)
+    ? await fetch("/api/import/preview", {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/zip" },
+        body: file
+      })
+    : await fetch("/api/import/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: await file.text()
+      });
+  const data = await res.json();
+  if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+  return data;
+}
+
+async function batchPackageFromFile(file: File) {
+  if (isZipFile(file)) {
+    return { name: file.name, archiveBase64: await fileToBase64(file) };
+  }
+  return { name: file.name, payload: JSON.parse(await file.text()) };
+}
+
+function SourceSegment({
+  value,
+  onChange,
+}: {
+  value: SourceFilter;
+  onChange: (value: SourceFilter) => void;
+}) {
+  const { t } = useI18n();
+  const options: SourceFilter[] = ["all", "user", "system"];
+  return (
+    <div className="mt-4 flex h-9 overflow-hidden rounded border border-cabinet-border bg-cabinet-paper">
+      {options.map((option) => (
+        <button
+          key={option}
+          type="button"
+          onClick={() => onChange(option)}
+          className={`flex-1 px-3 text-xs font-medium transition-colors ${
+            value === option ? "bg-cabinet-ink text-cabinet-paper" : "text-cabinet-inkMuted hover:bg-cabinet-itemBg"
+          }`}
+        >
+          {t(`source.${option}`)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface SessionListProps {
   sessions: HistorySession[];
   activeSessionId: string | null;
@@ -33,9 +100,14 @@ interface SessionListProps {
   onSearchChange: (value: string) => void;
   onSearchOpenChange: (open: boolean) => void;
   onOpenNavigation: () => void;
+  onImportClick: () => void;
   onSelect: (id: string) => void;
   onRename: (id: string, title: string) => Promise<void> | void;
   onDelete: (id: string, title: string) => Promise<void> | void;
+  onRestore: (id: string) => Promise<void> | void;
+  sourceFilter: SourceFilter;
+  onSourceFilterChange: (value: SourceFilter) => void;
+  importing: boolean;
 }
 
 function SessionList({
@@ -48,9 +120,14 @@ function SessionList({
   onSearchChange,
   onSearchOpenChange,
   onOpenNavigation,
+  onImportClick,
   onSelect,
   onRename,
   onDelete,
+  onRestore,
+  sourceFilter,
+  onSourceFilterChange,
+  importing,
 }: SessionListProps) {
   const { t } = useI18n();
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -75,19 +152,31 @@ function SessionList({
         >
           <Menu size={19} className="text-cabinet-ink2" />
         </button>
-        <button
-          type="button"
-          onClick={() => onSearchOpenChange(!searchOpen)}
-          className={`flex h-9 w-9 items-center justify-center rounded hover:bg-cabinet-paper ${
-            searchOpen ? "bg-cabinet-paper" : ""
-          }`}
-          aria-controls={searchInputId}
-          aria-expanded={searchOpen}
-          aria-label={t("history.search")}
-          title={t("history.search")}
-        >
-          <Search size={18} className="text-cabinet-ink2" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={onImportClick}
+            disabled={importing}
+            className="flex h-9 w-9 items-center justify-center rounded hover:bg-cabinet-paper disabled:opacity-50"
+            aria-label={t("history.import")}
+            title={t("history.import")}
+          >
+            <Upload size={18} className="text-cabinet-ink2" />
+          </button>
+          <button
+            type="button"
+            onClick={() => onSearchOpenChange(!searchOpen)}
+            className={`flex h-9 w-9 items-center justify-center rounded hover:bg-cabinet-paper ${
+              searchOpen ? "bg-cabinet-paper" : ""
+            }`}
+            aria-controls={searchInputId}
+            aria-expanded={searchOpen}
+            aria-label={t("history.search")}
+            title={t("history.search")}
+          >
+            <Search size={18} className="text-cabinet-ink2" />
+          </button>
+        </div>
       </div>
 
       <div className="px-6 pb-4 flex-shrink-0">
@@ -117,6 +206,7 @@ function SessionList({
             )}
           </label>
         )}
+        <SourceSegment value={sourceFilter} onChange={onSourceFilterChange} />
       </div>
 
       <div className="flex-1 overflow-y-auto cabinet-scrollbar pb-4">
@@ -134,10 +224,12 @@ function SessionList({
           sessions.map((session) => {
             const active = activeSessionId === session.id;
             const editing = editingId === session.id;
+            const isSystem = session.source === "system";
+            const isHidden = Boolean(session.hidden);
             const commitRename = async () => {
               const next = draftTitle.trim();
               setEditingId(null);
-              if (next && next !== session.title) {
+              if (!isSystem && next && next !== session.title) {
                 await onRename(session.id, next);
               }
             };
@@ -154,20 +246,24 @@ function SessionList({
                   tabIndex={0}
                   onClick={(event) => {
                     event.stopPropagation();
-                    void onDelete(session.id, session.title || t("session.unnamed"));
+                    if (isHidden) void onRestore(session.id);
+                    else void onDelete(session.id, session.title || t("session.unnamed"));
                   }}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
                       event.stopPropagation();
-                      void onDelete(session.id, session.title || t("session.unnamed"));
+                      if (isHidden) void onRestore(session.id);
+                      else void onDelete(session.id, session.title || t("session.unnamed"));
                     }
                   }}
-                  className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-cabinet-paper text-cabinet-inkMuted opacity-0 shadow-sm ring-1 ring-cabinet-border transition hover:text-[#d53b00] group-hover:opacity-100 focus:opacity-100"
-                  aria-label={t("history.delete")}
-                  title={t("history.delete")}
+                  className={`absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-cabinet-paper text-cabinet-inkMuted shadow-sm ring-1 ring-cabinet-border transition group-hover:opacity-100 focus:opacity-100 ${
+                    isHidden ? "opacity-100 hover:text-cabinet-blue" : "opacity-0 hover:text-[#d53b00]"
+                  }`}
+                  aria-label={isHidden ? t("history.restore") : (isSystem ? t("history.hideSystem") : t("history.delete"))}
+                  title={isHidden ? t("history.restore") : (isSystem ? t("history.hideSystem") : t("history.delete"))}
                 >
-                  <Trash2 size={14} />
+                  {isHidden ? <RotateCcw size={14} /> : <Trash2 size={14} />}
                 </span>
                 {active && <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-cabinet-ink" />}
                 <div className="flex items-start gap-3">
@@ -196,15 +292,26 @@ function SessionList({
                       <div
                         className="text-[15px] font-medium text-cabinet-ink truncate cursor-text"
                         onDoubleClick={(event) => {
+                          if (isSystem) return;
                           event.stopPropagation();
                           setDraftTitle(session.title || "");
                           setEditingId(session.id);
                         }}
-                        title={t("history.rename")}
+                        title={isSystem ? session.title : t("history.rename")}
                       >
                         {session.title || t("session.unnamed")}
                       </div>
                     )}
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <span className="rounded border border-cabinet-border bg-cabinet-paper px-1.5 py-0.5 text-[11px] text-cabinet-inkMuted">
+                        {isSystem ? t("source.system") : t("source.user")}
+                      </span>
+                      {isHidden && (
+                        <span className="rounded border border-cabinet-border bg-cabinet-paper px-1.5 py-0.5 text-[11px] text-cabinet-inkMuted">
+                          {t("source.hidden")}
+                        </span>
+                      )}
+                    </div>
                     <div className="mt-1 text-[13px] text-cabinet-inkMuted truncate">
                       {new Date(session.updatedAt || session.createdAt).toLocaleString()}
                     </div>
@@ -223,13 +330,16 @@ function SessionList({
 }
 
 export default function FileCabinet() {
-  const { sessions, loading, error, refetch } = useHistory(null, 0, false);
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const { sessions, loading, error, refetch } = useHistory(null, 0, false, sourceFilter, sourceFilter === "system");
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [activeOutputKind, setActiveOutputKind] = useState<OutputKind>("image");
   const [mobileSessionsOpen, setMobileSessionsOpen] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const { t } = useI18n();
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const filteredSessions = normalizedSearch
@@ -287,9 +397,75 @@ export default function FileCabinet() {
     }
   };
 
+  const handleSessionRestore = async (id: string) => {
+    try {
+      const response = await fetch(`/api/sessions/${id}/restore`, { method: "POST" });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || response.statusText);
+      }
+      await refetch();
+    } catch (restoreError) {
+      console.error("Failed to restore session", restoreError);
+      alert(t("history.restoreFailed"));
+    }
+  };
+
+  const handleImportFiles = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setImporting(true);
+    try {
+      const previews = [];
+      for (const file of files.slice(0, 20)) {
+        previews.push({ fileName: file.name, preview: await previewImportFile(file) });
+      }
+      const lines = previews.map(({ fileName, preview }) => {
+        const conflictText = preview.conflicts?.length ? `, ${t("history.importConflicts", { count: preview.conflicts.length })}` : "";
+        return `${fileName}: ${preview.title} · ${preview.nodeCount} ${t("history.nodeCount")} · ${preview.assetCount} ${t("history.assetCount")}${conflictText}`;
+      });
+      const confirmed = window.confirm(`${t("history.importPreviewTitle")}\n\n${lines.join("\n")}\n\n${t("history.importPreviewConfirm")}`);
+      if (!confirmed) return;
+
+      const packages = [];
+      for (const file of files.slice(0, 20)) {
+        packages.push(await batchPackageFromFile(file));
+      }
+      const response = await fetch("/api/import/batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ packages, conflictStrategy: "rename" })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || response.statusText);
+      if (data.failedCount) {
+        const failed = data.results?.filter((item: { ok?: boolean }) => !item.ok).map((item: { name?: string; error?: string }) => `${item.name}: ${item.error}`).join("\n");
+        alert(`${t("history.importPartialFailed")}\n${failed || ""}`);
+      }
+      const firstImported = data.results?.find((item: { ok?: boolean; sessionId?: string }) => item.ok && item.sessionId);
+      if (firstImported?.sessionId) setActiveSessionId(firstImported.sessionId);
+      await refetch();
+    } catch (importError) {
+      console.error("Import failed", importError);
+      alert(t("history.importFailed") + (importError instanceof Error ? `: ${importError.message}` : ""));
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  };
+
   return (
     <div className="h-screen overflow-hidden bg-cabinet-bg p-3 md:p-7">
       <AppNavigation activePage="history" open={navigationOpen} onClose={() => setNavigationOpen(false)} />
+      <input
+        ref={importInputRef}
+        type="file"
+        multiple
+        accept=".zip,.json,application/zip,application/x-zip-compressed,application/json"
+        className="hidden"
+        onChange={handleImportFiles}
+        aria-hidden="true"
+      />
       {mobileSessionsOpen && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
           <div
@@ -317,9 +493,14 @@ export default function FileCabinet() {
               onSearchChange={setSearchQuery}
               onSearchOpenChange={setSearchOpen}
               onOpenNavigation={() => setNavigationOpen(true)}
+              onImportClick={() => importInputRef.current?.click()}
               onSelect={handleSessionSelect}
               onRename={handleSessionRename}
               onDelete={handleSessionDelete}
+              onRestore={handleSessionRestore}
+              sourceFilter={sourceFilter}
+              onSourceFilterChange={setSourceFilter}
+              importing={importing}
             />
           </div>
         </div>
@@ -337,9 +518,14 @@ export default function FileCabinet() {
             onSearchChange={setSearchQuery}
             onSearchOpenChange={setSearchOpen}
             onOpenNavigation={() => setNavigationOpen(true)}
+            onImportClick={() => importInputRef.current?.click()}
             onSelect={handleSessionSelect}
             onRename={handleSessionRename}
             onDelete={handleSessionDelete}
+            onRestore={handleSessionRestore}
+            sourceFilter={sourceFilter}
+            onSourceFilterChange={setSourceFilter}
+            importing={importing}
           />
         </aside>
 

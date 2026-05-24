@@ -38,6 +38,15 @@ async function request(method, path, body) {
   return { status: res.status, data };
 }
 
+async function fetchWithCookies(path, opts = {}) {
+  const headers = { ...(opts.headers || {}) };
+  const cookieHeader = serializeCookies();
+  if (cookieHeader) headers.Cookie = cookieHeader;
+  const res = await fetch(BASE_URL + path, { ...opts, headers });
+  captureCookies(res);
+  return res;
+}
+
 function captureCookies(res) {
   const setCookies = typeof res.headers.getSetCookie === "function"
     ? res.headers.getSetCookie()
@@ -207,7 +216,88 @@ async function main() {
     else fail("Session update verify failed: scale=" + (gd?.viewState?.scale));
   }
 
-  // Test 8: Asset dedup
+  // Test 8: Import/export/share management
+  if (sessionId) {
+    const preview = await request("GET", "/api/sessions/" + sessionId + "/export/preview");
+    if (preview.status === 200 && preview.data?.ok === true && preview.data.nodeCount === 1) {
+      log("Export preview: PASS (nodes=" + preview.data.nodeCount + ", assets=" + preview.data.assetCount + ")");
+    } else {
+      fail("Export preview failed: status=" + preview.status);
+    }
+
+    const share = await request("POST", "/api/sessions/" + sessionId + "/share", { expiresInDays: 7 });
+    const shareToken = share.data?.token;
+    if (share.status === 200 && share.data?.ok === true && shareToken && share.data.expiresAt) {
+      log("Share create with expiry: PASS");
+    } else {
+      fail("Share create with expiry failed: status=" + share.status);
+    }
+
+    if (shareToken) {
+      const view = await request("GET", "/api/share/" + shareToken);
+      if (view.status === 200 && view.data?.ok === true && view.data.accessCount >= 1) {
+        log("Share access stats increment: PASS (accessCount=" + view.data.accessCount + ")");
+      } else {
+        fail("Share access stats failed: status=" + view.status);
+      }
+
+      const listed = await request("GET", "/api/sessions/" + sessionId + "/shares");
+      const listedShare = listed.data?.shares?.find((item) => item.token === shareToken);
+      if (listed.status === 200 && listedShare?.accessCount >= 1) {
+        log("Share list stats: PASS");
+      } else {
+        fail("Share list stats failed: status=" + listed.status);
+      }
+    }
+
+    const exported = await fetchWithCookies("/api/sessions/" + sessionId + "/export");
+    const archiveBuffer = Buffer.from(await exported.arrayBuffer());
+    if (exported.status === 200 && archiveBuffer.length > 100) {
+      log("Session export archive: PASS (" + archiveBuffer.length + " bytes)");
+    } else {
+      fail("Session export archive failed: status=" + exported.status);
+    }
+
+    if (archiveBuffer.length > 0) {
+      const importPreviewRes = await fetchWithCookies("/api/import/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/zip" },
+        body: archiveBuffer
+      });
+      const importPreview = await importPreviewRes.json();
+      if (importPreviewRes.status === 200 && importPreview?.ok === true && importPreview.title) {
+        log("Import preview: PASS (title=" + importPreview.title + ")");
+      } else {
+        fail("Import preview failed: status=" + importPreviewRes.status);
+      }
+
+      const batch = await request("POST", "/api/import/batch", {
+        packages: [{ name: "copy.zip", archiveBase64: archiveBuffer.toString("base64") }],
+        conflictStrategy: "rename"
+      });
+      if (batch.status === 200 && batch.data?.importedCount === 1 && batch.data.results?.[0]?.sessionId) {
+        log("Batch import with conflict rename: PASS (id=" + batch.data.results[0].sessionId + ")");
+      } else {
+        fail("Batch import failed: status=" + batch.status);
+      }
+    }
+
+    const historySystem = await request("GET", "/api/history?source=system&includeHidden=1");
+    if (historySystem.status === 200 && historySystem.data?.ok === true && Array.isArray(historySystem.data.sessions)) {
+      log("System history management list: PASS");
+    } else {
+      fail("System history management list failed: status=" + historySystem.status);
+    }
+
+    const materialSystem = await request("GET", "/api/materials?source=system&includeHidden=1");
+    if (materialSystem.status === 200 && materialSystem.data?.ok === true && Array.isArray(materialSystem.data.items)) {
+      log("System material management list: PASS");
+    } else {
+      fail("System material management list failed: status=" + materialSystem.status);
+    }
+  }
+
+  // Test 9: Asset dedup
   {
     const smallJpeg = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAn/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCHwAB//9k=";
     const r1 = await request("POST", "/api/assets", { dataUrl: smallJpeg, kind: "upload" });

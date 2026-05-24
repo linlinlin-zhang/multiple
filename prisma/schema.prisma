@@ -93,10 +93,13 @@ model ShareToken {
   token        String   @unique @default(uuid())
   createdAt    DateTime @default(now())
   expiresAt    DateTime?
+  accessCount  Int      @default(0)
+  lastAccessedAt DateTime?
   snapshotData Json?    // immutable frozen session state
 
   @@index([token])
   @@index([sessionId])
+  @@index([sessionId, createdAt])
 }
 
 model SessionHidden {

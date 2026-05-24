@@ -1,12 +1,12 @@
 import { handleGetAsset, handleStoreAsset } from "../api/assets.js";
 import { handleContextIngest, handleContextRetrieve, handleContextStats, handleContextWipe } from "../api/context.js";
 import { handleAskFileQuestion, handleCreateFileUnderstanding, handleGetFileUnderstanding, handleGetFileUnderstandingJob } from "../api/fileUnderstanding.js";
-import { handleDeleteSession, handleListHistory, handleRenameSession } from "../api/history.js";
-import { handleImportSession } from "../api/import.js";
-import { handleCreateMaterial, handleDeleteMaterial, handleGetMaterialFile, handleListMaterials, handleUpdateMaterial } from "../api/materials.js";
-import { handleCreateSession, handleExportSession, handleGetSession, handleUpdateSession } from "../api/sessions.js";
+import { handleDeleteSession, handleListHistory, handleRenameSession, handleRestoreSession } from "../api/history.js";
+import { handleBatchImport, handleImportSession, handlePreviewImport } from "../api/import.js";
+import { handleCreateMaterial, handleDeleteMaterial, handleGetMaterialFile, handleListMaterials, handleRestoreMaterial, handleUpdateMaterial } from "../api/materials.js";
+import { handleCreateSession, handleExportPreview, handleExportSession, handleGetSession, handleUpdateSession } from "../api/sessions.js";
 import { handleGetSettings, handleUpdateSettings } from "../api/settings.js";
-import { handleCreateImageShare, handleCreateShare, handleGetImageShare, handleGetShare } from "../api/share.js";
+import { handleCreateImageShare, handleCreateShare, handleDeleteShare, handleGetImageShare, handleGetShare, handleListSessionShares } from "../api/share.js";
 import { resolveVisitor } from "../lib/visitor.js";
 import { readBodyBuffer, readJson, sendJson } from "./http.js";
 
@@ -135,6 +135,10 @@ export function createRequestHandler({
         const body = await readJson(req, { maxBodyBytes });
         return await handleCreateSession(body, res, visitor);
       }
+      if (req.method === "GET" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/export/preview")) {
+        const id = url.pathname.split("/")[3];
+        return await handleExportPreview(id, res, visitor);
+      }
       if (req.method === "GET" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/export")) {
         const id = url.pathname.split("/")[3];
         return await handleExportSession(id, res, visitor);
@@ -153,6 +157,19 @@ export function createRequestHandler({
         return await handleDeleteSession(id, res, visitor);
       }
 
+      if (req.method === "POST" && url.pathname === "/api/import/preview") {
+        const contentType = String(req.headers["content-type"] || "").toLowerCase();
+        const body = /zip|octet-stream/i.test(contentType)
+          ? await readBodyBuffer(req, { maxBodyBytes })
+          : await readJson(req, { maxBodyBytes });
+        return await handlePreviewImport(body, res, visitor);
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/import/batch") {
+        const body = await readJson(req, { maxBodyBytes });
+        return await handleBatchImport(body, res, visitor);
+      }
+
       if (req.method === "POST" && url.pathname === "/api/import") {
         const contentType = String(req.headers["content-type"] || "").toLowerCase();
         const body = /zip|octet-stream/i.test(contentType)
@@ -161,9 +178,18 @@ export function createRequestHandler({
         return await handleImportSession(body, res, visitor);
       }
 
+      if (req.method === "GET" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/shares")) {
+        const id = url.pathname.split("/")[3];
+        return await handleListSessionShares(id, res, visitor);
+      }
       if (req.method === "POST" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/share")) {
         const id = url.pathname.split("/")[3];
-        return await handleCreateShare(id, res, visitor);
+        const body = await readJson(req, { maxBodyBytes });
+        return await handleCreateShare(id, body, res, visitor);
+      }
+      if (req.method === "DELETE" && url.pathname.startsWith("/api/share/")) {
+        const token = url.pathname.split("/")[3];
+        return await handleDeleteShare(token, res, visitor);
       }
       if (req.method === "GET" && url.pathname.startsWith("/api/share/")) {
         const token = url.pathname.split("/")[3];
@@ -186,6 +212,10 @@ export function createRequestHandler({
         const body = await readJson(req, { maxBodyBytes });
         return await handleRenameSession(id, body, res, visitor);
       }
+      if (req.method === "POST" && /^\/api\/sessions\/[^/]+\/restore$/.test(url.pathname)) {
+        const id = url.pathname.split("/")[3];
+        return await handleRestoreSession(id, res, visitor);
+      }
 
       if (req.method === "GET" && url.pathname === "/api/materials") {
         return await handleListMaterials(Object.fromEntries(url.searchParams), res, visitor);
@@ -202,6 +232,10 @@ export function createRequestHandler({
       if (req.method === "DELETE" && /^\/api\/materials\/[^/]+$/.test(url.pathname)) {
         const id = url.pathname.split("/")[3];
         return await handleDeleteMaterial(id, res, visitor);
+      }
+      if (req.method === "POST" && /^\/api\/materials\/[^/]+\/restore$/.test(url.pathname)) {
+        const id = url.pathname.split("/")[3];
+        return await handleRestoreMaterial(id, res, visitor);
       }
       if (req.method === "GET" && /^\/api\/materials\/[^/]+\/file$/.test(url.pathname)) {
         const id = url.pathname.split("/")[3];

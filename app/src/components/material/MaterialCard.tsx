@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, Star, Trash2 } from "lucide-react";
+import { Download, RotateCcw, Star, Trash2 } from "lucide-react";
 import type { MaterialItem } from "@/types";
 import { useI18n } from "@/lib/i18n";
 import FileIcon from "./FileIcon";
@@ -9,6 +9,7 @@ interface MaterialCardProps {
   onDelete: (id: string) => void;
   onRename: (id: string, fileName: string) => Promise<void> | void;
   onToggleFavorite: (id: string, favorited: boolean) => Promise<void> | void;
+  onRestore: (id: string) => Promise<void> | void;
   onPreview?: (id: string) => void;
 }
 
@@ -26,7 +27,7 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function MaterialCard({ item, onDelete, onRename, onToggleFavorite, onPreview }: MaterialCardProps) {
+export default function MaterialCard({ item, onDelete, onRename, onToggleFavorite, onRestore, onPreview }: MaterialCardProps) {
   const { t } = useI18n();
   const isImage = isImageMime(item.mimeType);
   const isVideo = isVideoMime(item.mimeType);
@@ -47,6 +48,8 @@ export default function MaterialCard({ item, onDelete, onRename, onToggleFavorit
   };
 
   const favorited = Boolean(item.favorited);
+  const isSystem = item.source === "system";
+  const isHidden = Boolean(item.hidden);
 
   return (
     <div
@@ -84,29 +87,49 @@ export default function MaterialCard({ item, onDelete, onRename, onToggleFavorit
           >
             <Download size={14} />
           </a>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); void onToggleFavorite(item.id, !favorited); }}
-            className={`flex h-7 w-7 items-center justify-center rounded transition-opacity hover:bg-black/70 ${
-              favorited
-                ? "bg-amber-400/90 text-white opacity-100"
-                : "bg-black/50 text-white opacity-0 group-hover:opacity-100"
-            }`}
-            aria-label={favorited ? t("library.unfavorite") : t("library.favorite")}
-            aria-pressed={favorited}
-            title={favorited ? t("library.unfavorite") : t("library.favorite")}
-          >
-            <Star size={14} fill={favorited ? "currentColor" : "none"} />
-          </button>
+          {!isSystem && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); void onToggleFavorite(item.id, !favorited); }}
+              className={`flex h-7 w-7 items-center justify-center rounded transition-opacity hover:bg-black/70 ${
+                favorited
+                  ? "bg-amber-400/90 text-white opacity-100"
+                  : "bg-black/50 text-white opacity-0 group-hover:opacity-100"
+              }`}
+              aria-label={favorited ? t("library.unfavorite") : t("library.favorite")}
+              aria-pressed={favorited}
+              title={favorited ? t("library.unfavorite") : t("library.favorite")}
+            >
+              <Star size={14} fill={favorited ? "currentColor" : "none"} />
+            </button>
+          )}
         </div>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
-          className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
-          aria-label={t("library.delete")}
-        >
-          <Trash2 size={14} />
-        </button>
+        <div className="absolute right-2 top-2 flex items-center gap-1.5">
+          <span className="rounded bg-black/55 px-2 py-1 text-[11px] font-medium text-white">
+            {isSystem ? t("source.system") : t("source.user")}
+          </span>
+          {isHidden ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); void onRestore(item.id); }}
+              className="flex h-7 w-7 items-center justify-center rounded bg-black/50 text-white opacity-100 transition-opacity hover:bg-black/70"
+              aria-label={t("library.restore")}
+              title={t("library.restore")}
+            >
+              <RotateCcw size={14} />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}
+              className="flex h-7 w-7 items-center justify-center rounded bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
+              aria-label={isSystem ? t("library.hideSystem") : t("library.delete")}
+              title={isSystem ? t("library.hideSystem") : t("library.delete")}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
       </div>
       <div className="px-3 py-2">
         {editing ? (
@@ -133,17 +156,19 @@ export default function MaterialCard({ item, onDelete, onRename, onToggleFavorit
           <div
             className="text-sm font-medium text-cabinet-ink truncate cursor-text"
             onDoubleClick={(event) => {
+              if (isSystem) return;
               event.stopPropagation();
               setDraftName(item.fileName);
               setEditing(true);
             }}
-            title={t("library.rename")}
+            title={isSystem ? item.fileName : t("library.rename")}
           >
             {item.fileName}
           </div>
         )}
-        <div className="text-xs text-cabinet-inkMuted mt-1">
+        <div className="text-xs text-cabinet-inkMuted mt-1 truncate">
           {formatFileSize(item.fileSize)} · {new Date(item.addedAt).toLocaleDateString()}
+          {isHidden ? ` · ${t("source.hidden")}` : ""}
         </div>
       </div>
     </div>

@@ -744,6 +744,120 @@ async function readAssetBuffer(asset) {
   }
 }
 
+function buildExportPayloadBase(session) {
+  return {
+    version: 1,
+    packageVersion: 2,
+    format: "thoughtgrid-session-package",
+    exportedAt: new Date().toISOString(),
+    originalSessionId: session.id,
+    session: {
+      title: session.title,
+      isDemo: session.isDemo,
+      viewState: session.viewState,
+      state: session.viewState?.stateSnapshot || null,
+      nodes: session.nodes.map((n) => ({
+        nodeId: n.nodeId,
+        type: n.type,
+        x: n.x,
+        y: n.y,
+        width: n.width,
+        height: n.height,
+        data: n.data,
+        collapsed: n.collapsed
+      })),
+      links: session.links.map((l) => ({
+        fromNodeId: l.fromNodeId,
+        toNodeId: l.toNodeId,
+        kind: l.kind
+      })),
+      chatMessages: sessionChatMessagesForPayload(session)
+    },
+    assets: []
+  };
+}
+
+function countInlineDataUrls(value) {
+  let count = 0;
+  const visit = (item) => {
+    if (typeof item === "string") {
+      if (/^data:[a-z0-9+/.-]+(?:;[^,]*)?;base64,/i.test(item)) count += 1;
+      return;
+    }
+    if (Array.isArray(item)) return item.forEach(visit);
+    if (item && typeof item === "object") Object.values(item).forEach(visit);
+  };
+  visit(value);
+  return count;
+}
+
+async function buildExportPreview(session, options = {}) {
+  const exportPayload = buildExportPayloadBase(session);
+  const assetRecords = [];
+  for (const asset of session.assets) {
+    addUniqueAssetRecord(assetRecords, {
+      hash: asset.hash,
+      kind: asset.kind,
+      mimeType: asset.mimeType,
+      fileSize: asset.fileSize,
+      fileName: asset.fileName
+    });
+  }
+  collectNodeAssetReferences(exportPayload.session.nodes, assetRecords);
+  const materialReplacements = await collectMaterialUrlAssets(exportPayload.session, assetRecords, options.visitorId);
+  exportPayload.session = replaceStringsDeep(exportPayload.session, materialReplacements);
+  collectApiAssetReferences(exportPayload.session, assetRecords);
+  const inlineDataUrlCount = countInlineDataUrls(exportPayload.session);
+
+  return {
+    ok: true,
+    sessionId: session.id,
+    title: session.title,
+    source: session.source || "user",
+    version: exportPayload.version,
+    packageVersion: exportPayload.packageVersion,
+    nodeCount: exportPayload.session.nodes.length,
+    linkCount: exportPayload.session.links.length,
+    assetCount: assetRecords.length,
+    chatMessageCount: exportPayload.session.chatMessages.length,
+    estimatedAssetBytes: assetRecords.reduce((sum, asset) => sum + (Number(asset.fileSize) || 0), 0),
+    inlineDataUrlCount,
+    warnings: inlineDataUrlCount
+      ? [{ type: "inline-data-url", count: inlineDataUrlCount, message: "Inline data URLs will be converted into package assets during export." }]
+      : []
+  };
+}
+
+async function buildSystemArchivePreview(session) {
+  const archivePath = session.viewState?.systemArchivePath;
+  if (!archivePath) return null;
+  const buffer = await fs.readFile(archivePath);
+  const JSZip = await loadJSZip();
+  const zip = await JSZip.loadAsync(buffer);
+  const sessionFile = zip.file("session.json") || zip.file(/(^|\/)[^/]+\.json$/i)[0];
+  if (!sessionFile) return null;
+  const payload = JSON.parse(await sessionFile.async("string"));
+  const imported = payload.session || {};
+  const assets = Array.isArray(payload.assets) ? payload.assets : [];
+  return {
+    ok: true,
+    sessionId: session.id,
+    title: imported.title || session.title,
+    source: "system",
+    version: Number(payload.version || 1),
+    packageVersion: Number(payload.packageVersion || 1),
+    nodeCount: Array.isArray(imported.nodes) ? imported.nodes.length : Number(session.viewState?.nodeCount || 0),
+    linkCount: Array.isArray(imported.links) ? imported.links.length : 0,
+    assetCount: assets.length,
+    chatMessageCount: Array.isArray(imported.chatMessages) ? imported.chatMessages.length : 0,
+    estimatedAssetBytes: assets.reduce((sum, asset) => sum + (Number(asset?.fileSize) || 0), 0),
+    inlineDataUrlCount: countInlineDataUrls(imported),
+    warnings: assets.some((asset) => asset?.missing)
+      ? [{ type: "missing-assets", count: assets.filter((asset) => asset?.missing).length, message: "Some exported assets are marked missing or unavailable in the package." }]
+      : []
+  };
+}
+
 /**
  * POST /api/sessions
  */
@@ -1161,6 +1275,44 @@ export async function handleUpdateSession(sessionId, body, res, options = {}) {
 }
 
 /**
+ * GET /api/sessions/:id/export/preview
+ */
+export async function handleExportPreview(sessionId, res, options = {}) {
+  try {
+    if (!sessionId || typeof sessionId !== "string") {
+      return sendJson(res, 400, { error: "sessionId is required" });
+    }
+
+    const session = await prisma.session.findFirst({
+      where: { id: sessionId, visitorId: options.visitorId || "legacy" },
+      include: {
+        nodes: true,
+        links: true,
+        assets: true,
+        chatMessages: { orderBy: { createdAt: "asc" } }
+      }
+    });
+
+    if (!session) {
+      const systemSession = await prisma.session.findUnique({ where: { id: sessionId } });
+      if (systemSession?.source === "system" && systemSession.viewState?.systemArchivePath) {
+        const preview = await buildSystemArchivePreview(systemSession);
+        if (preview) return sendJson(res, 200, preview);
+      }
+    }
+
+    if (!session) {
+      return sendJson(res, 404, { error: "Session not found" });
+    }
+
+    return sendJson(res, 200, await buildExportPreview(session, options));
+  } catch (error) {
+    console.error("[handleExportPreview]", error);
+    return sendJson(res, 500, { error: error.message || "Failed to preview export" });
+  }
+}
+
+/**
  * GET /api/sessions/:id/export
  */
 export async function handleExportSession(sessionId, res, options = {}) {
@@ -1204,36 +1356,7 @@ export async function handleExportSession(sessionId, res, options = {}) {
 
     const JSZip = await loadJSZip();
     const zip = new JSZip();
-    const exportPayload = {
-      version: 1,
-      packageVersion: 2,
-      format: "thoughtgrid-session-package",
-      exportedAt: new Date().toISOString(),
-      originalSessionId: session.id,
-      session: {
-        title: session.title,
-        isDemo: session.isDemo,
-        viewState: session.viewState,
-        state: session.viewState?.stateSnapshot || null,
-        nodes: session.nodes.map((n) => ({
-          nodeId: n.nodeId,
-          type: n.type,
-          x: n.x,
-          y: n.y,
-          width: n.width,
-          height: n.height,
-          data: n.data,
-          collapsed: n.collapsed
-        })),
-        links: session.links.map((l) => ({
-          fromNodeId: l.fromNodeId,
-          toNodeId: l.toNodeId,
-          kind: l.kind
-        })),
-        chatMessages: sessionChatMessagesForPayload(session)
-      },
-      assets: []
-    };
+    const exportPayload = buildExportPayloadBase(session);
 
     const assetRecords = [];
     for (const asset of session.assets) {

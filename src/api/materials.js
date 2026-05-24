@@ -23,6 +23,8 @@ export async function handleListMaterials(query, res, options = {}) {
     const q = typeof query?.q === "string" ? query.q.trim() : "";
     const sort = query?.sort || "added";
     const favoritedOnly = query?.favorited === "1" || query?.favorited === "true";
+    const sourceFilter = ["user", "system", "all"].includes(query?.source) ? query.source : "all";
+    const includeHidden = query?.includeHidden === "1" || query?.includeHidden === "true";
     const visitorId = options.visitorId || "legacy";
 
     let where;
@@ -37,15 +39,16 @@ export async function handleListMaterials(query, res, options = {}) {
       });
       const hiddenIds = hiddenRecords.map(h => h.materialId);
 
-      where = {
-        OR: [
-          { visitorId, source: "user" },
-          { source: "system" }
-        ]
-      };
-      if (hiddenIds.length > 0) {
-        where.OR[1].id = { notIn: hiddenIds };
+      const clauses = [];
+      if (sourceFilter !== "system") clauses.push({ visitorId, source: "user" });
+      if (sourceFilter !== "user") {
+        const systemClause = { source: "system" };
+        if (!includeHidden && hiddenIds.length > 0) {
+          systemClause.id = { notIn: hiddenIds };
+        }
+        clauses.push(systemClause);
       }
+      where = { OR: clauses.length ? clauses : [{ visitorId, source: "user" }] };
       if (q) {
         where.fileName = { contains: q, mode: "insensitive" };
       }
@@ -60,11 +63,25 @@ export async function handleListMaterials(query, res, options = {}) {
     }
 
     const [items, total] = await Promise.all([
-      prisma.materialItem.findMany({ where, orderBy }),
+      prisma.materialItem.findMany({
+        where,
+        orderBy,
+        include: {
+          hiddenBy: {
+            where: { visitorId },
+            select: { id: true },
+            take: 1
+          }
+        }
+      }),
       prisma.materialItem.count({ where })
     ]);
 
-    return sendJson(res, 200, { ok: true, items, total });
+    return sendJson(res, 200, {
+      ok: true,
+      items: items.map(({ hiddenBy, ...item }) => ({ ...item, hidden: Boolean(hiddenBy?.length) })),
+      total
+    });
   } catch (error) {
     console.error("[handleListMaterials]", error);
     return sendJson(res, 500, { error: error.message || "Failed to list materials" });
@@ -216,6 +233,25 @@ export async function handleDeleteMaterial(materialId, res, options = {}) {
   } catch (error) {
     console.error("[handleDeleteMaterial]", error);
     return sendJson(res, 500, { error: error.message || "Failed to delete material" });
+  }
+}
+
+export async function handleRestoreMaterial(materialId, res, options = {}) {
+  try {
+    if (!materialId || typeof materialId !== "string") {
+      return sendJson(res, 400, { error: "materialId is required" });
+    }
+
+    await prisma.materialHidden.deleteMany({
+      where: {
+        visitorId: options.visitorId || "legacy",
+        materialId
+      }
+    });
+    return sendJson(res, 200, { ok: true });
+  } catch (error) {
+    console.error("[handleRestoreMaterial]", error);
+    return sendJson(res, 500, { error: error.message || "Failed to restore material" });
   }
 }
 

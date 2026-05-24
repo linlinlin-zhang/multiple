@@ -6,10 +6,11 @@ interface MaterialGridProps {
   onDelete: (id: string) => void;
   onRename: (id: string, fileName: string) => Promise<void> | void;
   onToggleFavorite: (id: string, favorited: boolean) => Promise<void> | void;
+  onRestore: (id: string) => Promise<void> | void;
   onPreview?: (id: string) => void;
 }
 
-export default function MaterialGrid({ items, onDelete, onRename, onToggleFavorite, onPreview }: MaterialGridProps) {
+export default function MaterialGrid({ items, onDelete, onRename, onToggleFavorite, onRestore, onPreview }: MaterialGridProps) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
       {items.map((item) => (
@@ -19,6 +20,7 @@ export default function MaterialGrid({ items, onDelete, onRename, onToggleFavori
           onDelete={onDelete}
           onRename={onRename}
           onToggleFavorite={onToggleFavorite}
+          onRestore={onRestore}
           onPreview={onPreview}
         />
       ))}

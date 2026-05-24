@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import type { HistorySession, SessionDetail } from "@/types";
+import type { HistorySession, SessionDetail, SourceFilter } from "@/types";
 
-export function useHistory(limit: number | null = null, offset = 0, includeDemo = false) {
+export function useHistory(limit: number | null = null, offset = 0, includeDemo = false, source: SourceFilter = "all", includeHidden = false) {
   const [sessions, setSessions] = useState<HistorySession[]>([]);
   const [total, setTotal] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
@@ -15,6 +15,8 @@ export function useHistory(limit: number | null = null, offset = 0, includeDemo 
       if (typeof limit === "number" && Number.isFinite(limit) && limit > 0) {
         params.set("limit", String(limit));
       }
+      if (source !== "all") params.set("source", source);
+      if (includeHidden) params.set("includeHidden", "1");
       const url = `/api/history?${params.toString()}`;
       const res = await fetch(url);
       if (!res.ok) {
@@ -31,7 +33,7 @@ export function useHistory(limit: number | null = null, offset = 0, includeDemo 
     } finally {
       setLoading(false);
     }
-  }, [limit, offset, includeDemo]);
+  }, [limit, offset, includeDemo, source, includeHidden]);
 
   useEffect(() => {
     fetchHistory();
