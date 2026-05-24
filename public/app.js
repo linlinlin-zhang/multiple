@@ -622,6 +622,13 @@ const i18n = {
     "chat.deepThinkMode": "深入研究",
     "chat.deepThinkActive": "正处于深入研究模式下",
     "chat.cancelDeepThink": "取消深入研究模式",
+    "chat.researchAgent": "调研 Agent",
+    "chat.researchAgentDesc": "自动检索、沉淀证据卡、整理结论并生成报告",
+    "chat.researchAgentStarted": "已启动调研 Agent",
+    "chat.researchAgentPlan": "调研作战图",
+    "chat.researchAgentEvidence": "证据收集",
+    "chat.researchAgentReport": "结论报告",
+    "chat.researchAgentScope": "研究范围",
     "deepthink.busy": "深入研究中...",
     "deepthink.complete": "深入研究完成",
     "status.ready": "Ready",
@@ -1236,6 +1243,13 @@ const i18n = {
     "chat.deepThinkMode": "Deep research",
     "chat.deepThinkActive": "Deep research mode is active",
     "chat.cancelDeepThink": "Cancel deep research mode",
+    "chat.researchAgent": "Research agent",
+    "chat.researchAgentDesc": "Search, create evidence cards, synthesize conclusions, and generate a report",
+    "chat.researchAgentStarted": "Research agent started",
+    "chat.researchAgentPlan": "Research battle map",
+    "chat.researchAgentEvidence": "Evidence collection",
+    "chat.researchAgentReport": "Conclusion report",
+    "chat.researchAgentScope": "Research scope",
     "deepthink.busy": "Deep research...",
     "deepthink.complete": "Deep research complete",
     "chat.generatedCannotGenerate": "Generated image nodes cannot spawn new directions",
@@ -5366,6 +5380,210 @@ function setDeepThinkModeActive(active) {
   if (deepThinkModeActive) closeCommandMenu();
 }
 
+function isResearchAgentWorkflowRequest(message = "") {
+  const text = String(message || "").normalize("NFKC").trim();
+  if (!text || isNoCanvasChatRequest(text)) return false;
+  if (/(调研|研究).{0,12}(主题|课题|方向|市场|竞品|趋势|产品|行业|资料|来源|证据|报告|结论)|帮我.{0,8}(调研|研究|搜集资料|找资料)|自动.{0,12}(搜索|检索|查找).{0,18}(证据|来源|资料|结论|报告)|生成.{0,8}(调研|研究).{0,8}(报告|结论)|research.{0,30}(agent|workflow|sources|evidence|report)|investigate.{0,30}(sources|evidence|report)/i.test(text)) {
+    return true;
+  }
+  return /(联网|上网|搜索|检索|查找|找).{0,18}(权威|来源|资料|证据|引用).{0,24}(整理|总结|报告|结论|卡片)/i.test(text);
+}
+
+function buildResearchAgentDeepPrompt(prompt = "") {
+  const goal = String(prompt || "").trim();
+  if (currentLang === "en") {
+    return [
+      `Task-type Research Agent workflow for: ${goal}`,
+      "",
+      "Run the work as visible canvas steps, not only chat text.",
+      "1. Define the research scope and assumptions.",
+      "2. Search or surface concrete source/evidence leads.",
+      "3. Create evidence cards with source titles, URLs when available, relevance notes, and uncertainty.",
+      "4. Synthesize findings into conclusions, tradeoffs, and open questions.",
+      "5. Generate a concise report card plus next-step checklist.",
+      "",
+      "Prefer cards of type note, web/link, quote, table, comparison, todo, and plan. Do not invent URLs; if a source was not actually available, create a search-lead card instead of claiming it as collected."
+    ].join("\n");
+  }
+  return [
+    `任务型调研 Agent 工作流：${goal}`,
+    "",
+    "请把工作过程外化到画布，而不是只写聊天文字。",
+    "1. 明确研究范围、假设和边界。",
+    "2. 自动搜索或提出可核查的来源/证据线索。",
+    "3. 创建证据卡，包含来源标题、可用 URL、相关性说明和不确定性。",
+    "4. 整理关键结论、权衡、争议和未决问题。",
+    "5. 生成简明报告卡和后续行动清单。",
+    "",
+    "优先使用 note、web/link、quote、table、comparison、todo、plan 卡片。不要编造 URL；没有真实来源时，把它写成搜索线索卡，而不是声称已经搜集完成。"
+  ].join("\n");
+}
+
+function researchAgentWorkflowSteps(prompt = "") {
+  const zh = currentLang !== "en";
+  return zh
+    ? [
+        { title: "限定范围", description: `围绕「${prompt}」明确研究问题、边界、假设和优先级。`, status: "running" },
+        { title: "搜索来源", description: "检索权威资料、公开页面、论文/报告或可核查线索。", status: "queued" },
+        { title: "沉淀证据", description: "把关键来源、摘录、数据和反例拆成证据卡。", status: "queued" },
+        { title: "综合结论", description: "比较证据，提炼结论、风险、争议和缺口。", status: "queued" },
+        { title: "生成报告", description: "输出报告卡、来源矩阵和下一步行动清单。", status: "queued" }
+      ]
+    : [
+        { title: "Scope", description: `Define research questions, boundaries, assumptions, and priority for "${prompt}".`, status: "running" },
+        { title: "Search sources", description: "Look for authoritative pages, papers, reports, or verifiable leads.", status: "queued" },
+        { title: "Capture evidence", description: "Split key sources, excerpts, data, and counterpoints into evidence cards.", status: "queued" },
+        { title: "Synthesize", description: "Compare evidence and extract conclusions, risks, debates, and gaps.", status: "queued" },
+        { title: "Report", description: "Create the report card, source matrix, and next-step checklist.", status: "queued" }
+      ];
+}
+
+function createResearchAgentWorkflowHub(prompt = "", parentNodeId = "") {
+  const parentId = parentNodeId && state.nodes.has(parentNodeId)
+    ? parentNodeId
+    : (state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source"));
+  const parent = state.nodes.get(parentId);
+  if (!parent) return null;
+  const topic = String(prompt || t("chat.researchAgent")).replace(/\s+/g, " ").trim();
+  const title = `${t("chat.researchAgent")}: ${topic}`.slice(0, 48);
+  const steps = researchAgentWorkflowSteps(topic);
+  const hubId = createOptionNode({
+    id: `research-agent-${Date.now()}-${safeNodeSlug(topic)}`,
+    title,
+    description: t("chat.researchAgentDesc"),
+    prompt: topic,
+    tone: t("chat.researchAgent"),
+    layoutHint: "research-agent",
+    deepThinkType: "agent",
+    nodeType: "plan",
+    content: {
+      summary: t("chat.researchAgentDesc"),
+      steps
+    },
+    x: (parent.x || 0) + 420,
+    y: (parent.y || 0) - 80
+  }, parentId);
+  if (!hubId) return null;
+
+  createOptionNode({
+    id: `research-scope-${Date.now()}-${safeNodeSlug(topic)}`,
+    title: t("chat.researchAgentScope"),
+    description: topic,
+    prompt: buildResearchAgentDeepPrompt(topic).slice(0, 1200),
+    tone: currentLang === "en" ? "scope" : "范围",
+    layoutHint: "research-scope",
+    deepThinkType: "note",
+    nodeType: "note",
+    content: {
+      text: currentLang === "en"
+        ? `# ${t("chat.researchAgentScope")}\n\n${topic}\n\nThis card anchors the research scope. Live search, evidence, synthesis, and report cards will attach to the workflow hub.`
+        : `# ${t("chat.researchAgentScope")}\n\n${topic}\n\n这张卡用于固定研究范围。后续搜索、证据、综合和报告卡会挂到调研工作流中心下。`
+    },
+    x: (parent.x || 0) + 790,
+    y: (parent.y || 0) - 190
+  }, hubId);
+
+  createOptionNode({
+    id: `research-evidence-${Date.now()}-${safeNodeSlug(topic)}`,
+    title: t("chat.researchAgentEvidence"),
+    description: currentLang === "en" ? "Evidence cards and source leads will be collected here as the agent works." : "Agent 执行时会在这里沉淀证据卡和来源线索。",
+    prompt: topic,
+    tone: currentLang === "en" ? "evidence" : "证据",
+    layoutHint: "evidence-queue",
+    deepThinkType: "note",
+    nodeType: "note",
+    content: {
+      text: currentLang === "en"
+        ? `# ${t("chat.researchAgentEvidence")}\n\nWaiting for source leads, excerpts, data points, contradictions, and reliability notes.`
+        : `# ${t("chat.researchAgentEvidence")}\n\n等待来源线索、摘录、数据点、反例和可靠性说明。`
+    },
+    x: (parent.x || 0) + 790,
+    y: (parent.y || 0) + 20
+  }, hubId);
+
+  forceSelectNode(hubId);
+  focusNodeById(hubId, "center");
+  autoSave();
+  return hubId;
+}
+
+async function startResearchAgentWorkflow(prompt = "") {
+  if (deepThinkBusy || chatOperationBusy) return;
+  const parentNodeId = state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
+  if (!state.nodes.has(parentNodeId)) {
+    showSelectionToast(t("chat.selectCardFirst"));
+    return;
+  }
+  const hubId = createResearchAgentWorkflowHub(prompt, parentNodeId);
+  if (!hubId) return;
+  showToast(t("chat.researchAgentStarted"));
+  await startDeepThink(prompt, {
+    workflow: "research-agent",
+    parentNodeId: hubId,
+    appendUser: true,
+    newThread: false
+  });
+}
+
+function researchAgentEvidenceTable(references = []) {
+  const refs = normalizeChatReferences(references).slice(0, 8);
+  if (!refs.length) return null;
+  return {
+    id: `research-evidence-table-${Date.now().toString(36)}`,
+    type: "table",
+    title: currentLang === "en" ? "Evidence matrix" : "证据矩阵",
+    summary: currentLang === "en" ? `${refs.length} source leads organized for verification.` : `整理 ${refs.length} 条来源线索，便于核查。`,
+    prompt: "",
+    content: {
+      columns: currentLang === "en" ? ["Source", "Type", "Relevance", "URL"] : ["来源", "类型", "相关性", "URL"],
+      rows: refs.map((reference) => ({
+        [currentLang === "en" ? "Source" : "来源"]: reference.title,
+        [currentLang === "en" ? "Type" : "类型"]: reference.type || "web",
+        [currentLang === "en" ? "Relevance" : "相关性"]: reference.description || "",
+        URL: reference.url
+      }))
+    }
+  };
+}
+
+function researchAgentNextStepCard() {
+  return {
+    id: `research-next-steps-${Date.now().toString(36)}`,
+    type: "todo",
+    title: currentLang === "en" ? "Research follow-ups" : "调研后续行动",
+    summary: currentLang === "en" ? "Actions to verify and operationalize the research." : "用于核查并落地研究结论的后续动作。",
+    prompt: "",
+    content: {
+      items: currentLang === "en"
+        ? [
+            { text: "Verify high-impact claims against primary or official sources.", done: false, priority: "high" },
+            { text: "Turn the strongest findings into product/design decisions.", done: false, priority: "medium" },
+            { text: "Mark unresolved questions for the next research pass.", done: false, priority: "medium" }
+          ]
+        : [
+            { text: "用一手或官方来源核查高影响结论。", done: false, priority: "高" },
+            { text: "把最强发现转成产品/设计决策。", done: false, priority: "中" },
+            { text: "标记仍未解决的问题，作为下一轮调研输入。", done: false, priority: "中" }
+          ]
+    }
+  };
+}
+
+function enrichResearchAgentPlan(plan = {}) {
+  const cards = Array.isArray(plan.cards) ? [...plan.cards] : [];
+  const evidenceTable = researchAgentEvidenceTable(plan.references || []);
+  if (evidenceTable && !cards.some((card) => normalizeDeepThinkCardType(card?.type) === "table" && /证据|Evidence/i.test(card?.title || ""))) {
+    cards.splice(Math.min(1, cards.length), 0, evidenceTable);
+  }
+  if (!cards.some((card) => normalizeDeepThinkCardType(card?.type) === "todo" && /(后续|follow)/i.test(card?.title || ""))) {
+    cards.push(researchAgentNextStepCard());
+  }
+  return {
+    ...plan,
+    cards: cards.slice(0, getDeepThinkMaxCanvasCards())
+  };
+}
+
 function ensureFreshChatThread(title = "") {
   const currentThread = ensureActiveChatThread();
   if (!currentThread.messages.length) {
@@ -6825,6 +7043,10 @@ async function handleChatSubmit(event) {
     await startDeepThink(message);
     return;
   }
+  if (isResearchAgentWorkflowRequest(message)) {
+    await startResearchAgentWorkflow(message);
+    return;
+  }
 
   await submitChatMessage(message);
 }
@@ -7114,14 +7336,14 @@ function generateDirectionFromDialog() {
 async function startDeepThink(explicitPrompt = "", options = {}) {
   if (deepThinkBusy) return;
 
-  const parentNodeId = state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
+  const parentNodeId = options.parentNodeId || state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source");
   if (!state.nodes.has(parentNodeId)) {
     showSelectionToast(t("chat.selectCardFirst"));
     return;
   }
 
   const typedPrompt = String(explicitPrompt || chatInput?.value.trim() || "").trim();
-  const selectedContext = buildSelectedNodeContext();
+  const selectedContext = buildSelectedNodeContext(parentNodeId);
   const prompt = typedPrompt || selectedContext?.summary || state.latestAnalysis?.summary || state.fileName || t("chat.deepThink");
   const activeThread = ensureActiveChatThread();
   if (activeThread.messages.length && options.newThread !== false) {
@@ -7136,16 +7358,18 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
   const shouldAppendUser = options.appendUser !== false;
   if (typedPrompt && shouldAppendUser) {
     updateActiveChatThreadTitle(typedPrompt);
-    appendChatMessage("user", typedPrompt);
+    appendChatMessage("user", typedPrompt, { branchNodeId: parentNodeId });
     if (chatInput) chatInput.value = "";
     updateChatPrimaryButtonMode();
   }
+  const isResearchAgentWorkflow = options.workflow === "research-agent";
   const pendingAssistant = appendChatMessage("assistant", "", {
     pending: true,
+    branchNodeId: parentNodeId,
     artifacts: [{
-      type: "deep-think",
-      title: currentLang === "en" ? "Collecting research material" : "正在收集研究素材",
-      summary: currentLang === "en" ? "Web, document, image, and action cards will appear here when the model returns them." : "模型返回网页、文档、图片和动作卡片后会显示在这里。",
+      type: isResearchAgentWorkflow ? "research-agent" : "deep-think",
+      title: isResearchAgentWorkflow ? t("chat.researchAgentStarted") : (currentLang === "en" ? "Collecting research material" : "正在收集研究素材"),
+      summary: isResearchAgentWorkflow ? t("chat.researchAgentDesc") : (currentLang === "en" ? "Web, document, image, and action cards will appear here when the model returns them." : "模型返回网页、文档、图片和动作卡片后会显示在这里。"),
       status: currentLang === "en" ? "running" : "运行中"
     }]
   });
@@ -7158,7 +7382,7 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
       imageDataUrl = "";
     }
     const data = await postStreamingChat("/api/deep-research", {
-      message: prompt,
+      message: isResearchAgentWorkflow ? buildResearchAgentDeepPrompt(prompt) : prompt,
       language: currentLang,
       selectedContext,
       selectedNodeId: parentNodeId,
@@ -7176,7 +7400,8 @@ async function startDeepThink(explicitPrompt = "", options = {}) {
       thinkingRequested: Boolean(finalThinkingContent),
       artifacts: buildDeepThinkArtifacts(data)
     });
-    const created = applyDeepThinkPlan({ ...data, message: prompt, query: prompt }, parentNodeId);
+    const finalPlan = isResearchAgentWorkflow ? enrichResearchAgentPlan({ ...data, message: prompt, query: prompt }) : { ...data, message: prompt, query: prompt };
+    const created = applyDeepThinkPlan(finalPlan, parentNodeId);
     if (Array.isArray(data?.actions) && data.actions.length) {
       await applyVoiceActions(data.actions, { message: prompt });
     } else if (created[0]) {
