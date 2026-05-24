@@ -455,6 +455,14 @@ const CANVAS_TOOL_TYPES = CANVAS_TOOL_DEFINITIONS.map((tool) => tool.type);
 const CANVAS_RISKY_TOOL_TYPES = new Set(CANVAS_TOOL_DEFINITIONS.filter((tool) => tool.risk).map((tool) => tool.type));
 const RICH_CARD_ACTION_TYPES = ["create_note", "create_plan", "create_todo", "create_weather", "create_map", "create_link", "create_code", "create_table", "create_timeline", "create_comparison", "create_metric", "create_quote"];
 const RICH_CARD_NODE_TYPES = ["note", "plan", "todo", "weather", "map", "link", "code", "table", "timeline", "comparison", "metric", "quote"];
+const PROJECT_TEMPLATE_IDS = [
+  "academic-research",
+  "product-competitive",
+  "video-script",
+  "visual-style",
+  "course-plan",
+  "event-plan"
+];
 
 const optionPositions = [
   { x: 900, y: 120, tilt: -0.4 },
@@ -780,6 +788,23 @@ const i18n = {
     "chat.conversationMessages": "{count} 条消息",
     "chat.noMessages": "还没有消息。输入方向、约束，或按 / 使用工作台命令。",
     "chat.emptyTitle": "可以这样开始",
+    "projectTemplate.title": "项目模板",
+    "projectTemplate.started": "已启动「{title}」",
+    "projectTemplate.context": "项目模板：{title}。已在画布创建启动结构，接下来请继续补齐证据、方案和可执行交付物。",
+    "projectTemplate.brief": "项目简报",
+    "projectTemplate.outputs": "交付物清单",
+    "projectTemplate.academic.title": "学术论文调研",
+    "projectTemplate.academic.desc": "文献脉络、证据卡、研究缺口和综述报告",
+    "projectTemplate.competitive.title": "产品竞品分析",
+    "projectTemplate.competitive.desc": "竞品证据、功能对比、机会点和策略建议",
+    "projectTemplate.video.title": "视频脚本策划",
+    "projectTemplate.video.desc": "受众洞察、结构大纲、分镜和拍摄清单",
+    "projectTemplate.visual.title": "视觉风格探索",
+    "projectTemplate.visual.desc": "情绪板、风格路线、提示词和评估标准",
+    "projectTemplate.course.title": "课程学习计划",
+    "projectTemplate.course.desc": "学习路径、周计划、练习和验收方式",
+    "projectTemplate.event.title": "活动方案生成",
+    "projectTemplate.event.desc": "目标、议程、物料、风险和执行时间线",
     "chat.suggestionVisualConcepts": "基于当前素材生成 5 个不同风格的视觉概念方向",
     "chat.suggestionFrameBreakdown": "拆解当前画面的主体、氛围、色彩和镜头感",
     "chat.suggestionVisualSeries": "帮我把这个想法扩展成一组系列化视觉方案",
@@ -1122,6 +1147,23 @@ const i18n = {
     "chat.contextIndicator": "Context: {title}",
     "chat.noMessages": "No messages yet. Enter a direction, constraint, or press / for workbench commands.",
     "chat.emptyTitle": "Try starting with",
+    "projectTemplate.title": "Project templates",
+    "projectTemplate.started": "Started \"{title}\"",
+    "projectTemplate.context": "Project template: {title}. A starter canvas structure has been created; continue by filling evidence, plans, and executable deliverables.",
+    "projectTemplate.brief": "Project brief",
+    "projectTemplate.outputs": "Deliverables",
+    "projectTemplate.academic.title": "Academic paper research",
+    "projectTemplate.academic.desc": "Literature map, evidence cards, research gaps, and review report",
+    "projectTemplate.competitive.title": "Product competitor analysis",
+    "projectTemplate.competitive.desc": "Competitor evidence, feature comparison, opportunities, and strategy",
+    "projectTemplate.video.title": "Video script planning",
+    "projectTemplate.video.desc": "Audience insight, outline, storyboard, and production checklist",
+    "projectTemplate.visual.title": "Visual style exploration",
+    "projectTemplate.visual.desc": "Moodboard, style routes, prompts, and evaluation criteria",
+    "projectTemplate.course.title": "Course learning plan",
+    "projectTemplate.course.desc": "Learning path, weekly plan, practice, and validation",
+    "projectTemplate.event.title": "Event proposal generation",
+    "projectTemplate.event.desc": "Goals, agenda, materials, risks, and execution timeline",
     "chat.suggestionVisualConcepts": "Generate 5 visual concept directions in different styles from the current material",
     "chat.suggestionFrameBreakdown": "Break down the current image by subject, mood, color, and camera feel",
     "chat.suggestionVisualSeries": "Expand this idea into a series of visual concepts",
@@ -5582,6 +5624,492 @@ function enrichResearchAgentPlan(plan = {}) {
     ...plan,
     cards: cards.slice(0, getDeepThinkMaxCanvasCards())
   };
+}
+
+function projectTemplateTopic(topicOverride, zhFallback, enFallback) {
+  const typed = String(topicOverride || "").replace(/\s+/g, " ").trim();
+  if (typed) return typed.slice(0, 180);
+  return currentLang === "en" ? enFallback : zhFallback;
+}
+
+function projectTemplateDefinitions(topicOverride = "") {
+  const isEn = currentLang === "en";
+  const topic = (zhFallback, enFallback) => projectTemplateTopic(topicOverride, zhFallback, enFallback);
+  const labels = {
+    academic: t("projectTemplate.academic.title"),
+    competitive: t("projectTemplate.competitive.title"),
+    video: t("projectTemplate.video.title"),
+    visual: t("projectTemplate.visual.title"),
+    course: t("projectTemplate.course.title"),
+    event: t("projectTemplate.event.title")
+  };
+
+  return [
+    {
+      id: "academic-research",
+      icon: "AR",
+      workflow: "research-agent",
+      taskType: "research",
+      title: labels.academic,
+      description: t("projectTemplate.academic.desc"),
+      topic: topic("AI 画布工作台对知识工作效率的影响", "the impact of AI canvas workbenches on knowledge-work productivity"),
+      outputs: isEn
+        ? ["Research question map", "source/evidence cards", "method comparison", "research gap note", "review report"]
+        : ["研究问题图", "来源/证据卡", "方法对比", "研究缺口笔记", "综述报告"],
+      promptFor(target) {
+        return isEn
+          ? `Use the academic paper research template to investigate "${target}". Search or surface verifiable paper/source leads, create evidence cards with citations or search leads, compare methods and findings, identify gaps, and generate a literature-review style report plus follow-up reading plan.`
+          : `使用学术论文调研模板，调研「${target}」。请搜索或提出可核查的论文/来源线索，创建带引用或检索线索的证据卡，对比方法和发现，识别研究缺口，并生成文献综述式报告与后续阅读计划。`;
+      },
+      starterCards(target) {
+        return [
+          {
+            nodeType: "table",
+            tone: isEn ? "evidence" : "证据",
+            title: isEn ? "Literature evidence matrix" : "文献证据矩阵",
+            description: isEn ? "Track paper/source leads, methods, findings, and reliability." : "记录论文/来源线索、方法、发现和可信度。",
+            content: {
+              columns: isEn ? ["Source", "Method", "Finding", "Confidence"] : ["来源", "方法", "发现", "可信度"],
+              rows: [
+                isEn ? ["Primary paper", "TBD", "TBD", "verify"] : ["核心论文", "待补充", "待补充", "待核查"],
+                isEn ? ["Review / survey", "TBD", "TBD", "verify"] : ["综述/调查", "待补充", "待补充", "待核查"],
+                isEn ? ["Dataset / benchmark", "TBD", "TBD", "verify"] : ["数据集/基准", "待补充", "待补充", "待核查"]
+              ]
+            }
+          },
+          {
+            nodeType: "note",
+            tone: isEn ? "gap" : "缺口",
+            title: isEn ? "Research gap hypotheses" : "研究缺口假设",
+            description: target,
+            content: {
+              text: isEn
+                ? `# Research gap hypotheses\n\nTopic: ${target}\n\n- Which claims are well supported?\n- Which methods or datasets are underrepresented?\n- Which assumptions need primary-source verification?`
+                : `# 研究缺口假设\n\n主题：${target}\n\n- 哪些结论已有稳定证据？\n- 哪些方法或数据集覆盖不足？\n- 哪些假设必须回到一手来源核查？`
+            }
+          }
+        ];
+      }
+    },
+    {
+      id: "product-competitive",
+      icon: "CA",
+      workflow: "research-agent",
+      taskType: "research",
+      title: labels.competitive,
+      description: t("projectTemplate.competitive.desc"),
+      topic: topic("AI 画布工作台产品的竞品分析", "competitor analysis for an AI canvas workbench product"),
+      outputs: isEn
+        ? ["competitor shortlist", "evidence cards", "feature matrix", "positioning opportunities", "strategy memo"]
+        : ["竞品清单", "证据卡", "功能矩阵", "定位机会", "策略备忘"],
+      promptFor(target) {
+        return isEn
+          ? `Use the product competitor analysis template for "${target}". Search or surface source leads, create competitor evidence cards, build a feature/pricing/positioning comparison, identify gaps and defensible opportunities, and generate a strategy report.`
+          : `使用产品竞品分析模板，分析「${target}」。请搜索或提出来源线索，创建竞品证据卡，建立功能/价格/定位对比，识别缺口与可防守机会，并生成策略报告。`;
+      },
+      starterCards() {
+        return [
+          {
+            nodeType: "comparison",
+            tone: isEn ? "comparison" : "对比",
+            title: isEn ? "Competitor comparison frame" : "竞品对比框架",
+            description: isEn ? "Compare alternatives by user, workflow, evidence, and moat." : "从用户、流程、证据和壁垒维度比较方案。",
+            content: {
+              criteria: isEn ? ["target user", "core workflow", "collaboration", "evidence traceability", "pricing", "moat"] : ["目标用户", "核心流程", "协作", "证据追溯", "定价", "壁垒"],
+              items: [
+                { title: isEn ? "Competitor A" : "竞品 A", summary: isEn ? "Primary alternative to verify." : "待核查的主要替代方案。", pros: [], cons: [], score: "TBD" },
+                { title: isEn ? "Competitor B" : "竞品 B", summary: isEn ? "Adjacent workflow benchmark." : "相邻工作流标杆。", pros: [], cons: [], score: "TBD" }
+              ],
+              recommendation: isEn ? "Fill with verified evidence before deciding positioning." : "先补齐可核查证据，再判断定位。"
+            }
+          },
+          {
+            nodeType: "table",
+            tone: isEn ? "evidence" : "证据",
+            title: isEn ? "Source capture table" : "来源采集表",
+            description: isEn ? "Track official pages, docs, pricing pages, and user reviews." : "记录官网、文档、定价页和用户评价。",
+            content: {
+              columns: isEn ? ["Competitor", "Source", "Claim", "Reliability"] : ["竞品", "来源", "主张", "可靠性"],
+              rows: [
+                isEn ? ["TBD", "official page", "TBD", "high"] : ["待补充", "官网页面", "待补充", "高"],
+                isEn ? ["TBD", "pricing/docs", "TBD", "high"] : ["待补充", "定价/文档", "待补充", "高"],
+                isEn ? ["TBD", "review/community", "TBD", "medium"] : ["待补充", "评价/社区", "待补充", "中"]
+              ]
+            }
+          }
+        ];
+      }
+    },
+    {
+      id: "video-script",
+      icon: "VS",
+      workflow: "chat-agent",
+      taskType: "planning",
+      title: labels.video,
+      description: t("projectTemplate.video.desc"),
+      topic: topic("一支 60 秒 AI 画布产品介绍视频", "a 60-second AI canvas product intro video"),
+      outputs: isEn
+        ? ["audience insight", "story arc", "scene timeline", "shot list", "production checklist"]
+        : ["受众洞察", "故事线", "场景时间线", "分镜清单", "拍摄准备"],
+      promptFor(target) {
+        return isEn
+          ? `Act as a task agent for video script planning. For "${target}", create canvas cards for audience, message hierarchy, 3-act script, scene timeline, storyboard/shot list, voiceover draft, and production checklist.`
+          : `请作为任务型 Agent 执行视频脚本策划。围绕「${target}」，创建受众、信息层级、三幕脚本、场景时间线、分镜/镜头清单、旁白草稿和制作清单等画布卡片。`;
+      },
+      starterCards() {
+        return [
+          {
+            nodeType: "timeline",
+            tone: isEn ? "script" : "脚本",
+            title: isEn ? "60-second story arc" : "60 秒故事节奏",
+            description: isEn ? "A starter beat structure for a short product or campaign video." : "适合产品或活动短片的起承转合结构。",
+            content: {
+              items: isEn
+                ? [
+                    { time: "0-5s", title: "Hook", description: "Open with the problem or arresting visual." },
+                    { time: "5-20s", title: "Context", description: "Show audience pain and why it matters." },
+                    { time: "20-45s", title: "Solution", description: "Demonstrate the main workflow or transformation." },
+                    { time: "45-60s", title: "Payoff", description: "Close with outcome, proof, and CTA." }
+                  ]
+                : [
+                    { time: "0-5s", title: "开场钩子", description: "用问题或强画面抓住注意力。" },
+                    { time: "5-20s", title: "痛点铺陈", description: "说明受众困境与重要性。" },
+                    { time: "20-45s", title: "解决方案", description: "展示核心流程或转变。" },
+                    { time: "45-60s", title: "结果与行动", description: "收束成果、证据和行动号召。" }
+                  ]
+            }
+          },
+          {
+            nodeType: "todo",
+            tone: isEn ? "production" : "制作",
+            title: isEn ? "Production checklist" : "制作清单",
+            description: isEn ? "A practical checklist before writing and shooting." : "写作和拍摄前的执行清单。",
+            content: {
+              items: (isEn
+                ? ["Confirm target audience and single message", "List required scenes or UI captures", "Draft voiceover and subtitles", "Prepare visual references", "Define review checkpoints"]
+                : ["确认目标受众和单一主张", "列出所需场景或界面录屏", "撰写旁白与字幕", "准备视觉参考", "定义审阅节点"])
+                .map((text) => ({ text, done: false }))
+            }
+          }
+        ];
+      }
+    },
+    {
+      id: "visual-style",
+      icon: "VE",
+      workflow: "chat-agent",
+      taskType: "creative",
+      title: labels.visual,
+      description: t("projectTemplate.visual.desc"),
+      topic: topic("AI 知识工作台的视觉风格探索", "visual style exploration for an AI knowledge workbench"),
+      outputs: isEn
+        ? ["style routes", "moodboard keywords", "image prompts", "palette/type notes", "selection criteria"]
+        : ["风格路线", "情绪板关键词", "成图提示词", "色彩/字体说明", "评估标准"],
+      promptFor(target) {
+        return isEn
+          ? `Act as a visual direction task agent. For "${target}", create canvas cards for moodboard keywords, 3-5 distinct style routes, color/material/type notes, image-generation prompts, reference search leads, and evaluation criteria.`
+          : `请作为视觉方向任务型 Agent。围绕「${target}」，创建情绪板关键词、3-5 条差异化风格路线、色彩/材质/字体说明、成图提示词、参考检索线索和评估标准卡片。`;
+      },
+      starterCards() {
+        return [
+          {
+            nodeType: "comparison",
+            tone: isEn ? "style" : "风格",
+            title: isEn ? "Style route shortlist" : "风格路线候选",
+            description: isEn ? "Compare several visual routes before generation." : "在成图前先比较多条视觉路线。",
+            content: {
+              criteria: isEn ? ["mood", "palette", "materials", "typography", "fit"] : ["情绪", "色彩", "材质", "字体", "适配度"],
+              items: [
+                { title: isEn ? "Editorial clarity" : "编辑感清晰路线", summary: isEn ? "Quiet, structured, and information-forward." : "克制、有结构，突出信息秩序。", pros: [], cons: [], score: "TBD" },
+                { title: isEn ? "Experimental lab" : "实验室探索路线", summary: isEn ? "More speculative, technical, and immersive." : "更具实验性、技术感和沉浸感。", pros: [], cons: [], score: "TBD" }
+              ],
+              recommendation: isEn ? "Generate prompts only after the route is chosen." : "先选路线，再细化成图提示词。"
+            }
+          },
+          {
+            nodeType: "metric",
+            tone: isEn ? "criteria" : "标准",
+            title: isEn ? "Style evaluation criteria" : "风格评估标准",
+            description: isEn ? "Use these checks to compare generated visual routes." : "用于比较生成视觉路线的评估项。",
+            content: {
+              metrics: isEn
+                ? [
+                    { label: "Brand fit", value: "TBD", note: "Matches audience and product promise." },
+                    { label: "Distinctiveness", value: "TBD", note: "Hard to confuse with generic AI visuals." },
+                    { label: "Usability", value: "TBD", note: "Works across app, deck, and campaign surfaces." }
+                  ]
+                : [
+                    { label: "品牌契合", value: "待评估", note: "匹配受众与产品承诺。" },
+                    { label: "差异化", value: "待评估", note: "不容易落入通用 AI 视觉。" },
+                    { label: "可用性", value: "待评估", note: "能覆盖产品、提案和传播场景。" }
+                  ]
+            }
+          }
+        ];
+      }
+    },
+    {
+      id: "course-plan",
+      icon: "LP",
+      workflow: "chat-agent",
+      taskType: "planning",
+      title: labels.course,
+      description: t("projectTemplate.course.desc"),
+      topic: topic("4 周掌握 AI 画布产品设计", "a 4-week plan to learn AI canvas product design"),
+      outputs: isEn
+        ? ["baseline assessment", "learning path", "weekly timeline", "practice tasks", "review rubric"]
+        : ["基础评估", "学习路径", "周计划", "练习任务", "验收标准"],
+      promptFor(target) {
+        return isEn
+          ? `Act as a learning-plan task agent. For "${target}", create canvas cards for prerequisites, skill map, weekly schedule, practice tasks, resources, reflection checkpoints, and assessment rubric.`
+          : `请作为学习计划任务型 Agent。围绕「${target}」，创建前置基础、能力地图、周计划、练习任务、资源、复盘节点和验收标准等画布卡片。`;
+      },
+      starterCards() {
+        return [
+          {
+            nodeType: "timeline",
+            tone: isEn ? "learning" : "学习",
+            title: isEn ? "Weekly learning path" : "周学习路径",
+            description: isEn ? "A starter sequence for structured learning." : "结构化学习的起步路径。",
+            content: {
+              items: isEn
+                ? [
+                    { time: "Week 1", title: "Foundations", description: "Map concepts, vocabulary, and baseline examples." },
+                    { time: "Week 2", title: "Practice", description: "Complete guided exercises and build small outputs." },
+                    { time: "Week 3", title: "Project", description: "Apply the skill to a realistic project." },
+                    { time: "Week 4", title: "Review", description: "Assess, revise, and plan the next loop." }
+                  ]
+                : [
+                    { time: "第 1 周", title: "基础建立", description: "梳理概念、术语和基础案例。" },
+                    { time: "第 2 周", title: "刻意练习", description: "完成引导练习并产出小作品。" },
+                    { time: "第 3 周", title: "项目应用", description: "把能力用于一个真实项目。" },
+                    { time: "第 4 周", title: "复盘迭代", description: "评估、修改并规划下一轮。" }
+                  ]
+            }
+          },
+          {
+            nodeType: "todo",
+            tone: isEn ? "practice" : "练习",
+            title: isEn ? "Practice loop" : "练习闭环",
+            description: isEn ? "Daily and weekly actions that make learning measurable." : "让学习可度量的日/周动作。",
+            content: {
+              items: (isEn
+                ? ["Define baseline level", "Choose 3 core resources", "Set weekly deliverable", "Schedule feedback", "Record mistakes and next drills"]
+                : ["定义当前基础水平", "选择 3 个核心资源", "设定每周交付物", "安排反馈节点", "记录错误与下一轮练习"])
+                .map((text) => ({ text, done: false }))
+            }
+          }
+        ];
+      }
+    },
+    {
+      id: "event-plan",
+      icon: "EP",
+      workflow: "chat-agent",
+      taskType: "planning",
+      title: labels.event,
+      description: t("projectTemplate.event.desc"),
+      topic: topic("一场 40 人线下用户共创工作坊", "a 40-person offline user co-creation workshop"),
+      outputs: isEn
+        ? ["goal and audience", "agenda timeline", "space/material plan", "risk register", "runbook"]
+        : ["目标与受众", "议程时间线", "空间/物料方案", "风险清单", "执行手册"],
+      promptFor(target) {
+        return isEn
+          ? `Act as an event-planning task agent. For "${target}", create canvas cards for goals, audience, agenda, venue/flow, materials, staffing, risks, budget assumptions, and day-of runbook.`
+          : `请作为活动策划任务型 Agent。围绕「${target}」，创建目标、受众、议程、场地/动线、物料、人力、风险、预算假设和当天执行手册等画布卡片。`;
+      },
+      starterCards() {
+        return [
+          {
+            nodeType: "timeline",
+            tone: isEn ? "runbook" : "执行",
+            title: isEn ? "Day-of runbook skeleton" : "当天执行时间线",
+            description: isEn ? "A practical timing scaffold for event delivery." : "活动落地时可直接细化的时间结构。",
+            content: {
+              items: isEn
+                ? [
+                    { time: "T-60m", title: "Setup", description: "Venue, equipment, signage, materials." },
+                    { time: "T-15m", title: "Check-in", description: "Guest arrival, badges, seating, warm-up." },
+                    { time: "Main block", title: "Program", description: "Opening, activity rounds, sharing, synthesis." },
+                    { time: "Close", title: "Wrap", description: "Photo, takeaway, feedback, teardown." }
+                  ]
+                : [
+                    { time: "T-60 分钟", title: "布场", description: "场地、设备、指引和物料就位。" },
+                    { time: "T-15 分钟", title: "签到", description: "到场、名牌、入座和暖场。" },
+                    { time: "主环节", title: "执行", description: "开场、共创轮次、汇报和综合。" },
+                    { time: "收尾", title: "复盘", description: "合影、带走物、反馈和撤场。" }
+                  ]
+            }
+          },
+          {
+            nodeType: "table",
+            tone: isEn ? "risk" : "风险",
+            title: isEn ? "Materials and risk register" : "物料与风险清单",
+            description: isEn ? "Track owner, status, and fallback for event operations." : "记录负责人、状态和替代方案。",
+            content: {
+              columns: isEn ? ["Item/Risk", "Owner", "Status", "Fallback"] : ["物料/风险", "负责人", "状态", "备选方案"],
+              rows: [
+                isEn ? ["Venue equipment", "TBD", "unchecked", "backup projector/cables"] : ["场地设备", "待定", "未检查", "备用投影/线材"],
+                isEn ? ["Participant no-show", "TBD", "open", "waitlist / regroup"] : ["参与者缺席", "待定", "待处理", "候补/重新分组"],
+                isEn ? ["Material delay", "TBD", "open", "local print / digital fallback"] : ["物料延迟", "待定", "待处理", "本地打印/电子替代"]
+              ]
+            }
+          }
+        ];
+      }
+    }
+  ];
+}
+
+function getProjectTemplate(templateId, topicOverride = "") {
+  return projectTemplateDefinitions(topicOverride).find((template) => template.id === templateId) || null;
+}
+
+function projectTemplateBriefText(template) {
+  const isEn = currentLang === "en";
+  const outputs = Array.isArray(template.outputs) ? template.outputs : [];
+  return [
+    `# ${t("projectTemplate.brief")}`,
+    "",
+    isEn ? `Template: ${template.title}` : `模板：${template.title}`,
+    isEn ? `Topic: ${template.topic}` : `主题：${template.topic}`,
+    "",
+    isEn ? "Expected outputs:" : "预期交付物：",
+    ...outputs.map((item) => `- ${item}`)
+  ].join("\n");
+}
+
+function projectTemplateBaseCards(template) {
+  const isEn = currentLang === "en";
+  const outputs = Array.isArray(template.outputs) ? template.outputs : [];
+  return [
+    {
+      nodeType: "note",
+      tone: isEn ? "brief" : "简报",
+      title: t("projectTemplate.brief"),
+      description: template.description,
+      content: { text: projectTemplateBriefText(template) }
+    },
+    {
+      nodeType: "todo",
+      tone: isEn ? "deliverables" : "交付物",
+      title: t("projectTemplate.outputs"),
+      description: isEn ? "Complete these artifacts on the canvas." : "在画布上补齐这些交付物。",
+      content: {
+        items: outputs.map((text) => ({ text, done: false, priority: isEn ? "medium" : "中" }))
+      }
+    }
+  ];
+}
+
+function createProjectTemplateWorkspace(template, parentNodeId = "") {
+  const parentId = parentNodeId && state.nodes.has(parentNodeId)
+    ? parentNodeId
+    : (state.selectedNodeId || (state.nodes.has("analysis") ? "analysis" : "source"));
+  const parent = state.nodes.get(parentId);
+  if (!parent || !template) return null;
+
+  const seed = `${Date.now()}-${safeNodeSlug(template.id)}`;
+  const steps = [
+    ...(currentLang === "en"
+      ? [
+          { title: "Frame the question", description: "Clarify scope, audience, constraints, and success criteria.", status: "ready" },
+          { title: "Collect material", description: "Gather sources, references, assumptions, or examples.", status: "ready" },
+          { title: "Build deliverables", description: "Create the cards listed in the deliverables checklist.", status: "queued" },
+          { title: "Review and refine", description: "Validate evidence, gaps, risks, and next actions.", status: "queued" }
+        ]
+      : [
+          { title: "界定问题", description: "明确范围、受众、约束和成功标准。", status: "ready" },
+          { title: "收集材料", description: "沉淀来源、参考、假设或案例。", status: "ready" },
+          { title: "生成交付物", description: "按交付物清单创建对应画布卡片。", status: "排队" },
+          { title: "复核迭代", description: "核查证据、缺口、风险和下一步行动。", status: "排队" }
+        ])
+  ];
+  const hubId = createOptionNode({
+    id: `project-template-${seed}`,
+    title: `${template.title}: ${template.topic}`.slice(0, 48),
+    description: template.description,
+    prompt: template.promptFor(template.topic),
+    tone: t("projectTemplate.title"),
+    layoutHint: "project-template",
+    deepThinkType: "template",
+    nodeType: "plan",
+    content: {
+      goal: template.topic,
+      context: template.description,
+      steps,
+      outcomes: template.outputs
+    },
+    x: (parent.x || 0) + 420,
+    y: (parent.y || 0) + 40
+  }, parentId, template.taskType || "planning");
+  if (!hubId) return null;
+
+  const hub = state.nodes.get(hubId);
+  const cards = [
+    ...projectTemplateBaseCards(template),
+    ...(typeof template.starterCards === "function" ? template.starterCards(template.topic) : [])
+  ];
+  cards.forEach((card, index) => {
+    const row = index % 3;
+    const col = Math.floor(index / 3);
+    createOptionNode({
+      id: `${safeNodeSlug(template.id)}-${seed}-${index}`,
+      title: card.title,
+      description: card.description || "",
+      prompt: card.prompt || template.promptFor(template.topic),
+      tone: card.tone || template.title,
+      layoutHint: "project-template-card",
+      deepThinkType: card.deepThinkType || "note",
+      nodeType: card.nodeType || "note",
+      content: card.content,
+      x: (hub?.x || parent.x || 0) + 390 + col * 360,
+      y: (hub?.y || parent.y || 0) + (row - 1) * 220
+    }, hubId, template.taskType || "planning");
+  });
+
+  forceSelectNode(hubId);
+  focusNodeById(hubId, "center");
+  autoSave();
+  return hubId;
+}
+
+async function launchProjectTemplate(templateId) {
+  if (chatOperationBusy || deepThinkBusy) return;
+  const topicOverride = chatInput?.value.trim() || "";
+  const template = getProjectTemplate(templateId, topicOverride);
+  if (!template) return;
+  const hubId = createProjectTemplateWorkspace(template);
+  if (!hubId) return;
+  if (chatInput) chatInput.value = "";
+  setChatSidebarOpen(true);
+  showToast(t("projectTemplate.started", { title: template.title }));
+  const prompt = template.promptFor(template.topic);
+  const visiblePrompt = `${template.title}: ${template.topic}`;
+  if (template.workflow === "research-agent") {
+    await startDeepThink(prompt, {
+      workflow: "research-agent",
+      parentNodeId: hubId,
+      appendUser: true,
+      newThread: false
+    });
+    return;
+  }
+  if (!state.subagentsEnabled) setSubagentsMode(true, { silent: true });
+  await submitChatMessage(visiblePrompt, {
+    modelMessage: prompt,
+    selectedNodeId: hubId,
+    forcedThinkingMode: "thinking",
+    agentMode: true,
+    subagentsEnabled: true,
+    skipActionConfirmation: true,
+    threadTitle: template.title,
+    extraSystemContext: t("projectTemplate.context", { title: template.title }),
+    actionContext: {
+      defaultParentNodeId: hubId,
+      disableTopicNode: true
+    }
+  });
 }
 
 function ensureFreshChatThread(title = "") {
@@ -11844,6 +12372,43 @@ function useChatSuggestion(text) {
   chatForm?.requestSubmit();
 }
 
+function renderProjectTemplatePicker() {
+  const section = document.createElement("section");
+  section.className = "project-template-picker";
+  const title = document.createElement("strong");
+  title.className = "project-template-title";
+  title.textContent = t("projectTemplate.title");
+  const grid = document.createElement("div");
+  grid.className = "project-template-grid";
+
+  for (const template of projectTemplateDefinitions()) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "project-template-button";
+    button.dataset.templateId = template.id;
+    button.disabled = chatOperationBusy || deepThinkBusy;
+
+    const icon = document.createElement("span");
+    icon.className = "project-template-icon";
+    icon.textContent = template.icon;
+    const copy = document.createElement("span");
+    copy.className = "project-template-copy";
+    const label = document.createElement("span");
+    label.className = "project-template-label";
+    label.textContent = template.title;
+    const desc = document.createElement("span");
+    desc.className = "project-template-desc";
+    desc.textContent = template.description;
+    copy.append(label, desc);
+    button.append(icon, copy);
+    button.addEventListener("click", () => launchProjectTemplate(template.id));
+    grid.appendChild(button);
+  }
+
+  section.append(title, grid);
+  return section;
+}
+
 function renderChatEmptyState() {
   const placeholder = document.createElement("div");
   placeholder.className = "chat-placeholder";
@@ -11864,7 +12429,7 @@ function renderChatEmptyState() {
     suggestions.appendChild(button);
   }
 
-  placeholder.append(title, description, suggestions);
+  placeholder.append(title, description, renderProjectTemplatePicker(), suggestions);
   return placeholder;
 }
 
