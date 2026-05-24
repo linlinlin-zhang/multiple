@@ -34,6 +34,7 @@ const chatForm = document.querySelector("#chatForm");
 const chatInput = document.querySelector("#chatInput");
 const chatMessages = document.querySelector("#chatMessages");
 const renderedChatMessageElements = new WeakMap();
+const pendingChatActionRuntimes = new WeakMap();
 const chatScrollBottom = document.querySelector("#chatScrollBottom");
 const commandMenu = document.querySelector("#commandMenu");
 const canvasTitleDisplay = document.querySelector("#canvasTitleDisplay");
@@ -782,6 +783,23 @@ const i18n = {
     "chat.thinkingDetails": "思考过程",
     "chat.thinkingUnavailable": "模型本轮没有返回可展开的思考过程。",
     "chat.actionsApplied": "已应用 {count} 个画布操作",
+    "chat.actionPlanTitle": "我将创建这些卡片",
+    "chat.actionPlanIntro": "确认后再写入画布，执行前你可以先检查标题和类型。",
+    "chat.actionPlanConfirm": "确认创建",
+    "chat.actionPlanCancel": "取消",
+    "chat.actionPlanCanceled": "已取消本轮画布操作。",
+    "chat.actionProgressTitle": "工具调用执行进度",
+    "chat.actionStatusQueued": "排队",
+    "chat.actionStatusRunning": "执行中",
+    "chat.actionStatusDone": "已完成",
+    "chat.actionStatusFailed": "失败",
+    "chat.retryAction": "重试",
+    "chat.askCard": "追问",
+    "chat.branchThread": "从此分支",
+    "chat.branchCreated": "已创建聊天分支",
+    "chat.referencesTitle": "引用来源",
+    "chat.referencesCount": "{count} 个来源",
+    "chat.openReference": "打开来源",
     "chat.copied": "已复制！",
     "chat.actionApplied": "已执行操作",
     "chat.clickToFocus": "点击定位到画布节点",
@@ -1113,6 +1131,23 @@ const i18n = {
     "chat.thinkingComplete": "Thinking complete",
     "chat.thinkingUnavailable": "The model did not return an expandable thinking process for this turn.",
     "chat.actionsApplied": "{count} canvas actions applied",
+    "chat.actionPlanTitle": "I will create these cards",
+    "chat.actionPlanIntro": "Confirm before writing to the canvas. You can review the titles and types first.",
+    "chat.actionPlanConfirm": "Create cards",
+    "chat.actionPlanCancel": "Cancel",
+    "chat.actionPlanCanceled": "Canceled this round of canvas actions.",
+    "chat.actionProgressTitle": "Tool execution progress",
+    "chat.actionStatusQueued": "Queued",
+    "chat.actionStatusRunning": "Running",
+    "chat.actionStatusDone": "Done",
+    "chat.actionStatusFailed": "Failed",
+    "chat.retryAction": "Retry",
+    "chat.askCard": "Ask",
+    "chat.branchThread": "Branch here",
+    "chat.branchCreated": "Chat branch created",
+    "chat.referencesTitle": "Sources",
+    "chat.referencesCount": "{count} sources",
+    "chat.openReference": "Open source",
     "chat.scrollBottom": "Scroll to bottom",
     "chat.copyCode": "Copy",
     "chat.copied": "Copied!",
@@ -4281,6 +4316,8 @@ function normalizeChatThreadMessage(message) {
     thinkingContent,
     thinkingRequested: Boolean(pending || thinkingContent || thinkingTrace.length || (message?.thinkingRequested && !content)),
     actions: normalizeChatMessageActions(message?.actions),
+    pendingActionBundle: normalizeChatPendingActionBundle(message?.pendingActionBundle),
+    actionProgress: normalizeChatActionProgress(message?.actionProgress),
     actionResults: normalizeChatActionResults(message?.actionResults),
     actionPolicy: normalizeChatActionPolicy(message?.actionPolicy),
     actionTrace: normalizeChatActionPolicy(message?.actionTrace),
@@ -4339,6 +4376,69 @@ function normalizeChatMessageActions(value) {
     .filter((action) => action && typeof action === "object" && action.type)
     .slice(0, MAX_DEEP_RESEARCH_CANVAS_CARDS)
     .map((action) => ({ ...action, type: String(action.type) }));
+}
+
+function sanitizeChatActionForStorage(action, depth = 0) {
+  if (!action || depth > 5) return null;
+  if (Array.isArray(action)) {
+    return action.map((item) => sanitizeChatActionForStorage(item, depth + 1)).filter((item) => item !== null).slice(0, 40);
+  }
+  if (typeof action !== "object") {
+    const value = typeof action === "string" ? action : String(action ?? "");
+    return value.startsWith("data:") ? "" : value.slice(0, 8000);
+  }
+  const output = {};
+  Object.entries(action).forEach(([key, value]) => {
+    if (key === "result") return;
+    if (/dataUrl|DataUrl|imageDataUrls|videoDataUrl/.test(key) && typeof value === "string" && value.startsWith("data:")) return;
+    const stored = sanitizeChatActionForStorage(value, depth + 1);
+    if (stored !== null && stored !== "") output[key] = stored;
+  });
+  if (output.type || output.name || output.action || output.actionType) {
+    output.type = String(output.type || output.name || output.action || output.actionType || "").slice(0, 64);
+  }
+  return output;
+}
+
+function normalizeChatActionProgress(value) {
+  if (!value || typeof value !== "object") return null;
+  const status = ["awaiting_confirmation", "running", "completed", "failed", "cancelled", "retrying"].includes(value.status)
+    ? value.status
+    : "running";
+  const items = Array.isArray(value.items) ? value.items : [];
+  const normalizedItems = items.slice(0, MAX_DEEP_RESEARCH_CANVAS_CARDS).map((item, index) => ({
+    index: Number.isFinite(Number(item?.index)) ? Number(item.index) : index,
+    type: String(item?.type || "").slice(0, 64),
+    title: String(item?.title || "").slice(0, 120),
+    status: ["queued", "running", "done", "failed", "cancelled"].includes(item?.status) ? item.status : "queued",
+    error: String(item?.error || "").slice(0, 240),
+    nodeId: String(item?.nodeId || "").slice(0, 96)
+  }));
+  const total = Math.max(normalizedItems.length, Math.min(Number(value.total) || normalizedItems.length || 0, MAX_DEEP_RESEARCH_CANVAS_CARDS));
+  const done = Math.max(0, Math.min(Number(value.done) || normalizedItems.filter((item) => item.status === "done" || item.status === "failed").length, total));
+  return {
+    status,
+    done,
+    total,
+    items: normalizedItems
+  };
+}
+
+function normalizeChatPendingActionBundle(value) {
+  if (!value || typeof value !== "object") return null;
+  const actions = normalizeChatMessageActions(value.actions);
+  if (!actions.length) return null;
+  const status = ["awaiting_confirmation", "running", "completed", "failed", "cancelled"].includes(value.status)
+    ? value.status
+    : "awaiting_confirmation";
+  return {
+    id: String(value.id || `action-bundle-${Date.now().toString(36)}`).slice(0, 96),
+    status,
+    baseReply: String(value.baseReply || "").slice(0, 12000),
+    message: String(value.message || "").slice(0, 2000),
+    actions,
+    createdAt: value.createdAt || new Date().toISOString()
+  };
 }
 
 function normalizeChatActionPolicy(value) {
@@ -4417,18 +4517,20 @@ function normalizeChatActionResults(value) {
     .slice(0, MAX_DEEP_RESEARCH_CANVAS_CARDS)
     .map((entry) => {
       const result = entry.result;
-      const nodeId = (typeof result === "string" ? result : result?.nodeId) || entry.nodeId || "";
-      const nodeIds = Array.isArray(result?.nodeIds) ? result.nodeIds : (Array.isArray(entry.nodeIds) ? entry.nodeIds : []);
-      const hasExplicitSuccess = result && typeof result === "object" && "success" in result;
-      const success = hasExplicitSuccess ? Boolean(result.success) : result !== null && result !== undefined;
+      const base = result && typeof result === "object" && !Array.isArray(result) ? result : entry;
+      const nodeId = (typeof result === "string" ? result : base?.nodeId) || entry.nodeId || "";
+      const nodeIds = Array.isArray(base?.nodeIds) ? base.nodeIds : (Array.isArray(entry.nodeIds) ? entry.nodeIds : []);
+      const hasExplicitSuccess = base && typeof base === "object" && "success" in base;
+      const success = hasExplicitSuccess ? Boolean(base.success) : result !== null && result !== undefined;
       return {
         type: String(entry.type),
-        title: String(result?.title || entry.title || entry.nodeName || "").slice(0, 80),
+        title: String(base?.title || entry.title || entry.nodeName || "").slice(0, 80),
         nodeId: String(nodeId).slice(0, 96),
         nodeIds: nodeIds.map((id) => String(id || "").slice(0, 96)).filter(Boolean).slice(0, 24),
         success,
-        error: String(result?.error || entry.error || "").slice(0, 240),
-        errorCode: String(result?.errorCode || entry.errorCode || "").slice(0, 80)
+        error: String(base?.error || entry.error || "").slice(0, 240),
+        errorCode: String(base?.errorCode || entry.errorCode || "").slice(0, 80),
+        action: sanitizeChatActionForStorage(entry.action || entry)
       };
     });
 }
@@ -4497,6 +4599,85 @@ function formatActionFailureNote(actionResults = []) {
   return currentLang === "en"
     ? `\n\n> Some requested canvas actions did not complete:\n${lines.join("\n")}`
     : `\n\n> \u6709\u4e9b\u753b\u5e03\u64cd\u4f5c\u6ca1\u6709\u771f\u6b63\u5b8c\u6210\uff1a\n${lines.join("\n")}`;
+}
+
+function chatActionStatusLabel(status) {
+  if (status === "running" || status === "retrying") return t("chat.actionStatusRunning");
+  if (status === "done" || status === "completed") return t("chat.actionStatusDone");
+  if (status === "failed") return t("chat.actionStatusFailed");
+  if (status === "cancelled") return t("chat.actionPlanCanceled");
+  return t("chat.actionStatusQueued");
+}
+
+function createChatActionProgress(actions = [], status = "awaiting_confirmation") {
+  const items = normalizeChatMessageActions(actions).map((action, index) => ({
+    index,
+    type: action.type,
+    title: actionDisplayTitle(action),
+    status: status === "awaiting_confirmation" ? "queued" : "queued",
+    error: "",
+    nodeId: ""
+  }));
+  return normalizeChatActionProgress({
+    status,
+    total: items.length,
+    done: 0,
+    items
+  });
+}
+
+function buildChatActionProgress(actions = [], progress = {}) {
+  const actionList = normalizeChatMessageActions(actions);
+  const results = Array.isArray(progress.results) ? progress.results : [];
+  const runningIndex = progress.running ? results.length : -1;
+  const status = progress.status || (progress.running ? "running" : "completed");
+  const items = actionList.map((action, index) => {
+    const entry = results[index];
+    const result = entry?.result || entry;
+    const failed = result && typeof result === "object" && result.success === false;
+    return {
+      index,
+      type: action.type,
+      title: actionDisplayTitle(action),
+      status: entry ? (failed ? "failed" : "done") : (index === runningIndex ? "running" : "queued"),
+      error: failed ? String(result.error || entry.error || "").slice(0, 240) : "",
+      nodeId: String(result?.nodeId || entry?.nodeId || "").slice(0, 96)
+    };
+  });
+  const done = items.filter((item) => item.status === "done" || item.status === "failed").length;
+  const hasFailure = items.some((item) => item.status === "failed");
+  return normalizeChatActionProgress({
+    status: status === "completed" && hasFailure ? "failed" : status,
+    done,
+    total: items.length,
+    items
+  });
+}
+
+function chatActionConfirmationText(reply, actions = []) {
+  const text = String(reply || "").trim();
+  const shortAck = currentLang === "en"
+    ? /^(created|i('|’)ve created|i have created|done|sure|okay).{0,240}(card|canvas|node|plan|todo|note|table|timeline)/is
+    : /^(已为你创建|已创建|我已创建|已经创建|好的|好|可以|没问题).{0,240}(卡片|画布|节点|计划|清单|笔记|表格|时间线|方向)/is;
+  const intro = currentLang === "en"
+    ? "> I will create these cards after you confirm."
+    : "> 我将创建这些卡片，确认后再写入画布。";
+  if (!text || (text.length < 520 && shortAck.test(text))) {
+    const titles = normalizeChatMessageActions(actions)
+      .slice(0, 8)
+      .map((action) => `- ${actionDisplayTitle(action)}`)
+      .join("\n");
+    return currentLang === "en"
+      ? ["I prepared the canvas actions. Please review them before I write to the canvas.", "", titles, "", intro].filter(Boolean).join("\n")
+      : ["我已经整理好这轮画布操作，请先确认要创建的内容。", "", titles, "", intro].filter(Boolean).join("\n");
+  }
+  return `${text}\n\n${intro}`;
+}
+
+function removeChatActionStatusNotes(content = "") {
+  return String(content || "")
+    .replace(/\n\n> (正在执行画布动作|已完成 \d+ 个画布动作|有些画布操作没有真正完成|Running canvas actions|Completed \d+\/\d+ canvas action|Some requested canvas actions did not complete)[\s\S]*$/i, "")
+    .trim();
 }
 
 function normalizeChatArtifacts(value) {
@@ -4621,6 +4802,8 @@ function normalizeChatThread(thread, index = 0) {
         m.thinkingContent ||
         m.pending ||
         m.actions?.length ||
+        m.pendingActionBundle ||
+        m.actionProgress ||
         m.actionResults?.length ||
         m.actionPolicy ||
         m.artifacts?.length ||
@@ -4728,6 +4911,8 @@ function serializeChatThreads() {
       thinkingContent: sanitizeChatThinkingContent(message.thinkingContent, message.content),
       thinkingRequested: Boolean(sanitizeChatThinkingContent(message.thinkingContent, message.content) || message.thinkingTrace?.length),
       actions: normalizeChatMessageActions(message.actions),
+      pendingActionBundle: normalizeChatPendingActionBundle(message.pendingActionBundle),
+      actionProgress: normalizeChatActionProgress(message.actionProgress),
       actionResults: normalizeChatActionResults(message.actionResults),
       actionPolicy: normalizeChatActionPolicy(message.actionPolicy),
       actionTrace: normalizeChatActionPolicy(message.actionTrace),
@@ -5220,6 +5405,212 @@ function startNewChat() {
   renderChatMessages();
   autoSave();
   chatInput?.focus();
+}
+
+function cloneChatMessageForBranch(message) {
+  const cloned = normalizeChatThreadMessage({
+    ...message,
+    pending: false,
+    pendingActionBundle: null,
+    actionProgress: message?.actionProgress?.status === "running" ? null : message?.actionProgress
+  });
+  cloned.pending = false;
+  return cloned;
+}
+
+function createChatBranchFromMessage(messageIndex) {
+  const activeThread = ensureActiveChatThread();
+  const maxIndex = Math.max(0, Math.min(Number(messageIndex) || 0, activeThread.messages.length - 1));
+  const branchMessages = activeThread.messages.slice(0, maxIndex + 1).map(cloneChatMessageForBranch);
+  if (!branchMessages.length) return;
+  const title = `${getChatThreadTitle(activeThread, 0)} ${currentLang === "en" ? "branch" : "分支"}`;
+  const thread = createChatThread(branchMessages, title);
+  const lastAssistant = [...branchMessages].reverse().find((message) => message.role === "assistant" && message.responseId);
+  thread.previousResponseId = lastAssistant?.responseId || "";
+  thread.titleFinalized = true;
+  state.chatThreads.unshift(thread);
+  state.activeChatThreadId = thread.id;
+  syncActiveChatMessages();
+  renderChatConversationList();
+  renderChatMessages({ scrollToBottom: true });
+  autoSave();
+  showToast(t("chat.branchCreated"));
+  chatInput?.focus();
+}
+
+function startChatFollowupForNode(nodeId, title = "") {
+  if (!nodeId || !state.nodes.has(nodeId)) return;
+  focusNodeById(nodeId);
+  setChatSidebarOpen(true);
+  const nodeTitle = title || getNodeTitle(state.nodes.get(nodeId)) || nodeId;
+  if (chatInput) {
+    chatInput.value = currentLang === "en"
+      ? `Follow up on "${nodeTitle}": `
+      : `继续围绕「${nodeTitle}」追问：`;
+    chatInput.focus();
+    chatInput.setSelectionRange(chatInput.value.length, chatInput.value.length);
+    syncCommandMenu();
+    updateChatPrimaryButtonMode();
+  }
+}
+
+function shouldConfirmChatActions(actions = [], options = {}) {
+  if (options.skipActionConfirmation === true) return false;
+  if (options.requireActionConfirmation === false) return false;
+  return normalizeChatMessageActions(actions).some((action) => actionCreatesNewCanvasCard(action) || String(action.type) === "create_agent");
+}
+
+function createPendingChatActionBundle(actions = [], { baseReply = "", message = "" } = {}) {
+  return normalizeChatPendingActionBundle({
+    id: `action-bundle-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    status: "awaiting_confirmation",
+    baseReply,
+    message,
+    actions,
+    createdAt: new Date().toISOString()
+  });
+}
+
+async function executeChatActionBundle(message, {
+  actions = [],
+  baseReply = "",
+  imageDataUrl = "",
+  videoDataUrl = "",
+  modelText = "",
+  actionContext = {}
+} = {}) {
+  const actionList = normalizeChatMessageActions(actions);
+  if (!message || !actionList.length) return [];
+  chatOperationBusy = true;
+  updateChatPrimaryButtonMode();
+  setStatus(t("status.busy"), "busy");
+  const cleanBaseReply = removeChatActionStatusNotes(baseReply || message.pendingActionBundle?.baseReply || message.content || "");
+  updateChatMessage(message, {
+    pending: true,
+    pendingActionBundle: message.pendingActionBundle ? { ...message.pendingActionBundle, status: "running" } : null,
+    actionProgress: buildChatActionProgress(actionList, { status: "running", running: true, results: [] }),
+    content: `${cleanBaseReply}${formatActionProgressNote({ done: 0, total: actionList.length, action: actionList[0] })}`
+  });
+  try {
+    const actionResults = await applyVoiceActions(actionList, {
+      imageDataUrl,
+      videoDataUrl,
+      message: modelText || message.pendingActionBundle?.message || cleanBaseReply,
+      ...actionContext,
+      onProgress(progress) {
+        updateChatMessage(message, {
+          actionProgress: buildChatActionProgress(actionList, { ...progress, status: "running" }),
+          content: `${cleanBaseReply}${formatActionProgressNote(progress)}`,
+          pending: true
+        });
+      }
+    });
+    const failureNote = formatActionFailureNote(actionResults);
+    const completionNote = formatActionCompletionNote(actionResults);
+    const failed = normalizeChatActionResults(actionResults).some((item) => item.success === false);
+    updateChatMessage(message, {
+      content: `${cleanBaseReply}${completionNote}${failureNote}`,
+      pending: false,
+      actionResults,
+      pendingActionBundle: message.pendingActionBundle ? { ...message.pendingActionBundle, status: failed ? "failed" : "completed" } : null,
+      actionProgress: buildChatActionProgress(actionList, { status: failed ? "failed" : "completed", results: actionResults })
+    });
+    setStatus(t("status.ready"), "ready");
+    autoSave();
+    return actionResults;
+  } catch (error) {
+    const result = { type: actionList[0]?.type || "canvas_action", success: false, error: error.message || String(error), action: actionList[0] };
+    updateChatMessage(message, {
+      content: `${cleanBaseReply}${formatActionFailureNote([result])}`,
+      pending: false,
+      actionResults: [result],
+      pendingActionBundle: message.pendingActionBundle ? { ...message.pendingActionBundle, status: "failed" } : null,
+      actionProgress: buildChatActionProgress(actionList, { status: "failed", results: [result] })
+    });
+    setStatus(t("status.error"), "error");
+    return [result];
+  } finally {
+    chatOperationBusy = false;
+    updateChatPrimaryButtonMode();
+    chatInput?.focus();
+  }
+}
+
+async function confirmChatActionBundle(message) {
+  if (chatOperationBusy || deepThinkBusy || !message) return;
+  const bundle = normalizeChatPendingActionBundle(message.pendingActionBundle);
+  if (!bundle?.actions?.length) return;
+  const runtime = pendingChatActionRuntimes.get(message) || {};
+  await executeChatActionBundle(message, {
+    actions: runtime.actions || bundle.actions,
+    baseReply: runtime.baseReply || bundle.baseReply || removeChatActionStatusNotes(message.content),
+    imageDataUrl: runtime.imageDataUrl || "",
+    videoDataUrl: runtime.videoDataUrl || "",
+    modelText: runtime.modelText || bundle.message || "",
+    actionContext: runtime.actionContext || {}
+  });
+  pendingChatActionRuntimes.delete(message);
+}
+
+function cancelChatActionBundle(message) {
+  if (!message) return;
+  const baseReply = removeChatActionStatusNotes(message.pendingActionBundle?.baseReply || message.content || "");
+  updateChatMessage(message, {
+    content: `${baseReply}\n\n> ${t("chat.actionPlanCanceled")}`,
+    pending: false,
+    pendingActionBundle: message.pendingActionBundle ? { ...message.pendingActionBundle, status: "cancelled" } : null,
+    actionProgress: message.actionProgress ? {
+      ...message.actionProgress,
+      status: "cancelled",
+      items: (message.actionProgress.items || []).map((item) => ({ ...item, status: "cancelled" }))
+    } : null
+  });
+  pendingChatActionRuntimes.delete(message);
+  autoSave();
+}
+
+function findActionForRetry(message, actionResult = {}) {
+  const stored = sanitizeChatActionForStorage(actionResult.action || {});
+  if (stored?.type) return stored;
+  const type = String(actionResult.type || "");
+  const title = String(actionResult.title || "");
+  return normalizeChatMessageActions(message?.actions).find((action) => (
+    action.type === type && (!title || actionDisplayTitle(action) === title || String(action.title || "") === title)
+  )) || (type ? { type, title } : null);
+}
+
+async function retryChatAction(message, actionResult = {}) {
+  if (chatOperationBusy || deepThinkBusy || !message) return;
+  const action = findActionForRetry(message, actionResult);
+  if (!action?.type) return;
+  const baseReply = removeChatActionStatusNotes(message.pendingActionBundle?.baseReply || message.content || "");
+  const previousResults = normalizeChatActionResults(message.actionResults);
+  const retryResults = await executeChatActionBundle(message, {
+    actions: [action],
+    baseReply,
+    modelText: message.pendingActionBundle?.message || baseReply,
+    actionContext: { disableTopicNode: false }
+  });
+  const normalizedRetry = normalizeChatActionResults(retryResults)[0];
+  if (!normalizedRetry) return;
+  let replaced = false;
+  const merged = previousResults.map((item) => {
+    if (item === normalizedRetry) return item;
+    if (!replaced && item.success === false && item.type === actionResult.type && item.error === actionResult.error) {
+      replaced = true;
+      return normalizedRetry;
+    }
+    return item;
+  });
+  if (!replaced) {
+    merged.push(normalizedRetry);
+  }
+  updateChatMessage(message, {
+    actionResults: merged,
+    actionProgress: buildChatActionProgress([action], { status: normalizedRetry.success === false ? "failed" : "completed", results: retryResults }),
+    content: `${baseReply}${formatActionCompletionNote(merged)}${formatActionFailureNote(merged)}`
+  });
+  autoSave();
 }
 
 function setThinkingMode(mode) {
@@ -6599,32 +6990,47 @@ async function submitChatMessage(message, options = {}) {
       { thinkingMode: effectiveThinkingMode }
     );
     assistantMeta.actions = actionList;
-    let actionResults = [];
     const baseReply = data.reply || t("chat.systemContext");
     if (actionList.length) {
       updateChatMessage(pendingAssistant, {
-        content: `${baseReply}${formatActionProgressNote({ done: 0, total: actionList.length, action: actionList[0] })}`,
-        pending: true
+        content: baseReply,
+        pending: false,
+        ...assistantMeta
       });
-      actionResults = await applyVoiceActions(actionList, {
+      if (shouldConfirmChatActions(actionList, options)) {
+        const pendingActionBundle = createPendingChatActionBundle(actionList, { baseReply, message: modelText });
+        pendingChatActionRuntimes.set(pendingAssistant, {
+          actions: actionList,
+          baseReply,
+          imageDataUrl: attachmentImageDataUrl || imageDataUrls[0] || "",
+          videoDataUrl: sourceVideoDataUrl,
+          modelText,
+          actionContext: options.actionContext || {}
+        });
+        updateChatMessage(pendingAssistant, {
+          content: chatActionConfirmationText(baseReply, actionList),
+          pending: false,
+          ...assistantMeta,
+          pendingActionBundle,
+          actionProgress: createChatActionProgress(actionList, "awaiting_confirmation")
+        });
+        setStatus(t("status.ready"), "ready");
+        autoSave();
+        return;
+      }
+      const actionResults = await executeChatActionBundle(pendingAssistant, {
+        actions: actionList,
+        baseReply,
         imageDataUrl: attachmentImageDataUrl || imageDataUrls[0] || "",
         videoDataUrl: sourceVideoDataUrl,
-        message: modelText,
-        ...(options.actionContext || {}),
-        onProgress(progress) {
-          updateChatMessage(pendingAssistant, {
-            content: `${baseReply}${formatActionProgressNote(progress)}`,
-            pending: true
-          });
-        }
+        modelText,
+        actionContext: options.actionContext || {}
       });
+      assistantMeta.actionResults = actionResults;
+      return;
     }
-    assistantMeta.actionResults = actionResults;
-    const failureNote = formatActionFailureNote(actionResults);
-    const completionNote = formatActionCompletionNote(actionResults);
-    const replyContent = `${baseReply}${completionNote}${failureNote}`;
     updateChatMessage(pendingAssistant, {
-      content: replyContent,
+      content: baseReply,
       ...assistantMeta
     });
     setStatus(t("status.ready"), "ready");
@@ -11023,6 +11429,8 @@ function appendChatMessage(role, content, metadata = {}) {
     thinkingContent,
     thinkingRequested: Boolean(pending || thinkingContent || thinkingTrace.length || (metadata.thinkingRequested && !normalizedContent)),
     actions: normalizeChatMessageActions(metadata.actions),
+    pendingActionBundle: normalizeChatPendingActionBundle(metadata.pendingActionBundle),
+    actionProgress: normalizeChatActionProgress(metadata.actionProgress),
     actionPolicy: normalizeChatActionPolicy(metadata.actionPolicy),
     actionTrace: normalizeChatActionPolicy(metadata.actionTrace),
     contextBudget: normalizeChatActionPolicy(metadata.contextBudget),
@@ -11060,6 +11468,12 @@ function updateChatMessage(message, updates = {}) {
   if ("attachments" in updates) message.attachments = normalizeChatAttachments(updates.attachments);
   if ("actions" in updates) {
     message.actions = normalizeChatMessageActions(updates.actions);
+  }
+  if ("pendingActionBundle" in updates) {
+    message.pendingActionBundle = normalizeChatPendingActionBundle(updates.pendingActionBundle);
+  }
+  if ("actionProgress" in updates) {
+    message.actionProgress = normalizeChatActionProgress(updates.actionProgress);
   }
   if ("actionPolicy" in updates) {
     message.actionPolicy = normalizeChatActionPolicy(updates.actionPolicy);
@@ -11120,6 +11534,8 @@ function updateRenderedChatMessage(message, updates = {}) {
     ("pending" in updates && !message.pending) ||
     "attachments" in updates ||
     "actions" in updates ||
+    "pendingActionBundle" in updates ||
+    "actionProgress" in updates ||
     "actionResults" in updates ||
     "artifacts" in updates ||
     "materials" in updates ||
@@ -11395,6 +11811,129 @@ function renderChatActionTraceViewer(message = {}) {
   return details;
 }
 
+function renderChatMessageToolbar(message, index) {
+  const toolbar = document.createElement("div");
+  toolbar.className = "chat-message-toolbar";
+  const branchButton = document.createElement("button");
+  branchButton.type = "button";
+  branchButton.className = "chat-message-tool";
+  branchButton.textContent = t("chat.branchThread");
+  branchButton.addEventListener("click", () => createChatBranchFromMessage(index));
+  toolbar.appendChild(branchButton);
+  return toolbar;
+}
+
+function renderChatActionProgress(message = {}) {
+  const progress = normalizeChatActionProgress(message.actionProgress);
+  if (!progress?.items?.length) return null;
+  const panel = document.createElement("div");
+  panel.className = `chat-action-progress status-${progress.status}`;
+  const header = document.createElement("div");
+  header.className = "chat-action-progress-header";
+  const title = document.createElement("strong");
+  title.textContent = t("chat.actionProgressTitle");
+  const meta = document.createElement("span");
+  meta.textContent = `${progress.done}/${progress.total}`;
+  header.append(title, meta);
+  const track = document.createElement("div");
+  track.className = "chat-action-progress-track";
+  const fill = document.createElement("span");
+  fill.style.width = `${progress.total ? Math.round((progress.done / progress.total) * 100) : 0}%`;
+  track.appendChild(fill);
+  const list = document.createElement("div");
+  list.className = "chat-action-progress-list";
+  progress.items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = `chat-action-progress-item status-${item.status}`;
+    const icon = document.createElement("span");
+    icon.className = "chat-action-progress-icon";
+    icon.textContent = item.status === "done" ? "✓" : (item.status === "failed" ? "!" : (item.status === "running" ? "…" : "•"));
+    const body = document.createElement("span");
+    body.className = "chat-action-progress-body";
+    body.textContent = item.title || item.type;
+    const state = document.createElement("span");
+    state.className = "chat-action-progress-state";
+    state.textContent = chatActionStatusLabel(item.status);
+    row.append(icon, body, state);
+    if (item.error) {
+      const error = document.createElement("small");
+      error.textContent = item.error;
+      row.appendChild(error);
+    }
+    list.appendChild(row);
+  });
+  panel.append(header, track, list);
+  return panel;
+}
+
+function renderChatActionConfirmation(message = {}) {
+  const bundle = normalizeChatPendingActionBundle(message.pendingActionBundle);
+  if (!bundle || bundle.status !== "awaiting_confirmation") return null;
+  const panel = document.createElement("div");
+  panel.className = "chat-action-confirmation";
+  const title = document.createElement("strong");
+  title.textContent = t("chat.actionPlanTitle");
+  const intro = document.createElement("p");
+  intro.textContent = t("chat.actionPlanIntro");
+  const list = document.createElement("div");
+  list.className = "chat-action-confirmation-list";
+  bundle.actions.forEach((action) => {
+    const row = document.createElement("div");
+    row.className = "chat-action-confirmation-item";
+    const icon = document.createElement("span");
+    icon.textContent = ACTION_FEEDBACK_ICONS[action.type] || "⚡";
+    const label = document.createElement("span");
+    label.textContent = actionDisplayTitle(action);
+    const type = document.createElement("small");
+    type.textContent = action.type;
+    row.append(icon, label, type);
+    list.appendChild(row);
+  });
+  const actions = document.createElement("div");
+  actions.className = "chat-action-confirmation-actions";
+  const confirm = document.createElement("button");
+  confirm.type = "button";
+  confirm.className = "chat-action-confirmation-confirm";
+  confirm.textContent = t("chat.actionPlanConfirm");
+  confirm.addEventListener("click", () => confirmChatActionBundle(message));
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "chat-action-confirmation-cancel";
+  cancel.textContent = t("chat.actionPlanCancel");
+  cancel.addEventListener("click", () => cancelChatActionBundle(message));
+  actions.append(confirm, cancel);
+  panel.append(title, intro, list, actions);
+  return panel;
+}
+
+function renderChatReferencesPanel(references = []) {
+  const refs = normalizeChatReferences(references);
+  if (!refs.length) return null;
+  const details = document.createElement("details");
+  details.className = "chat-references";
+  const summary = document.createElement("summary");
+  summary.className = "chat-references-summary";
+  summary.textContent = `${t("chat.referencesTitle")} · ${t("chat.referencesCount", { count: refs.length })}`;
+  const list = document.createElement("div");
+  list.className = "chat-references-list";
+  refs.forEach((reference, index) => {
+    const link = document.createElement("a");
+    link.className = "chat-reference-item";
+    link.href = reference.url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    const title = document.createElement("strong");
+    title.textContent = `[ref_${index + 1}] ${reference.title || reference.url}`;
+    const desc = document.createElement("span");
+    desc.textContent = reference.description || reference.url;
+    link.append(title, desc);
+    link.title = t("chat.openReference");
+    list.appendChild(link);
+  });
+  details.append(summary, list);
+  return details;
+}
+
 function renderChatMessages({ scrollToBottom = false } = {}) {
   const shouldStickToBottom = scrollToBottom || isChatNearBottom();
   chatMessages.replaceChildren();
@@ -11406,11 +11945,12 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
     return;
   }
 
-  for (const message of branchMessages) {
+  branchMessages.forEach((message, messageIndex) => {
     const line = document.createElement("div");
     line.className = `chat-line ${message.role}`;
     line.classList.toggle("pending", Boolean(message.pending));
     const rendered = { line };
+    line.appendChild(renderChatMessageToolbar(message, messageIndex));
     const displayThinkingContent = sanitizeChatThinkingContent(message.thinkingContent, message.content);
     const shouldRenderThinking = message.role === "assistant" && (
       message.pending ||
@@ -11502,6 +12042,14 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
     if (message.role === "assistant" && message.artifacts?.length) {
       line.appendChild(renderChatArtifacts(message.artifacts));
     }
+    if (message.role === "assistant") {
+      const confirmation = renderChatActionConfirmation(message);
+      if (confirmation) line.appendChild(confirmation);
+      const progress = renderChatActionProgress(message);
+      if (progress) line.appendChild(progress);
+      const references = renderChatReferencesPanel(message.references);
+      if (references) line.appendChild(references);
+    }
     if (message.role === "assistant" && message.actionResults?.length) {
       message.actionResults.forEach((ar) => {
         const card = document.createElement("div");
@@ -11517,15 +12065,40 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
           ? (currentLang === "en" ? "Action failed" : "\u6267\u884c\u5931\u8d25")
           : (labelText === labelKey ? t("chat.actionApplied") : labelText);
         const title = failed ? ar.error : (ar.title || "");
-        card.innerHTML = `
-          <span class="chat-action-icon">${escapeHtml(icon)}</span>
-          <span class="chat-action-label">${escapeHtml(label)}</span>
-          <span class="chat-action-title">${escapeHtml(title)}</span>
-        `;
+        const iconEl = document.createElement("span");
+        iconEl.className = "chat-action-icon";
+        iconEl.textContent = icon;
+        const labelEl = document.createElement("span");
+        labelEl.className = "chat-action-label";
+        labelEl.textContent = label;
+        const titleEl = document.createElement("span");
+        titleEl.className = "chat-action-title";
+        titleEl.textContent = title;
+        card.append(iconEl, labelEl, titleEl);
         if (ar.nodeId && !failed) {
           card.title = t("chat.clickToFocus") || "点击跳转到画布节点";
           card.onclick = () => focusNodeById(ar.nodeId);
           card.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); focusNodeById(ar.nodeId); } };
+          const ask = document.createElement("button");
+          ask.type = "button";
+          ask.className = "chat-action-inline-button";
+          ask.textContent = t("chat.askCard");
+          ask.addEventListener("click", (event) => {
+            event.stopPropagation();
+            startChatFollowupForNode(ar.nodeId, ar.title);
+          });
+          card.appendChild(ask);
+        }
+        if (failed) {
+          const retry = document.createElement("button");
+          retry.type = "button";
+          retry.className = "chat-action-inline-button retry";
+          retry.textContent = t("chat.retryAction");
+          retry.addEventListener("click", (event) => {
+            event.stopPropagation();
+            retryChatAction(message, ar);
+          });
+          card.appendChild(retry);
         }
         line.appendChild(card);
       });
@@ -11541,7 +12114,7 @@ function renderChatMessages({ scrollToBottom = false } = {}) {
     }
     chatMessages.appendChild(line);
     renderedChatMessageElements.set(message, rendered);
-  }
+  });
   if (shouldStickToBottom) {
     scrollChatToBottom();
   } else {

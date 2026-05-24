@@ -10,7 +10,7 @@
     "build:fast": "npm --prefix app run build:fast",
     "start": "node server.js",
     "test": "node scripts/test-integration.js",
-    "test:guards": "node scripts/test-chat-action-guard.js && node scripts/test-chat-markdown-rendering.js && node scripts/test-canvas-action-reliability.js && node scripts/test-canvas-action-policy.js && node scripts/test-canvas-action-pipeline.js && node scripts/test-canvas-action-regression.js && node scripts/test-canvas-action-regression.js scripts/evals/canvas-action-complex-regression.jsonl && node scripts/test-canvas-action-contract.js && node scripts/test-canvas-action-trajectory-eval.js && node scripts/test-responses-stream-parser.js && node scripts/test-inline-canvas-actions.js && node scripts/test-file-understanding.js",
+    "test:guards": "node scripts/test-chat-action-guard.js && node scripts/test-chat-markdown-rendering.js && node scripts/test-chat-controller.js && node scripts/test-canvas-action-reliability.js && node scripts/test-canvas-action-policy.js && node scripts/test-canvas-action-pipeline.js && node scripts/test-canvas-action-regression.js && node scripts/test-canvas-action-regression.js scripts/evals/canvas-action-complex-regression.jsonl && node scripts/test-canvas-action-contract.js && node scripts/test-canvas-action-trajectory-eval.js && node scripts/test-responses-stream-parser.js && node scripts/test-inline-canvas-actions.js && node scripts/test-file-understanding.js",
     "test:canvas-actions": "node scripts/test-canvas-action-regression.js",
     "test:canvas-actions:complex": "node scripts/test-canvas-action-regression.js scripts/evals/canvas-action-complex-regression.jsonl",
     "eval:canvas-actions:smoke": "node scripts/run-canvas-action-capability-smoke.js",

@@ -2870,6 +2870,250 @@ body.chat-sidebar-closed .statusbar > * {
   font-weight: 700;
 }
 
+.chat-message-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  height: 0;
+  min-height: 0;
+  overflow: visible;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-2px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.chat-line:hover .chat-message-toolbar,
+.chat-line:focus-within .chat-message-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.chat-message-tool,
+.chat-action-inline-button,
+.chat-action-confirmation-confirm,
+.chat-action-confirmation-cancel {
+  min-height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--divider);
+  border-radius: 999px;
+  color: var(--inkMuted);
+  background: rgba(255, 255, 255, 0.86);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.chat-message-tool:hover,
+.chat-action-inline-button:hover,
+.chat-action-confirmation-cancel:hover {
+  color: var(--ink);
+  background: var(--ice);
+}
+
+.chat-action-inline-button {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.chat-action-inline-button.retry,
+.chat-action-confirmation-confirm {
+  color: var(--paper);
+  border-color: var(--ps-blue);
+  background: var(--ps-blue);
+}
+
+.chat-action-inline-button.retry:hover,
+.chat-action-confirmation-confirm:hover {
+  background: var(--ps-blue-hover);
+}
+
+.chat-action-confirmation,
+.chat-action-progress,
+.chat-references {
+  width: min(100%, 640px);
+  margin-top: 8px;
+  border: 1px solid rgba(0, 112, 204, 0.16);
+  border-radius: 12px;
+  background: rgba(248, 249, 251, 0.92);
+}
+
+.chat-action-confirmation {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.chat-action-confirmation > strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.chat-action-confirmation p {
+  margin: 0;
+  color: var(--inkMuted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chat-action-confirmation-list,
+.chat-action-progress-list,
+.chat-references-list {
+  display: grid;
+  gap: 6px;
+}
+
+.chat-action-confirmation-item,
+.chat-action-progress-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+}
+
+.chat-action-confirmation-item span,
+.chat-action-progress-body {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-action-confirmation-item small,
+.chat-action-progress-state {
+  color: var(--inkMuted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chat-action-confirmation-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.chat-action-progress {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+}
+
+.chat-action-progress-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.chat-action-progress-header span {
+  color: var(--inkMuted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chat-action-progress-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 112, 204, 0.1);
+}
+
+.chat-action-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--ps-blue);
+  transition: width 180ms ease;
+}
+
+.chat-action-progress-icon {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  color: var(--paper);
+  background: rgba(0, 112, 204, 0.42);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.chat-action-progress-item.status-running .chat-action-progress-icon {
+  background: var(--ps-blue);
+  animation: spin 0.9s linear infinite;
+}
+
+.chat-action-progress-item.status-done .chat-action-progress-icon {
+  background: #17803d;
+}
+
+.chat-action-progress-item.status-failed .chat-action-progress-icon {
+  background: var(--danger);
+}
+
+.chat-action-progress-item small {
+  grid-column: 2 / -1;
+  color: var(--danger);
+  font-size: 11px;
+}
+
+.chat-references {
+  overflow: hidden;
+}
+
+.chat-references summary {
+  list-style: none;
+}
+
+.chat-references summary::-webkit-details-marker {
+  display: none;
+}
+
+.chat-references-summary {
+  cursor: pointer;
+  padding: 9px 12px;
+  color: var(--ps-blue);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chat-references-list {
+  padding: 0 12px 12px;
+}
+
+.chat-reference-item {
+  display: grid;
+  gap: 3px;
+  padding: 8px;
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.72);
+  text-decoration: none;
+}
+
+.chat-reference-item:hover {
+  background: rgba(0, 112, 204, 0.08);
+}
+
+.chat-reference-item strong,
+.chat-reference-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-reference-item span {
+  color: var(--inkMuted);
+  font-size: 12px;
+}
+
 .chat-message-attachments {
   display: flex;
   flex-wrap: wrap;
