@@ -191,11 +191,14 @@ async function main() {
 
   // Test 6: History list
   if (sessionId) {
-    const { status, data } = await request("GET", "/api/history?limit=5");
+    const { status, data } = await request("GET", "/api/history?limit=5&source=user");
     if (status === 200 && data?.ok === true && Array.isArray(data.sessions) &&
         data.sessions.length >= 1 && data.sessions[0].id === sessionId && data.sessions[0].nodeCount === 2) {
       log("History list: PASS (nodeCount=" + data.sessions[0].nodeCount + ")");
-    } else fail("History list failed: status=" + status);
+    } else {
+      const first = Array.isArray(data?.sessions) ? data.sessions[0] : null;
+      fail("History list failed: status=" + status + ", first=" + JSON.stringify(first));
+    }
   }
 
   // Test 7: Session update

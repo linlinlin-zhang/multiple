@@ -2628,7 +2628,7 @@ body.chat-sidebar-closed .statusbar > * {
 
 .project-template-button {
   min-width: 0;
-  min-height: 78px;
+  min-height: 96px;
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
   gap: 9px;
@@ -2679,7 +2679,8 @@ body.chat-sidebar-closed .statusbar > * {
 }
 
 .project-template-label,
-.project-template-desc {
+.project-template-desc,
+.project-template-meta {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -2696,6 +2697,13 @@ body.chat-sidebar-closed .statusbar > * {
   color: var(--inkMuted);
   font-size: 12px;
   line-height: 1.35;
+}
+
+.project-template-meta {
+  color: rgba(125, 82, 179, 0.82);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .chat-suggestion-list {
@@ -3720,6 +3728,10 @@ html[data-theme="dark"] .project-template-button:focus-visible {
 html[data-theme="dark"] .project-template-icon {
   color: #d9ccff;
   background: rgba(171, 139, 255, 0.18);
+}
+
+html[data-theme="dark"] .project-template-meta {
+  color: rgba(216, 198, 255, 0.78);
 }
 
 html[data-theme="dark"] .chat-context-indicator,

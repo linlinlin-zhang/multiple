@@ -456,12 +456,11 @@ const CANVAS_RISKY_TOOL_TYPES = new Set(CANVAS_TOOL_DEFINITIONS.filter((tool) =>
 const RICH_CARD_ACTION_TYPES = ["create_note", "create_plan", "create_todo", "create_weather", "create_map", "create_link", "create_code", "create_table", "create_timeline", "create_comparison", "create_metric", "create_quote"];
 const RICH_CARD_NODE_TYPES = ["note", "plan", "todo", "weather", "map", "link", "code", "table", "timeline", "comparison", "metric", "quote"];
 const PROJECT_TEMPLATE_IDS = [
-  "academic-research",
-  "product-competitive",
-  "video-script",
-  "visual-style",
-  "course-plan",
-  "event-plan"
+  "academic-paper-explorer",
+  "video-storyboarding-assistant",
+  "product-competitive-analysis",
+  "visual-style-exploration-lab",
+  "course-learning-plan-studio"
 ];
 
 const optionPositions = [
@@ -795,23 +794,26 @@ const i18n = {
     "chat.conversationMessages": "{count} 条消息",
     "chat.noMessages": "还没有消息。输入方向、约束，或按 / 使用工作台命令。",
     "chat.emptyTitle": "可以这样开始",
-    "projectTemplate.title": "项目模板",
+    "projectTemplate.title": "场景化任务包",
     "projectTemplate.started": "已启动「{title}」",
-    "projectTemplate.context": "项目模板：{title}。已在画布创建启动结构，接下来请继续补齐证据、方案和可执行交付物。",
-    "projectTemplate.brief": "项目简报",
+    "projectTemplate.context": "场景化任务包：{title}。已在画布创建输入材料、Agent 流程、布局策略和报告结构，请继续补齐证据、方案和可执行交付物。",
+    "projectTemplate.brief": "任务包简报",
     "projectTemplate.outputs": "交付物清单",
-    "projectTemplate.academic.title": "学术论文调研",
-    "projectTemplate.academic.desc": "文献脉络、证据卡、研究缺口和综述报告",
-    "projectTemplate.competitive.title": "产品竞品分析",
-    "projectTemplate.competitive.desc": "竞品证据、功能对比、机会点和策略建议",
-    "projectTemplate.video.title": "视频脚本策划",
-    "projectTemplate.video.desc": "受众洞察、结构大纲、分镜和拍摄清单",
-    "projectTemplate.visual.title": "视觉风格探索",
-    "projectTemplate.visual.desc": "情绪板、风格路线、提示词和评估标准",
-    "projectTemplate.course.title": "课程学习计划",
-    "projectTemplate.course.desc": "学习路径、周计划、练习和验收方式",
-    "projectTemplate.event.title": "活动方案生成",
-    "projectTemplate.event.desc": "目标、议程、物料、风险和执行时间线",
+    "projectTemplate.defaultInputs": "默认输入材料",
+    "projectTemplate.agentWorkflow": "推荐 Agent Workflow",
+    "projectTemplate.layoutStrategy": "画布布局策略",
+    "projectTemplate.reportFormat": "报告格式",
+    "projectTemplate.scenarioBadge": "任务包",
+    "projectTemplate.academicPaper.title": "Academic Paper Explorer",
+    "projectTemplate.academicPaper.desc": "论文 PDF 到方法/贡献/实验/局限与引用页码问答",
+    "projectTemplate.videoStoryboard.title": "Video Storyboarding Assistant",
+    "projectTemplate.videoStoryboard.desc": "视频/图片到分镜卡、风格板、脚本和生成图提示",
+    "projectTemplate.competitiveAnalysis.title": "Product Competitive Analysis",
+    "projectTemplate.competitiveAnalysis.desc": "网页/截图/PDF 到证据卡、对比表和策略报告",
+    "projectTemplate.visualStyle.title": "Visual Style Exploration Lab",
+    "projectTemplate.visualStyle.desc": "参考素材到风格路线、提示词矩阵和视觉评估",
+    "projectTemplate.learningPlan.title": "Course Learning Plan Studio",
+    "projectTemplate.learningPlan.desc": "课程材料到学习路径、练习任务、复盘和验收方案",
     "chat.suggestionVisualConcepts": "基于当前素材生成 5 个不同风格的视觉概念方向",
     "chat.suggestionFrameBreakdown": "拆解当前画面的主体、氛围、色彩和镜头感",
     "chat.suggestionVisualSeries": "帮我把这个想法扩展成一组系列化视觉方案",
@@ -1154,23 +1156,26 @@ const i18n = {
     "chat.contextIndicator": "Context: {title}",
     "chat.noMessages": "No messages yet. Enter a direction, constraint, or press / for workbench commands.",
     "chat.emptyTitle": "Try starting with",
-    "projectTemplate.title": "Project templates",
+    "projectTemplate.title": "Scenario task packages",
     "projectTemplate.started": "Started \"{title}\"",
-    "projectTemplate.context": "Project template: {title}. A starter canvas structure has been created; continue by filling evidence, plans, and executable deliverables.",
-    "projectTemplate.brief": "Project brief",
+    "projectTemplate.context": "Scenario task package: {title}. The canvas now contains input materials, agent workflow, layout strategy, and report structure; continue by filling evidence, plans, and executable deliverables.",
+    "projectTemplate.brief": "Task package brief",
     "projectTemplate.outputs": "Deliverables",
-    "projectTemplate.academic.title": "Academic paper research",
-    "projectTemplate.academic.desc": "Literature map, evidence cards, research gaps, and review report",
-    "projectTemplate.competitive.title": "Product competitor analysis",
-    "projectTemplate.competitive.desc": "Competitor evidence, feature comparison, opportunities, and strategy",
-    "projectTemplate.video.title": "Video script planning",
-    "projectTemplate.video.desc": "Audience insight, outline, storyboard, and production checklist",
-    "projectTemplate.visual.title": "Visual style exploration",
-    "projectTemplate.visual.desc": "Moodboard, style routes, prompts, and evaluation criteria",
-    "projectTemplate.course.title": "Course learning plan",
-    "projectTemplate.course.desc": "Learning path, weekly plan, practice, and validation",
-    "projectTemplate.event.title": "Event proposal generation",
-    "projectTemplate.event.desc": "Goals, agenda, materials, risks, and execution timeline",
+    "projectTemplate.defaultInputs": "Default input materials",
+    "projectTemplate.agentWorkflow": "Recommended Agent workflow",
+    "projectTemplate.layoutStrategy": "Canvas layout strategy",
+    "projectTemplate.reportFormat": "Report format",
+    "projectTemplate.scenarioBadge": "Package",
+    "projectTemplate.academicPaper.title": "Academic Paper Explorer",
+    "projectTemplate.academicPaper.desc": "Paper PDF to methods, contributions, experiments, limitations, and page-cited QA",
+    "projectTemplate.videoStoryboard.title": "Video Storyboarding Assistant",
+    "projectTemplate.videoStoryboard.desc": "Video/images to storyboard cards, style board, script, and generation prompts",
+    "projectTemplate.competitiveAnalysis.title": "Product Competitive Analysis",
+    "projectTemplate.competitiveAnalysis.desc": "Webpages/screenshots/PDFs to evidence cards, comparison table, and strategy report",
+    "projectTemplate.visualStyle.title": "Visual Style Exploration Lab",
+    "projectTemplate.visualStyle.desc": "References to style routes, prompt matrix, and visual evaluation",
+    "projectTemplate.learningPlan.title": "Course Learning Plan Studio",
+    "projectTemplate.learningPlan.desc": "Course material to learning path, exercises, review loops, and validation",
     "chat.suggestionVisualConcepts": "Generate 5 visual concept directions in different styles from the current material",
     "chat.suggestionFrameBreakdown": "Break down the current image by subject, mood, color, and camera feel",
     "chat.suggestionVisualSeries": "Expand this idea into a series of visual concepts",
@@ -5646,332 +5651,522 @@ function projectTemplateTopic(topicOverride, zhFallback, enFallback) {
   return currentLang === "en" ? enFallback : zhFallback;
 }
 
+function projectTemplateItemTitle(item) {
+  if (!item || typeof item === "string") return String(item || "").trim();
+  return String(item.title || item.label || item.type || "").trim();
+}
+
+function projectTemplateItemDescription(item) {
+  if (!item || typeof item === "string") return "";
+  return String(item.description || item.summary || item.accepts || item.creates || "").trim();
+}
+
+function projectTemplateItemLine(item) {
+  const title = projectTemplateItemTitle(item);
+  const detail = projectTemplateItemDescription(item);
+  if (!title) return detail ? `- ${detail}` : "";
+  return detail ? `- ${title}: ${detail}` : `- ${title}`;
+}
+
+function projectTemplateListLines(items = []) {
+  return (Array.isArray(items) ? items : [])
+    .map(projectTemplateItemLine)
+    .filter(Boolean);
+}
+
+function projectTemplateScenarioPrompt(template, target) {
+  const isEn = currentLang === "en";
+  const sections = [
+    isEn
+      ? `Run the "${template.title}" scenario task package for: ${target}.`
+      : `运行「${template.title}」场景化任务包，主题：${target}。`,
+    template.description,
+    "",
+    isEn ? "Default input materials:" : "默认输入材料：",
+    ...projectTemplateListLines(template.defaultInputs),
+    "",
+    isEn ? "Recommended Agent workflow:" : "推荐 Agent workflow：",
+    ...projectTemplateListLines(template.agentWorkflow),
+    "",
+    isEn ? "Expected canvas outputs:" : "预期画布输出：",
+    ...(template.outputs || []).map((item) => `- ${item}`),
+    "",
+    isEn ? "Canvas layout strategy:" : "画布布局策略：",
+    projectTemplateItemLine(template.layoutStrategy).replace(/^- /, ""),
+    ...(template.layoutStrategy?.lanes || []).map((item) => `- ${item}`),
+    "",
+    isEn ? "Report format:" : "报告格式：",
+    projectTemplateItemLine(template.reportFormat).replace(/^- /, ""),
+    ...(template.reportFormat?.sections || []).map((item) => `- ${item}`),
+    "",
+    isEn
+      ? "Create concrete, editable canvas cards for every step. Use page numbers, timestamps, URLs, or file names whenever evidence exists. When material is missing, create a clear input placeholder instead of inventing evidence."
+      : "请为每个步骤创建具体、可编辑的画布卡片。只要有证据，就标注页码、时间戳、URL 或文件名；材料缺失时创建清晰的输入占位卡，不要编造证据。"
+  ];
+  return sections.filter((line) => line !== "").join("\n");
+}
+
+function scenarioTaskPackage(config) {
+  return {
+    workflow: "chat-agent",
+    taskType: "planning",
+    defaultInputs: [],
+    agentWorkflow: [],
+    outputs: [],
+    layoutStrategy: {},
+    reportFormat: {},
+    ...config,
+    promptFor(target) {
+      return projectTemplateScenarioPrompt(this, target || this.topic);
+    }
+  };
+}
+
 function projectTemplateDefinitions(topicOverride = "") {
   const isEn = currentLang === "en";
   const topic = (zhFallback, enFallback) => projectTemplateTopic(topicOverride, zhFallback, enFallback);
-  const labels = {
-    academic: t("projectTemplate.academic.title"),
-    competitive: t("projectTemplate.competitive.title"),
-    video: t("projectTemplate.video.title"),
-    visual: t("projectTemplate.visual.title"),
-    course: t("projectTemplate.course.title"),
-    event: t("projectTemplate.event.title")
-  };
 
   return [
-    {
-      id: "academic-research",
-      icon: "AR",
+    scenarioTaskPackage({
+      id: "academic-paper-explorer",
+      icon: "PDF",
       workflow: "research-agent",
       taskType: "research",
-      title: labels.academic,
-      description: t("projectTemplate.academic.desc"),
-      topic: topic("AI 画布工作台对知识工作效率的影响", "the impact of AI canvas workbenches on knowledge-work productivity"),
+      title: t("projectTemplate.academicPaper.title"),
+      description: t("projectTemplate.academicPaper.desc"),
+      topic: topic("基于一篇 ACM Multimedia 论文构建方法、贡献、实验和局限的引用页码问答", "page-cited method, contribution, experiment, and limitation analysis for an ACM Multimedia paper"),
+      defaultInputs: isEn
+        ? [
+            { type: "PDF", label: "Primary paper PDF", description: "Upload the target paper so sections, figures, tables, and page anchors can become evidence cards." },
+            { type: "PDF / URL", label: "Related paper or survey", description: "Optional context source for method lineage and baseline comparison." },
+            { type: "Note", label: "Research question", description: "What you want to verify: novelty, reproducibility, dataset fit, or demo positioning." }
+          ]
+        : [
+            { type: "PDF", label: "核心论文 PDF", description: "上传目标论文，用于抽取章节、图表、表格和页码证据。" },
+            { type: "PDF / URL", label: "相关论文或综述", description: "可选，用于追溯方法脉络和基线对比。" },
+            { type: "Note", label: "研究问题", description: "明确要验证的新颖性、可复现性、数据集适配或 demo 定位。" }
+          ],
+      agentWorkflow: isEn
+        ? [
+            { title: "Parse the paper", description: "Split abstract, intro, method, experiments, figures, tables, and limitations into cards with page anchors." },
+            { title: "Build contribution map", description: "Separate claimed contributions from actually supported evidence." },
+            { title: "Compare methods and experiments", description: "Extract baselines, datasets, metrics, ablations, and reproducibility risks." },
+            { title: "Create citation QA layer", description: "Prepare questions that answer with page numbers and quote snippets." },
+            { title: "Synthesize review report", description: "Generate an ACM-style brief with novelty, evidence strength, gaps, and follow-up reading." }
+          ]
+        : [
+            { title: "解析论文", description: "把摘要、引言、方法、实验、图表和局限拆成带页码锚点的卡片。" },
+            { title: "构建贡献图", description: "区分作者声称的贡献和真正被证据支撑的贡献。" },
+            { title: "对比方法与实验", description: "抽取基线、数据集、指标、消融和可复现风险。" },
+            { title: "创建引用问答层", description: "准备必须带页码和引用片段回答的问题。" },
+            { title: "综合评审报告", description: "生成 ACM 风格简报：新颖性、证据强度、缺口和后续阅读。" }
+          ],
       outputs: isEn
-        ? ["Research question map", "source/evidence cards", "method comparison", "research gap note", "review report"]
-        : ["研究问题图", "来源/证据卡", "方法对比", "研究缺口笔记", "综述报告"],
-      promptFor(target) {
-        return isEn
-          ? `Use the academic paper research template to investigate "${target}". Search or surface verifiable paper/source leads, create evidence cards with citations or search leads, compare methods and findings, identify gaps, and generate a literature-review style report plus follow-up reading plan.`
-          : `使用学术论文调研模板，调研「${target}」。请搜索或提出可核查的论文/来源线索，创建带引用或检索线索的证据卡，对比方法和发现，识别研究缺口，并生成文献综述式报告与后续阅读计划。`;
+        ? ["paper structure cards", "method/contribution matrix", "experiment evidence table", "limitation and threat notes", "page-cited QA panel", "review report"]
+        : ["论文结构卡", "方法/贡献矩阵", "实验依据表", "局限与威胁笔记", "带页码引用问答面板", "评审式报告"],
+      layoutStrategy: {
+        title: isEn ? "Source-left, evidence-center, synthesis-right" : "左侧原文、中间证据、右侧综合",
+        description: isEn ? "Keep PDF pages and quotes on the left, extraction tables in the middle, and claims/report on the right." : "PDF 页与引用放左侧，抽取表格放中间，主张和报告放右侧。",
+        lanes: isEn
+          ? ["Left: uploaded paper and page cards", "Middle: method, experiment, and limitation evidence", "Right: QA, gap analysis, and final report"]
+          : ["左列：上传论文与页码卡", "中列：方法、实验和局限证据", "右列：问答、缺口分析和最终报告"]
+      },
+      reportFormat: {
+        title: isEn ? "ACM-style paper explorer brief" : "ACM 风格论文理解报告",
+        description: isEn ? "A concise review memo grounded by page-level citations." : "以页码级证据支撑的精炼评审备忘。",
+        sections: isEn
+          ? ["TL;DR", "Problem and contribution", "Method pipeline", "Experiment evidence", "Limitations and threats", "Open questions with page citations"]
+          : ["一句话结论", "问题与贡献", "方法流程", "实验证据", "局限与威胁", "带页码的开放问题"]
       },
       starterCards(target) {
         return [
           {
             nodeType: "table",
             tone: isEn ? "evidence" : "证据",
-            title: isEn ? "Literature evidence matrix" : "文献证据矩阵",
-            description: isEn ? "Track paper/source leads, methods, findings, and reliability." : "记录论文/来源线索、方法、发现和可信度。",
+            title: isEn ? "Method / contribution / evidence matrix" : "方法 / 贡献 / 证据矩阵",
+            description: target,
             content: {
-              columns: isEn ? ["Source", "Method", "Finding", "Confidence"] : ["来源", "方法", "发现", "可信度"],
+              columns: isEn ? ["Claim", "Method detail", "Experiment support", "Page"] : ["主张", "方法细节", "实验支撑", "页码"],
               rows: [
-                isEn ? ["Primary paper", "TBD", "TBD", "verify"] : ["核心论文", "待补充", "待补充", "待核查"],
-                isEn ? ["Review / survey", "TBD", "TBD", "verify"] : ["综述/调查", "待补充", "待补充", "待核查"],
-                isEn ? ["Dataset / benchmark", "TBD", "TBD", "verify"] : ["数据集/基准", "待补充", "待补充", "待核查"]
+                isEn ? ["Main contribution", "TBD", "TBD", "p.?"] : ["核心贡献", "待抽取", "待核查", "p.?"],
+                isEn ? ["Dataset / benchmark", "TBD", "TBD", "p.?"] : ["数据集/基准", "待抽取", "待核查", "p.?"],
+                isEn ? ["Limitation", "TBD", "TBD", "p.?"] : ["局限", "待抽取", "待核查", "p.?"]
               ]
             }
           },
           {
-            nodeType: "note",
-            tone: isEn ? "gap" : "缺口",
-            title: isEn ? "Research gap hypotheses" : "研究缺口假设",
-            description: target,
+            nodeType: "quote",
+            tone: isEn ? "citation QA" : "引用问答",
+            title: isEn ? "Page-cited QA prompts" : "带页码引用问答",
+            description: isEn ? "Use these prompts after PDF understanding finishes." : "PDF 理解完成后可直接追问。",
             content: {
               text: isEn
-                ? `# Research gap hypotheses\n\nTopic: ${target}\n\n- Which claims are well supported?\n- Which methods or datasets are underrepresented?\n- Which assumptions need primary-source verification?`
-                : `# 研究缺口假设\n\n主题：${target}\n\n- 哪些结论已有稳定证据？\n- 哪些方法或数据集覆盖不足？\n- 哪些假设必须回到一手来源核查？`
+                ? "Ask: What is the actual method novelty? Which experiment supports it? Which page states the limitation?"
+                : "可问：真实方法新意是什么？哪个实验支撑它？局限在哪一页被作者承认？",
+              source: target,
+              page: "p.?"
             }
           }
         ];
       }
-    },
-    {
-      id: "product-competitive",
-      icon: "CA",
+    }),
+    scenarioTaskPackage({
+      id: "video-storyboarding-assistant",
+      icon: "VID",
+      workflow: "chat-agent",
+      taskType: "creative",
+      title: t("projectTemplate.videoStoryboard.title"),
+      description: t("projectTemplate.videoStoryboard.desc"),
+      topic: topic("把一段产品 demo 视频升级成 ACM MM demo track 分镜与视觉风格板", "turn a product demo video into an ACM MM demo-track storyboard and visual style board"),
+      defaultInputs: isEn
+        ? [
+            { type: "Video", label: "Short source video", description: "Upload MP4/WebM/MOV so keyframes, transcript, and timeline cards can be generated." },
+            { type: "Images", label: "Reference stills or screenshots", description: "Optional visual anchors for style, UI moments, or desired framing." },
+            { type: "Note", label: "Target audience and venue", description: "Demo track, product launch, classroom, investor pitch, or social video." }
+          ]
+        : [
+            { type: "Video", label: "短视频素材", description: "上传 MP4/WebM/MOV，用于生成关键帧、转写和时间线卡。" },
+            { type: "Images", label: "参考静帧或截图", description: "可选，用于锚定风格、界面瞬间或画面构图。" },
+            { type: "Note", label: "目标受众与场景", description: "Demo track、产品发布、课堂、路演或社媒短片。" }
+          ],
+      agentWorkflow: isEn
+        ? [
+            { title: "Understand video timeline", description: "Extract keyframes, transcript, shot boundaries, objects, actions, and timestamps." },
+            { title: "Create storyboard cards", description: "Turn each shot into purpose, visual, narration, risk, and edit notes." },
+            { title: "Build style board", description: "Cluster colors, composition, references, and generated image prompts." },
+            { title: "Rewrite selected scene", description: "Refine any shot into a stronger short-video script with timestamp references." },
+            { title: "Prepare generation handoff", description: "Create image-generation prompts, reshoot checklist, and final demo script." }
+          ]
+        : [
+            { title: "理解视频时间线", description: "抽关键帧、转写、镜头边界、人物/物体/动作和时间戳。" },
+            { title: "生成分镜卡", description: "每个镜头拆成目标、画面、旁白、风险和剪辑备注。" },
+            { title: "建立风格板", description: "聚合色彩、构图、参考和可生成图提示词。" },
+            { title: "改写指定镜头", description: "基于时间戳把某个镜头改写成更强的短视频脚本。" },
+            { title: "交付生成链路", description: "创建成图提示词、补拍清单和最终 demo 脚本。" }
+          ],
+      outputs: isEn
+        ? ["video timeline cards", "shot storyboard table", "style board", "voiceover/script draft", "image prompts", "reshoot checklist"]
+        : ["视频时间线卡", "镜头分镜表", "视觉风格板", "旁白/脚本草稿", "生成图提示词", "补拍清单"],
+      layoutStrategy: {
+        title: isEn ? "Timeline spine with creative lanes" : "时间线主干 + 创意分栏",
+        description: isEn ? "Place timeline cards horizontally, then stack evidence, script, style, and generation prompts beneath each shot." : "横向排列时间线卡，再把证据、脚本、风格和生成提示按镜头向下展开。",
+        lanes: isEn
+          ? ["Top: source video and keyframes", "Middle: shot cards and transcript snippets", "Bottom: style board, prompts, and production checklist"]
+          : ["上层：原视频与关键帧", "中层：分镜卡和转写片段", "下层：风格板、提示词和制作清单"]
+      },
+      reportFormat: {
+        title: isEn ? "Storyboard production packet" : "分镜制作包",
+        description: isEn ? "A production-ready packet for rewriting or generating demo visuals." : "可直接用于改写或生成 demo 视觉的制作包。",
+        sections: isEn
+          ? ["Narrative arc", "Shot-by-shot timeline", "Visual style rationale", "Script and voiceover", "Generation prompts", "Risks and reshoots"]
+          : ["叙事弧线", "逐镜头时间线", "视觉风格理由", "脚本与旁白", "生成提示词", "风险与补拍"]
+      },
+      starterCards(target) {
+        return [
+          {
+            nodeType: "timeline",
+            tone: isEn ? "storyboard" : "分镜",
+            title: isEn ? "Shot timeline scaffold" : "镜头时间线骨架",
+            description: target,
+            content: {
+              items: isEn
+                ? [
+                    { time: "0-5s", title: "Hook", description: "Problem, striking frame, or audience promise." },
+                    { time: "5-20s", title: "Evidence moment", description: "Show the actual multimodal understanding behavior." },
+                    { time: "20-45s", title: "Transformation", description: "Canvas timeline turns into editable creative artifacts." },
+                    { time: "45-60s", title: "Payoff", description: "Report, generated image, or final storyboard outcome." }
+                  ]
+                : [
+                    { time: "0-5s", title: "开场钩子", description: "问题、强画面或受众承诺。" },
+                    { time: "5-20s", title: "证据时刻", description: "展示真实多媒体理解行为。" },
+                    { time: "20-45s", title: "转化过程", description: "画布时间线转成可编辑创意素材。" },
+                    { time: "45-60s", title: "结果收束", description: "报告、生成图或最终分镜交付。" }
+                  ]
+            }
+          },
+          {
+            nodeType: "table",
+            tone: isEn ? "shot list" : "镜头清单",
+            title: isEn ? "Shot rewrite table" : "镜头改写表",
+            description: isEn ? "Use one row per detected shot." : "每个识别镜头使用一行。",
+            content: {
+              columns: isEn ? ["Timestamp", "Visual", "Narration", "Action", "Generation prompt"] : ["时间戳", "画面", "旁白", "动作", "生成提示词"],
+              rows: [
+                isEn ? ["00:00", "TBD", "TBD", "TBD", "TBD"] : ["00:00", "待补充", "待补充", "待补充", "待补充"],
+                isEn ? ["00:12", "TBD", "TBD", "TBD", "TBD"] : ["00:12", "待补充", "待补充", "待补充", "待补充"],
+                isEn ? ["00:30", "TBD", "TBD", "TBD", "TBD"] : ["00:30", "待补充", "待补充", "待补充", "待补充"]
+              ]
+            }
+          }
+        ];
+      }
+    }),
+    scenarioTaskPackage({
+      id: "product-competitive-analysis",
+      icon: "CMP",
       workflow: "research-agent",
       taskType: "research",
-      title: labels.competitive,
-      description: t("projectTemplate.competitive.desc"),
-      topic: topic("AI 画布工作台产品的竞品分析", "competitor analysis for an AI canvas workbench product"),
+      title: t("projectTemplate.competitiveAnalysis.title"),
+      description: t("projectTemplate.competitiveAnalysis.desc"),
+      topic: topic("AI 画布工作台在多模态 Agent 产品中的竞品定位", "competitive positioning for an AI canvas workbench in multimodal agent products"),
+      defaultInputs: isEn
+        ? [
+            { type: "URL", label: "Competitor websites", description: "Official pages, docs, pricing, changelogs, or launch posts." },
+            { type: "Screenshot / PDF", label: "Product evidence", description: "Screenshots, decks, docs, or analyst notes that can become source cards." },
+            { type: "Note", label: "Your product thesis", description: "Target customer, current feature set, pricing assumption, and desired positioning." }
+          ]
+        : [
+            { type: "URL", label: "竞品网页", description: "官网、文档、定价、更新日志或发布文章。" },
+            { type: "Screenshot / PDF", label: "产品证据材料", description: "截图、方案、文档或分析笔记，可转成来源卡。" },
+            { type: "Note", label: "自身产品假设", description: "目标客户、当前功能、定价假设和希望占据的位置。" }
+          ],
+      agentWorkflow: isEn
+        ? [
+            { title: "Collect verifiable sources", description: "Search and capture official pages, reviews, docs, pricing, and public demos." },
+            { title: "Create evidence cards", description: "One card per claim with URL, screenshot/PDF reference, date, and reliability." },
+            { title: "Build comparison matrix", description: "Compare workflow depth, multimodal input, agent automation, sharing, export, and pricing." },
+            { title: "Find gaps and moats", description: "Separate parity features from defensible opportunities and risks." },
+            { title: "Generate strategy report", description: "Produce positioning, roadmap implication, demo angle, and proof plan." }
+          ]
+        : [
+            { title: "采集可核查来源", description: "搜索并捕获官网、评价、文档、定价和公开 demo。" },
+            { title: "创建证据卡", description: "每个主张一张卡，保留 URL、截图/PDF 引用、日期和可信度。" },
+            { title: "建立对比矩阵", description: "比较流程深度、多模态输入、Agent 自动化、分享、导出和定价。" },
+            { title: "识别缺口与壁垒", description: "区分同质功能、可防守机会和潜在风险。" },
+            { title: "生成策略报告", description: "输出定位、路线图影响、demo 叙事角度和验证计划。" }
+          ],
       outputs: isEn
-        ? ["competitor shortlist", "evidence cards", "feature matrix", "positioning opportunities", "strategy memo"]
-        : ["竞品清单", "证据卡", "功能矩阵", "定位机会", "策略备忘"],
-      promptFor(target) {
-        return isEn
-          ? `Use the product competitor analysis template for "${target}". Search or surface source leads, create competitor evidence cards, build a feature/pricing/positioning comparison, identify gaps and defensible opportunities, and generate a strategy report.`
-          : `使用产品竞品分析模板，分析「${target}」。请搜索或提出来源线索，创建竞品证据卡，建立功能/价格/定位对比，识别缺口与可防守机会，并生成策略报告。`;
+        ? ["competitor source cards", "evidence reliability table", "feature/value matrix", "positioning map", "strategy memo", "demo proof plan"]
+        : ["竞品来源卡", "证据可信度表", "功能/价值矩阵", "定位地图", "策略备忘", "demo 证明计划"],
+      layoutStrategy: {
+        title: isEn ? "Evidence wall to strategy stack" : "证据墙到策略栈",
+        description: isEn ? "Arrange competitors by columns, evidence rows underneath, then synthesize into strategy and roadmap cards." : "按竞品分列，下面放证据行，再综合成策略和路线图卡。",
+        lanes: isEn
+          ? ["Columns: one lane per competitor", "Center: comparison matrix and scoring", "Right: strategy memo and demo proof plan"]
+          : ["分列：每个竞品一列", "中部：对比矩阵和评分", "右侧：策略备忘和 demo 证明计划"]
+      },
+      reportFormat: {
+        title: isEn ? "Competitive strategy report" : "竞品策略报告",
+        description: isEn ? "A source-grounded memo for product and demo decisions." : "面向产品和 demo 决策的来源驱动备忘。",
+        sections: isEn
+          ? ["Market frame", "Competitor evidence", "Feature and workflow comparison", "Strategic gaps", "Recommended positioning", "Risks and validation plan"]
+          : ["市场框架", "竞品证据", "功能与流程对比", "策略缺口", "推荐定位", "风险和验证计划"]
       },
       starterCards() {
         return [
           {
             nodeType: "comparison",
-            tone: isEn ? "comparison" : "对比",
-            title: isEn ? "Competitor comparison frame" : "竞品对比框架",
-            description: isEn ? "Compare alternatives by user, workflow, evidence, and moat." : "从用户、流程、证据和壁垒维度比较方案。",
+            tone: isEn ? "strategy" : "策略",
+            title: isEn ? "Competitor value matrix" : "竞品价值矩阵",
+            description: isEn ? "Score each competitor only after evidence cards exist." : "证据卡存在后再给竞品评分。",
             content: {
-              criteria: isEn ? ["target user", "core workflow", "collaboration", "evidence traceability", "pricing", "moat"] : ["目标用户", "核心流程", "协作", "证据追溯", "定价", "壁垒"],
+              criteria: isEn ? ["multimodal depth", "agent workflow", "evidence traceability", "collaboration", "export/share", "pricing fit"] : ["多模态深度", "Agent 工作流", "证据可追溯", "协作", "导出/分享", "定价适配"],
               items: [
-                { title: isEn ? "Competitor A" : "竞品 A", summary: isEn ? "Primary alternative to verify." : "待核查的主要替代方案。", pros: [], cons: [], score: "TBD" },
-                { title: isEn ? "Competitor B" : "竞品 B", summary: isEn ? "Adjacent workflow benchmark." : "相邻工作流标杆。", pros: [], cons: [], score: "TBD" }
+                { title: isEn ? "Competitor A" : "竞品 A", summary: isEn ? "Official source pending." : "待补充官方来源。", pros: [], cons: [], score: "TBD" },
+                { title: isEn ? "Competitor B" : "竞品 B", summary: isEn ? "Workflow benchmark pending." : "待补充流程标杆。", pros: [], cons: [], score: "TBD" },
+                { title: isEn ? "ThoughtGrid" : "织境", summary: isEn ? "Evaluate against evidence-backed user value." : "基于证据评估用户价值。", pros: [], cons: [], score: "TBD" }
               ],
-              recommendation: isEn ? "Fill with verified evidence before deciding positioning." : "先补齐可核查证据，再判断定位。"
+              recommendation: isEn ? "Decide positioning after source verification." : "完成来源核查后再决定定位。"
             }
           },
           {
             nodeType: "table",
             tone: isEn ? "evidence" : "证据",
-            title: isEn ? "Source capture table" : "来源采集表",
-            description: isEn ? "Track official pages, docs, pricing pages, and user reviews." : "记录官网、文档、定价页和用户评价。",
+            title: isEn ? "Claim evidence register" : "主张证据登记表",
+            description: isEn ? "Track every competitive claim with a source and reliability." : "每条竞品主张都要有来源和可信度。",
             content: {
-              columns: isEn ? ["Competitor", "Source", "Claim", "Reliability"] : ["竞品", "来源", "主张", "可靠性"],
+              columns: isEn ? ["Claim", "Source", "Date", "Reliability", "Implication"] : ["主张", "来源", "日期", "可信度", "影响"],
               rows: [
-                isEn ? ["TBD", "official page", "TBD", "high"] : ["待补充", "官网页面", "待补充", "高"],
-                isEn ? ["TBD", "pricing/docs", "TBD", "high"] : ["待补充", "定价/文档", "待补充", "高"],
-                isEn ? ["TBD", "review/community", "TBD", "medium"] : ["待补充", "评价/社区", "待补充", "中"]
+                isEn ? ["TBD", "Official page", "TBD", "High", "TBD"] : ["待补充", "官网", "待补充", "高", "待补充"],
+                isEn ? ["TBD", "User review", "TBD", "Medium", "TBD"] : ["待补充", "用户评价", "待补充", "中", "待补充"],
+                isEn ? ["TBD", "Demo/screenshot", "TBD", "Medium", "TBD"] : ["待补充", "演示/截图", "待补充", "中", "待补充"]
               ]
             }
           }
         ];
       }
-    },
-    {
-      id: "video-script",
-      icon: "VS",
-      workflow: "chat-agent",
-      taskType: "planning",
-      title: labels.video,
-      description: t("projectTemplate.video.desc"),
-      topic: topic("一支 60 秒 AI 画布产品介绍视频", "a 60-second AI canvas product intro video"),
-      outputs: isEn
-        ? ["audience insight", "story arc", "scene timeline", "shot list", "production checklist"]
-        : ["受众洞察", "故事线", "场景时间线", "分镜清单", "拍摄准备"],
-      promptFor(target) {
-        return isEn
-          ? `Act as a task agent for video script planning. For "${target}", create canvas cards for audience, message hierarchy, 3-act script, scene timeline, storyboard/shot list, voiceover draft, and production checklist.`
-          : `请作为任务型 Agent 执行视频脚本策划。围绕「${target}」，创建受众、信息层级、三幕脚本、场景时间线、分镜/镜头清单、旁白草稿和制作清单等画布卡片。`;
-      },
-      starterCards() {
-        return [
-          {
-            nodeType: "timeline",
-            tone: isEn ? "script" : "脚本",
-            title: isEn ? "60-second story arc" : "60 秒故事节奏",
-            description: isEn ? "A starter beat structure for a short product or campaign video." : "适合产品或活动短片的起承转合结构。",
-            content: {
-              items: isEn
-                ? [
-                    { time: "0-5s", title: "Hook", description: "Open with the problem or arresting visual." },
-                    { time: "5-20s", title: "Context", description: "Show audience pain and why it matters." },
-                    { time: "20-45s", title: "Solution", description: "Demonstrate the main workflow or transformation." },
-                    { time: "45-60s", title: "Payoff", description: "Close with outcome, proof, and CTA." }
-                  ]
-                : [
-                    { time: "0-5s", title: "开场钩子", description: "用问题或强画面抓住注意力。" },
-                    { time: "5-20s", title: "痛点铺陈", description: "说明受众困境与重要性。" },
-                    { time: "20-45s", title: "解决方案", description: "展示核心流程或转变。" },
-                    { time: "45-60s", title: "结果与行动", description: "收束成果、证据和行动号召。" }
-                  ]
-            }
-          },
-          {
-            nodeType: "todo",
-            tone: isEn ? "production" : "制作",
-            title: isEn ? "Production checklist" : "制作清单",
-            description: isEn ? "A practical checklist before writing and shooting." : "写作和拍摄前的执行清单。",
-            content: {
-              items: (isEn
-                ? ["Confirm target audience and single message", "List required scenes or UI captures", "Draft voiceover and subtitles", "Prepare visual references", "Define review checkpoints"]
-                : ["确认目标受众和单一主张", "列出所需场景或界面录屏", "撰写旁白与字幕", "准备视觉参考", "定义审阅节点"])
-                .map((text) => ({ text, done: false }))
-            }
-          }
-        ];
-      }
-    },
-    {
-      id: "visual-style",
-      icon: "VE",
+    }),
+    scenarioTaskPackage({
+      id: "visual-style-exploration-lab",
+      icon: "ART",
       workflow: "chat-agent",
       taskType: "creative",
-      title: labels.visual,
-      description: t("projectTemplate.visual.desc"),
-      topic: topic("AI 知识工作台的视觉风格探索", "visual style exploration for an AI knowledge workbench"),
+      title: t("projectTemplate.visualStyle.title"),
+      description: t("projectTemplate.visualStyle.desc"),
+      topic: topic("为多模态 AI 画布 demo 探索可投稿展示的视觉系统", "explore a submission-ready visual system for a multimodal AI canvas demo"),
+      defaultInputs: isEn
+        ? [
+            { type: "Images / URLs", label: "Reference visuals", description: "Screenshots, posters, demos, UI references, or style links." },
+            { type: "Brand note", label: "Brand constraints", description: "Tone, audience, color avoid-list, venue, and usage surfaces." },
+            { type: "Canvas assets", label: "Existing cards or screenshots", description: "Actual product states that must remain recognizable." }
+          ]
+        : [
+            { type: "Images / URLs", label: "视觉参考", description: "截图、海报、demo、界面参考或风格链接。" },
+            { type: "Brand note", label: "品牌约束", description: "语气、受众、禁用色、场景和使用载体。" },
+            { type: "Canvas assets", label: "现有卡片或截图", description: "必须保持可辨识的真实产品状态。" }
+          ],
+      agentWorkflow: isEn
+        ? [
+            { title: "Cluster references", description: "Group materials by mood, composition, color, texture, and typography." },
+            { title: "Propose style routes", description: "Create 3-5 clearly differentiated routes with rationale and tradeoffs." },
+            { title: "Build prompt matrix", description: "Translate each route into image-generation prompts, negative prompts, and required assets." },
+            { title: "Evaluate fit", description: "Score routes for brand fit, readability, distinctiveness, and demo usefulness." },
+            { title: "Produce final style board", description: "Select one route and create a reusable visual direction packet." }
+          ]
+        : [
+            { title: "聚类参考素材", description: "按情绪、构图、色彩、纹理和字体归组材料。" },
+            { title: "提出风格路线", description: "创建 3-5 条差异明显的路线，说明理由和取舍。" },
+            { title: "建立提示词矩阵", description: "把每条路线转成成图提示词、反向提示词和必要素材。" },
+            { title: "评估适配度", description: "从品牌契合、可读性、差异化和 demo 用途评分。" },
+            { title: "生成最终风格板", description: "选择一条路线并沉淀成可复用视觉方向包。" }
+          ],
       outputs: isEn
-        ? ["style routes", "moodboard keywords", "image prompts", "palette/type notes", "selection criteria"]
-        : ["风格路线", "情绪板关键词", "成图提示词", "色彩/字体说明", "评估标准"],
-      promptFor(target) {
-        return isEn
-          ? `Act as a visual direction task agent. For "${target}", create canvas cards for moodboard keywords, 3-5 distinct style routes, color/material/type notes, image-generation prompts, reference search leads, and evaluation criteria.`
-          : `请作为视觉方向任务型 Agent。围绕「${target}」，创建情绪板关键词、3-5 条差异化风格路线、色彩/材质/字体说明、成图提示词、参考检索线索和评估标准卡片。`;
+        ? ["reference clusters", "style route comparison", "prompt matrix", "evaluation rubric", "final style board", "asset production checklist"]
+        : ["参考聚类", "风格路线对比", "提示词矩阵", "评估量表", "最终风格板", "素材制作清单"],
+      layoutStrategy: {
+        title: isEn ? "Reference wall to decision board" : "参考墙到决策板",
+        description: isEn ? "Place raw references on the left, route cards in the center, scoring and final board on the right." : "左侧放原始参考，中间放路线卡，右侧放评分和最终风格板。",
+        lanes: isEn
+          ? ["Left: reference clusters", "Middle: style routes and prompts", "Right: rubric, selected route, production tasks"]
+          : ["左列：参考聚类", "中列：风格路线和提示词", "右列：量表、选定路线、制作任务"]
+      },
+      reportFormat: {
+        title: isEn ? "Visual direction packet" : "视觉方向包",
+        description: isEn ? "A reusable art-direction note for image generation, decks, and app surfaces." : "用于成图、演示文稿和产品界面的可复用美术指导。",
+        sections: isEn
+          ? ["Design goal", "Reference analysis", "Style routes", "Prompt matrix", "Evaluation", "Selected direction and asset checklist"]
+          : ["设计目标", "参考分析", "风格路线", "提示词矩阵", "评估", "选定方向与素材清单"]
       },
       starterCards() {
         return [
           {
             nodeType: "comparison",
             tone: isEn ? "style" : "风格",
-            title: isEn ? "Style route shortlist" : "风格路线候选",
-            description: isEn ? "Compare several visual routes before generation." : "在成图前先比较多条视觉路线。",
+            title: isEn ? "Style route comparison" : "风格路线对比",
+            description: isEn ? "Keep routes visually distinct and testable." : "保持路线差异清晰、可测试。",
             content: {
-              criteria: isEn ? ["mood", "palette", "materials", "typography", "fit"] : ["情绪", "色彩", "材质", "字体", "适配度"],
+              criteria: isEn ? ["mood", "composition", "palette", "type", "demo clarity", "generation feasibility"] : ["情绪", "构图", "色彩", "字体", "demo 清晰度", "生成可行性"],
               items: [
-                { title: isEn ? "Editorial clarity" : "编辑感清晰路线", summary: isEn ? "Quiet, structured, and information-forward." : "克制、有结构，突出信息秩序。", pros: [], cons: [], score: "TBD" },
-                { title: isEn ? "Experimental lab" : "实验室探索路线", summary: isEn ? "More speculative, technical, and immersive." : "更具实验性、技术感和沉浸感。", pros: [], cons: [], score: "TBD" }
+                { title: isEn ? "Scholarly clarity" : "学术清晰路线", summary: isEn ? "Readable, evidence-forward, presentation friendly." : "可读、证据导向、适合投稿展示。", pros: [], cons: [], score: "TBD" },
+                { title: isEn ? "Cinematic timeline" : "电影时间线路线", summary: isEn ? "Strong motion, keyframe, and storyboard language." : "强化运动、关键帧和分镜语言。", pros: [], cons: [], score: "TBD" },
+                { title: isEn ? "Studio workbench" : "工作室台面路线", summary: isEn ? "Hands-on, tool-like, dense but calm." : "工具感强、信息密但克制。", pros: [], cons: [], score: "TBD" }
               ],
-              recommendation: isEn ? "Generate prompts only after the route is chosen." : "先选路线，再细化成图提示词。"
+              recommendation: isEn ? "Pick the route with the best readability/distinctiveness balance." : "选择可读性和差异化最平衡的路线。"
             }
           },
           {
-            nodeType: "metric",
-            tone: isEn ? "criteria" : "标准",
-            title: isEn ? "Style evaluation criteria" : "风格评估标准",
-            description: isEn ? "Use these checks to compare generated visual routes." : "用于比较生成视觉路线的评估项。",
+            nodeType: "table",
+            tone: isEn ? "prompt" : "提示词",
+            title: isEn ? "Image prompt matrix" : "成图提示词矩阵",
+            description: isEn ? "One reusable prompt per style route and surface." : "每条风格路线和使用载体一条可复用提示词。",
             content: {
-              metrics: isEn
-                ? [
-                    { label: "Brand fit", value: "TBD", note: "Matches audience and product promise." },
-                    { label: "Distinctiveness", value: "TBD", note: "Hard to confuse with generic AI visuals." },
-                    { label: "Usability", value: "TBD", note: "Works across app, deck, and campaign surfaces." }
-                  ]
-                : [
-                    { label: "品牌契合", value: "待评估", note: "匹配受众与产品承诺。" },
-                    { label: "差异化", value: "待评估", note: "不容易落入通用 AI 视觉。" },
-                    { label: "可用性", value: "待评估", note: "能覆盖产品、提案和传播场景。" }
-                  ]
+              columns: isEn ? ["Route", "Surface", "Prompt core", "Negative prompt", "Must preserve"] : ["路线", "载体", "提示词核心", "反向提示", "必须保留"],
+              rows: [
+                isEn ? ["Scholarly clarity", "hero/demo still", "TBD", "generic AI glow", "actual canvas UI"] : ["学术清晰", "首屏/demo 静帧", "待补充", "通用 AI 光效", "真实画布 UI"],
+                isEn ? ["Cinematic timeline", "storyboard frame", "TBD", "dark blurry stock look", "timestamped shots"] : ["电影时间线", "分镜帧", "待补充", "昏暗模糊图库感", "带时间戳镜头"],
+                isEn ? ["Studio workbench", "product screenshot", "TBD", "decorative clutter", "editable cards"] : ["工作室台面", "产品截图", "待补充", "装饰杂乱", "可编辑卡片"]
+              ]
             }
           }
         ];
       }
-    },
-    {
-      id: "course-plan",
-      icon: "LP",
+    }),
+    scenarioTaskPackage({
+      id: "course-learning-plan-studio",
+      icon: "EDU",
       workflow: "chat-agent",
       taskType: "planning",
-      title: labels.course,
-      description: t("projectTemplate.course.desc"),
-      topic: topic("4 周掌握 AI 画布产品设计", "a 4-week plan to learn AI canvas product design"),
+      title: t("projectTemplate.learningPlan.title"),
+      description: t("projectTemplate.learningPlan.desc"),
+      topic: topic("把一组论文、视频和讲义整理成 4 周多模态学习计划", "turn papers, videos, and lecture notes into a 4-week multimodal learning plan"),
+      defaultInputs: isEn
+        ? [
+            { type: "PDF / DOCX / PPTX", label: "Course readings and slides", description: "Materials to parse into concepts, prerequisites, examples, and assignments." },
+            { type: "Video / Transcript", label: "Lecture or tutorial video", description: "Optional video timeline for key moments and exercises." },
+            { type: "Learner note", label: "Audience profile", description: "Skill level, available time, learning goal, and assessment preference." }
+          ]
+        : [
+            { type: "PDF / DOCX / PPTX", label: "课程阅读与讲义", description: "解析概念、前置知识、案例和作业。" },
+            { type: "Video / Transcript", label: "讲座或教程视频", description: "可选，用于生成关键时间点和练习。" },
+            { type: "Learner note", label: "学习者画像", description: "基础水平、可投入时间、学习目标和验收偏好。" }
+          ],
+      agentWorkflow: isEn
+        ? [
+            { title: "Map concepts and prerequisites", description: "Extract concept graph, vocabulary, assumed skills, and difficulty." },
+            { title: "Segment materials", description: "Split readings, slides, and video moments into weekly learning cards." },
+            { title: "Design practice loop", description: "Create exercises, checkpoints, reflection prompts, and feedback rubrics." },
+            { title: "Build assessment plan", description: "Define portfolio artifact, grading criteria, and mastery evidence." },
+            { title: "Generate learning report", description: "Summarize schedule, resources, expected outputs, and adaptation rules." }
+          ]
+        : [
+            { title: "映射概念与前置知识", description: "抽取概念图、术语、默认基础和难度。" },
+            { title: "切分学习材料", description: "把阅读、讲义和视频片段拆成周学习卡。" },
+            { title: "设计练习闭环", description: "创建练习、检查点、复盘问题和反馈量表。" },
+            { title: "建立验收方案", description: "定义作品集交付、评分标准和掌握证据。" },
+            { title: "生成学习报告", description: "总结日程、资源、预期输出和动态调整规则。" }
+          ],
       outputs: isEn
-        ? ["baseline assessment", "learning path", "weekly timeline", "practice tasks", "review rubric"]
-        : ["基础评估", "学习路径", "周计划", "练习任务", "验收标准"],
-      promptFor(target) {
-        return isEn
-          ? `Act as a learning-plan task agent. For "${target}", create canvas cards for prerequisites, skill map, weekly schedule, practice tasks, resources, reflection checkpoints, and assessment rubric.`
-          : `请作为学习计划任务型 Agent。围绕「${target}」，创建前置基础、能力地图、周计划、练习任务、资源、复盘节点和验收标准等画布卡片。`;
+        ? ["concept map", "weekly learning timeline", "resource index", "practice checklist", "assessment rubric", "learning plan report"]
+        : ["概念地图", "周学习时间线", "资源索引", "练习清单", "验收量表", "学习计划报告"],
+      layoutStrategy: {
+        title: isEn ? "Concept map above weekly execution" : "概念地图在上，周执行在下",
+        description: isEn ? "Anchor prerequisites and concepts at the top, then arrange weekly materials, exercises, and assessments below." : "顶部固定前置知识和概念图，下方按周排列材料、练习和验收。",
+        lanes: isEn
+          ? ["Top: concept graph and prerequisites", "Middle: weekly materials and video moments", "Bottom: practice tasks, rubric, and final portfolio"]
+          : ["上层：概念图和前置知识", "中层：每周材料和视频时刻", "下层：练习任务、量表和最终作品"]
+      },
+      reportFormat: {
+        title: isEn ? "Course learning plan report" : "课程学习计划报告",
+        description: isEn ? "A practical, adaptive plan grounded in uploaded materials." : "基于上传材料的可执行自适应学习计划。",
+        sections: isEn
+          ? ["Learner profile", "Concept map", "Weekly plan", "Practice and feedback", "Assessment rubric", "Adaptation rules"]
+          : ["学习者画像", "概念地图", "周计划", "练习与反馈", "验收量表", "调整规则"]
       },
       starterCards() {
         return [
           {
             nodeType: "timeline",
             tone: isEn ? "learning" : "学习",
-            title: isEn ? "Weekly learning path" : "周学习路径",
-            description: isEn ? "A starter sequence for structured learning." : "结构化学习的起步路径。",
+            title: isEn ? "4-week execution timeline" : "4 周执行时间线",
+            description: isEn ? "Replace placeholders with parsed material sections." : "用解析出的材料章节替换占位项。",
             content: {
               items: isEn
                 ? [
-                    { time: "Week 1", title: "Foundations", description: "Map concepts, vocabulary, and baseline examples." },
-                    { time: "Week 2", title: "Practice", description: "Complete guided exercises and build small outputs." },
-                    { time: "Week 3", title: "Project", description: "Apply the skill to a realistic project." },
-                    { time: "Week 4", title: "Review", description: "Assess, revise, and plan the next loop." }
+                    { time: "Week 1", title: "Foundations", description: "Concepts, vocabulary, and first small exercise." },
+                    { time: "Week 2", title: "Methods", description: "Core techniques, worked examples, and comparison." },
+                    { time: "Week 3", title: "Project", description: "Apply methods to a realistic mini project." },
+                    { time: "Week 4", title: "Portfolio", description: "Refine artifact, assess, and plan the next loop." }
                   ]
                 : [
-                    { time: "第 1 周", title: "基础建立", description: "梳理概念、术语和基础案例。" },
-                    { time: "第 2 周", title: "刻意练习", description: "完成引导练习并产出小作品。" },
-                    { time: "第 3 周", title: "项目应用", description: "把能力用于一个真实项目。" },
-                    { time: "第 4 周", title: "复盘迭代", description: "评估、修改并规划下一轮。" }
+                    { time: "第 1 周", title: "基础", description: "概念、术语和第一个小练习。" },
+                    { time: "第 2 周", title: "方法", description: "核心技术、示例和对比。" },
+                    { time: "第 3 周", title: "项目", description: "把方法用于真实小项目。" },
+                    { time: "第 4 周", title: "作品集", description: "完善成果、验收并规划下一轮。" }
                   ]
             }
           },
           {
-            nodeType: "todo",
-            tone: isEn ? "practice" : "练习",
-            title: isEn ? "Practice loop" : "练习闭环",
-            description: isEn ? "Daily and weekly actions that make learning measurable." : "让学习可度量的日/周动作。",
+            nodeType: "metric",
+            tone: isEn ? "rubric" : "量表",
+            title: isEn ? "Assessment rubric" : "学习验收量表",
+            description: isEn ? "Use evidence from exercises and final artifact." : "基于练习和最终作品证据验收。",
             content: {
-              items: (isEn
-                ? ["Define baseline level", "Choose 3 core resources", "Set weekly deliverable", "Schedule feedback", "Record mistakes and next drills"]
-                : ["定义当前基础水平", "选择 3 个核心资源", "设定每周交付物", "安排反馈节点", "记录错误与下一轮练习"])
-                .map((text) => ({ text, done: false }))
-            }
-          }
-        ];
-      }
-    },
-    {
-      id: "event-plan",
-      icon: "EP",
-      workflow: "chat-agent",
-      taskType: "planning",
-      title: labels.event,
-      description: t("projectTemplate.event.desc"),
-      topic: topic("一场 40 人线下用户共创工作坊", "a 40-person offline user co-creation workshop"),
-      outputs: isEn
-        ? ["goal and audience", "agenda timeline", "space/material plan", "risk register", "runbook"]
-        : ["目标与受众", "议程时间线", "空间/物料方案", "风险清单", "执行手册"],
-      promptFor(target) {
-        return isEn
-          ? `Act as an event-planning task agent. For "${target}", create canvas cards for goals, audience, agenda, venue/flow, materials, staffing, risks, budget assumptions, and day-of runbook.`
-          : `请作为活动策划任务型 Agent。围绕「${target}」，创建目标、受众、议程、场地/动线、物料、人力、风险、预算假设和当天执行手册等画布卡片。`;
-      },
-      starterCards() {
-        return [
-          {
-            nodeType: "timeline",
-            tone: isEn ? "runbook" : "执行",
-            title: isEn ? "Day-of runbook skeleton" : "当天执行时间线",
-            description: isEn ? "A practical timing scaffold for event delivery." : "活动落地时可直接细化的时间结构。",
-            content: {
-              items: isEn
+              metrics: isEn
                 ? [
-                    { time: "T-60m", title: "Setup", description: "Venue, equipment, signage, materials." },
-                    { time: "T-15m", title: "Check-in", description: "Guest arrival, badges, seating, warm-up." },
-                    { time: "Main block", title: "Program", description: "Opening, activity rounds, sharing, synthesis." },
-                    { time: "Close", title: "Wrap", description: "Photo, takeaway, feedback, teardown." }
+                    { label: "Concept accuracy", value: "TBD", note: "Can explain core terms and assumptions." },
+                    { label: "Applied skill", value: "TBD", note: "Can complete the project with minimal guidance." },
+                    { label: "Reflection quality", value: "TBD", note: "Can identify errors and next drills." }
                   ]
                 : [
-                    { time: "T-60 分钟", title: "布场", description: "场地、设备、指引和物料就位。" },
-                    { time: "T-15 分钟", title: "签到", description: "到场、名牌、入座和暖场。" },
-                    { time: "主环节", title: "执行", description: "开场、共创轮次、汇报和综合。" },
-                    { time: "收尾", title: "复盘", description: "合影、带走物、反馈和撤场。" }
+                    { label: "概念准确", value: "待评估", note: "能解释核心术语和假设。" },
+                    { label: "应用能力", value: "待评估", note: "能较少提示完成项目。" },
+                    { label: "复盘质量", value: "待评估", note: "能识别错误和下一轮练习。" }
                   ]
-            }
-          },
-          {
-            nodeType: "table",
-            tone: isEn ? "risk" : "风险",
-            title: isEn ? "Materials and risk register" : "物料与风险清单",
-            description: isEn ? "Track owner, status, and fallback for event operations." : "记录负责人、状态和替代方案。",
-            content: {
-              columns: isEn ? ["Item/Risk", "Owner", "Status", "Fallback"] : ["物料/风险", "负责人", "状态", "备选方案"],
-              rows: [
-                isEn ? ["Venue equipment", "TBD", "unchecked", "backup projector/cables"] : ["场地设备", "待定", "未检查", "备用投影/线材"],
-                isEn ? ["Participant no-show", "TBD", "open", "waitlist / regroup"] : ["参与者缺席", "待定", "待处理", "候补/重新分组"],
-                isEn ? ["Material delay", "TBD", "open", "local print / digital fallback"] : ["物料延迟", "待定", "待处理", "本地打印/电子替代"]
-              ]
             }
           }
         ];
       }
-    }
+    })
   ];
 }
 
@@ -5982,20 +6177,46 @@ function getProjectTemplate(templateId, topicOverride = "") {
 function projectTemplateBriefText(template) {
   const isEn = currentLang === "en";
   const outputs = Array.isArray(template.outputs) ? template.outputs : [];
+  const inputLines = projectTemplateListLines(template.defaultInputs);
+  const workflowLines = projectTemplateListLines(template.agentWorkflow);
+  const layoutLines = [
+    projectTemplateItemLine(template.layoutStrategy).replace(/^- /, ""),
+    ...(template.layoutStrategy?.lanes || []).map((item) => `- ${item}`)
+  ].filter(Boolean);
+  const reportLines = [
+    projectTemplateItemLine(template.reportFormat).replace(/^- /, ""),
+    ...(template.reportFormat?.sections || []).map((item) => `- ${item}`)
+  ].filter(Boolean);
   return [
     `# ${t("projectTemplate.brief")}`,
     "",
-    isEn ? `Template: ${template.title}` : `模板：${template.title}`,
+    isEn ? `Scenario package: ${template.title}` : `场景任务包：${template.title}`,
     isEn ? `Topic: ${template.topic}` : `主题：${template.topic}`,
+    isEn ? `Workflow: ${template.workflow}` : `工作流：${template.workflow}`,
+    "",
+    isEn ? "Default input materials:" : "默认输入材料：",
+    ...inputLines,
+    "",
+    isEn ? "Recommended Agent workflow:" : "推荐 Agent workflow：",
+    ...workflowLines,
     "",
     isEn ? "Expected outputs:" : "预期交付物：",
-    ...outputs.map((item) => `- ${item}`)
+    ...outputs.map((item) => `- ${item}`),
+    "",
+    isEn ? "Canvas layout strategy:" : "画布布局策略：",
+    ...layoutLines,
+    "",
+    isEn ? "Report format:" : "报告格式：",
+    ...reportLines
   ].join("\n");
 }
 
 function projectTemplateBaseCards(template) {
   const isEn = currentLang === "en";
   const outputs = Array.isArray(template.outputs) ? template.outputs : [];
+  const defaultInputs = Array.isArray(template.defaultInputs) ? template.defaultInputs : [];
+  const workflowSteps = Array.isArray(template.agentWorkflow) ? template.agentWorkflow : [];
+  const reportSections = Array.isArray(template.reportFormat?.sections) ? template.reportFormat.sections : [];
   return [
     {
       nodeType: "note",
@@ -6005,12 +6226,69 @@ function projectTemplateBaseCards(template) {
       content: { text: projectTemplateBriefText(template) }
     },
     {
+      nodeType: "table",
+      tone: isEn ? "inputs" : "输入",
+      title: t("projectTemplate.defaultInputs"),
+      description: isEn ? "Prepare or replace these materials before running the full workflow." : "运行完整流程前，请准备或替换这些材料。",
+      content: {
+        columns: isEn ? ["Type", "Material", "Purpose"] : ["类型", "材料", "用途"],
+        rows: defaultInputs.map((item) => [
+          item.type || "Note",
+          projectTemplateItemTitle(item),
+          projectTemplateItemDescription(item)
+        ])
+      }
+    },
+    {
+      nodeType: "timeline",
+      tone: isEn ? "workflow" : "流程",
+      title: t("projectTemplate.agentWorkflow"),
+      description: isEn ? "Recommended execution path for the agent." : "推荐的 Agent 执行路径。",
+      content: {
+        items: workflowSteps.map((step, index) => ({
+          time: isEn ? `Step ${index + 1}` : `步骤 ${index + 1}`,
+          title: projectTemplateItemTitle(step),
+          description: projectTemplateItemDescription(step)
+        }))
+      }
+    },
+    {
       nodeType: "todo",
       tone: isEn ? "deliverables" : "交付物",
       title: t("projectTemplate.outputs"),
       description: isEn ? "Complete these artifacts on the canvas." : "在画布上补齐这些交付物。",
       content: {
         items: outputs.map((text) => ({ text, done: false, priority: isEn ? "medium" : "中" }))
+      }
+    },
+    {
+      nodeType: "note",
+      tone: isEn ? "layout" : "布局",
+      title: t("projectTemplate.layoutStrategy"),
+      description: projectTemplateItemTitle(template.layoutStrategy),
+      content: {
+        text: [
+          `# ${t("projectTemplate.layoutStrategy")}`,
+          "",
+          projectTemplateItemLine(template.layoutStrategy).replace(/^- /, ""),
+          ...(template.layoutStrategy?.lanes || []).map((item) => `- ${item}`)
+        ].filter(Boolean).join("\n")
+      }
+    },
+    {
+      nodeType: "plan",
+      tone: isEn ? "report" : "报告",
+      title: t("projectTemplate.reportFormat"),
+      description: projectTemplateItemTitle(template.reportFormat),
+      content: {
+        goal: template.reportFormat?.title || t("projectTemplate.reportFormat"),
+        context: projectTemplateItemDescription(template.reportFormat),
+        steps: reportSections.map((section, index) => ({
+          title: section,
+          description: isEn ? `Draft section ${index + 1} with canvas evidence.` : `基于画布证据撰写第 ${index + 1} 节。`,
+          status: index === 0 ? "ready" : "queued"
+        })),
+        outcomes: outputs
       }
     }
   ];
@@ -6024,33 +6302,24 @@ function createProjectTemplateWorkspace(template, parentNodeId = "") {
   if (!parent || !template) return null;
 
   const seed = `${Date.now()}-${safeNodeSlug(template.id)}`;
-  const steps = [
-    ...(currentLang === "en"
-      ? [
-          { title: "Frame the question", description: "Clarify scope, audience, constraints, and success criteria.", status: "ready" },
-          { title: "Collect material", description: "Gather sources, references, assumptions, or examples.", status: "ready" },
-          { title: "Build deliverables", description: "Create the cards listed in the deliverables checklist.", status: "queued" },
-          { title: "Review and refine", description: "Validate evidence, gaps, risks, and next actions.", status: "queued" }
-        ]
-      : [
-          { title: "界定问题", description: "明确范围、受众、约束和成功标准。", status: "ready" },
-          { title: "收集材料", description: "沉淀来源、参考、假设或案例。", status: "ready" },
-          { title: "生成交付物", description: "按交付物清单创建对应画布卡片。", status: "排队" },
-          { title: "复核迭代", description: "核查证据、缺口、风险和下一步行动。", status: "排队" }
-        ])
-  ];
+  const workflowSteps = Array.isArray(template.agentWorkflow) ? template.agentWorkflow : [];
+  const steps = workflowSteps.map((step, index) => ({
+    title: projectTemplateItemTitle(step),
+    description: projectTemplateItemDescription(step),
+    status: index < 2 ? "ready" : "queued"
+  }));
   const hubId = createOptionNode({
     id: `project-template-${seed}`,
     title: `${template.title}: ${template.topic}`.slice(0, 48),
     description: template.description,
     prompt: template.promptFor(template.topic),
     tone: t("projectTemplate.title"),
-    layoutHint: "project-template",
+    layoutHint: template.layoutStrategy?.title || "scenario-task-package",
     deepThinkType: "template",
     nodeType: "plan",
     content: {
       goal: template.topic,
-      context: template.description,
+      context: projectTemplateBriefText(template),
       steps,
       outcomes: template.outputs
     },
@@ -12449,7 +12718,14 @@ function renderProjectTemplatePicker() {
     const desc = document.createElement("span");
     desc.className = "project-template-desc";
     desc.textContent = template.description;
-    copy.append(label, desc);
+    const meta = document.createElement("span");
+    meta.className = "project-template-meta";
+    const inputCount = Array.isArray(template.defaultInputs) ? template.defaultInputs.length : 0;
+    const outputCount = Array.isArray(template.outputs) ? template.outputs.length : 0;
+    meta.textContent = currentLang === "en"
+      ? `${t("projectTemplate.scenarioBadge")} · ${inputCount} inputs · ${outputCount} outputs · ${template.workflow}`
+      : `${t("projectTemplate.scenarioBadge")} · ${inputCount} 类输入 · ${outputCount} 项输出 · ${template.workflow}`;
+    copy.append(label, desc, meta);
     button.append(icon, copy);
     button.addEventListener("click", () => launchProjectTemplate(template.id));
     grid.appendChild(button);
